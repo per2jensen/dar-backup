@@ -43,6 +43,8 @@
 
   - Setup an ssh access using a key for logging into the server
   - A Discord webhook is needed for the messages to be sent
+  - The Ubuntu installed 'darrc' file, located here: /etc/darrc controls which files not to
+    compress, as well as the amount of error correction data. 
   - Fill in some data in the dar-backup.conf file
     ````
       # the Discord webhook address to send messages to
