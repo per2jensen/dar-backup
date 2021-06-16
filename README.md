@@ -16,10 +16,10 @@
 # Script features
 
   - Take full backups or differential backups
-  - Uses the par2 functionality for file repair 
+  - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
-  - Simple restore test, restoring 1 file to feel more confident in a good backup
+  - Simple restore test, restoring 1 file to feel more confident about the backup
   - Relatively simple to add more directories to backup
   - sshfs is used to mount remote directory --> this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
@@ -43,8 +43,9 @@
 
   - Setup an ssh access using a key for logging into the server
   - A Discord webhook is needed for the messages to be sent
-  - The Ubuntu installed 'darrc' file, located here: /etc/darrc controls which files not to
-    compress, as well as the amount of error correction data. 
+  - A 'darrc' file is generated in the conf dir, once the install.sh script has been run.
+    It controls which files not to compress, ans points to the par2 configuration, also in
+    conf dir
   - Fill in some data in the dar-backup.conf file
     ````
       # the Discord webhook address to send messages to
@@ -59,15 +60,12 @@
       # where to mount the sshfs mount
       MOUNT_POINT=~/another_dir
     ````
-  - make the script executable
+  - make the install.sh script executable and run it
     ````
-    chmod +x dar-backup.sh
+    chmod +x install.sh
+    ./install.sh
     ````
-  - create a link for the "diff" program
-    ````
-    ln -s dar-backup.sh dar-diff-backup.sh
-    ````
-  - Open the script, set suitable values for these 3 variables
+  - Open the backup script, set suitable values for these 3 variables
     
     - BACKUP_NAME=test
     - FS_ROOT=~/tmp/test
