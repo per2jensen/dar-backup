@@ -1,0 +1,15 @@
+# configuration file for dar to have Parchive integrated
+# with DAR
+
+
+create:
+        -E '@@CONFDIR@@/dar_par_create.duc "%p" "%b" %N %e %c 5'
+# 5 stands for 5% of redundancy
+
+test:
+        -E '@@CONFDIR@@/dar_par_test.duc "%p" "%b" %N %e %c'
+
+
+# fix from Sergey Feo
+default:
+-E "echo Warning: dar_par.dcf will not be used in this operation. Please review command line options. -c or -t should be used before -B ...dar_par.dcf"

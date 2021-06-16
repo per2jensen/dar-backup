@@ -28,7 +28,7 @@ SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo $SCRIPTDIRPATH
 
-source ${SCRIPTDIRPATH}/dar-backup.conf
+source ${SCRIPTDIRPATH}/../conf/dar-backup.conf
 source ${SCRIPTDIRPATH}/dar-util.sh
 
 # make sure mounts are in order
