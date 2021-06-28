@@ -100,7 +100,8 @@ backupTestRestore () {
 # $2: --fs-root, where to take the backup
 darBackup () {
     logger -s "Start dar backup of: $2"
-    dar -c "$1" -B ${SCRIPTDIRPATH}/../conf/darrc \
+    dar -c "$1" \
+    -B ${SCRIPTDIRPATH}/../conf/darrc \
     --fs-root "$2" \
     --mincompr 4096 \
     --slice 4G \

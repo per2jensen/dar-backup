@@ -9,7 +9,8 @@ SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo $SCRIPTDIRPATH
 
-chmod +x ${SCRIPTDIRPATH}/dar-backup.sh
+chmod +x ${SCRIPTDIRPATH}/dar-backup.sh ${SCRIPTDIRPATH}/../conf/*.duc 
+
 ln -s ${SCRIPTDIRPATH}/dar-backup.sh  ${SCRIPTDIRPATH}/dar-diff-backup.sh 
 
 sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" $SCRIPTDIRPATH/../conf/dar_par.dcf.template > $SCRIPTDIRPATH/../conf/dar_par.dcf

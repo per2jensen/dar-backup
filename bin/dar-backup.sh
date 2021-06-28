@@ -38,7 +38,7 @@ mountPrereqs
 # ======================================
 #  test backup
 # ======================================
-BACKUP_NAME=dba
+BACKUP_NAME=TEST
 # what to backup
 FS_ROOT=/home/pj/tmp/dba
 # where to restore the testfile
