@@ -65,23 +65,25 @@
     chmod +x install.sh
     ./install.sh
     ````
-  - Open the backup script, set suitable values for these 3 variables
-    
+  - Define backups in the "backups.d" directory
+  
+    Open the backups.d/TEST file, alter the 3 variables to your test    
     - BACKUP_NAME=test
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp
-  - Execute the script and checkout the dar archive
+
+  - Execute the script and "list" the dar archive to check that the backup is to your liking
     ````
     # do the backup
     .\dar-backup.sh
     
     # list the archive
-    dar -l /PATH/TO/ARCHIVE 
+    dar -l /PATH/TO/ARCHIVE |less
     ````
 
 # Version
 
-  Consider this working, but not battletested. It is perhaps something like version 0.8'ish.
+  Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
 
 # License
 
