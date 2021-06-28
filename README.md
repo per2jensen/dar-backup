@@ -80,6 +80,29 @@
     # list the archive
     dar -l /PATH/TO/ARCHIVE |less
     ````
+# Restore examples
+
+## how to restore a directory
+  I do a "list" and "grep" like this
+  ````
+  dar -l /path/to/archive |grep "your search string"
+  ````
+  Rememeber that the archive name is without <slice number>.dar
+  Once I have located the directory to restore, do like this (restore below /tmp)
+  ````
+  dar  -x ~/path/to/archive -R /tmp -p <the directory you want to restore>
+  ````
+## how to restore a single file
+  Much like restoring a directory, I seek out the file with a "list" and "grep"
+  ````
+  dar -l /path/to/archive |grep "your search string"
+  ````
+  and the tell dar to go into (-g) a specific directory and restore the specific file (to /tmp in this example)
+  ````
+  dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
+  ````
+  
+  
 
 # dar static tip
   It is a very good idea to stash the /usr/bin/dar_static executable with your archives.
