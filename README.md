@@ -33,7 +33,7 @@
 
   On Ubuntu, install the requirements this way:
   ````
-    sudo apt install sshfs dar par2 curl
+    sudo apt install sshfs dar dar-static par2 curl
   ````
 
 # How to use
@@ -81,6 +81,9 @@
     dar -l /PATH/TO/ARCHIVE |less
     ````
 
+# dar static tip
+  It is a very good idea to stash the /usr/bin/dar_static executable with your archives.
+  If you at some point in the future needs to extract files from the archive, you know you have correct binary at hand.
 # Version
 
   Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
