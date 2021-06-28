@@ -1,4 +1,4 @@
-#! /bin/bash 
+#! /bin/bash -x
 # Run script as a non-root user 
 # 
 # Will do full backups if called as "dar-backup.sh"
@@ -9,7 +9,6 @@ MODE=""
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
-echo $SCRIPTNAME
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
@@ -23,10 +22,9 @@ else
 fi
 
 
-DATE=`date -I`
-SCRIPTPATH=`realpath $0`
-SCRIPTDIRPATH=`dirname $SCRIPTPATH`
-echo $SCRIPTDIRPATH
+export DATE=`date -I`
+export SCRIPTPATH=`realpath $0`
+export SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 
 source ${SCRIPTDIRPATH}/../conf/dar-backup.conf
 source ${SCRIPTDIRPATH}/dar-util.sh
@@ -35,29 +33,26 @@ source ${SCRIPTDIRPATH}/dar-util.sh
 mountPrereqs
 
 
-# ======================================
-#  test backup
-# ======================================
-BACKUP_NAME=TEST
-# what to backup
-FS_ROOT=/home/pj/tmp/dba
-# where to restore the testfile
-TESTRESTORE_PATH=/tmp
+for file in $(ls ${SCRIPTDIRPATH}/../backups.d/*); do
+    #${SCRIPTDIRPATH}../backups.d/${file}
+    source "${file}"
 
-DAR_ARCHIVE=${BACKUP_NAME}_${MODE}_${DATE}
-ARCHIVEPATH=${MOUNT_POINT}/${DAR_ARCHIVE}
-TESTRESTORE_FILE=.dar-testrestore-${BACKUP_NAME}-${DATE}
+    DAR_ARCHIVE=${BACKUP_NAME}_${MODE}_${DATE}
+    ARCHIVEPATH=${MOUNT_POINT}/${DAR_ARCHIVE}
+    TESTRESTORE_FILE=.dar-testrestore-${BACKUP_NAME}-${DATE}
 
-if [[ $MODE == "FULL"  ]]; then 
-  # backup
-  backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
-    "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
-else
-  PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
-  NEWEST_ARCHIVE=${PREV%%.*}
-  echo NEWEST archive: $NEWEST_ARCHIVE
-  # backup
-  diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-    "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
-fi
+    if [[ $MODE == "FULL"  ]]; then 
+      # backup
+      backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
+    else
+      PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
+      NEWEST_ARCHIVE=${PREV%%.*}
+      echo NEWEST archive: $NEWEST_ARCHIVE
+      # backup
+      diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
+    fi
+done
+
 

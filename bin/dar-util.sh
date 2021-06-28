@@ -101,6 +101,7 @@ backupTestRestore () {
 darBackup () {
     logger -s "Start dar backup of: $2"
     dar -c "$1" \
+    -N \
     -B ${SCRIPTDIRPATH}/../conf/darrc \
     --fs-root "$2" \
     --mincompr 4096 \
@@ -118,7 +119,8 @@ darBackup () {
 # $3: the archive to do the diff against (the -A option)
 darDiffBackup () {
     logger -s "Start dar diff backup of: $2, diff against: $3"
-    dar -B ${SCRIPTDIRPATH}/../conf/darrc \
+    dar -N \
+    -B ${SCRIPTDIRPATH}/../conf/darrc \
     -c "$1" \
     --fs-root "$2" \
     -A "$3" \
