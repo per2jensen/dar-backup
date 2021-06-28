@@ -20,7 +20,7 @@
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
-  - Relatively simple to add more directories to backup
+  - Simple to add more directories to backup
   - sshfs is used to mount remote directory --> this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
@@ -65,10 +65,10 @@
     chmod +x install.sh
     ./install.sh
     ````
-  - Define backups in the "backups.d" directory
+  - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open the backups.d/TEST file, alter the 3 variables to your test    
-    - BACKUP_NAME=test
+    Open the demo backups.d/TEST file, alter the 3 variables to your test    
+    - BACKUP_NAME=TEST
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp
 
