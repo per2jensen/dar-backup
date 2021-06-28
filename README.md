@@ -67,7 +67,7 @@
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open the demo backups.d/TEST file, alter the 3 variables to your test    
+    Open the demo backups.d/TEST file, alter the 3 variables to your taste    
     - BACKUP_NAME=TEST
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp
