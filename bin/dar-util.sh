@@ -100,15 +100,17 @@ backupTestRestore () {
 # $2: --fs-root, where to take the backup
 darBackup () {
     logger -s "Start dar backup of: $2"
-    dar -c "$1" \
-    -N \
-    -B ${SCRIPTDIRPATH}/../conf/darrc \
-    --fs-root "$2" \
-    --mincompr 4096 \
-    --slice 4G \
-    --compression lzo:5 \
-    --empty-dir \
-    par2 compress-exclusion 
+    dar -vd \
+        -c "$1" \
+        -N \
+        -B ${SCRIPTDIRPATH}/../conf/darrc \
+        --fs-root "$2" \
+        --mincompr 4096 \
+        --slice 4G \
+        --compression lzo:5 \
+        --empty-dir \
+        par2 \
+        compress-exclusion 
 }
 
 
@@ -119,16 +121,18 @@ darBackup () {
 # $3: the archive to do the diff against (the -A option)
 darDiffBackup () {
     logger -s "Start dar diff backup of: $2, diff against: $3"
-    dar -N \
-    -B ${SCRIPTDIRPATH}/../conf/darrc \
-    -c "$1" \
-    --fs-root "$2" \
-    -A "$3" \
-    --mincompr 4096 \
-    --slice 4G \
-    --compression lzo:5 \
-    --empty-dir \
-    par2  compress-exclusion
+    dar -vd \
+        -N \
+        -B ${SCRIPTDIRPATH}/../conf/darrc \
+        -c "$1" \
+        --fs-root "$2" \
+        -A "$3" \
+        --mincompr 4096 \
+        --slice 4G \
+        --compression lzo:5 \
+        --empty-dir \
+        par2 \
+        compress-exclusion
 
 }
 
@@ -141,14 +145,19 @@ darTestBackup () {
   # test the backup
   local ARCHIVE=`basename "$1"`
   logger -s "Test dar archive: $1"
-  dar -t "$1"
+  dar -vd \
+      -t "$1"
   RESULT=$?
   sendDiscordMsg "dar test af archive: $ARCHIVE, result: $RESULT"
 
   # restore the test file
   logger -s "Test restore of  file: $3"
   rm -f "$2/$3" # make sure the file is not there....
-  dar -w -x "$1" -R "$2" -g "$3"
+  dar -vd \
+      -w \
+      -x "$1" \
+      -R "$2" \
+      -g "$3"
   RESULT=$?
   if [[ $RESULT == "0" ]]; then
     if [[ -f "$2/$3"  ]]; then

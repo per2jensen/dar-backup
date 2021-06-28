@@ -33,9 +33,8 @@ source ${SCRIPTDIRPATH}/dar-util.sh
 mountPrereqs
 
 
-for file in $(ls ${SCRIPTDIRPATH}/../backups.d/*); do
-    #${SCRIPTDIRPATH}../backups.d/${file}
-    source "${file}"
+for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
+    source "${SCRIPTDIRPATH}/../backups.d/${file}"
 
     DAR_ARCHIVE=${BACKUP_NAME}_${MODE}_${DATE}
     ARCHIVEPATH=${MOUNT_POINT}/${DAR_ARCHIVE}
@@ -54,5 +53,3 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/*); do
         "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
     fi
 done
-
-

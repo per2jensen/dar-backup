@@ -87,7 +87,7 @@
   ````
   dar -l /path/to/archive |grep "your search string"
   ````
-  Rememeber that the archive name is without <slice number>.dar
+  Rememeber that the archive name is without "slice_number.dar"
   Once I have located the directory to restore, do like this (restore below /tmp)
   ````
   dar  -x ~/path/to/archive -R /tmp -p <the directory you want to restore>
