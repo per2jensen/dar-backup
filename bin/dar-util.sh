@@ -106,7 +106,7 @@ backupTestRestore () {
 darBackup () {
     logger -s "Start dar backup of: $2"
 
-    OLIFS=$IFS
+    OIFS=$IFS
         # build excludes 
         IFS=';' read -ra my_array <<< "$3"
         local excludes=
@@ -162,7 +162,7 @@ darBackup () {
 darDiffBackup () {
     logger -s "Start dar diff backup of: $2, diff against: $3"
 
-    OLIFS=$IFS
+    OIFS=$IFS
         # build excludes 
         IFS=';' read -ra my_array <<< "$4"
         local excludes=
