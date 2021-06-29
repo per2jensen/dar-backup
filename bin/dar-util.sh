@@ -34,7 +34,6 @@ mountPrereqs () {
     fi
 }
 
-
 sendDiscordMsg () {
     logger -s "$1"
     curl -i -H "Accept: application/json"  \
@@ -52,10 +51,11 @@ sendDiscordMsg () {
 # $3 "${MOUNT_POINT}/$NEWEST_ARCHIVE" - the newest backup 
 # $4 "$TESTRESTORE_PATH" - where to do the restore test
 # $5 "$TESTRESTORE_FILE" - the file to restore
+# $6 EXCLUDES from conf file
 diffBackupTestRestore () {
     local DAR_ARCHIVE=`basename "$1"`
     echo "Hej" > "$2/$5"  # create testfile
-    darDiffBackup "$1" "$2" "$3"
+    darDiffBackup "$1" "$2" "$3" "$6"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -102,18 +102,41 @@ backupTestRestore () {
 # $3: excludes 
 darBackup () {
     logger -s "Start dar backup of: $2"
-    dar -vd \
-        -c "$1" \
+
+    # build excludes 
+    IFS=';' read -ra my_array <<< "$3"
+    local excludes=
+    for i in "${my_array[@]}"
+    do
+        excludes+=" -P "
+        excludes+="\"$i\"" 
+    done
+    IFS=
+
+    SCRIPT=/tmp/dar-full-backup.sh
+
+    if [[ -f "$SCRIPT" ]]; then
+        rm -f "$SCRIPT"
+        if [[ $? != "0" ]];then
+            logger -s "Could not delete $SCRIPT - exiting"
+            exit 1
+        fi
+    fi 
+    echo dar -vd \
+        -c \"$1\" \
         -N \
-        -B ${SCRIPTDIRPATH}/../conf/darrc \
-        --fs-root "$2" \
-        -P "$3" \
-        --mincompr 100 \
+        -B \"${SCRIPTDIRPATH}/../conf/darrc\" \
+        --fs-root \"$2\" \
+        $excludes \
         --slice 4G \
         --compression lzo:5 \
         --empty-dir \
         par2 \
-        compress-exclusion 
+        compress-exclusion > "$SCRIPT"
+
+    chmod +x "$SCRIPT"
+    "$SCRIPT"
+
 }
 
 
@@ -122,20 +145,46 @@ darBackup () {
 # $1: ARCHIVEPATH, fx ~/mn/dar/dba_2021-06-06
 # $2: --fs-root, where to take the backup
 # $3: the archive to do the diff against (the -A option)
+# $4: excludes from conf file
 darDiffBackup () {
     logger -s "Start dar diff backup of: $2, diff against: $3"
-    dar -vd \
+
+    # build excludes 
+    IFS=';' read -ra my_array <<< "$4"
+    local excludes=
+    for i in "${my_array[@]}"
+    do
+        excludes+=" -P "
+        excludes+="\"$i\"" 
+    done
+    IFS=
+
+    SCRIPT=/tmp/dar-diff-backup.sh
+
+    if [[ -f "$SCRIPT" ]]; then
+        rm -f "$SCRIPT"
+        if [[ $? != "0" ]];then
+            logger -s "Could not delete $SCRIPT - exiting"
+            exit 1
+        fi
+    fi 
+
+    echo dar -vd \
         -N \
-        -B ${SCRIPTDIRPATH}/../conf/darrc \
-        -c "$1" \
-        --fs-root "$2" \
-        -A "$3" \
-        --mincompr 100 \
+        -B \"${SCRIPTDIRPATH}/../conf/darrc\" \
+        -c \"$1\" \
+        --fs-root \"$2\" \
+        $excludes \
+         -A \"$3\" \
         --slice 4G \
         --compression lzo:5 \
         --empty-dir \
         par2 \
-        compress-exclusion
+        compress-exclusion  > "$SCRIPT"
+
+    chmod +x "$SCRIPT"
+    "$SCRIPT"
+
 
 }
 

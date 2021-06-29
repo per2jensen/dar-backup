@@ -20,7 +20,7 @@
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
-  - Simple to add more directories to backup
+  - Simple to add more directories to backup, including directories to exclude
   - sshfs is used to mount remote directory --> this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
@@ -67,10 +67,11 @@
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open the demo backups.d/TEST file, alter the 3 variables to your taste    
+    Open the demo backups.d/TEST file, alter the 4 variables to your taste    
     - BACKUP_NAME=TEST
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp
+    - EXCLUDES="DIR WITH SPACE;ANOTHER DIR WITH SPACE"
 
   - Execute the script and "list" the dar archive to check that the backup is to your liking
     ````
@@ -88,7 +89,7 @@
   dar -l /path/to/archive |grep "your search string"
   ````
   Rememeber that the archive name is without "slice_number.dar"
-  Once I have located the directory to restore, do like this (restore below /tmp)
+  Once I have located the directory to restore, do like this (here the restore is below /tmp)
   ````
   dar  -x ~/path/to/archive -R /tmp -p <the directory you want to restore>
   ````
@@ -102,11 +103,18 @@
   dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
   ````
   
-  
+ 
 
 # dar static tip
   It is a very good idea to stash the /usr/bin/dar_static executable with your archives.
   If you at some point in the future needs to extract files from the archive, you know you have correct binary at hand.
+
+# Issues
+## Building list of directories to exclude
+  I have spent a fair amount of time building the list of directories to exclude. In the end I was unable to build a commandline with single quote characters surrounding the string, so I ended up with building a script in /tmp and executing it.
+
+  I am clearly not versed well enough in the intricacies of parameter expanding :-(
+
 # Version
 
   Consider this working, but not battletested. It is perhaps something like version 0.9'ish.

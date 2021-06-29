@@ -50,6 +50,6 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
       echo NEWEST archive: $NEWEST_ARCHIVE
       # backup
       diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}"
     fi
 done

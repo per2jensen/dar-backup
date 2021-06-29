@@ -13,6 +13,9 @@ FS_ROOT=/home/pj/tmp/dba
 TESTRESTORE_PATH=/tmp
 
 # exclude dirs
-EXCLUDES="TEST MELLEMRUM"
+# filenames with spaces are ok
+# use ";" as the separator => you cannot have ";" in filenames
+#                             ================================   
+EXCLUDES="TEST MELLEMRUM;TEST MELLEMRUM2"
 
 
