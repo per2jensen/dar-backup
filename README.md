@@ -72,6 +72,7 @@
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp
     - EXCLUDES="DIR WITH SPACE;ANOTHER DIR WITH SPACE"
+    - INCLUDES="first dir;second dir"
 
   - Execute the script and "list" the dar archive to check that the backup is to your liking
     ````
