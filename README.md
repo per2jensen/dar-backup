@@ -20,8 +20,8 @@
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
-  - Simple to add backups, including directories to include and to exclude
-  - sshfs is used to mount remote directory --> this script cannot run as root
+  - Simple to add backups, including directories to include and to exclude in each backup
+  - sshfs is used to mount remote directory --> thus this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
 
@@ -112,7 +112,7 @@
 
 # Issues
 ## Building list of directories to exclude
-  I have spent a fair amount of time building the list of directories to exclude. In the end I was unable to build a commandline with single quote characters surrounding the string, so I ended up with building a script in /tmp and executing it.
+  I have spent a fair amount of time building the list of directories to exclude. In the end I was unable to build a commandline without single quote characters surrounding the string, so I ended up with building a script in /tmp and executing it.
 
   I am clearly not versed well enough in the intricacies of parameter expanding :-(
 
