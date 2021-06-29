@@ -38,18 +38,30 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
 
     DAR_ARCHIVE=${BACKUP_NAME}_${MODE}_${DATE}
     ARCHIVEPATH=${MOUNT_POINT}/${DAR_ARCHIVE}
+
+    # if includes are used, make sure the test file is saved in one
     TESTRESTORE_FILE=.dar-testrestore-${BACKUP_NAME}-${DATE}
+    OLIFS=$IFS
+        # loop includes
+        IFS=';' read -ra my_array <<< "$INCLUDES"
+        for i in "${my_array[@]}"
+        do
+          TESTRESTORE_FILE="${i}/.dar-testrestore-${BACKUP_NAME}-${DATE}"
+          break
+        done
+    IFS=$OIFS
+
 
     if [[ $MODE == "FULL"  ]]; then 
       # backup
       backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"
     else
       PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
       NEWEST_ARCHIVE=${PREV%%.*}
       echo NEWEST archive: $NEWEST_ARCHIVE
       # backup
       diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"
     fi
 done

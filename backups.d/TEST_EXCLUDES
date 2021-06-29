@@ -4,13 +4,20 @@
 # ======================================
 
 # the name of the DAR achive
-BACKUP_NAME=TEST
+BACKUP_NAME=TEST_EXCLUDE
 
 # what to backup
 FS_ROOT=/home/pj/tmp/dba
 
 # where to restore the testfile
 TESTRESTORE_PATH=/tmp
+
+# include dirs
+# filenames with spaces are ok
+# use ";" as the separator => you cannot have ";" in filenames
+#                             ================================   
+INCLUDES=""
+
 
 # exclude dirs
 # filenames with spaces are ok

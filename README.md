@@ -20,7 +20,7 @@
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
-  - Simple to add more directories to backup, including directories to exclude
+  - Simple to add backups, including directories to include and to exclude
   - sshfs is used to mount remote directory --> this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
