@@ -43,7 +43,7 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
     if [[ $MODE == "FULL"  ]]; then 
       # backup
       backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}"
     else
       PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
       NEWEST_ARCHIVE=${PREV%%.*}

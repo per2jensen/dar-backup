@@ -2,10 +2,17 @@
 # ======================================
 #  test backup
 # ======================================
+
 # the name of the DAR achive
 BACKUP_NAME=TEST
+
 # what to backup
 FS_ROOT=/home/pj/tmp/dba
+
 # where to restore the testfile
 TESTRESTORE_PATH=/tmp
+
+# exclude dirs
+EXCLUDES="TEST MELLEMRUM"
+
 

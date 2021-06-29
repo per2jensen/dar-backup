@@ -76,10 +76,11 @@ diffBackupTestRestore () {
 # $2 "$FS_ROOT" - take backup of this and below
 # $3 "$TESTRESTORE_PATH" - where to do the restore test
 # $4 "$TESTRESTORE_FILE" - the file to restore
+# $5 "EXCLUDES" - -P's from config file
 backupTestRestore () {
     local DAR_ARCHIVE=`basename "$1"`
     echo "Hej" > "$2/$4"  # create testfile
-    darBackup "$1" "$2"
+    darBackup "$1" "$2" "${5}"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -98,6 +99,7 @@ backupTestRestore () {
 # do a dar backup
 # $1: ARCHIVEPATH, fx ~/mn/dar/dba_2021-06-06
 # $2: --fs-root, where to take the backup
+# $3: excludes 
 darBackup () {
     logger -s "Start dar backup of: $2"
     dar -vd \
@@ -105,7 +107,8 @@ darBackup () {
         -N \
         -B ${SCRIPTDIRPATH}/../conf/darrc \
         --fs-root "$2" \
-        --mincompr 4096 \
+        -P "$3" \
+        --mincompr 100 \
         --slice 4G \
         --compression lzo:5 \
         --empty-dir \
@@ -127,7 +130,7 @@ darDiffBackup () {
         -c "$1" \
         --fs-root "$2" \
         -A "$3" \
-        --mincompr 4096 \
+        --mincompr 100 \
         --slice 4G \
         --compression lzo:5 \
         --empty-dir \
