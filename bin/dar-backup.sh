@@ -41,7 +41,7 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
 
     # if includes are used, make sure the test file is saved in one
     TESTRESTORE_FILE=.dar-testrestore-${BACKUP_NAME}-${DATE}
-    OLIFS=$IFS
+    OIFS=$IFS
         # loop includes
         IFS=';' read -ra my_array <<< "$INCLUDES"
         for i in "${my_array[@]}"
