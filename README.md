@@ -83,7 +83,7 @@
     # list the archive
     dar -l /PATH/TO/ARCHIVE |less
     ````
-# Restore examples
+# Examples
 
 ## how to restore a directory
   I do a "list" and "grep" like this
@@ -104,7 +104,15 @@
   ````
   dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
   ````
+## trim the log file 
+  'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
+  ````
+  # remove lots of directory notices from the log file
+  sed -i '/^Inspecting directory/d' ~/dar-backup.log
   
+  # remove more directory notices from the log file
+  sed -i '/^Inspecting directory/d' ~/dar-backup.log
+  ````   
  
 
 # dar static tip
