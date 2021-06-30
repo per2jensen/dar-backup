@@ -111,7 +111,7 @@
   sed -i '/^Inspecting directory/d' ~/dar-backup.log
   
   # remove more directory notices from the log file
-  sed -i '/^Inspecting directory/d' ~/dar-backup.log
+  sed -i '/^Finished Inspecting/d' ~/dar-backup.log 
   ````   
  
 
