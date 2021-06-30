@@ -23,6 +23,16 @@ mountDar () {
     return 1
 }
 
+function _date_time() {
+    date +"%Y-%m-%d %H:%M:%S"
+}
+
+
+# write log message to log
+# $1: the message
+log () {
+    echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
 
 mountPrereqs () {
     # mount the server somewhere
@@ -35,7 +45,7 @@ mountPrereqs () {
 }
 
 sendDiscordMsg () {
-    logger -s "$1"
+    log "== send Discord message: $1"
     curl -i -H "Accept: application/json"  \
         -H "Content-Type:application/json"  \
         -X POST --data "{\"content\": \"$1\"}" \
@@ -107,7 +117,7 @@ deleteTmpScript () {
     if [[ -f "$SCRIPT" ]]; then
         rm -f "$SCRIPT"
         if [[ $? != "0" ]];then
-            logger -s       "Could not delete $SCRIPT - exiting"
+            log  "== ERROR Could not delete $SCRIPT - exiting"
             sendDiscordMsg  "dar backup NOT run: problem deleting $SCRIPT"
             exit 1
         fi
@@ -124,7 +134,9 @@ deleteTmpScript () {
 # $4: includes, which directories to back up, from the conf file
 # $5: LOG_LOCATION
 darBackup () {
-    logger -s "Start dar backup of: $2"
+    log "========================"
+    log "Start dar backup of: $2"
+    log "========================"
 
     OIFS=$IFS
         # build excludes 
@@ -176,7 +188,7 @@ darBackup () {
 # $5: includes from conf files
 # $6: LOG_LOCATION
 darDiffBackup () {
-    logger -s "Start dar diff backup of: $2, diff against: $3"
+    log "== Start dar diff backup of: $2, diff against: $3"
 
     OIFS=$IFS
         # build excludes 
@@ -229,14 +241,14 @@ darDiffBackup () {
 darTestBackup () {
   # test the backup
   local ARCHIVE=`basename "$1"`
-  logger -s "Test dar archive: $1"
+  log  "== Test dar archive: $1"
   dar -vd \
       -t "$1"
   RESULT=$?
   sendDiscordMsg "dar test af archive: $ARCHIVE, result: $RESULT"
 
   # restore the test file
-  logger -s "Test restore of  file: $3"
+  log "== Test restore of  file: $3"
   rm -f "$2/$3" # make sure the file is not there....
   dar -vd \
       -w \

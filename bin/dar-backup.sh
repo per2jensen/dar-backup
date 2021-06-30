@@ -23,24 +23,25 @@ fi
 
 
 export DATE=`date -I`
-export SCRIPTPATH=`realpath $0`
-export SCRIPTDIRPATH=`dirname $SCRIPTPATH`
+export SCRIPTPATH=`realpath "$0"`
+export SCRIPTDIRPATH=`dirname "$SCRIPTPATH"`
 
-source ${SCRIPTDIRPATH}/../conf/dar-backup.conf
-source ${SCRIPTDIRPATH}/dar-util.sh
+source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
+source "${SCRIPTDIRPATH}/dar-util.sh"
 
 # make sure mounts are in order
 mountPrereqs
 
 
-for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
+for file in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
+    log "== start processing backup: ${file}"
     source "${SCRIPTDIRPATH}/../backups.d/${file}"
 
-    DAR_ARCHIVE=${BACKUP_NAME}_${MODE}_${DATE}
-    ARCHIVEPATH=${MOUNT_POINT}/${DAR_ARCHIVE}
+    DAR_ARCHIVE="${BACKUP_NAME}_${MODE}_${DATE}"
+    ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
 
     # if includes are used, make sure the test file is saved in one
-    TESTRESTORE_FILE=.dar-testrestore-${BACKUP_NAME}-${DATE}
+    TESTRESTORE_FILE=".dar-testrestore-${BACKUP_NAME}-${DATE}"
     OIFS=$IFS
         # loop includes
         IFS=';' read -ra my_array <<< "$INCLUDES"

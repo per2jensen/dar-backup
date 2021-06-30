@@ -23,6 +23,7 @@
   - Simple to add backups, including directories to include and to exclude in each backup
   - sshfs is used to mount remote directory --> thus this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
+  - logs to a logfile in a user configured directory
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
 
 # Requirements
