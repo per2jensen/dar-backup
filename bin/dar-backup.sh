@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash 
 # Run script as a non-root user 
 # 
 # Will do full backups if called as "dar-backup.sh"
