@@ -21,6 +21,7 @@
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
   - Simple to add backups, including directories to include and to exclude in each backup
+  - Run a single backup definition from backups.d/
   - sshfs is used to mount remote directory --> thus this script cannot run as root
     an ssh key setup has to be in place for the automatic mount
   - logs to a logfile in a user configured directory
@@ -85,6 +86,16 @@
     ````
 # Examples
 
+# how to run a single backup definition
+  Backup definitions are placed in the backups.d/ directory. Each definition corresponds to a separate 'dar' archive.
+  By default the dar-backup.sh loops over all definitions and runs the specified backups.
+
+  If you want to just run a single backup definition, do it like this:
+  ````
+  dar-backup.sh -d "the definition"
+  ````
+  where "the definition" is the filename in backups.d/
+  
 ## how to restore a directory
   I do a "list" and "grep" like this
   ````
