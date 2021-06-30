@@ -53,10 +53,11 @@ sendDiscordMsg () {
 # $5 "$TESTRESTORE_FILE" - the file to restore
 # $6 EXCLUDES from conf files
 # $7 INCLUDES from conf files
+# $8 LOG_LOCATION
 diffBackupTestRestore () {
     local DAR_ARCHIVE=`basename "$1"`
     echo "Hej" > "$2/$5"  # create testfile
-    darDiffBackup "$1" "$2" "$3" "$6" "$7"
+    darDiffBackup "$1" "$2" "$3" "$6" "$7" "$8"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -79,10 +80,11 @@ diffBackupTestRestore () {
 # $4 "$TESTRESTORE_FILE" - the file to restore
 # $5 "EXCLUDES" - -P's from config file
 # $6 "INCLUDES" - -g's from config file
+# $7 LOG_LOCATION
 backupTestRestore () {
     local DAR_ARCHIVE=`basename "$1"`
     echo "Hej" > "$2/$4"  # create testfile
-    darBackup "$1" "$2" "${5}" "$6"
+    darBackup "$1" "$2" "${5}" "$6" "$7"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -96,6 +98,23 @@ backupTestRestore () {
 }
 
 
+#
+# Make sure that the previous generated backup script in /tmp is deleted
+# if it exists, try to delete it, if that fails send a notice and give up
+# $1: the file to check
+deleteTmpScript () {
+    SCRIPT="$1"
+    if [[ -f "$SCRIPT" ]]; then
+        rm -f "$SCRIPT"
+        if [[ $? != "0" ]];then
+            logger -s       "Could not delete $SCRIPT - exiting"
+            sendDiscordMsg  "dar backup NOT run: problem deleting $SCRIPT"
+            exit 1
+        fi
+    fi
+}
+
+
 
 
 # do a dar backup
@@ -103,6 +122,7 @@ backupTestRestore () {
 # $2: --fs-root, where to take the backup
 # $3: excludes, which directories to exclude, from the conf file
 # $4: includes, which directories to back up, from the conf file
+# $5: LOG_LOCATION
 darBackup () {
     logger -s "Start dar backup of: $2"
 
@@ -127,14 +147,9 @@ darBackup () {
     IFS=$OIFS
 
     SCRIPT=/tmp/dar-full-backup.sh
-    if [[ -f "$SCRIPT" ]]; then
-        rm -f "$SCRIPT"
-        if [[ $? != "0" ]];then
-            logger -s "Could not delete $SCRIPT - exiting"
-            exit 1
-        fi
-    fi 
-    echo dar -vd \
+    deleteTmpScript "$SCRIPT"
+
+    echo "dar -vf \
         -c \"$1\" \
         -N \
         -B \"${SCRIPTDIRPATH}/../conf/darrc\" \
@@ -145,7 +160,7 @@ darBackup () {
         --compression lzo:5 \
         --empty-dir \
         par2 \
-        compress-exclusion > "$SCRIPT"
+        compress-exclusion  2>&1 | tee -a ${5}/dar-backup.log" > "$SCRIPT"
 
     chmod +x "$SCRIPT"
     "$SCRIPT"
@@ -159,6 +174,7 @@ darBackup () {
 # $3: the archive to do the diff against (the -A option)
 # $4: excludes from conf files
 # $5: includes from conf files
+# $6: LOG_LOCATION
 darDiffBackup () {
     logger -s "Start dar diff backup of: $2, diff against: $3"
 
@@ -183,19 +199,12 @@ darDiffBackup () {
     IFS=$OIFS
 
     SCRIPT=/tmp/dar-diff-backup.sh
+    deleteTmpScript "$SCRIPT"
 
-    if [[ -f "$SCRIPT" ]]; then
-        rm -f "$SCRIPT"
-        if [[ $? != "0" ]];then
-            logger -s "Could not delete $SCRIPT - exiting"
-            exit 1
-        fi
-    fi 
-
-    echo dar -vd \
+    echo "dar -vf \
+        -c \"$1\" \
         -N \
         -B \"${SCRIPTDIRPATH}/../conf/darrc\" \
-        -c \"$1\" \
         --fs-root \"$2\" \
         $includes \
         $excludes \
@@ -204,7 +213,7 @@ darDiffBackup () {
         --compression lzo:5 \
         --empty-dir \
         par2 \
-        compress-exclusion  > "$SCRIPT"
+        compress-exclusion  2>&1 | tee -a ${6}/dar-backup.log" > "$SCRIPT"
 
     chmod +x "$SCRIPT"
     "$SCRIPT"

@@ -32,5 +32,5 @@ PAR=par2
 
 echo "creating PAR file for file $1/$2.$3.dar ..."
 
-exec $PAR c -r$6 -n1 "$1/$2.$3.$4"
+exec $PAR c -r$6 -n1 "$1/$2.$3.$4" >/dev/null 2>&1
 # script returned code it those of par

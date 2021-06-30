@@ -55,13 +55,13 @@ for file in $(ls ${SCRIPTDIRPATH}/../backups.d/); do
     if [[ $MODE == "FULL"  ]]; then 
       # backup
       backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}" "${LOG_LOCATION}"
     else
       PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
       NEWEST_ARCHIVE=${PREV%%.*}
       echo NEWEST archive: $NEWEST_ARCHIVE
       # backup
       diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"  "${LOG_LOCATION}"
     fi
 done

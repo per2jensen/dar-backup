@@ -46,7 +46,7 @@
   - A 'darrc' file is generated in the conf dir, once the install.sh script has been run.
     It controls which files not to compress, ans points to the par2 configuration, also in
     conf dir
-  - Fill in some data in the dar-backup.conf file
+  - Fill in some data in the dar-backup.conf file, and delete the 2 lines at the top
     ````
       # the Discord webhook address to send messages to
       DISCORD_WEBHOOK="the long Discord webhook here"
