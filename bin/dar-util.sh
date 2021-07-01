@@ -44,6 +44,7 @@ mountPrereqs () {
     fi
 }
 
+
 sendDiscordMsg () {
     log "== send Discord message: $1"
     curl -i -H "Accept: application/json"  \

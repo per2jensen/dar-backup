@@ -45,8 +45,6 @@ else
 fi
 
 
-
-
 # make sure mounts are in order
 mountPrereqs
 
