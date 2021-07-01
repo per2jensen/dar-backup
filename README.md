@@ -20,6 +20,7 @@
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
   - Simple restore test, restoring 1 file to feel more confident about the backup
+  - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
   - sshfs is used to mount remote directory --> thus this script cannot run as root
@@ -40,8 +41,12 @@
 
 # How to use
   
-  I use Ubuntu on my workstation. The 'dar' program is from the Ubuntu package, I also 
+  I use Ubuntu on my workstation, so this script is a 'bash' script. The 'dar' program is from the Ubuntu package, I also 
   have par2 installed.
+
+  Although I use the sshfs mount method, it is simple add mount points in other ways, and modify the mountDar() function in dar-utils.sh to suit your needs. Also I have set up a Discord account that receives messages, it is easy to change that in the sendDiscordMsg() function.
+
+  The recipe for me to get this script running is the following:   
 
   - Setup an ssh access using a key for logging into the server
   - A Discord webhook is needed for the messages to be sent
@@ -69,7 +74,7 @@
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open the demo backups.d/TEST file, alter the 4 variables to your taste    
+    Open one of the demo backups.d/ files, alter the 5 variables to your taste    
     - BACKUP_NAME=TEST
     - FS_ROOT=~/tmp/test
     - TESTRESTORE_PATH=/tmp

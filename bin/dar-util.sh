@@ -54,6 +54,67 @@ sendDiscordMsg () {
 }
 
 
+# copies dat_static (if found) to server as "dar_static_$VERSION"
+# this way there is a better chance, you have the correct dar to restore
+# some time in the future.
+copyDarStatic () {
+    # copy dar_static to server
+    DAR_VERSION=$(dar_static --version |grep -oP "dar.*? version [\d.]+"|grep -oP "[\d.]+$")
+    if [[ ! -z $DAR_VERSION ]]; then
+        cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
+        if [[ $? == "0" ]]; then
+            log "== dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
+        else
+            log "== something went wrong, copying dar_static"
+        fi
+    else
+        log "== dar_static not found"
+    fi
+}
+
+
+# function called to start processing a backup definition(a file in backups.d)
+# MODE and DATE are defined in dar-backup.sh
+# MOUNT_POINT is from the .conf file
+# BACKUP_NAME comes from the backup definition
+#
+# $1: filename of the backup definition in backups.d
+runBackupDef () {
+    local backupdef="$1"
+    source "${SCRIPTDIRPATH}/../backups.d/${backupdef}"
+
+    DAR_ARCHIVE="${BACKUP_NAME}_${MODE}_${DATE}"
+    ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
+
+    # if includes are used, make sure the test file is saved in one
+    TESTRESTORE_FILE=".dar-testrestore-${BACKUP_NAME}-${DATE}"
+    OIFS=$IFS
+        # loop includes
+        IFS=';' read -ra my_array <<< "$INCLUDES"
+        for i in "${my_array[@]}"
+        do
+          TESTRESTORE_FILE="${i}/.dar-testrestore-${BACKUP_NAME}-${DATE}"
+          break
+        done
+    IFS=$OIFS
+
+
+    if [[ $MODE == "FULL"  ]]; then 
+      # backup
+      backupTestRestore "$ARCHIVEPATH" "$FS_ROOT" \
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}" "${LOG_LOCATION}"
+    else
+      PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
+      NEWEST_ARCHIVE=${PREV%%.*}
+      echo NEWEST archive: $NEWEST_ARCHIVE
+      # backup
+      diffBackupTestRestore "$ARCHIVEPATH" "$FS_ROOT" "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
+        "$TESTRESTORE_PATH" "$TESTRESTORE_FILE" "${EXCLUDES}" "${INCLUDES}"  "${LOG_LOCATION}"
+    fi
+}
+
+
+
 # The standard recipe for backing up differentially a FS_ROOT, test the archive and test restore one file
 # this function drives the underlying backup, test and restore functions
 # $1 "$ARCHIVEPATH" - the full path to the archive (fx /backup/some_archive_date)
