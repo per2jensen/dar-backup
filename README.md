@@ -13,6 +13,15 @@
   Grzegorz Adam Hankiewicz
   https://dar.sourceforge.io/doc/mini-howto/dar-differential-backup-mini-howto.en.html
 
+
+  These are some of the features and workflows, that are plusses in my book:
+  
+  - 'dar' itself is rock solid and has been for years, it truly is a great tool. Don't think this is another 'tar', it is way better.
+
+  - I like being able to verity that an archive is good, once it has been stored remotely. When I copy the archives from the server to somewhere else, I am again able to verify that the archive is healthy.
+
+  - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
+
 # Script features
 
   - Take full backups or differential backups
