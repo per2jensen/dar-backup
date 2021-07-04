@@ -28,7 +28,6 @@
   - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after backup
-  - Simple restore test, restoring 1 file to feel more confident about the backup
   - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
@@ -83,12 +82,19 @@
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open one of the demo backups.d/ files, alter the 5 variables to your taste    
-    - BACKUP_NAME=TEST
-    - FS_ROOT=~/tmp/test
-    - TESTRESTORE_PATH=/tmp
-    - EXCLUDES="DIR WITH SPACE;ANOTHER DIR WITH SPACE"
-    - INCLUDES="first dir;second dir"
+    Open one of the demo backups.d/TEST files, alter the variables to your taste
+
+    ````
+    # Set backup root to users' homes
+    -R /home/pj/tmp
+
+    # Directories to backup below the root dir set above, add as many directories as you want on new lines
+    -g dba 
+
+    # Directories to exclude, add as many directories as you want on new lines
+    -P "dba/first dir"
+    ````
+ 
 
   - Execute the script and "list" the dar archive to check that the backup is to your liking
     ````

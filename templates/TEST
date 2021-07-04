@@ -1,14 +1,22 @@
 
 
 # Include defaults
--B /home/pj/git/dar-backup/bin/../conf/defaults-rc
+-B @@CONFDIR@@/defaults-rc
 
  # Switch to ordered selection mode, which means that the following
  # options will be considered top to bottom
  -am
- 
+
+
+
 # Set backup root to users' homes
  -R /home/pj/tmp
+
+# Directories to backup
+ -g dba 
+
+ # Directories to exclude, below -g's
+ -P "dba/first dir"
  
 
  -z5
@@ -16,9 +24,4 @@
  --slice 4G
  --empty-dir 
 
-# Directories to backup
- -g dba 
-
- # Directories to exclude, below -g's
- -P "dba/first dir"
 
