@@ -29,5 +29,5 @@
  # size of each slice in the archive
  --slice 4G
 
- --empty-dir 
+ 
 

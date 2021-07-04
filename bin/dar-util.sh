@@ -84,6 +84,7 @@ runBackupDef () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
 
+ 
     if [[ $MODE == "FULL"  ]]; then 
       # backup
       backupTestRestore 
@@ -125,9 +126,13 @@ backupTestRestore () {
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
         darTestBackup 
         RESULT=$?
+        if [[ $RESULT == "0" ]]; then
+            sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+        fi
     else
         sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
     fi
+    darRestoreTest
     return $RESULT
 }
 
@@ -156,13 +161,12 @@ darBackup () {
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
     log "== Start dar diff backup of: ${DAR_ARCHIVE}, diff against: $1"
-
    dar -vf \
         -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
-        par2 \
+        par2 \:
         compress-exclusion
 }
 
@@ -176,3 +180,36 @@ darTestBackup () {
   RESULT=$?
   sendDiscordMsg "dar test af archive: $ARCHIVE, result: $RESULT"
 }
+
+
+#  Try to find a file < 10MB for a restore test
+#
+#
+darRestoreTest () {
+    local FILELIST=/tmp/dar_list_49352
+    local RESTORE_FILE=/tmp/dar_file_restore_53489
+    
+    dar -l "${ARCHIVEPATH}" -ay |egrep -v "d[-rw][-rw]" |sed '1,2d' |cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    rm -f $RESTORE_FILE > /dev/null 2>&1
+    awk '{  if ($1 < 10000000) {
+            print $0 
+            exit
+           }
+    }' $FILELIST > "$RESTORE_FILE"
+
+    local TEST_RESTOREFILE=$(cat "$RESTORE_FILE"|cut -f2)
+    
+    local DAR_RESTORE_DIR=`dirname "$TEST_RESTOREFILE"|sed 's/^\t+//'`
+    local DAR_RESTORE_FILE=`basename  "$TEST_RESTOREFILE"`
+    local TOPDIR=`echo ${DAR_RESTORE_DIR} |sed -E -n 's|(^.*?/).*|\1|p'`
+    if [[ $TOPDIR != "" ]]; then
+        rm -fr /tmp/${TOPDIR}
+    fi
+    dar -x "$ARCHIVEPATH" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
+    RESULT=$?
+    if [[ $RESULT == "0" ]]; then
+        sendDiscordMsg "dar restore test of archive: $ARCHIVE is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+    fi
+}
+
+
