@@ -1,4 +1,4 @@
-#! /bin/bash 
+#! /bin/bash -x
 # Run script as a non-root user 
 # 
 # Will do full backups if called as "dar-backup.sh"
@@ -7,6 +7,9 @@
 
 MODE=""
 BACKUPDEF=""
+CURRENT_BACKUPDEF=""
+DAR_ARCHIVE=""
+ARCHIVEPATH=""
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
@@ -54,14 +57,15 @@ copyDarStatic
 # check if a single backup definition is to be run
 if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
-  for file in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
-      log "== start processing backup: ${file}"
-      runBackupDef "$file"
+  for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
+      log "== start processing backup: ${CURRENT_BACKUPDEF}"
+      runBackupDef
   done
 else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-    log "== start processing a single backup: ${file}"
-    runBackupDef "$BACKUPDEF"
+    log "== start processing a single backup: ${$BACKUPDEF}"
+    CURRENT_BACKUPDEF="$BACKUPDEF"
+    runBackupDef
   fi
 fi
 
