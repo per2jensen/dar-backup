@@ -133,16 +133,10 @@ backupTestRestore () {
         sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
     fi
     darRestoreTest
-    return $RESULT
 }
 
 
 # do a dar backup
-# $1: ARCHIVEPATH, fx ~/mn/dar/dba_2021-06-06
-# $2: --fs-root, where to take the backup
-# $3: excludes, which directories to exclude, from the conf file
-# $4: includes, which directories to back up, from the conf file
-# $5: LOG_LOCATION
 darBackup () {
     log "====================================="
     log "Start dar backup of: ${DAR_ARCHIVE}"
@@ -208,7 +202,7 @@ darRestoreTest () {
     dar -x "$ARCHIVEPATH" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
-        sendDiscordMsg "dar restore test of archive: $ARCHIVE is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+        sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
     fi
 }
 
