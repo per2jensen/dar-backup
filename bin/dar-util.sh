@@ -77,7 +77,6 @@ copyDarStatic () {
 # function called to start processing a backup definition(a file in backups.d)
 # MODE and DATE are defined in dar-backup.sh
 # MOUNT_POINT is from the .conf file
-# BACKUP_NAME comes from the backup definition
 #
 runBackupDef () {
 
@@ -89,7 +88,7 @@ runBackupDef () {
       # backup
       backupTestRestore 
     else
-      PREV=`ls "${MOUNT_POINT}"|grep -P ${BACKUP_NAME}_FULL|grep dar$|tail -n 1`
+      PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_FULL"|grep dar$|tail -n 1`
       NEWEST_ARCHIVE=${PREV%%.*}
       echo NEWEST archive: $NEWEST_ARCHIVE
       # backup
