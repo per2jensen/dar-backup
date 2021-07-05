@@ -27,7 +27,8 @@
   - Take full backups or differential backups
   - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
-  - Test the archive after backup
+  - Test the archive after 
+  - Tries to find a file < 10MB, and restores it under /tmp
   - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
@@ -85,7 +86,7 @@
     Open one of the demo backups.d/TEST files, alter the variables to your taste
 
     ````
-    # Set backup root to users' homes
+    # Set backup root
     -R /home/pj/tmp
 
     # Directories to backup below the root dir set above, add as many directories as you want on new lines
@@ -148,11 +149,10 @@
 
 # dar static tip
   The script now backs up the /usr/bin/dar_static executable with your archives, if the static version is found.
-  If you at some point in the future needs to extract files from the archive, you know you have correct binary at hand.
+  If you at some point in the future need to extract files from the archive, you know you have correct binary at hand.
 
 # Issues
-  There is currently no restore test, is looking into it. 
-  The thing is, that blindly doing some restores into /tmp may fill up the / partition for some.
+
 # Version
 
   Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
