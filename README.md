@@ -213,7 +213,7 @@ My ubuntu 21.04 currently gives me this:
    Delta compression support    : NO
    Remote repository support    : NO
 ````
-I can confirm large file support work. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
+I can confirm large file support works. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
 # Projects this script benefits from
  1. [The wonderful dar achiver](https://dar.sourceforge.io/)
  2. [The Parchive suite](https://github.com/Parchive)
