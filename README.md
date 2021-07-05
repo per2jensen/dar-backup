@@ -2,7 +2,7 @@
 # Full backups + differential backups using 'dar'
 
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
-  the heavy lifting in these scripts.
+  the heavy lifting, together with the par2 suite in these scripts.
 
 # Inspiration
 
@@ -177,6 +177,11 @@ if there are problems with a slice, try to repair it like this:
 # Version
 
   Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
+
+# Projects this script benefits from
+ 1. [The wonderful dar achiver](https://dar.sourceforge.io/)
+ 2. [The Parchive suite](https://github.com/Parchive)
+ 3. [Ubuntu of course :-)](https://ubuntu.com/)
 
 # License
 
