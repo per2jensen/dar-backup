@@ -143,6 +143,19 @@ If you have copied the archive somewhere, it gives peace of mind to know the arc
   ````
   dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
   ````
+
+## par2 verification/repair
+You can run a par2 verification on an archive like this:
+````
+for file in <archive>*.dar.par2; do
+  par2 verify "$file"
+done
+````
+if there are problems with a slice, try to repair it like this:
+````
+  par2 repair <archive>.<slice number>.dar.par2
+````
+
 ## trim the log file 
   'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
   ````
