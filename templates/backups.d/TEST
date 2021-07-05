@@ -1,0 +1,33 @@
+
+# Include defaults
+-B @@CONFDIR@@/defaults-rc
+
+ # Switch to ordered selection mode, which means that the following
+ # options will be considered top to bottom
+ -am
+
+
+
+# Backup Root dir
+ -R /home/pj/tmp
+
+# Directories to backup below the Root dir
+ -g dba 
+
+ # Directories to exclude below the Root dir
+ -P "dba/first dir"
+ 
+
+# compression level
+ -z5
+
+
+ # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+ -n
+ 
+ # size of each slice in the archive
+ --slice 4G
+
+ 
+
+
