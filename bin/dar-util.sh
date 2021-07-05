@@ -106,12 +106,15 @@ diffBackupTestRestore () {
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
-        darTestBackup "$1" "$4" "$5" 
+        darTestBackup 
         RESULT=$?
+        if [[ $RESULT == "0" ]]; then
+            sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+            darRestoreTest
+        fi
     else
         sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
     fi
-    return $RESULT
 }
 
 
@@ -127,19 +130,19 @@ backupTestRestore () {
         RESULT=$?
         if [[ $RESULT == "0" ]]; then
             sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+            darRestoreTest
         fi
     else
         sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
     fi
-    darRestoreTest
 }
 
 
 # do a dar backup
 darBackup () {
-    log "====================================="
+    log "==========================================================="
     log "Start dar backup of: ${DAR_ARCHIVE}"
-    log "====================================="
+    log "==========================================================="
 
     dar -vf \
         -c "${ARCHIVEPATH}" \
@@ -153,14 +156,17 @@ darBackup () {
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
+    log "==============================================================================="
     log "== Start dar diff backup of: ${DAR_ARCHIVE}, diff against: $1"
-   dar -vf \
+    log "==============================================================================="
+    dar -vf \
         -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         par2 \
         compress-exclusion
+    return $?
 }
 
 
@@ -171,7 +177,8 @@ darTestBackup () {
   dar -vd \
       -t "${ARCHIVEPATH}"
   RESULT=$?
-  sendDiscordMsg "dar test af archive: $ARCHIVE, result: $RESULT"
+  sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
+  return $RESULT
 }
 
 
@@ -179,6 +186,7 @@ darTestBackup () {
 #
 #
 darRestoreTest () {
+    log  "== Test restore 1 file from archive: ${ARCHIVEPATH}"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
@@ -198,9 +206,10 @@ darRestoreTest () {
     if [[ $TOPDIR != "" ]]; then
         rm -fr /tmp/${TOPDIR}
     fi
-    dar -x "$ARCHIVEPATH" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
+    dar -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
     fi
+    return $RESULT
 }

@@ -42,6 +42,6 @@ cp GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 
 
-cat /tmp/dar-backup-test/FULL-filelist.txt 
-cat /tmp/dar-backup-test/DIFF-filelist.txt 
-
+cat $TESTDIR/FULL-filelist.txt 
+cat $TESTDIR/DIFF-filelist.txt
+cat $TESTDIR/dar-backup.log

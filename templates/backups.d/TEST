@@ -6,16 +6,14 @@
  # options will be considered top to bottom
  -am
 
-
-
 # Backup Root dir
- -R /home/pj/tmp
+ -R /tmp/dar-backup-test/dirs
 
 # Directories to backup below the Root dir
- -g dba 
+
 
  # Directories to exclude below the Root dir
- -P "dba/first dir"
+ -P "exclude this one"
  
 
 # compression level
