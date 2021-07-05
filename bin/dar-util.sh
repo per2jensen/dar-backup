@@ -160,7 +160,7 @@ darDiffBackup () {
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
-        par2 \:
+        par2 \
         compress-exclusion
 }
 
@@ -205,5 +205,3 @@ darRestoreTest () {
         sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
     fi
 }
-
-
