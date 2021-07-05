@@ -76,14 +76,9 @@
       # where to mount the sshfs mount
       MOUNT_POINT=~/another_dir
     ````
-  - make the install.sh script executable and run it
-    ````
-    chmod +x install.sh
-    ./install.sh
-    ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open one of the demo backups.d/TEST files, alter the variables to your taste
+    Open the demo templates/backups.d/TEST files, alter the variables to your taste
 
     ````
     # Set backup root
@@ -95,8 +90,15 @@
     # Directories to exclude, add as many directories as you want on new lines
     -P "dba/first dir"
     ````
- 
 
+  - Make the install.sh script executable and run it. 
+  
+  The install.sh script installs (among a few other things) the backup definitions from the templates/backups.d directory. If you keep your backup definitions in the templates/backups.d directory and install them via the install.sh script, it is easy to change the location of the dar-backup solution at a later point. 
+    ````
+    chmod +x install.sh
+    ./install.sh
+    ````
+  
   - Execute the script and "list" the dar archive to check that the backup is to your liking
     ````
     # do the backup
@@ -175,9 +177,43 @@ if there are problems with a slice, try to repair it like this:
 # Issues
 
 # Version
-
+## dar-backup script
   Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
 
+## 'dar' itself
+My ubuntu 21.04 currently gives me this:
+````
+~ dar --version
+
+ dar version 2.6.13, Copyright (C) 2002-2020 Denis Corbin
+   Long options support         : YES
+
+ Using libdar 6.2.7 built with compilation time options:
+   Libz compression (gzip)      : YES
+   Libbz2 compression (bzip2)   : YES
+   Liblzo2 compression (lzo)    : YES
+   Liblzma compression (xz)     : YES
+   Strong encryption (libgcrypt): YES
+   Public key ciphers (gpgme)   : YES
+   Extended Attributes support  : YES
+   Large files support (> 2GB)  : YES
+   ext2fs NODUMP flag support   : YES
+   Integer size used            : 64 bits
+   Thread safe support          : YES
+   Furtive read mode support    : YES
+   Linux ext2/3/4 FSA support   : YES
+   Mac OS X HFS+ FSA support    : NO
+   Detected system/CPU endian   : little
+   Posix fadvise support        : YES
+   Large dir. speed optimi.     : YES
+   Timestamp read accuracy      : 1 microsecond
+   Timestamp write accuracy     : 1 microsecond
+   Restores dates of symlinks   : YES
+   Multiple threads (libthreads): NO 
+   Delta compression support    : NO
+   Remote repository support    : NO
+````
+I can confirm large file support work. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
 # Projects this script benefits from
  1. [The wonderful dar achiver](https://dar.sourceforge.io/)
  2. [The Parchive suite](https://github.com/Parchive)
