@@ -117,12 +117,19 @@
   ````
   where "the definition" is the filename in backups.d/
   
+## how to test that the archive is healthy
+If you have copied the archive somewhere, it gives peace of mind to know the archive is still healthy.
+  ````
+  dar -vd -t <the archive>
+  ````
+  Remember that the archive name is without "slice_number.dar"
+
 ## how to restore a directory
   I do a "list" and "grep" like this
   ````
   dar -l /path/to/archive |grep "your search string"
   ````
-  Rememeber that the archive name is without "slice_number.dar"
+  Remember that the archive name is without "slice_number.dar"
   Once I have located the directory to restore, do like this (here the restore is below /tmp)
   ````
   dar  -x ~/path/to/archive -R /tmp -p <the directory you want to restore>
@@ -132,7 +139,7 @@
   ````
   dar -l /path/to/archive |grep "your search string"
   ````
-  and the tell dar to go into (-g) a specific directory and restore the specific file (to /tmp in this example)
+  and the tell dar to go into (-g) a specific directory and restore the specific file (-I) (to /tmp in this example)
   ````
   dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
   ````
@@ -149,6 +156,7 @@
 
 # dar static tip
   The script now backs up the /usr/bin/dar_static executable with your archives, if the static version is found.
+
   If you at some point in the future need to extract files from the archive, you know you have correct binary at hand.
 
 # Issues
