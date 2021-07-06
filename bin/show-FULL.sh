@@ -1,10 +1,4 @@
 #! /bin/bash 
-# Run script as a non-root user 
-# 
-# Will do full backups if called as "dar-backup.sh"
-# Will do differential backups if called as "dar-diff-backup.sh"
-# create a link like this:  "ln -s dar-backup.sh  dar-diff-backup.sh"
-
 
 export DATE=`date -I`
 export SCRIPTPATH=`realpath "$0"`
