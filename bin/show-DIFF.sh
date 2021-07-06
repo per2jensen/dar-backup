@@ -12,7 +12,7 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 mountPrereqs
 
 
-for archive in `ls ${MOUNT_POINT}/*_DIFF_*|egrep "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u`; do
+for archive in `ls ${MOUNT_POINT}/*_DIFF_*.dar|egrep "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u`; do
     BASE=`basename ${archive}`
     NO_SLICES=`find ${MOUNT_POINT} -name "${BASE}*.dar"|wc -l`
     echo ${archive}: Number of slices: ${NO_SLICES} 
