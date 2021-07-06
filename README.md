@@ -157,6 +157,24 @@ if there are problems with a slice, try to repair it like this:
 ````
   par2 repair <archive>.<slice number>.dar.par2
 ````
+## overview of archives
+Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
+One way to get an overview is to use the 2 scripts "show-FULL.sh" and "show-DIFF.sh"
+````
+./show-FULL.sh 
+Mountpoint: /home/pj/mnt/dar
+dba_FULL_2021-06-27            slices: 1    
+media-files_FULL_2021-06-27    slices: 46   
+ws_FULL_2021-06-30             slices: 1    
+cloudDrive_FULL_2021-06-06     slices: 18   
+pj_homedir_FULL_2021-06-06     slices: 7  
+````
+If you see a FULL archive that is significantly smaller than a previous one (i.e. fewer slices), you should probably find out why that is. There may be good reasons like:
+ 
+  - You have cleaned up
+  - The backup definition has more excludes
+
+It could also be an error, so it is good to know why archive sizes change over time.
 
 ## trim the log file 
   'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
