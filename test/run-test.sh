@@ -9,8 +9,22 @@
 SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 DATE=`date +"%Y-%m-%d"`
+DRY_RUN=""
 
 TESTDIR=/tmp/dar-backup-test
+
+echo $0
+
+
+# Get the options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+      --dry-run) DRY_RUN="--dry-run" ;;
+  esac
+  shift
+done
+
+
 
 rm -fr $TESTDIR
 rm -fr ~/mnt/TEST/*
@@ -29,7 +43,7 @@ cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 
 
 # install and run FULL backup
-(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh)
+(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh $DRY_RUN)
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 
 
@@ -38,7 +52,7 @@ cp GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
 cp GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-(cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh)
+(cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh $DRY_RUN)
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 
 

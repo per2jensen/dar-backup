@@ -10,6 +10,7 @@ BACKUPDEF=""
 CURRENT_BACKUPDEF=""
 DAR_ARCHIVE=""
 ARCHIVEPATH=""
+DRY_RUN=""
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
@@ -17,6 +18,9 @@ SCRIPTNAME=`basename $0`
 # Get the options
 while [ ! -z "$1" ]; do
   case "$1" in
+      --dry-run)
+          DRY_RUN=--dry-run
+          ;;
       --backupdef|-d)
           shift
           BACKUPDEF="$1"

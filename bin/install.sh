@@ -8,7 +8,7 @@
 SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 
-chmod +x ${SCRIPTDIRPATH}/dar-backup.sh ${SCRIPTDIRPATH}/../conf/*.duc 
+chmod +x ${SCRIPTDIRPATH}/*.sh ${SCRIPTDIRPATH}/../conf/*.duc 
 
 (cd "$SCRIPTDIRPATH"; rm dar-diff-backup.sh > /dev/null 2>&1; ln -s dar-backup.sh dar-diff-backup.sh) 
 
