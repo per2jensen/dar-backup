@@ -32,13 +32,14 @@
   - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
-  - sshfs is used to mount remote directory --> thus this script cannot run as root
+  - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     an ssh key setup has to be in place for the automatic mount
   - logs to a logfile in a user configured directory
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
+  - Improved testing: an automatic backup test is now performed on every commit using Githup actions
 
 # Requirements
-  - sshfs
+  - sshfs (if mounting a server directory)
   - dar
   - par2
   - curl
@@ -53,14 +54,15 @@
   I use Ubuntu on my workstation, so this script is a 'bash' script. The 'dar' program is from the Ubuntu package, I also 
   have par2 installed.
 
-  Although I use the sshfs mount method, it is simple add mount points in other ways, and modify the mountDar() function in dar-utils.sh to suit your needs. Also I have set up a Discord account that receives messages, it is easy to change that in the sendDiscordMsg() function.
+  Although I use the sshfs mount method, you don't need to. Use the "--local-backup-dir" option to bypass the server mount.
+  Also I have set up a Discord account that receives messages, it is easy to change that in the sendDiscordMsg() function.
 
   The recipe for me to get this script running is the following:   
 
   - Setup an ssh access using a key for logging into the server
   - A Discord webhook is needed for the messages to be sent
   - A 'darrc' file is generated in the conf dir, once the install.sh script has been run.
-    It controls which files not to compress, ans points to the par2 configuration, also in
+    It controls which files not to compress, and points to the par2 configuration, also in
     conf dir
   - Fill in some data in the dar-backup.conf file, and delete the 2 lines at the top
     ````
@@ -74,6 +76,7 @@
       SERVER_DIR=/some/dir
 
       # where to mount the sshfs mount
+      # if the --local-backup-dir option is set, ths sshfs mount is not performed
       MOUNT_POINT=~/another_dir
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
