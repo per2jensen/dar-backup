@@ -34,13 +34,22 @@ log () {
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
 
+
+# A little hack'ish, if LOCAL_BACKUP_DIR is set, use $MOUNT_POINT as the 
+# local directory to store backups in. Useful for testing and if a server has 
+# been mounted by other means
+# 
 mountPrereqs () {
-    # mount the server somewhere
-    mountDar
-    RESULT=$?
-    if [[ $RESULT != "0" ]]; then
-        sendDiscordMsg "${SCRIPTNAME}: ${SERVER_DIR} not mounted on ${MOUNT_POINT}, exiting"
-        exit 1
+    if [[ $LOCAL_BACKUP_DIR == "1" ]]; then
+        log "bypassing mounting a server dir..., \"LOCAL_BACKUP_DIR\" is set"
+    else
+        # mount the server somewhere
+        mountDar
+        RESULT=$?
+        if [[ $RESULT != "0" ]]; then
+            sendDiscordMsg "${SCRIPTNAME}: ${SERVER_DIR} not mounted on ${MOUNT_POINT}, exiting"
+            exit 1
+        fi
     fi
 }
 

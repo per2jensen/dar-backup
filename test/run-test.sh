@@ -70,7 +70,7 @@ cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 
 
 # install and run FULL backup
-(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh $DRY_RUN)
+(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh $DRY_RUN --local-backup-dir)
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 
 
@@ -80,7 +80,7 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
 cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-(cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh $DRY_RUN)
+(cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh $DRY_RUN --local-backup-dir)
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 
 

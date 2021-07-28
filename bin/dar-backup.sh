@@ -11,6 +11,7 @@ CURRENT_BACKUPDEF=""
 DAR_ARCHIVE=""
 ARCHIVEPATH=""
 DRY_RUN=""
+LOCAL_BACKUP_DIR=""
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
@@ -24,6 +25,10 @@ while [ ! -z "$1" ]; do
       --backupdef|-d)
           shift
           BACKUPDEF="$1"
+          ;;
+      --local-backup-dir)
+          echo '$MOUNT_POINT' used as local backup directory....
+          LOCAL_BACKUP_DIR=1
           ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>"
@@ -62,14 +67,16 @@ copyDarStatic
 if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
-      log "== start processing backup: ${CURRENT_BACKUPDEF}"
+      log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
       runBackupDef
   done
 else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-    log "== start processing a single backup: ${$BACKUPDEF}"
+    log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
     CURRENT_BACKUPDEF="$BACKUPDEF"
     runBackupDef
+  else 
+    log "== backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
   fi
 fi
 
