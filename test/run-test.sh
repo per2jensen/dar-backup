@@ -14,7 +14,7 @@ DRY_RUN=""
 TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
-
+TEST_ARCHIVE_DIR=/tmp/dar-backup-archives
 echo $0
 
 
@@ -54,12 +54,18 @@ checkDontFindLog () {
 
 
 rm -fr $TESTDIR
+rm -fr $TEST_ARCHIVE_DIR 
 rm -fr ~/mnt/TEST/*
 mkdir -p $TESTDIR
+mkdir $TEST_ARCHIVE_DIR
 
 cp -R $SCRIPTDIRPATH/dirs         $TESTDIR/
 cp -R $SCRIPTDIRPATH/../bin       $TESTDIR/
 cp -R $SCRIPTDIRPATH/../conf      $TESTDIR/
+# override some conf files with test versions
+cp -R $SCRIPTDIRPATH/conf         $TESTDIR/
+
+
 
 source $TESTDIR/conf/dar-backup.conf
 
