@@ -199,7 +199,7 @@ darRestoreTest () {
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
-    dar -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "d[-rw][-rw]" |sed '1,2d' |cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "d[-rw][-rw]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
     awk '{  if ($1 < 10000000) {
             print $0 
@@ -215,10 +215,18 @@ darRestoreTest () {
     if [[ $TOPDIR != "" ]]; then
         rm -fr /tmp/${TOPDIR}
     fi
+    log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
     dar -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
-        sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+        if [[ -f /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
+            sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+        else
+            log "== File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"
+        fi
+    else
+        log "== dar restore failed, exit code: $RESULT"
     fi
+
     return $RESULT
 }
