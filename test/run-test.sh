@@ -103,7 +103,7 @@ checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FU
 
 # DIFF backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
-checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"  
+checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
 
 echo TEST RESULT: $TESTRESULT
 exit $TESTRESULT
