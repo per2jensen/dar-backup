@@ -25,10 +25,10 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Runs a single command using the runners shell
+      # Run some commands
       - name: Install required packages
-        run: |
-          sudo apt install -y dar dar-static  par2
+        run:  sudo apt install -y dar dar-static  par2
+      
       - name: Run the test script
         run: |
           chmod +x $GITHUB_WORKSPACE/test/run-test.sh
