@@ -28,6 +28,8 @@ jobs:
       # Runs a single command using the runners shell
       - name: Run the test script
         run: |
-          sudo apt  install -y dar
+          sudo apt install -y dar
+          sudo apt install -y dar-static
+          sudo apt install -y par2
           chmod +x $GITHUB_WORKSPACE/test/run-test.sh
           $GITHUB_WORKSPACE/test/run-test.sh
