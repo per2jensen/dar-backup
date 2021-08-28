@@ -1,5 +1,5 @@
 #! /bin/bash 
-# print FULL archives including  number of slices and the slice size
+# print DIFF archives including  number of slices and the slice size
 
 export DATE=`date -I`
 export SCRIPTPATH=`realpath "$0"`

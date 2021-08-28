@@ -1,9 +1,14 @@
-#! /bin/bash -x
+#! /bin/bash
 # Run script as a non-root user 
 # 
 # Will do full backups if called as "dar-backup.sh"
 # Will do differential backups if called as "dar-diff-backup.sh"
 # create a link like this:  "ln -s dar-backup.sh  dar-diff-backup.sh"
+
+echo =======================================================
+echo   dar-backup started: $(date -Iseconds)
+echo =======================================================
+
 
 MODE=""
 BACKUPDEF=""
@@ -12,6 +17,8 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 DRY_RUN=""
 LOCAL_BACKUP_DIR=""
+
+
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
@@ -43,6 +50,12 @@ export SCRIPTPATH=`realpath "$0"`
 export SCRIPTDIRPATH=`dirname "$SCRIPTPATH"`
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
+
+if [[ $DEBUG == "y" ]]; then
+  exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
+fi
+
+
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
