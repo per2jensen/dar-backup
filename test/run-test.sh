@@ -1,4 +1,4 @@
-#! /bin/bash 
+#! /bin/bash
 
 # run install.sh
 # run dar-backup.sh
@@ -89,9 +89,16 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 (cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh $DRY_RUN --local-backup-dir)
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 
-
+echo .
+echo ..
+echo ===========================================
+echo "cat filelists & logfile, then do checks"
+echo ===========================================
+echo "FULL dar archive:"
 cat $TESTDIR/FULL-filelist.txt 
+echo "DIFF dar archive:"
 cat $TESTDIR/DIFF-filelist.txt
+echo "Logfile:"
 cat $TESTDIR/dar-backup.log
 echo RESULTS:
 # FULL backup
