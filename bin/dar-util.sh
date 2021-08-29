@@ -106,6 +106,33 @@ runBackupDef () {
 }
 
 
+# Shared test and restore functionality used by FULL and DIFF backup functions
+#
+# $1: the exit code from the backup operation
+_TestRestore () {
+    if [[ $1 == "0" ]]; then
+        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
+    # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
+    else if [[ $1 == "5" ]]; then
+            if [[ $DEBUG == "y" ]]; then
+                local NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
+                sendDiscordMsg "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
+            else
+                sendDiscordMsg "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
+            fi
+        else
+            sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
+            return $RESULT
+        fi
+    fi
+    darTestBackup 
+    RESULT=$?
+    sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+    darRestoreTest
+    RESULT=$?
+    sendDiscordMsg  "dar restore test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+}
+
 
 # The standard recipe for backing up differentially a FS_ROOT, test the archive and test restore one file
 # this function drives the underlying backup, test and restore functions
@@ -113,17 +140,7 @@ runBackupDef () {
 diffBackupTestRestore () {
     darDiffBackup "$1"
     RESULT=$?
-    if [[ $RESULT == "0" ]]; then
-        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
-        darTestBackup 
-        RESULT=$?
-        if [[ $RESULT == "0" ]]; then
-            sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
-            darRestoreTest
-        fi
-    else
-        sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
-    fi
+    _TestRestore $RESULT
 }
 
 
@@ -132,18 +149,7 @@ diffBackupTestRestore () {
 # this function drives the underlying backup, test and restore functions
 backupTestRestore () {
     darBackup
-    RESULT=$?
-    if [[ $RESULT == "0" ]]; then
-        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
-        darTestBackup 
-        RESULT=$?
-        if [[ $RESULT == "0" ]]; then
-            sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
-            darRestoreTest
-        fi
-    else
-        sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
-    fi
+    _TestRestore $RESULT
 }
 
 
@@ -159,6 +165,7 @@ darBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
         compress-exclusion $DRY_RUN
+    return $?
 }
 
 
