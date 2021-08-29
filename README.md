@@ -35,6 +35,7 @@
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     an ssh key setup has to be in place for the automatic mount
   - logs to a logfile in a user configured directory
+  - can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Improved testing: an automatic backup test is now performed on every commit using Githup actions
 
@@ -49,10 +50,31 @@
     sudo apt install sshfs dar dar-static par2 curl
   ````
 
+# Options
+
+  The script has a few options to modify it's behavior:
+
+## --dry-run
+
+  Run 'dar' in dry run mode, to set what would have been backed up.
+
+##  --backupdef
+
+  Run only a single backup definition, instead of all definitions kept in the backups.d directory
+
+  'definition' is one of the filenames in backups.d
+
+## --local-backup-dir
+
+  Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
+
+## --help
+
+  Terse usage information
+
 # How to use
   
-  I use Ubuntu on my workstation, so this script is a 'bash' script. The 'dar' program is from the Ubuntu package, I also 
-  have par2 installed.
+  I use Ubuntu on my workstation, so this script is a 'bash' script. The 'dar' program is from the Ubuntu package, I also have par2 installed.
 
   Although I use the sshfs mount method, you don't need to. Use the "--local-backup-dir" option to bypass the server mount.
   Also I have set up a Discord account that receives messages, it is easy to change that in the sendDiscordMsg() function.
@@ -78,6 +100,17 @@
       # where to mount the sshfs mount
       # if the --local-backup-dir option is set, ths sshfs mount is not performed
       MOUNT_POINT=~/another_dir
+
+      # path to log file
+      LOG_LOCATION=/directory/name/
+      
+      # should all output be captured in a file
+      # any other characted than "y" means no
+      DEBUG=y
+      
+      # path to debug log file
+      DEBUG_LOCATION=/some/dir/dar-debug.log
+
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
@@ -110,6 +143,17 @@
     # list the archive
     dar -l /PATH/TO/ARCHIVE |less
     ````
+
+    **observe:** the archive name dar expects is without the "<slice number>.dar", so if you have the following dar archive in 3 slices:
+
+    |File name|
+    ---|
+    |TEST_FULL_2021_08_29.1.dar|
+    |TEST_FULL_2021_08_29.2.dar|
+    |TEST_FULL_2021_08_29.3.dar|
+
+    the archive name is: 'TEST_FULL_2021_08_29'
+
 # Examples
 
 # how to run a single backup definition
