@@ -34,8 +34,8 @@
   - Run a single backup definition from backups.d/
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     an ssh key setup has to be in place for the automatic mount
-  - logs to a logfile in a user configured directory
-  - can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
+  - Logs to a logfile in a user configured directory
+  - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Improved testing: an automatic backup test is now performed on every commit using Githup actions
 
@@ -56,13 +56,13 @@
 
 ## --dry-run
 
-  Run 'dar' in dry run mode, to set what would have been backed up.
+  Run 'dar' in dry run mode, to see what would have been backed up.
 
-##  --backupdef
+##  --backupdef definition
 
   Run only a single backup definition, instead of all definitions kept in the backups.d directory
 
-  'definition' is one of the filenames in backups.d
+  'definition' is one of the filenames in backups.d/
 
 ## --local-backup-dir
 
