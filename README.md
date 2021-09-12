@@ -223,13 +223,16 @@ If you see a FULL archive that is significantly smaller than a previous one (i.e
 
 It could also be an error, so it is good to know why archive sizes change over time.
 
-## merge FULL with DIIF, creating new FULL
+## merge FULL with DIFF, creating new FULL
   Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
   One way to do that, is to let dar create a FULL archive from scratch, another is to merge a FULL archive with a DIFF, and from there do DIFF's until they once again gets too large for your taste.
   
   I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
   ````
   dar --merge pj_homedir_FULL_2021-09-12  -A pj_homedir_FULL_2021-06-06  -@pj_homedir_DIFF_2021-08-29 -s 12
+  
+  # test the new FULL archive
+  dar -t pj_homedir_FULL_2021-09-12
   ````
   
   **Notes**
