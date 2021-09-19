@@ -237,7 +237,7 @@ It could also be an error, so it is good to know why archive sizes change over t
   
   **Notes**
   
-  1. I tried to use an overwriting policy using '--overwriting-policy "O*"' which made dar ask if it should overwrite some files (Yes, overwrite using data from the DIFF). I am not entirely sure how the merging works at this point (2021-09-12)
+  1. When not providing an --overwriting-policy, the dar default is "Oo", which means use the file from the "adding" archive (-@ option), and also the extended atttibutes from that file also. To me, that is the natural way of merging the two archives.
   2. I specified "-ak" to prevent decompressing/compressing - that didn't work, due to different compression types used in the 2 archives (it is a feature for a future version of dar though)
   
 ## trim the log file 
