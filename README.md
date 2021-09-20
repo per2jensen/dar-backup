@@ -204,6 +204,17 @@ if there are problems with a slice, try to repair it like this:
 ````
   par2 repair <archive>.<slice number>.dar.par2
 ````
+
+## par2 create redundency files
+If you have merged archives, you will need to create the .par2 redundency files manually.
+Here is an example
+````  
+for file in <some-archive>_FULL_yyyy-mm-dd.*; do
+  par2 c -r5 -n1 "$file"
+done
+````  
+where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+  
 ## overview of archives
 Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
 One way to get an overview is to use the 2 scripts "show-FULL.sh" and "show-DIFF.sh"
