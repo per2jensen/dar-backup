@@ -218,7 +218,7 @@ where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
 ## performance tip
   This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
   
-  Slice size should be smaller than available RAM, apparently a 
+  Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the the par2 data in memory.
   
 ## overview of archives
 Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
