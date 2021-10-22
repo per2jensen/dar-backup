@@ -18,7 +18,7 @@
   
   - 'dar' itself is rock solid and has been for years, it truly is a great tool. Don't think this is another 'tar', it is way better.
 
-  - I like being able to verity that an archive is good, once it has been stored remotely. When I copy the archives from the server to somewhere else, I am again able to verify that the archive is healthy.
+  - I like being able to verify that an archive is good, once it has been stored remotely. When I copy the archives from the server to somewhere else, I am again able to verify that the archive is healthy.
 
   - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
 
@@ -204,6 +204,22 @@ if there are problems with a slice, try to repair it like this:
 ````
   par2 repair <archive>.<slice number>.dar.par2
 ````
+
+## par2 create redundency files
+If you have merged archives, you will need to create the .par2 redundency files manually.
+Here is an example
+````  
+for file in <some-archive>_FULL_yyyy-mm-dd.*; do
+  par2 c -r5 -n1 "$file"
+done
+````  
+where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+  
+## performance tip
+  This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
+  
+  Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the the par2 data in memory.
+  
 ## overview of archives
 Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
 One way to get an overview is to use the 2 scripts "show-FULL.sh" and "show-DIFF.sh"
@@ -223,6 +239,23 @@ If you see a FULL archive that is significantly smaller than a previous one (i.e
 
 It could also be an error, so it is good to know why archive sizes change over time.
 
+## merge FULL with DIFF, creating new FULL
+  Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
+  One way to do that, is to let dar create a FULL archive from scratch, another is to merge a FULL archive with a DIFF, and from there do DIFF's until they once again gets too large for your taste.
+  
+  I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
+  ````
+  dar --merge pj_homedir_FULL_2021-09-12  -A pj_homedir_FULL_2021-06-06  -@pj_homedir_DIFF_2021-08-29 -s 12G
+  
+  # test the new FULL archive
+  dar -t pj_homedir_FULL_2021-09-12
+  ````
+  
+  **Notes**
+  
+  1. When not providing an --overwriting-policy, the dar default is "Oo", which means use the file from the "adding" archive (-@ option), and also the extended atttibutes from that file also. To me, that is the natural way of merging the two archives.
+  2. I specified "-ak" to prevent decompressing/compressing - that didn't work, due to different compression types used in the 2 archives (it is a feature for a future version of dar though)
+  
 ## trim the log file 
   'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
   ````
