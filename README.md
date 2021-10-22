@@ -1,7 +1,5 @@
-<meta name="google-site-verification" content="CY685hDoUEVi0cuFrKrDxkOzH7ezASKvEDTWZygjdrM" />
 
-
-<title> Full backups + differential backups using 'dar' </title>
+# Full backups + differential backups using 'dar' 
 
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
