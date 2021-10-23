@@ -1,3 +1,7 @@
+{% raw %}
+   {% <meta name="google-site-verification" content="-OXZuF2ZjgVAvqW4xf_TAZVJgHPCkmI0RY48DirV2O0" /> %}
+{% endraw %}
+
 # Full backups + differential backups using 'dar' 
 
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
