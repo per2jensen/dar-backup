@@ -40,4 +40,4 @@
 
 # dar-backup source code
 
-The Github source code repository is here: https://github.com/per2jensen/dar-backup
+The Github source code repository is here: [dar-backup on Github](https://github.com/per2jensen/dar-backup)
