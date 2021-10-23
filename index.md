@@ -1,39 +1,43 @@
-{% raw %}{% <meta name="google-site-verification" content="CY685hDoUEVi0cuFrKrDxkOzH7ezASKvEDTWZygjdrM" /> %}{% endraw %}
+# Full backups + differential backups using 'dar' 
 
-## Welcome to GitHub Pages
+  The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
+  the heavy lifting, together with the par2 suite in these scripts.
 
-You can use the [editor on GitHub](https://github.com/per2jensen/dar-backup/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+# Inspiration
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+  I have used 'dar' before, and is now back. Thank you Denis Corbin for a great
+  backup solution and for 20+ years of work/support. Outstanding!
 
-### Markdown
+  The dar mini-howto has been inspirational, it is a very good read, kudos to 
+  Grzegorz Adam Hankiewicz
+  https://dar.sourceforge.io/doc/mini-howto/dar-differential-backup-mini-howto.en.html
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
 
-```markdown
-Syntax highlighted code block
+  These are some of the features and workflows, that are plusses in my book:
+  
+  - 'dar' itself is rock solid and has been for years, it truly is a great tool. Don't think this is another 'tar', it is way better.
 
-# Header 1
-## Header 2
-### Header 3
+  - I like being able to verify that an archive is good, once it has been stored remotely. When I copy the archives from the server to somewhere else, I am again able to verify that the archive is healthy.
 
-- Bulleted
-- List
+  - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
 
-1. Numbered
-2. List
+# Script features
 
-**Bold** and _Italic_ and `Code` text
+  - Take full backups or differential backups
+  - Uses the par2 functionality for file repair, 5% error correction configured
+    http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
+  - Test the archive after 
+  - Tries to find a file < 10MB, and restores it under /tmp
+  - Copies dar_static to server
+  - Simple to add backups, including directories to include and to exclude in each backup
+  - Run a single backup definition from backups.d/
+  - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
+    an ssh key setup has to be in place for the automatic mount
+  - Logs to a logfile in a user configured directory
+  - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
+  - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
+  - Improved testing: an automatic backup test is now performed on every commit using Githup actions
 
-[Link](url) and ![Image](src)
-```
+# dar-backup source code
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/per2jensen/dar-backup/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+The Github source code repository is here: https://github.com/per2jensen/dar-backup
