@@ -1,3 +1,5 @@
+{% raw %}{% <meta name="google-site-verification" content="CY685hDoUEVi0cuFrKrDxkOzH7ezASKvEDTWZygjdrM" /> %}{% endraw %}
+
 ## Welcome to GitHub Pages
 
 You can use the [editor on GitHub](https://github.com/per2jensen/dar-backup/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
