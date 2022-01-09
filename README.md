@@ -265,7 +265,22 @@ It could also be an error, so it is good to know why archive sizes change over t
   # remove more directory notices from the log file
   sed -i '/^Finished Inspecting/d' ~/dar-backup.log 
   ````   
- 
+
+## list all dar archives, sorted on slice number
+If you want to check that all slices are found for an archive, you can use the commands shown below.
+
+In this example, I am listing my archive "media-files_FULL_" for the date set in the DARDATE env variable.
+
+````
+DARDATE=2022-01-08
+# slices with 1 number
+ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][.] -o |sort -u
+# slices with 2 numbers
+ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0-9][.] -o |sort -u
+# slices with 3 numbers
+ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0-9][0-9][.] -o |sort -u
+````
+
 
 # dar static tip
   The script now backs up the /usr/bin/dar_static executable with your archives, if the static version is found.
