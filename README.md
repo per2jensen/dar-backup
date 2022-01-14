@@ -205,7 +205,7 @@ if there are problems with a slice, try to repair it like this:
   par2 repair <archive>.<slice number>.dar.par2
 ````
 
-## par2 create redundency files
+## <a id="par2-redundency"></a> par2 create redundency files
 If you have merged archives, you will need to create the .par2 redundency files manually.
 Here is an example
 ````  
@@ -250,7 +250,9 @@ It could also be an error, so it is good to know why archive sizes change over t
   # test the new FULL archive
   dar -t pj_homedir_FULL_2021-09-12
   ````
-  
+  *Remember* to create new par2 redundency files, see the [redundency section](#par2-redundency).
+
+
   **Notes**
   
   1. When not providing an --overwriting-policy, the dar default is "Oo", which means use the file from the "adding" archive (-@ option), and also the extended atttibutes from that file also. To me, that is the natural way of merging the two archives.
