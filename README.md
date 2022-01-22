@@ -181,8 +181,41 @@ If you have copied the archive somewhere, it gives peace of mind to know the arc
   Remember that the archive name is without "slice_number.dar"
   Once I have located the directory to restore, do like this (here the restore is below /tmp)
   ````
-  dar  -x ~/path/to/archive -R /tmp -p <the directory you want to restore>
+  dar  -x ~/path/to/archive -R /tmp -g <the directory you want to restore>
   ````
+  
+  **Example:**
+  
+  I did a FULL backup of various data January 8, 2022. I also on that date to some photo of my new Seiko wrist watch and played with flash light. Here I test the restore of the Seiko photos from my media-files backup.
+
+  dar archive name: media-files_FULL_2022-01-08 (located in /home/pj/mnt/dar, a remote directory mounted here) 
+  
+  Location of restore:  /data/tmp
+
+  Name of directory to restore: home/pj/data/2022/2022-01-08-Seiko  (this is the location with respect to to full backup "-R" setting = "/")
+
+  ````
+  dar -x /home/pj/mnt/dar/media-files_FULL_2022-01-08 -R /data/tmp -g home/pj/data/2022/2022-01-08-Seiko
+
+ --------------------------------------------
+ 32 inode(s) restored
+    including 0 hard link(s)
+ 0 inode(s) not restored (not saved in archive)
+ 0 inode(s) not restored (overwriting policy decision)
+ 6 inode(s) ignored (excluded by filters)
+ 0 inode(s) failed to restore (filesystem error)
+ 0 inode(s) deleted
+ --------------------------------------------
+ Total number of inode(s) considered: 38
+ --------------------------------------------
+ EA restored for 0 inode(s)
+ FSA restored for 0 inode(s)
+ --------------------------------------------
+  ````
+ I can now check out the directory */data/tmp/home/pj/data/2022/2022-01-08-Seiko* and verify the restore worked (it did).
+
+
+
 ## how to restore a single file
   Much like restoring a directory, I seek out the file with a "list" and "grep"
   ````
