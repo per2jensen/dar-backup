@@ -186,13 +186,13 @@ If you have copied the archive somewhere, it gives peace of mind to know the arc
   
   **Example:**
   
-  I did a FULL backup of various data January 8, 2022. I also on that date to some photo of my new Seiko wrist watch and played with flash light. Here I test the restore of the Seiko photos from my media-files backup.
+  I did a FULL backup of various data January 8, 2022. I also on that date took some photos of my new Seiko wrist watch, and played with flash light. Here I test the restore of the Seiko photos from my media-files backup.
 
   dar archive name: media-files_FULL_2022-01-08 (located in /home/pj/mnt/dar, a remote directory mounted here) 
   
   Location of restore:  /data/tmp
 
-  Name of directory to restore: home/pj/data/2022/2022-01-08-Seiko  (this is the location with respect to to full backup "-R" setting = "/")
+  Name of directory to restore: home/pj/data/2022/2022-01-08-Seiko  (this is the location with respect to the full backup "-R" setting = "/")
 
   ````
   dar -x /home/pj/mnt/dar/media-files_FULL_2022-01-08 -R /data/tmp -g home/pj/data/2022/2022-01-08-Seiko
@@ -212,7 +212,7 @@ If you have copied the archive somewhere, it gives peace of mind to know the arc
  FSA restored for 0 inode(s)
  --------------------------------------------
   ````
- I can now check out the directory */data/tmp/home/pj/data/2022/2022-01-08-Seiko* and verify the restore worked (it did).
+ I can now check out the directory */data/tmp/home/pj/data/2022/2022-01-08-Seiko*, and verify the restore worked (it did).
 
 
 
