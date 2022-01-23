@@ -159,8 +159,7 @@ darBackup () {
     log "Start dar backup of: ${DAR_ARCHIVE}"
     log "==========================================================="
 
-    dar -vf \
-        -c "${ARCHIVEPATH}" \
+    dar -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
@@ -175,8 +174,7 @@ darDiffBackup () {
     log "==============================================================================="
     log "== Start dar diff backup of: ${DAR_ARCHIVE}, diff against: $1"
     log "==============================================================================="
-    dar -vf \
-        -c "${ARCHIVEPATH}" \
+    dar -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
