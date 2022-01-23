@@ -32,7 +32,7 @@ done
 checkExpectLog () {
   grep -P "$1" "$2" > /dev/null
   if [[ $? == "0" ]]; then
-    echo \"$1\" found
+    echo ok \"$1\" found
   else
     echo ERROR: \"$1\" NOT found
     TESTRESULT=1
@@ -48,7 +48,7 @@ checkDontFindLog () {
     echo ERROR \"$1\" was found
     TESTRESULT=1
   else
-    echo \"$1\" not found, as expected
+    echo ok \"$1\" not found (as expected)
   fi
 }
 
