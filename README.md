@@ -154,9 +154,16 @@
 
     the archive name is: 'TEST_FULL_2021_08_29'
 
+# darrc
+  The scripts do not use ~/.darrc nor do they use /etc/darrc
+
+  The defaults used by the scripts (for example file types not to compress) are linked by backup definitions. The defaults are stored in conf/defaults-rc.
+
+  The demo backup definition templates/backups.d/TEST links defaults-rc in the first directive.
+
 # Examples
 
-# how to run a single backup definition
+## how to run a single backup definition
   Backup definitions are placed in the backups.d/ directory. Each definition corresponds to a separate 'dar' archive.
   By default the dar-backup.sh loops over all definitions and runs the specified backups.
 
