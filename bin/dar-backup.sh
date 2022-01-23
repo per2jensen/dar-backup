@@ -1,5 +1,5 @@
 #! /bin/bash
-# Run script as a non-root user 
+# Run script as a non-root user if sshfs mounts are used
 # 
 # Will do full backups if called as "dar-backup.sh"
 # Will do differential backups if called as "dar-diff-backup.sh"
