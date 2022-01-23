@@ -48,7 +48,7 @@ checkDontFindLog () {
     echo ERROR \"$1\" was found
     TESTRESULT=1
   else
-    echo ok \"$1\" not found (as expected)
+    echo ok \"$1\" not found as expected 
   fi
 }
 
