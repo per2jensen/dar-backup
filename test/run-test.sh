@@ -76,7 +76,9 @@ cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 
 
 # install and run FULL backup
-(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir)
+chmod +x $TESTDIR/install.sh
+$TESTDIR/bin/install.sh
+$TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 
 
@@ -86,7 +88,7 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
 cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-(cd $TESTDIR/bin  &&  $TESTDIR/bin/dar-diff-backup.sh $DRY_RUN --local-backup-dir)
+$TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 
 echo .
@@ -100,7 +102,7 @@ echo "DIFF dar archive:"
 cat $TESTDIR/DIFF-filelist.txt
 echo "Logfile:"
 cat $TESTDIR/dar-backup.log
-echo RESULTS:
+echo RESULTS for FULL backup:
 # FULL backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
@@ -108,6 +110,7 @@ checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FU
 checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
 
+echo RESULTS for DIFF backup:
 # DIFF backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
 checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
