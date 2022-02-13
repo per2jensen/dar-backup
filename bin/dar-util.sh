@@ -9,18 +9,12 @@ mountDar () {
     mount |egrep "${MOUNT_POINT} +type +fuse.sshfs"
     RESULT=$?
     if [[ $RESULT == "0" ]]; then 
-        return 0
+        return
     fi
-    # mount ${SERVER_DIR} on ${MOUNT_POINT}
     mkdir -p ${MOUNT_POINT} 2>/dev/null
     sshfs ${SERVER}:${SERVER_DIR} ${MOUNT_POINT}
     mount |egrep "${MOUNT_POINT} +type +fuse.sshfs"
-    if [[ $? == "0" ]]; then
-        return 0
-    fi
-
-    # error, mount did not succeed
-    return 1
+    RESULT=$?
 }
 
 function _date_time() {
@@ -45,7 +39,6 @@ mountPrereqs () {
     else
         # mount the server somewhere
         mountDar
-        RESULT=$?
         if [[ $RESULT != "0" ]]; then
             sendDiscordMsg "${SCRIPTNAME}: ${SERVER_DIR} not mounted on ${MOUNT_POINT}, exiting"
             exit 1
@@ -122,7 +115,7 @@ _TestRestore () {
             fi
         else
             sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
-            return $RESULT
+            return
         fi
     fi
     darTestBackup 
@@ -164,7 +157,8 @@ darBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
         compress-exclusion verbose $DRY_RUN
-    return $?
+    RESULT=$?
+    log "Full backup result: $RESULT"
 }
 
 
@@ -180,7 +174,8 @@ darDiffBackup () {
         -A "$1" \
         par2 \
         compress-exclusion verbose $DRY_RUN
-    return $?
+    RESULT=$?
+    log "Diff backup result: $RESULT"
 }
 
 
@@ -191,7 +186,6 @@ darTestBackup () {
   dar -t "${ARCHIVEPATH}" $DRY_RUN
   RESULT=$?
   sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
-  return $RESULT
 }
 
 
@@ -231,6 +225,4 @@ darRestoreTest () {
     else
         log "== dar restore failed, exit code: $RESULT"
     fi
-
-    return $RESULT
 }
