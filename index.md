@@ -15,6 +15,10 @@ ga('send', 'pageview');
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
+# Version 1.0 released
+v1.0 was released on February 13, 2022 after having been my trusted backup solution since summer 2021. 
+
+
 # Inspiration
 
   I have used 'dar' before, and is now back. Thank you Denis Corbin for a great
