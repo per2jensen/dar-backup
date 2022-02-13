@@ -297,7 +297,10 @@ It could also be an error, so it is good to know why archive sizes change over t
   
   1. When not providing an --overwriting-policy, the dar default is "Oo", which means use the file from the "adding" archive (-@ option), and also the extended atttibutes from that file also. To me, that is the natural way of merging the two archives.
   2. I specified "-ak" to prevent decompressing/compressing - that didn't work, due to different compression types used in the 2 archives (it is a feature for a future version of dar though)
-  
+
+## verbosity
+The file conf/defaults-rc contains various verbosity settings, that can be enabled by removing the "#" char. A brief explanation to each option is provided.
+
 ## trim the log file 
   'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
   ````

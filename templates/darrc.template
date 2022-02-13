@@ -126,9 +126,24 @@ compress-exclusion:
 
 ##############################################################
 #  target: verbose
-#  show both skipped files and files being processed
-#
-# usage: dar <options> verbose
+#  remove comments belov for dar being more verbose
 verbose:
--va
+
+# -vt show files teated due to filtering inclusion or no filtering at all
+#  -vt
+
+# -vs show skipped files du to exclusion
+#  -vs
+
+# -vd show diretory currently being processed
+#  -vd 
+
+# -vm show detailed messages, not related to files and directories
+#  -vm
+
+# -vf show summary of each treated directory, including average compression
+#  -vf
+
+# -va equivalent to "-vm -vs -vt"
+# -va
 

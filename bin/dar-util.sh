@@ -188,8 +188,7 @@ darDiffBackup () {
 darTestBackup () {
   # test the backup
   log  "== Test dar archive: ${ARCHIVEPATH}"
-  dar -vd \
-      -t "${ARCHIVEPATH}" $DRY_RUN
+  dar -t "${ARCHIVEPATH}" $DRY_RUN
   RESULT=$?
   sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
   return $RESULT
