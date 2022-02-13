@@ -37,6 +37,8 @@
     <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/install.sh
     ````
 
+  The programs stay where untarred when running the installer, it makes the scripts executable, creates a soft link and sets up references to the various config files used.  
+
 # Script features
 
   - Take full backups or differential backups
