@@ -15,7 +15,9 @@ chmod +x ${SCRIPTDIRPATH}/*.sh ${SCRIPTDIRPATH}/../conf/*.duc
 sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" $SCRIPTDIRPATH/../templates/dar_par.dcf.template   > $SCRIPTDIRPATH/../conf/dar_par.dcf
 sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" $SCRIPTDIRPATH/../templates/darrc.template         > $SCRIPTDIRPATH/../conf/defaults-rc
 
-mkdir "$SCRIPTDIRPATH/../backups.d"
+if [ ! -d "$SCRIPTDIRPATH/../backups.d" ]; then
+  mkdir "$SCRIPTDIRPATH/../backups.d"
+fi
 for file in $SCRIPTDIRPATH/../templates/backups.d/*; do
     base=`basename $file`
     sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/backups.d/$base"  > "$SCRIPTDIRPATH/../backups.d/$base"

@@ -76,7 +76,7 @@ cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 
 
 # install and run FULL backup
-(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh $DRY_RUN --local-backup-dir)
+(cd $TESTDIR/bin; chmod +x install.sh  &&  $TESTDIR/bin/install.sh  &&  $TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir)
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 
 
