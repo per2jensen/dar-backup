@@ -163,7 +163,7 @@ darBackup () {
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
-        compress-exclusion $DRY_RUN
+        compress-exclusion verbose $DRY_RUN
     return $?
 }
 
@@ -179,7 +179,7 @@ darDiffBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         par2 \
-        compress-exclusion $DRY_RUN
+        compress-exclusion verbose $DRY_RUN
     return $?
 }
 
