@@ -8,6 +8,7 @@ if [ -z ${1} ]; then echo "tag not given, exiting"; exit; fi
 echo tag to create release from: $1
 
 DIR=/tmp/dar-backup
+TARFILE=dar-backup-linux-${1}.tar.gz
 
 rm -fr $DIR
 cd /tmp
@@ -21,7 +22,6 @@ cp $DIR/test/conf/dar-backup.conf.release $DIR/conf/dar-backup.conf
 rm -fr $DIR/test
 echo "This package is built from tag: $1" > VERSION
 cd $DIR/..
-TARFILE=dar-backup-linux-${1}.tar.gz
 tar czvf $TARFILE dar-backup
 echo SHA256:
 sha256sum $TARFILE
