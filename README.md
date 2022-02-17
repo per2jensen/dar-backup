@@ -4,6 +4,9 @@
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
+# Github location
+This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
+
 # Inspiration
 
   I have used 'dar' before, and is now back. Thank you Denis Corbin for a great
