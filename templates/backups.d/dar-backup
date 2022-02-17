@@ -1,6 +1,4 @@
-#
-#  use this definition to backup the deployed version, including contents
-#  of backups.d/ directory
+# definition to backup the deployed version
 #
 
 # Include defaults
@@ -27,4 +25,3 @@
  
  # size of each slice in the archive
  --slice 4G
- 
