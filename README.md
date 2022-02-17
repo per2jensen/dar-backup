@@ -108,33 +108,36 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
     conf dir
   - Fill in some data in the dar-backup.conf file, and delete the 2 lines at the top
     ````
+     Environment variables.
+
       # the Discord webhook address to send messages to
       DISCORD_WEBHOOK="the long Discord webhook here"
 
       # server name or ip address
-      SERVER=your_server
+      # not relevant if --local-backup-dir is used
+      SERVER=some-server 
 
       # the directory on the server used to store backups
+      # not relevant if --local-backup-dir is used
       SERVER_DIR=/some/dir
 
-      # where to mount the sshfs mount
-      # if the --local-backup-dir option is set, ths sshfs mount is not performed
-      MOUNT_POINT=~/another_dir
+      # dar archives are written here
+      # use --local-backup-dir for not trying to do an sshfs mount
+      # TODO rename to something like ARCHIVE_DIR
+      MOUNT_POINT=/tmp/dar-backup-archives
 
       # path to log file
-      LOG_LOCATION=/directory/name/
-      
-      # should all output be captured in a file
-      # any other characted than "y" means no
-      DEBUG=y
-      
-      # path to debug log file
-      DEBUG_LOCATION=/some/dir/dar-debug.log
+      LOG_LOCATION=/tmp/dar-backup-test/
 
+      # should all output be captured in a file
+      DEBUG=n
+
+      # path to debug log file
+      DEBUG_LOCATION=/tmp/dar-debug.log
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
-    Open the demo templates/backups.d/TEST files, alter the variables to your taste
+    Alter the demo backups.d/dar-backup file to your taste
 
     ````
     # Set backup root
@@ -356,7 +359,7 @@ ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0
 
 # Version
 ## dar-backup script
-  Consider this working, but not battletested. It is perhaps something like version 0.9'ish.
+  The script has reached version 1.0 - I trust it.
 
 ## 'dar' itself
 My ubuntu 21.04 currently gives me this:
