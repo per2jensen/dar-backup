@@ -1,0 +1,26 @@
+# Environment variables.
+
+# the Discord webhook address to send messages to
+DISCORD_WEBHOOK="the long Discord webhook here"
+
+# server name or ip address
+# not relevant if --local-backup-dir is used
+SERVER=some-server 
+
+# the directory on the server used to store backups
+# not relevant if --local-backup-dir is used
+SERVER_DIR=/some/dir
+
+# dar archives are written here
+# use --local-backup-dir for not trying to do an sshfs mount
+# TODO rename to something like ARCHIVE_DIR
+MOUNT_POINT=/some/where
+
+# path to log file
+LOG_LOCATION=/tmp/dar-backup-test/
+
+# should all output be captured in a file
+DEBUG=n
+
+# path to debug log file
+DEBUG_LOCATION=/tmp/dar-debug.log
