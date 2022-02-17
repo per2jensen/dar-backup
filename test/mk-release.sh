@@ -17,6 +17,7 @@ git  checkout "tags/$1" -b release-$1
 chmod +x bin/install.sh
 rm -fr $DIR/.git
 rm -fr $DIR/.github
+cp $DIR/test/conf/dar-backup.conf.release $DIR/conf/dar-backup.conf
 rm -fr $DIR/test
 echo "This package is built from tag: $1" > VERSION
 cd $DIR/..
