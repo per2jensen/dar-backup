@@ -285,22 +285,30 @@ where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
   
 ## overview of archives
 Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
-One way to get an overview is to use the 2 scripts "show-FULL.sh" and "show-DIFF.sh"
+One way to get an overview is to use the script 'ls-archives.sh'
+
+Here is a (fictive files) example:
 ````
-./show-FULL.sh 
+ ~ programmer/dar-backup/bin/ls-archives.sh 
 Mountpoint: /home/pj/mnt/dar
-dba_FULL_2021-06-27            slices: 1    
-media-files_FULL_2021-06-27    slices: 46   
-ws_FULL_2021-06-30             slices: 1    
-cloudDrive_FULL_2021-06-06     slices: 18   
-pj_homedir_FULL_2021-06-06     slices: 7  
+dar-backup_FULL_2022-02-13     slices: 1   (1G)   total: 1,6M        
+some-files_DIFF_2022-01-23     slices: 1   (1G)   total: 8,5M        
+some-files_DIFF_2022-02-13     slices: 1   (1G)   total: 6,9M        
+some-files_FULL_2022-01-08     slices: 100 (7G)   total: 729G        
+TEST_FULL_2022-02-13           slices: 1   (1G)   total: 12K         
+Total disk usage in /home/pj/mnt/dar: 730G 
+
 ````
-If you see a FULL archive that is significantly smaller than a previous one (i.e. fewer slices), you should probably find out why that is. There may be good reasons like:
+If you see an archive that is significantly smaller than a previous one (for example fewer slices), you should probably find out why that is. There may be good reasons like:
  
   - You have cleaned up
   - The backup definition has more excludes
 
 It could also be an error, so it is good to know why archive sizes change over time.
+
+For convenience it also prints that total amount of storage used in the directory used.
+
+The reason the total is bigger than the sum of slices, is that the total includes parity files.
 
 ## merge FULL with DIFF, creating new FULL
   Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.

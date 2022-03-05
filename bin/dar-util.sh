@@ -6,15 +6,16 @@
 # mount ${SERVER}:${SERVER_DIR} on ${MOUNT_POINT} at your machine to backup
 # send Discord msg if not possible
 mountDar () {
-    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs"
+    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT == "0" ]]; then 
         return
     fi
     mkdir -p ${MOUNT_POINT} 2>/dev/null
     sshfs ${SERVER}:${SERVER_DIR} ${MOUNT_POINT}
-    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs"
+    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
+    log "mount ${SERVER}:${SERVER_DIR} to ${MOUNT_POINT}, result: $RESULT"
 }
 
 function _date_time() {
