@@ -156,7 +156,7 @@ darBackup () {
     log "Start dar backup of: ${DAR_ARCHIVE}"
     log "==========================================================="
 
-    dar -c "${ARCHIVEPATH}" \
+    dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
