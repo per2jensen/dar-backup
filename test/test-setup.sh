@@ -44,9 +44,8 @@ checkDontFindLog () {
 
 rm -fr $TESTDIR
 rm -fr $TEST_ARCHIVE_DIR 
-#rm -fr ~/mnt/TEST/*
 mkdir -p $TESTDIR
-mkdir $TEST_ARCHIVE_DIR
+mkdir -p $TEST_ARCHIVE_DIR
 
 cp -R $SCRIPTDIRPATH/dirs         $TESTDIR/
 cp -R $SCRIPTDIRPATH/../bin       $TESTDIR/
