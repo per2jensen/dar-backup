@@ -1,0 +1,11 @@
+[Unit]
+Description=dar backup timer
+
+[Timer]
+OnCalendar=Sat *-*-* 13:31:30
+Unit=dar-backup.service
+
+[Install]
+WantedBy=timers.target
+
+
