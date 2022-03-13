@@ -363,6 +363,13 @@ ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0
 
   If you at some point in the future need to extract files from the archive, you know you have correct binary at hand.
 
+# Exit values
+| # | Description |
+| = | =========== |
+| 0 | script ended without errors|
+| 1 | script exited with an error |
+| 100 | FULL backup not found |
+
 # Issues
 
 # Version

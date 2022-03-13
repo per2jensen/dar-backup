@@ -1,12 +1,10 @@
 #! /bin/bash
 
-# run install.sh
-# run dar-backup.sh
-# add file GREENLAND.JEP to include dir and to the exclude dir
-# run dar-diff-backup.sh
-# list the FULL & DIFF archives
+# Run diff without a full, expect an exit code = 100
 
 SCRIPTPATH=`realpath $0`
+
+
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 DATE=`date +"%Y-%m-%d"`
@@ -75,45 +73,17 @@ cp $SCRIPTDIRPATH/../templates/dar_par.dcf.template $TESTDIR/templates/
 cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 
 
-# install and run FULL backup
+# install
 chmod +x $TESTDIR/bin/install.sh
 $TESTDIR/bin/install.sh
-$TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir
-dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 
-
-
-# alter backup set
-cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
-cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
-dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
-
-echo .
-echo ..
-echo ===========================================
-echo "cat filelists & logfile, then do checks"
-echo ===========================================
-echo "FULL dar archive:"
-cat $TESTDIR/FULL-filelist.txt 
-echo "DIFF dar archive:"
-cat $TESTDIR/DIFF-filelist.txt
-echo "Logfile:"
-cat $TESTDIR/dar-backup.log
-echo RESULTS for FULL backup:
-# FULL backup
-checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
-checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
-checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
-checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
-checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
-
-echo RESULTS for DIFF backup:
-# DIFF backup
-checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
-checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
+if [[ $? != "100" ]]; then
+  echo DIFF backup did not fail as expected, due to no FULL backup found
+  TESTRESULT=1
+fi
 
 echo TEST RESULT: $TESTRESULT
 exit $TESTRESULT

@@ -92,8 +92,12 @@ runBackupDef () {
       backupTestRestore 
     else
       PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_FULL"|grep dar$|tail -n 1`
+      if [[ ${#PREV} -lt 4 ]]; then
+        log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
+        exit 100 
+      fi
       NEWEST_ARCHIVE=${PREV%%.*}
-      echo NEWEST archive: $NEWEST_ARCHIVE
+      log "NEWEST archive: $NEWEST_ARCHIVE"
       # backup
       diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
     fi
