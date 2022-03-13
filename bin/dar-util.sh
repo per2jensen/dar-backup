@@ -85,7 +85,6 @@ runBackupDef () {
 
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
-
  
     if [[ $MODE == "FULL"  ]]; then 
       # backup
@@ -173,7 +172,7 @@ darDiffBackup () {
     log "==============================================================================="
     log "== Start dar diff backup of: ${DAR_ARCHIVE}, diff against: $1"
     log "==============================================================================="
-    dar -c "${ARCHIVEPATH}" \
+    dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
@@ -188,7 +187,7 @@ darDiffBackup () {
 darTestBackup () {
   # test the backup
   log  "== Test dar archive: ${ARCHIVEPATH}"
-  dar -t "${ARCHIVEPATH}" $DRY_RUN
+  dar -Q -t "${ARCHIVEPATH}" $DRY_RUN
   RESULT=$?
   sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
 }
@@ -202,7 +201,7 @@ darRestoreTest () {
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
-    dar -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "d[-rw][-rw]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "d[-rw][-rw]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
     awk '{  if ($1 < 10000000) {
             print $0 
@@ -219,7 +218,7 @@ darRestoreTest () {
         rm -fr /tmp/${TOPDIR}
     fi
     log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
-    dar -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
+    dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         if [[ -f /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
