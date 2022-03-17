@@ -13,7 +13,7 @@ echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 source $SCRIPTDIRPATH/test-setup.sh
 
 # run the test
-$TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir
+$TESTDIR/bin/dar-backup.sh -d TEST --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 echo dar exit code: $?
 
@@ -22,7 +22,7 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
 cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-$TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
+$TESTDIR/bin/dar-diff-backup.sh -d TEST --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 echo dar exit code: $?
 
@@ -31,7 +31,7 @@ echo dar exit code: $?
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
 
 # run INCREMENTAL backup
-$TESTDIR/bin/dar-inc-backup.sh -d TEST $DRY_RUN --local-backup-dir
+$TESTDIR/bin/dar-inc-backup.sh -d TEST --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_INC_$DATE" > $TESTDIR/INC-filelist.txt
 echo dar exit code: $?
 

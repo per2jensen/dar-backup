@@ -76,13 +76,32 @@ copyDarStatic () {
     fi
 }
 
+# Generate list of files that would have been backed up in a DIFF or INC
+# dar -vt -c /tmp/pCloud-dd  -A ./pCloudDrive_DIFF_2022-03-05 --dry-run -R /home/pj/pCloudDrive
+#
+listFilesToBackup () {
+    DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
+    ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
+ 
+    echo "her kommer LIST funktionen"
+    if [[ $MODE == "FULL"  ]]; then 
+      # backup
+      dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+        -N \
+        -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
+        --dry-run 
+    else
+        echo "the rest is missing, code som more...."
+    fi
+}
+
+
 
 # find newest archive for type
 # $1: type is FULL|DIFF|INC
 findNewestForType () {
     NEWEST_ARCHIVE=""
     local PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_$1"|grep dar$|tail -n 1`
-    echo " =========  $PREV  ========="
     # {#} is the length of an env var
     if [[ ${#PREV} -lt 4 ]]; then
         log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
@@ -97,7 +116,6 @@ findNewestForType () {
 # MOUNT_POINT is from the .conf file
 #
 runBackupDef () {
-
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
  

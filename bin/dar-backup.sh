@@ -17,6 +17,7 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 DRY_RUN=""
 LOCAL_BACKUP_DIR=""
+LIST_FILES=""  # list files to back up
 
 
 
@@ -27,6 +28,7 @@ SCRIPTNAME=`basename $0`
 while [ ! -z "$1" ]; do
   case "$1" in
       --dry-run)
+          shift
           DRY_RUN=--dry-run
           ;;
       --backupdef|-d)
@@ -36,9 +38,14 @@ while [ ! -z "$1" ]; do
       --local-backup-dir)
           echo '$MOUNT_POINT' used as local backup directory....
           LOCAL_BACKUP_DIR=1
+          shift
+          ;;
+      --list-files|-l)
+          LIST_FILES=yes          
+          shift
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>"
+          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l"
           exit
           ;;
   esac
@@ -85,13 +92,21 @@ if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
       log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
-      runBackupDef
+      if [[ $LIST_FILES  ==  "yes" ]]; then
+        listFilesToBackup
+      else
+        runBackupDef
+      fi
   done
 else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-    log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
-    CURRENT_BACKUPDEF="$BACKUPDEF"
-    runBackupDef
+      log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+      CURRENT_BACKUPDEF="$BACKUPDEF"
+      if [[ $LIST_FILES  ==  "yes" ]]; then
+        listFilesToBackup
+      else
+        runBackupDef
+      fi
   else 
     log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
   fi
