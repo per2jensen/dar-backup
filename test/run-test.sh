@@ -26,6 +26,16 @@ $TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 echo dar exit code: $?
 
+
+# modify a file backed up in the DIFF
+touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
+
+# run INCREMENTAL backup
+$TESTDIR/bin/dar-inc-backup.sh -d TEST $DRY_RUN --local-backup-dir
+dar -l  "$MOUNT_POINT/TEST_INC_$DATE" > $TESTDIR/INC-filelist.txt
+echo dar exit code: $?
+
+
 echo .
 echo ..
 echo ===========================================
@@ -49,6 +59,16 @@ echo RESULTS for DIFF backup:
 # DIFF backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
 checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
+
+echo RESULTS for INCREMENTAL backup:
+# INC backup
+checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/INC-filelist.txt"  
+NO_SAVED=$(grep "\[Saved\]" $TESTDIR/INC-filelist.txt |wc -l)
+echo "Number of files saved in INCREMENTAL archive: $NO_SAVED"
+if [[  $NO_SAVED != "1"  ]]; then
+    echo "more than one file saved in the INCREMENTAL archive"
+    TESTRESULT=1
+fi
 
 echo TEST RESULT: $TESTRESULT
 exit $TESTRESULT

@@ -60,13 +60,17 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
-else
-  if [[ $SCRIPTNAME == "dar-diff-backup.sh" ]]; then
-    MODE=DIFF
-  else
-    log "== script called with wrong name: $0, exiting"
+fi
+if [[ $SCRIPTNAME == "dar-diff-backup.sh"  ]]; then
+  MODE=DIFF
+fi
+if [[ $SCRIPTNAME == "dar-inc-backup.sh"  ]]; then
+  MODE=INC
+fi
+
+if [[ $MODE == "" ]]; then
+    log "ERROR script called with wrong name: $0, exiting"
     exit 1
-  fi
 fi
 
 
@@ -89,7 +93,7 @@ else
     CURRENT_BACKUPDEF="$BACKUPDEF"
     runBackupDef
   else 
-    log "== backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
+    log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
   fi
 fi
 

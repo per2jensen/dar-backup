@@ -77,6 +77,21 @@ copyDarStatic () {
 }
 
 
+# find newest archive for type
+# $1: type is FULL|DIFF|INC
+findNewestForType () {
+    NEWEST_ARCHIVE=""
+    local PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_$1"|grep dar$|tail -n 1`
+    echo " =========  $PREV  ========="
+    # {#} is the length of an env var
+    if [[ ${#PREV} -lt 4 ]]; then
+        log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
+        return
+    fi
+    NEWEST_ARCHIVE=${PREV%%.*}
+}
+
+
 # function called to start processing a backup definition(a file in backups.d)
 # MODE and DATE are defined in dar-backup.sh
 # MOUNT_POINT is from the .conf file
@@ -90,15 +105,30 @@ runBackupDef () {
       # backup
       backupTestRestore 
     else
-      PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_FULL"|grep dar$|tail -n 1`
-      if [[ ${#PREV} -lt 4 ]]; then
-        log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-        exit 100 
-      fi
-      NEWEST_ARCHIVE=${PREV%%.*}
-      log "NEWEST archive: $NEWEST_ARCHIVE"
-      # backup
-      diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
+        if [[ $MODE == "DIFF" ]]; then
+            findNewestForType FULL
+            if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+                log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
+                exit 100 
+            fi
+            log "NEWEST archive: $NEWEST_ARCHIVE"
+            # backup
+            diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
+        else 
+            if [[ $MODE == "INC" ]]; then
+                findNewestForType DIFF
+                if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+                    log  "ERROR DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
+                    exit 101 
+                fi
+                log "NEWEST archive: $NEWEST_ARCHIVE"
+                # backup
+                diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
+            else
+                log ERROR neither FULL, DIFF nor INC specified, exiting
+                exit 1
+            fi
+        fi
     fi
 }
 
@@ -169,9 +199,19 @@ darBackup () {
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
-    log "==============================================================================="
-    log "== Start dar diff backup of: ${DAR_ARCHIVE}, diff against: $1"
-    log "==============================================================================="
+    grep _FULL_ "$1" > /dev/null 2>&1
+    if [[ $? == "0" ]]; then
+        log "==============================================================================="
+        log "== Start dar DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
+        log "==============================================================================="
+    fi
+    grep _DIFF_ "$1" > /dev/null 2>&1
+    if [[ $? == "0" ]]; then
+        log "==============================================================================="
+        log "== Start dar INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
+        log "==============================================================================="
+    fi
+
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
