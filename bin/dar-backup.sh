@@ -28,7 +28,6 @@ SCRIPTNAME=`basename $0`
 while [ ! -z "$1" ]; do
   case "$1" in
       --dry-run)
-          shift
           DRY_RUN=--dry-run
           ;;
       --backupdef|-d)
@@ -38,11 +37,9 @@ while [ ! -z "$1" ]; do
       --local-backup-dir)
           echo '$MOUNT_POINT' used as local backup directory....
           LOCAL_BACKUP_DIR=1
-          shift
           ;;
       --list-files|-l)
-          LIST_FILES=yes          
-          shift
+          LIST_FILES=1
           ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l"
@@ -92,7 +89,7 @@ if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
       log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
-      if [[ $LIST_FILES  ==  "yes" ]]; then
+      if [[ $LIST_FILES  ==  "1" ]]; then
         listFilesToBackup
       else
         runBackupDef
@@ -102,7 +99,7 @@ else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
       log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
       CURRENT_BACKUPDEF="$BACKUPDEF"
-      if [[ $LIST_FILES  ==  "yes" ]]; then
+      if [[ $LIST_FILES  ==  "1" ]]; then
         listFilesToBackup
       else
         runBackupDef

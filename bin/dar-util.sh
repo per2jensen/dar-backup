@@ -82,16 +82,45 @@ copyDarStatic () {
 listFilesToBackup () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
- 
-    echo "her kommer LIST funktionen"
+    
+    echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-${MODE}-filelist.txt
     if [[ $MODE == "FULL"  ]]; then 
-      # backup
+      # dryrun  showing what to backup (-vt)
       dar -vt -c "/tmp/${DAR_ARCHIVE}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-        --dry-run 
+        --dry-run >> /tmp/dar-${MODE}-filelist.txt
     else
-        echo "the rest is missing, code som more...."
+        if [[ $MODE == "DIFF" ]]; then
+            findNewestForType FULL
+            if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+                echo "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
+                exit  
+            fi
+            # dryrun  showing what to backup (-vt)
+            dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+            -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
+            -N \
+            -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
+            --dry-run >> /tmp/dar-${MODE}-filelist.txt
+        else 
+            if [[ $MODE == "INC" ]]; then
+                findNewestForType DIFF
+                if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+                    echo "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
+                    exit 
+                fi
+                # dryrun  showing what to backup (-vt)
+                dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+                -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
+                -N \
+                -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
+                --dry-run >> /tmp/dar-${MODE}-filelist.txt
+            else
+                echo "neither FULL, DIFF nor INC specified, exiting"
+                exit
+            fi
+        fi
     fi
 }
 
@@ -143,7 +172,7 @@ runBackupDef () {
                 # backup
                 diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
             else
-                log ERROR neither FULL, DIFF nor INC specified, exiting
+                log "ERROR neither FULL, DIFF nor INC specified, exiting"
                 exit 1
             fi
         fi
