@@ -116,7 +116,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 ## --list-files
 
   Use this option to see what will be backed up.
-  The result is stored in one of /tmp/dar-{FULL|DIIF|INC}-filelist.txt, depending on what type of backup ypu choose.
+  The result is stored in one of /tmp/dar-{FULL|DIFF|INC}-filelist.txt, depending on what type of backup ypu choose.
 
 ## --local-backup-dir
 
