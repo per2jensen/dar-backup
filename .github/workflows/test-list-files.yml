@@ -1,6 +1,6 @@
 # Tests if the listFiles functionality is correct
 
-name: CI
+name: List_files
 
 # Controls when the workflow will run
 on:
@@ -31,7 +31,7 @@ jobs:
       
       - name: Run the test script
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-FULL.sh
+          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-for-FULL.sh
           $GITHUB_WORKSPACE/test/test-listfiles-FULL.sh
   list-files-DIFF:
     # The type of runner that the job will run on
@@ -48,7 +48,7 @@ jobs:
       
       - name: Run the test script
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-DIFF.sh
+          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-for-DIFF.sh
           $GITHUB_WORKSPACE/test/test-listfiles-DIFF.sh
   list-files-INC:
     # The type of runner that the job will run on
@@ -65,5 +65,5 @@ jobs:
       
       - name: Run the test script
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-INC.sh
+          chmod +x $GITHUB_WORKSPACE/test/test-listfiles-for-INC.sh
           $GITHUB_WORKSPACE/test/test-listfiles-INC.sh
