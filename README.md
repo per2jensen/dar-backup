@@ -113,6 +113,11 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   *NOTE:*
   Do not use spaces in the filenames.
 
+## --list-files
+
+  Use this option to see what will be backed up.
+  The result is stored in one of /tmp/dar-{FULL|DIIF|INC}-filelist.txt, depending on what type of backup ypu choose.
+
 ## --local-backup-dir
 
   Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
