@@ -17,6 +17,7 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 DRY_RUN=""
 LOCAL_BACKUP_DIR=""
+LIST_FILES=""  # list files to back up
 
 
 
@@ -37,8 +38,11 @@ while [ ! -z "$1" ]; do
           echo '$MOUNT_POINT' used as local backup directory....
           LOCAL_BACKUP_DIR=1
           ;;
+      --list-files|-l)
+          LIST_FILES=1
+          ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>"
+          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l"
           exit
           ;;
   esac
@@ -60,13 +64,17 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
-else
-  if [[ $SCRIPTNAME == "dar-diff-backup.sh" ]]; then
-    MODE=DIFF
-  else
-    log "== script called with wrong name: $0, exiting"
+fi
+if [[ $SCRIPTNAME == "dar-diff-backup.sh"  ]]; then
+  MODE=DIFF
+fi
+if [[ $SCRIPTNAME == "dar-inc-backup.sh"  ]]; then
+  MODE=INC
+fi
+
+if [[ $MODE == "" ]]; then
+    log "ERROR script called with wrong name: $0, exiting"
     exit 1
-  fi
 fi
 
 
@@ -81,15 +89,23 @@ if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
       log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
-      runBackupDef
+      if [[ $LIST_FILES  ==  "1" ]]; then
+        listFilesToBackup
+      else
+        runBackupDef
+      fi
   done
 else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-    log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
-    CURRENT_BACKUPDEF="$BACKUPDEF"
-    runBackupDef
+      log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+      CURRENT_BACKUPDEF="$BACKUPDEF"
+      if [[ $LIST_FILES  ==  "1" ]]; then
+        listFilesToBackup
+      else
+        runBackupDef
+      fi
   else 
-    log "== backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
+    log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
   fi
 fi
 

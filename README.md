@@ -1,5 +1,5 @@
 
-# Full backups + differential backups using 'dar' 
+# Full, differential or incremental backups using 'dar' 
 
   The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
@@ -44,7 +44,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
 # Script features
 
-  - Take full backups or differential backups
+  - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after 
@@ -58,6 +58,32 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Improved testing: an automatic backup test is now performed on every commit using Githup actions
+
+# Invocation
+
+ - FULL backup of files/directories in the backup definition
+
+ ````
+ dar-backup.sh
+ ````
+
+ - DIFF backup of files/directories in the backup definition
+
+ The diff is made against the newest full backup of the definition
+
+ ````
+ dar-diff-backup.sh
+ ````
+
+ - INCREMENTAL backup of files/directories in the backup definition
+
+ The incremental is made against the newest diff backup of the definition, *regardless if there is a newer FULL*
+
+ ````
+ dar-inc-backup.sh
+ ````
+
+
 
 # Requirements
   - sshfs (if mounting a server directory)
@@ -83,6 +109,9 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   Run only a single backup definition, instead of all definitions kept in the backups.d directory
 
   'definition' is one of the filenames in backups.d/
+
+  *NOTE:*
+  Do not use spaces in the filenames.
 
 ## --local-backup-dir
 
@@ -138,6 +167,9 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Define backups in the "backups.d" directory, just drop files in the directory
   
     Alter the demo backups.d/dar-backup file to your taste
+
+    *NOTE:*
+    Do not use spaces in the file names
 
     ````
     # Set backup root
@@ -415,6 +447,11 @@ My ubuntu 21.04 currently gives me this:
    Remote repository support    : NO
 ````
 I can confirm large file support works. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
+
+
+# TODO
+  - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
+
 # Projects this script benefits from
  1. [The wonderful dar achiver](https://dar.sourceforge.io/)
  2. [The Parchive suite](https://github.com/Parchive)
