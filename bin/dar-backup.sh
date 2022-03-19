@@ -17,7 +17,7 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 DRY_RUN=""
 LOCAL_BACKUP_DIR=""
-LIST_FILES=""  # list files to back up
+LIST_FILES=""  # boolean: list files to back up
 
 
 
@@ -88,20 +88,22 @@ copyDarStatic
 if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
-      log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
       if [[ $LIST_FILES  ==  "1" ]]; then
+        log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
+        log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
         runBackupDef
       fi
   done
 else
   if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-      log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
       CURRENT_BACKUPDEF="$BACKUPDEF"
       if [[ $LIST_FILES  ==  "1" ]]; then
+        log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
+        log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
         runBackupDef
       fi
   else 
