@@ -23,7 +23,7 @@ if [[ $? == "0" ]]; then
     echo "script DID use the correct (fake) archive to diff against"
 else
     echo "ERROR script did not did find the archive: TEST_FULL_2099-12-31.1.dar"
-    TESTRESULT = 1
+    TESTRESULT=1
 fi
 
 echo TEST RESULT: $TESTRESULT
