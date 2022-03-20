@@ -93,6 +93,7 @@ listFilesToBackup () {
     else
         if [[ $MODE == "DIFF" ]]; then
             findNewestForType FULL
+            echo "newest FULL: ${NEWEST_ARCHIVE}"
             if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
                 echo "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
                 exit  
@@ -106,6 +107,7 @@ listFilesToBackup () {
         else 
             if [[ $MODE == "INC" ]]; then
                 findNewestForType DIFF
+                echo "newest DIFF: ${NEWEST_ARCHIVE}"
                 if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
                     echo "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
                     exit 

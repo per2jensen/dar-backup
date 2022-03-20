@@ -1,7 +1,7 @@
 
 # Full, differential or incremental backups using 'dar' 
 
-  The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
+  The wonderful 'dar' (Disk Archiver) (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
 # Github location
@@ -116,7 +116,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 ## --list-files
 
   Use this option to see what will be backed up.
-  The result is stored in one of /tmp/dar-{FULL|DIFF|INC}-filelist.txt, depending on what type of backup ypu choose.
+  The result is stored in one of /tmp/dar-{FULL|DIFF|INC}-filelist.txt, depending on what type of backup you choose.
 
 ## --local-backup-dir
 
@@ -456,9 +456,10 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 
 # TODO
   - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
+  - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken, in order to make them as small as possible. Hmm, need to decide on the best way forward.
 
 # Projects this script benefits from
- 1. [The wonderful dar achiver](https://dar.sourceforge.io/)
+ 1. [The wonderful dar achiver](https://github.com/Edrusb/DAR + https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
  3. [Ubuntu of course :-)](https://ubuntu.com/)
 
