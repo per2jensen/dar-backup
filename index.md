@@ -10,9 +10,9 @@ ga('send', 'pageview');
 <!-- End Google Analytics -->
 
 
-# Full backups + differential backups using 'dar' 
+# Full, differential and incremental backups using 'dar' 
 
-  The wonderful 'dar' (Disk Archiver) (https://dar.sourceforge.io/) is used for 
+  The wonderful 'dar' (Disk Archiver) (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
 # Version 1.0 released
@@ -39,10 +39,10 @@ v1.0 was released on February 13, 2022 after having been my trusted backup solut
 
 # Script features
 
-  - Take full backups or differential backups
+  - Take full, differential and incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
-  - Test the archive after 
+  - Test the archive after backup
   - Tries to find a file < 10MB, and restores it under /tmp
   - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
@@ -53,6 +53,32 @@ v1.0 was released on February 13, 2022 after having been my trusted backup solut
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Improved testing: an automatic backup test is now performed on every commit using Githup actions
+
+# How to install
+  - Download a dar-backup tarball from the (releases)[https://github.com/per2jensen/dar-backup/releases] 
+
+  - untar 
+    ````
+    tar zxf <the-tar-file> --directory <a-directory-under-which-darbackup-is-untarred>
+    ````
+  - make install script executable
+    ````
+    chmod +x <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/install.sh
+    ````
+  - Run install.sh
+    ````
+    <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/install.sh
+    ````
+
+  - Take a backup of the installation 
+    ````
+    <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/dar-backup.sh --local-backup-dir
+    ````
+    
+  The programs stay where untarred when running the installer, it makes the scripts executable, creates a soft link and sets up references to the various config files used.  
+
+  During installation, a directory has been created "<a-directory-under-which-darbackup-is-untarred>/dar-backup/archives", where the backups have been stored (change config to your preferred location).
+
 
 # dar-backup source code
 
