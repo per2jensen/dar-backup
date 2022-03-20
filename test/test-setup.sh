@@ -15,6 +15,15 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+
+failOnError () {
+  if [[ $1 != "0"  ]]; then
+      echo operation failed, exiting
+      exit 1
+  fi
+}
+
+
 # grep for expected string and print result
 # $1: search string
 # $2: logfile to search in
@@ -27,6 +36,8 @@ checkExpectLog () {
     TESTRESULT=1
   fi
 }
+
+
 
 # grep for string expected NOT to be found and print result
 # $1: search string
@@ -50,7 +61,6 @@ cp -R $SCRIPTDIRPATH/../conf      $TESTDIR/
 # override some conf files with test versions
 cp -R $SCRIPTDIRPATH/conf         $TESTDIR/
 
-source $TESTDIR/conf/dar-backup.conf
 
 # create templates dir and copy it
 cp -R $SCRIPTDIRPATH/templates    $TESTDIR/
@@ -60,3 +70,5 @@ cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
 # install and run FULL backup
 chmod +x $TESTDIR/bin/install.sh
 $TESTDIR/bin/install.sh
+
+source $TESTDIR/conf/dar-backup.conf

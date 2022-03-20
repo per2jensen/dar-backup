@@ -10,6 +10,7 @@ source $SCRIPTDIRPATH/test-setup.sh
 
 # run FULL backup
 $TESTDIR/bin/dar-backup.sh -d TEST --local-backup-dir
+failOnError $?
 
 # alter files 
 cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
@@ -20,6 +21,7 @@ touch "$TESTDIR/dirs/include this one/Krummi-empty.JPG"
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST --local-backup-dir
+failOnError $?
 
 # alter files 
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
@@ -31,6 +33,7 @@ touch "$TESTDIR/dirs/include this one/Krummi-empty3.JPG"
 
 # run listFiles
 $TESTDIR/bin/dar-inc-backup.sh -d TEST --list-files --local-backup-dir
+failOnError $?
 NO_LISTED=$(cat /tmp/dar-INC-filelist.txt|grep -i "adding file"|wc -l)
 
 if [[ $NO_LISTED != "4" ]]; then

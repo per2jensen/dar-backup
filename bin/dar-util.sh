@@ -86,11 +86,13 @@ copyDarStatic () {
 listFilesToBackup () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
-    
+        
     echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-${MODE}-filelist.txt
     if [[ $MODE == "FULL"  ]]; then 
       # dryrun  showing what to backup (-vt)
-      dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+      # use TEMPDARARCHIVE in tmp, or an "overwriting slice" error occurs
+      TEMPDARARCHIVE=/tmp/dar-temp-full-3490843
+      dar -vt -c "${TEMPDARARCHIVE}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         --dry-run >> /tmp/dar-${MODE}-filelist.txt
@@ -103,7 +105,7 @@ listFilesToBackup () {
                 exit  
             fi
             # dryrun  showing what to backup (-vt)
-            dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+            dar -vt -c "${ARCHIVEPATH}" \
             -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
             -N \
             -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
@@ -117,7 +119,7 @@ listFilesToBackup () {
                     exit 
                 fi
                 # dryrun  showing what to backup (-vt)
-                dar -vt -c "/tmp/${DAR_ARCHIVE}" \
+                dar -vt -c "${ARCHIVEPATH}" \
                 -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
                 -N \
                 -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
