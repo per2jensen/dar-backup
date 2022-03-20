@@ -6,7 +6,6 @@ DRY_RUN=""
 TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
-TEST_ARCHIVE_DIR=/tmp/dar-backup-archives
 
 # Get the options
 while [[ $# -gt 0 ]]; do
@@ -43,9 +42,7 @@ checkDontFindLog () {
 }
 
 rm -fr $TESTDIR
-rm -fr $TEST_ARCHIVE_DIR 
-mkdir -p $TESTDIR
-mkdir -p $TEST_ARCHIVE_DIR
+mkdir -p $TESTDIR/archives
 
 cp -R $SCRIPTDIRPATH/dirs         $TESTDIR/
 cp -R $SCRIPTDIRPATH/../bin       $TESTDIR/

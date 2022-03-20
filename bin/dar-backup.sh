@@ -18,7 +18,7 @@ ARCHIVEPATH=""
 DRY_RUN=""
 LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
-
+EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 
 
 # which mode: FULL or DIFF
@@ -42,7 +42,7 @@ while [ ! -z "$1" ]; do
           LIST_FILES=1
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l"
+          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l --local-backup-dir"
           exit
           ;;
   esac
@@ -111,4 +111,4 @@ else
   fi
 fi
 
-
+exit $EVERYTHING_OK

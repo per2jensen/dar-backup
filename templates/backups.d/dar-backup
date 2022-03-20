@@ -20,8 +20,12 @@
 # compression level
  -z5
 
- # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+# no overwrite, if you rerun a backup, 'dar' halts and asks what to do
  -n
  
- # size of each slice in the archive
+# size of each slice in the archive
  --slice 4G
+
+# bypass directores marked as cache directories
+# http://dar.linux.free.fr/doc/Features.html
+--cache-directory-tagging

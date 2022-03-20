@@ -15,6 +15,10 @@ mountDar () {
     sshfs ${SERVER}:${SERVER_DIR} ${MOUNT_POINT}
     mount |egrep "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        log "ERROR ${SERVER}:${SERVER_DIR} not mounted, exiting"
+        exit 1
+    fi
     log "mount ${SERVER}:${SERVER_DIR} to ${MOUNT_POINT}, result: $RESULT"
 }
 
@@ -202,11 +206,7 @@ _TestRestore () {
         fi
     fi
     darTestBackup 
-    RESULT=$?
-    sendDiscordMsg  "dar test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     darRestoreTest
-    RESULT=$?
-    sendDiscordMsg  "dar restore test of archive: ${DAR_ARCHIVE}, result: $RESULT"
 }
 
 
@@ -241,6 +241,9 @@ darBackup () {
         par2 \
         compress-exclusion verbose $DRY_RUN
     RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        EVERYTHING_OK=1
+    fi
     log "Full backup result: $RESULT"
 }
 
@@ -268,17 +271,23 @@ darDiffBackup () {
         par2 \
         compress-exclusion verbose $DRY_RUN
     RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        EVERYTHING_OK=1
+    fi
     log "Diff backup result: $RESULT"
 }
 
 
 # test a dar backup
 darTestBackup () {
-  # test the backup
-  log  "== Test dar archive: ${ARCHIVEPATH}"
-  dar -Q -t "${ARCHIVEPATH}" $DRY_RUN
-  RESULT=$?
-  sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
+    # test the backup
+    log  "== Test dar archive: ${ARCHIVEPATH}"
+    dar -Q -t "${ARCHIVEPATH}" $DRY_RUN
+    RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        EVERYTHING_OK=1
+    fi
+    sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
 }
 
 
@@ -309,13 +318,13 @@ darRestoreTest () {
     log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
     dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
     RESULT=$?
-    if [[ $RESULT == "0" ]]; then
-        if [[ -f /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
-            sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\" is OK, restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
-        else
-            log "== File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"
-        fi
+    if [[ $RESULT != "0" ]]; then
+        EVERYTHING_OK=1
+    fi
+    sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+    if [[ -f /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
+        log "== restored file: \"${DAR_RESTORE_FILE}\" found"
     else
-        log "== dar restore failed, exit code: $RESULT"
+        log "ERROR File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"
     fi
 }

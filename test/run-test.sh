@@ -6,14 +6,22 @@
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
 
+_RESULT="0"
+
 SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 
 source $SCRIPTDIRPATH/test-setup.sh
+source $TESTDIR/conf/dar-backup.conf
 
 # run the test
 $TESTDIR/bin/dar-backup.sh -d TEST --local-backup-dir
+RESULT=$?
+if [[ $RESULT != "0" ]]; then
+    _RESULT=1
+fi
+ 
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > $TESTDIR/FULL-filelist.txt
 echo dar exit code: $?
 
@@ -23,6 +31,11 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST --local-backup-dir
+RESULT=$?
+if [[ $RESULT != "0" ]]; then
+    _RESULT=1
+fi
+
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
 echo dar exit code: $?
 
@@ -32,8 +45,19 @@ touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
 
 # run INCREMENTAL backup
 $TESTDIR/bin/dar-inc-backup.sh -d TEST --local-backup-dir
+RESULT=$?
+if [[ $RESULT != "0" ]]; then
+    _RESULT=1
+fi
+
 dar -l  "$MOUNT_POINT/TEST_INC_$DATE" > $TESTDIR/INC-filelist.txt
 echo dar exit code: $?
+
+
+if [[ $_RESULT != "0" ]]; then
+    echo "Something went wrong, exiting"
+    exit 1
+fi
 
 
 echo .
