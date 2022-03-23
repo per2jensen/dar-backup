@@ -301,13 +301,19 @@ darRestoreTest () {
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
-    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "d[-rw][-rw]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "\] +d[-rwx][-rwx][-rwx]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
     awk '{  if ($1 < 10000000) {
             print $0 
             exit
            }
     }' $FILELIST > "$RESTORE_FILE"
+
+    LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
+    if [[ $LIST_SIZE == "0" ]]; then
+        log "== no files found for restore test in: ${ARCHIVEPATH}"
+        return
+    fi
 
     local TEST_RESTOREFILE=$(cat "$RESTORE_FILE"|cut -f2)
     
