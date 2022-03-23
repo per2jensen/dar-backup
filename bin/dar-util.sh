@@ -115,8 +115,8 @@ listFilesToBackup () {
                 findNewestForType DIFF
                 echo "newest DIFF: ${NEWEST_ARCHIVE}"
                 if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                    echo "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-                    exit 
+                    echo "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
+                    return 
                 fi
                 # dryrun  showing what to backup (-vt)
                 dar -vt -c "${ARCHIVEPATH}" \
@@ -125,8 +125,8 @@ listFilesToBackup () {
                 -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
                 --dry-run >> /tmp/dar-${MODE}-filelist.txt
             else
-                echo "neither FULL, DIFF nor INC specified, exiting"
-                exit
+                echo "neither FULL, DIFF nor INC specified"
+                return
             fi
         fi
     fi
