@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Verify that dar-diff finds the newest FULL backup to diff against
+# Check that script does not try to restore a file, if no files are found in backup
 
 SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
