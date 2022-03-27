@@ -7,6 +7,21 @@
 # Github location
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
+# My use case
+ I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
+ - a non-privileged user (me :-)) can perform a mount
+ - a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
+
+ I needed the following:
+ - Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
+ - Backup primarily photos, video and different types of documents
+ - Archives must be tested and a restore test (however small) to be performed during the backup
+ - Archives stored on a server with a reliable file system (hence the need to mount a directory over sshfs)
+ - Archive test + restore test when I am moving archives around.
+
+ I do not need the encryption features of dar, as all storage is already encrypted.
+ 
+
 # Inspiration
 
   I have used 'dar' before, and is now back. Thank you Denis Corbin for a great
@@ -56,15 +71,15 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after 
   - Tries to find a file < 10MB, and restores it under /tmp
-  - Copies dar_static to server
+  - Copies dar_static to server (handy to have the statically linked binary available in the future)
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
-    an ssh key setup has to be in place for the automatic mount
+    - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
-  - Improved testing: an automatic backup test is now performed on every commit using Githup actions
+  - test cases: an automatic backup test is now performed on every commit using Githup actions
 
 # Invocation
 
@@ -463,7 +478,8 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 
 # TODO
   - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
-  - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken, in order to make them as small as possible. Hmm, need to decide on the best way forward.
+  - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken (whatever type), in order to make them as small as possible. Hmm, need to decide on the best way forward.
+  - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
 # Projects this script benefits from
  1. [The wonderful dar achiver](https://github.com/Edrusb/DAR + https://github.com/Edrusb/DAR)

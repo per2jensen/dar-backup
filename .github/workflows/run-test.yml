@@ -69,7 +69,6 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-find-correct-full.sh
           $GITHUB_WORKSPACE/test/test-find-correct-full.sh
-          
   # No restore test, if no files are found
   discard-restoretest-if-no-files:
     # The type of runner that the job will run on
@@ -88,7 +87,7 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-check-if-no-restorefile.sh
           $GITHUB_WORKSPACE/test/test-check-if-no-restorefile.sh
-          
+
         
 
 
