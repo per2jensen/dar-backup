@@ -11,7 +11,7 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 mountPrereqs
 
 echo Mountpoint: ${MOUNT_POINT}
-for archive in `ls ${MOUNT_POINT}/*.dar|egrep "*_FULL_*|*_DIFF_*"|egrep "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u`; do
+for archive in `ls ${MOUNT_POINT}/*.dar|egrep "*_FULL_*|*_DIFF_*|*_INC_*"|egrep "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u`; do
     BASE=`basename ${archive}`
     NO_SLICES=`find ${MOUNT_POINT} -name "${BASE}*.dar"|wc -l`
     SLICE_SIZE=`ls -l --block-size=G "${MOUNT_POINT}/${BASE}.1.dar"|cut -d" " -f5`
