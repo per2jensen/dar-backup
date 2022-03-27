@@ -217,7 +217,6 @@ _TestRestore () {
 # $1 "${MOUNT_POINT}/$NEWEST_ARCHIVE" - the newest backup 
 diffBackupTestRestore () {
     darDiffBackup "$1"
-    RESULT=$?
     _TestRestore $RESULT
 }
 
@@ -330,7 +329,7 @@ darRestoreTest () {
         EVERYTHING_OK=1
     fi
     sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
-    if [[ -f /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
+    if [[ -e /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
         log "== restored file: \"${DAR_RESTORE_FILE}\" found"
     else
         log "ERROR File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"
