@@ -87,6 +87,23 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-check-if-no-restorefile.sh
           $GITHUB_WORKSPACE/test/test-check-if-no-restorefile.sh
+  check-link-restore-handled-correct:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Run some commands
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2
+      
+      - name: Run the test script
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-restore-link.sh
+          $GITHUB_WORKSPACE/test/test-restore-link.sh
 
         
 

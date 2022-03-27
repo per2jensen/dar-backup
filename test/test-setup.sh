@@ -52,6 +52,19 @@ checkDontFindLog () {
   fi
 }
 
+# check given symbolic link path, verify it exists and is a link
+# $1: link paht
+checkExpectSymbolicLink () {
+  if [[ -L "$1" ]]; then
+    echo ok Symbolic link: \"$1\" found
+  else
+    echo ERROR: symbolic link \"$1\" NOT found
+    TESTRESULT=1
+  fi
+}
+
+
+
 rm -fr $TESTDIR
 mkdir -p $TESTDIR/archives
 
