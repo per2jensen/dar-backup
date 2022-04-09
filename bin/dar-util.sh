@@ -6,14 +6,14 @@
 # mount ${SERVER}:${SERVER_DIR} on ${MOUNT_POINT} at your machine to backup
 # send Discord msg if not possible
 mountDar () {
-    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
+    mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT == "0" ]]; then 
         return
     fi
-    mkdir -p ${MOUNT_POINT} 2>/dev/null
-    sshfs ${SERVER}:${SERVER_DIR} ${MOUNT_POINT}
-    mount |egrep "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
+    mkdir -p "${MOUNT_POINT}" 2>/dev/null
+    sshfs ${SERVER}:${SERVER_DIR} "${MOUNT_POINT}"
+    mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         log "ERROR ${SERVER}:${SERVER_DIR} not mounted, exiting"
@@ -57,7 +57,7 @@ sendDiscordMsg () {
     curl -i -H "Accept: application/json"  \
         -H "Content-Type:application/json"  \
         -X POST --data "{\"content\": \"$1\"}" \
-        https://discord.com/api/webhooks/${DISCORD_WEBHOOK} \
+        https://discord.com/api/webhooks/"${DISCORD_WEBHOOK}" \
         >/dev/null 2>&1
 }
 
@@ -68,7 +68,7 @@ sendDiscordMsg () {
 copyDarStatic () {
     # copy dar_static to server
     DAR_VERSION=$(dar_static --version |grep -oP "dar.*? version [\d.]+"|grep -oP "[\d.]+$")
-    if [[ ! -z $DAR_VERSION ]]; then
+    if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
         if [[ $? == "0" ]]; then
             log "== dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
@@ -195,7 +195,8 @@ _TestRestore () {
     if [[ $1 == "0" ]]; then
         sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
-    else if [[ $1 == "5" ]]; then
+    else 
+        if [[ $1 == "5" ]]; then
             if [[ $DEBUG == "y" ]]; then
                 local NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
                 sendDiscordMsg "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
@@ -300,7 +301,7 @@ darRestoreTest () {
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
-    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|egrep -v "\] +d[-rwx][-rwx][-rwx]"|egrep "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
     awk '{  if ($1 < 10000000) {
             print $0 
@@ -314,13 +315,13 @@ darRestoreTest () {
         return
     fi
 
-    local TEST_RESTOREFILE=$(cat "$RESTORE_FILE"|cut -f2)
+    local TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     
-    local DAR_RESTORE_DIR=`dirname "$TEST_RESTOREFILE"|sed 's/^\t+//'`
-    local DAR_RESTORE_FILE=`basename  "$TEST_RESTOREFILE"`
-    local TOPDIR=`echo ${DAR_RESTORE_DIR} |sed -E -n 's|(^.*?/).*|\1|p'`
+    local DAR_RESTORE_DIR=$(dirname "$TEST_RESTOREFILE"|sed 's/^\t+//')
+    local DAR_RESTORE_FILE=$(basename  "$TEST_RESTOREFILE")
+    local TOPDIR=$(echo ${DAR_RESTORE_DIR} |sed -E -n 's|(^.*?/).*|\1|p')
     if [[ $TOPDIR != "" ]]; then
-        rm -fr /tmp/${TOPDIR}
+        rm -fr "/tmp/${TOPDIR}"
     fi
     log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
     dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
@@ -329,7 +330,7 @@ darRestoreTest () {
         EVERYTHING_OK=1
     fi
     sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
-    if [[ -e /tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE} ]]; then
+    if [[ -e "/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}" ]]; then
         log "== restored file: \"${DAR_RESTORE_FILE}\" found"
     else
         log "ERROR File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"

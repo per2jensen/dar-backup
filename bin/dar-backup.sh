@@ -6,7 +6,7 @@
 # create a link like this:  "ln -s dar-backup.sh  dar-diff-backup.sh"
 
 echo =======================================================
-echo   dar-backup started: $(date -Iseconds)
+echo   $0 started: $(date -Iseconds)
 echo =======================================================
 
 
