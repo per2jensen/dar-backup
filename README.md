@@ -122,10 +122,6 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   The script has a few options to modify it's behavior:
 
-## --dry-run
-
-  Run 'dar' in dry run mode, to see what would have been backed up.
-
 ##  --backupdef definition
 
   Run only a single backup definition, instead of all definitions kept in the backups.d directory
