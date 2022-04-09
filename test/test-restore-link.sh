@@ -3,13 +3,13 @@
 # Verify a symbolic link is restored and handled correctly by script
 # don't follow the link, restore the link itself
 
-SCRIPTPATH=$(realpath $0)
-SCRIPTDIRPATH=$(dirname $SCRIPTPATH)
-echo SCRIPTDIRPATH: $SCRIPTDIRPATH
+SCRIPTPATH=$(realpath "$0")
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
-source $SCRIPTDIRPATH/test-setup.sh
+source "$SCRIPTDIRPATH"/test-setup.sh
 
-$TESTDIR/bin/dar-backup.sh -d TEST $DRY_RUN --local-backup-dir
+"$TESTDIR"/bin/dar-backup.sh -d TEST --local-backup-dir
 if [[ $? != "0" ]]; then
     exit 1
 fi
@@ -20,15 +20,15 @@ rm -fr "$NEWDIR"
 mkdir "$NEWDIR"
 touch "$NEWDIR"/a-file.txt
 
-ln -s "$NEWDIR"/a-file.txt  $TESTDIR/dirs/a-file
+ln -s "$NEWDIR"/a-file.txt  "$TESTDIR"/dirs/a-file
 
 # run DIFF backup
-$TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
+"$TESTDIR"/bin/dar-diff-backup.sh -d TEST --local-backup-dir
 if [[ $? != "0" ]]; then
     exit 1
 fi
 
-dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > $TESTDIR/DIFF-filelist.txt
+dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > "$TESTDIR"/DIFF-filelist.txt
 if [[ $? != "0" ]]; then
     exit 1
 fi
@@ -36,8 +36,8 @@ fi
 checkExpectLog          "\[Saved\].*?dirs/a-file" "$TESTDIR/DIFF-filelist.txt" 
 checkExpectSymbolicLink "$TESTDIR/dirs/a-file"
 
-echo TEST RESULT: $TESTRESULT
+echo TEST RESULT: "$TESTRESULT"
 
 rm -fr "$NEWDIR"
 
-exit $TESTRESULT
+exit "$TESTRESULT"
