@@ -128,9 +128,6 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   'definition' is one of the filenames in backups.d/
 
-  *NOTE:*
-  Do not use spaces in the filenames.
-
 ## --list-files
 
   Use this option to see what will be backed up.
@@ -194,10 +191,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Define backups in the "backups.d" directory, just drop files in the directory
   
     Alter the demo backups.d/dar-backup file to your taste
-
-    *NOTE:*
-    Do not use spaces in the file names
-
+  
     ````
     # Set backup root
     -R /home/pj/tmp
