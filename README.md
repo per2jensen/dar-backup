@@ -478,9 +478,10 @@ I can confirm large file support works. At one point I mistakenly omitted slices
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
 # Projects this script benefits from
- 1. [The wonderful dar achiver](https://github.com/Edrusb/DAR + https://github.com/Edrusb/DAR)
+ 1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
- 3. [Ubuntu of course :-)](https://ubuntu.com/)
+ 3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
+ 4. [Ubuntu of course :-)](https://ubuntu.com/)
 
 # License
 
