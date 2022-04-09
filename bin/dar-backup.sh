@@ -19,7 +19,7 @@ DRY_RUN=""
 LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
 EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
-
+CMD_DEBUG="n"
 
 # which mode: FULL or DIFF
 SCRIPTNAME=`basename $0`
@@ -41,8 +41,12 @@ while [ ! -z "$1" ]; do
       --list-files|-l)
           LIST_FILES=1
           ;;
+      --debug)
+          CMD_DEBUG=y
+          set -x
+          ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  --backupdef|-d <backup definition>  --list-files|-l --local-backup-dir"
+          echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--debug]"
           exit
           ;;
   esac
@@ -55,7 +59,7 @@ export SCRIPTDIRPATH=`dirname "$SCRIPTPATH"`
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 
-if [[ $DEBUG == "y" ]]; then
+if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
   exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
 fi
 
