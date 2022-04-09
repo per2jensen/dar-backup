@@ -15,8 +15,8 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "test"
-  test:
+  # Run a FULL, then a DIFF, then an INC
+  backup-full-diff-inc:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -33,6 +33,24 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/run-test.sh
           $GITHUB_WORKSPACE/test/run-test.sh
+  # test if backup definition with spaces in file name works for FULL, DIFF and INC backup
+  bakcup-def-spaces:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Run some commands
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2
+      
+      - name: Run the test script
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-definitions-with-spaces.sh
+          $GITHUB_WORKSPACE/test/test-definitions-with-spaces.sh
   # Make sure a FULL backup exists, before starting on a DIFF
   diff-check-for-full:
     # The type of runner that the job will run on
