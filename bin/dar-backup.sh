@@ -15,7 +15,6 @@ BACKUPDEF=""
 CURRENT_BACKUPDEF=""
 DAR_ARCHIVE=""
 ARCHIVEPATH=""
-DRY_RUN=""
 LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
 EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
@@ -27,9 +26,6 @@ SCRIPTNAME=`basename $0`
 # Get the options
 while [ ! -z "$1" ]; do
   case "$1" in
-      --dry-run)
-          DRY_RUN=--dry-run
-          ;;
       --backupdef|-d)
           shift
           BACKUPDEF="$1"
