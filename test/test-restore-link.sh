@@ -1,9 +1,10 @@
 #! /bin/bash
 
-# Verify a link is restored and handled correctly by scriot
+# Verify a symbolic link is restored and handled correctly by script
+# don't follow the link, restore the link itself
 
-SCRIPTPATH=`realpath $0`
-SCRIPTDIRPATH=`dirname $SCRIPTPATH`
+SCRIPTPATH=$(realpath $0)
+SCRIPTDIRPATH=$(dirname $SCRIPTPATH)
 echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 
 source $SCRIPTDIRPATH/test-setup.sh
@@ -14,10 +15,12 @@ if [[ $? != "0" ]]; then
 fi
 
 
-mkdir /tmp/dar-308582
-touch /tmp/dar-308582/a-file.txt
+NEWDIR=/tmp/dar-395043
+rm -fr "$NEWDIR"
+mkdir "$NEWDIR"
+touch "$NEWDIR"/a-file.txt
 
-ln -s /tmp/dar-308582/a-file.txt  $TESTDIR/dirs/a-file
+ln -s "$NEWDIR"/a-file.txt  $TESTDIR/dirs/a-file
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
@@ -35,6 +38,6 @@ checkExpectSymbolicLink "$TESTDIR/dirs/a-file"
 
 echo TEST RESULT: $TESTRESULT
 
-rm -fr /tmp/dar-308582
+rm -fr "$NEWDIR"
 
 exit $TESTRESULT
