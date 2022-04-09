@@ -5,8 +5,12 @@
 # Will do differential backups if called as "dar-diff-backup.sh"
 # create a link like this:  "ln -s dar-backup.sh  dar-diff-backup.sh"
 
+
+# which mode: FULL, DIFF or INC
+SCRIPTNAME=$(basename "$0")
+
 echo =======================================================
-echo   $0 started: $(date -Iseconds)
+echo   "$SCRIPTNAME" started: "$(date -Iseconds)"
 echo =======================================================
 
 
@@ -20,18 +24,16 @@ LIST_FILES=""  # boolean: list files to back up
 EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 CMD_DEBUG="n"
 
-# which mode: FULL or DIFF
-SCRIPTNAME=`basename $0`
 
 # Get the options
-while [ ! -z "$1" ]; do
+while [ -n "$1" ]; do
   case "$1" in
       --backupdef|-d)
           shift
           BACKUPDEF="$1"
           ;;
       --local-backup-dir)
-          echo '$MOUNT_POINT' used as local backup directory....
+          echo "$MOUNT_POINT" used as local backup directory....
           LOCAL_BACKUP_DIR=1
           ;;
       --list-files|-l)
@@ -48,9 +50,14 @@ while [ ! -z "$1" ]; do
   shift
 done
 
-export DATE=`date -I`
-export SCRIPTPATH=`realpath "$0"`
-export SCRIPTDIRPATH=`dirname "$SCRIPTPATH"`
+export DATE=""
+DATE=$(date -I)
+
+export SCRIPTPATH=""
+SCRIPTPATH=$(realpath "$0")
+
+export SCRIPTDIRPATH=""
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 
@@ -87,8 +94,8 @@ copyDarStatic
 # check if a single backup definition is to be run
 if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
-  for CURRENT_BACKUPDEF in $(ls "${SCRIPTDIRPATH}/../backups.d/"); do
-      if [[ $LIST_FILES  ==  "1" ]]; then
+  for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
+       if [[ $LIST_FILES  ==  "1" ]]; then
         log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
@@ -111,4 +118,4 @@ else
   fi
 fi
 
-exit $EVERYTHING_OK
+exit "$EVERYTHING_OK"

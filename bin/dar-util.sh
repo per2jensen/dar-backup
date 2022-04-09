@@ -1,4 +1,4 @@
-
+#! /bin/bash
 export EVERYTHING_OK
 
 
@@ -137,16 +137,17 @@ listFilesToBackup () {
 
 # find newest archive for type
 # $1: type is FULL|DIFF|INC
+# NEWEST_ARCHIVE is set to the archive name only, not including path
 findNewestForType () {
     NEWEST_ARCHIVE=""
     local PREV=""
-    PREV=$(ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_$1"|grep dar$|tail -n 1)
+    PREV=$(ls "${MOUNT_POINT}"/"${CURRENT_BACKUPDEF}"_"${1}"*.dar|tail -n 1)
     # {#} is the length of an env var
     if [[ ${#PREV} -lt 4 ]]; then
         log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
         return
     fi
-    NEWEST_ARCHIVE=${PREV%%.*}
+    NEWEST_ARCHIVE=$(grep -E  "${CURRENT_BACKUPDEF}_${1}_[0-9]{4}-[0-9]{2}-[0-9]{2}" -o  <<< "$PREV" )
 }
 
 
