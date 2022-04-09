@@ -260,11 +260,13 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   where "the definition" is the filename in backups.d/
   
 ## how to test that the archive is healthy
-If you have copied the archive somewhere, it gives peace of mind to know the archive is still healthy.
+  If you have copied the archive somewhere, it gives peace of mind to know the archive is still healthy.
   ````
   dar -vd -t <the archive>
   ````
   Remember that the archive name is without "slice_number.dar"
+
+  Another way to verify the archives is to use [par2 verification](#par2-verification)
 
 ## how to restore a directory
   I do a "list" and "grep" like this
@@ -319,7 +321,7 @@ If you have copied the archive somewhere, it gives peace of mind to know the arc
   dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
   ````
 
-## par2 verification/repair
+## <a id="par2-verification"></a>  par2 verification/repair
 You can run a par2 verification on an archive like this:
 ````
 for file in <archive>*.dar.par2; do
