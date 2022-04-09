@@ -17,6 +17,9 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
+      - name: Install required packages
+        run:  sudo apt install -y shellcheck
+
       - name: Run linter
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-shellcheck.sh

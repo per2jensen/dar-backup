@@ -5,6 +5,14 @@
 #
 # Fail if shellchekc detects errors
 #
+
+
+which shellcheck
+if [[ $? != "0" ]]; then
+    echo "shellcheck not installed, exiting"
+    exit 1
+fi
+
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
@@ -13,6 +21,7 @@ export SHELLCHECK_OPTS="-e SC2181 -e SC1090"
 
 # $1: shell script to check
 run_shellcheck () {
+    echo "linting \"$1\""
     shellcheck -s bash -S error "$1"
     if [[ $? != "0" ]]; then
         RESULT=1
@@ -22,7 +31,6 @@ run_shellcheck () {
 
 for file in "$SCRIPTDIRPATH"/../{bin,test}/*.sh
 do
-    echo "linting \"$file\""
     run_shellcheck "$file"
 done
 
