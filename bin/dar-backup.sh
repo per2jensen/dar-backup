@@ -95,7 +95,8 @@ copyDarStatic
 if [[ "$BACKUPDEF" == "" ]]; then
   # loop over backup definition in backups.d/
   for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
-       if [[ $LIST_FILES  ==  "1" ]]; then
+      CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
+      if [[ $LIST_FILES  ==  "1" ]]; then
         log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
