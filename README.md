@@ -144,6 +144,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
 
+## --debug
+  Make bash print all statements via the "set -x" option. Save output to debug log file.
+
+
 ## --help
 
   Terse usage information

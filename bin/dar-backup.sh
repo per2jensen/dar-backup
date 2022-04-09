@@ -43,7 +43,6 @@ while [ ! -z "$1" ]; do
           ;;
       --debug)
           CMD_DEBUG=y
-          set -x
           ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--debug]"
@@ -60,6 +59,7 @@ export SCRIPTDIRPATH=`dirname "$SCRIPTPATH"`
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 
 if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
+  set -x
   exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
 fi
 
