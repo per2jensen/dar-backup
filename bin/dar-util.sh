@@ -1,4 +1,6 @@
 
+export EVERYTHING_OK
+
 
 # mount a server dir using sshfs, as sshfs is a FUSE solution, root or
 # programs running in the root context cannot access the server
@@ -12,7 +14,7 @@ mountDar () {
         return
     fi
     mkdir -p "${MOUNT_POINT}" 2>/dev/null
-    sshfs ${SERVER}:${SERVER_DIR} "${MOUNT_POINT}"
+    sshfs "${SERVER}:${SERVER_DIR}" "${MOUNT_POINT}"
     mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
@@ -81,13 +83,12 @@ copyDarStatic () {
 }
 
 # Generate list of files that would have been backed up in a DIFF or INC
-# dar -vt -c /tmp/pCloud-dd  -A ./pCloudDrive_DIFF_2022-03-05 --dry-run -R /home/pj/pCloudDrive
 #
 listFilesToBackup () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
         
-    echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-${MODE}-filelist.txt
+    echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-"${MODE}"-filelist.txt
     if [[ $MODE == "FULL"  ]]; then 
       # dryrun  showing what to backup (-vt)
       # use TEMPDARARCHIVE in tmp, or an "overwriting slice" error occurs
@@ -95,7 +96,7 @@ listFilesToBackup () {
       dar -vt -c "${TEMPDARARCHIVE}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-        --dry-run >> /tmp/dar-${MODE}-filelist.txt
+        --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
     else
         if [[ $MODE == "DIFF" ]]; then
             findNewestForType FULL
@@ -109,7 +110,7 @@ listFilesToBackup () {
             -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
             -N \
             -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-            --dry-run >> /tmp/dar-${MODE}-filelist.txt
+            --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
         else 
             if [[ $MODE == "INC" ]]; then
                 findNewestForType DIFF
@@ -123,7 +124,7 @@ listFilesToBackup () {
                 -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
                 -N \
                 -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-                --dry-run >> /tmp/dar-${MODE}-filelist.txt
+                --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
             else
                 echo "neither FULL, DIFF nor INC specified"
                 return
@@ -138,7 +139,8 @@ listFilesToBackup () {
 # $1: type is FULL|DIFF|INC
 findNewestForType () {
     NEWEST_ARCHIVE=""
-    local PREV=`ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_$1"|grep dar$|tail -n 1`
+    local PREV=""
+    PREV=$(ls "${MOUNT_POINT}"|grep -P "${CURRENT_BACKUPDEF}_$1"|grep dar$|tail -n 1)
     # {#} is the length of an env var
     if [[ ${#PREV} -lt 4 ]]; then
         log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
@@ -198,7 +200,8 @@ _TestRestore () {
     else 
         if [[ $1 == "5" ]]; then
             if [[ $DEBUG == "y" ]]; then
-                local NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
+                local NO_ERRORS=""
+                NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
                 sendDiscordMsg "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             else
                 sendDiscordMsg "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
@@ -241,7 +244,7 @@ darBackup () {
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         par2 \
-        compress-exclusion verbose $DRY_RUN
+        compress-exclusion verbose
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
@@ -271,7 +274,7 @@ darDiffBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         par2 \
-        compress-exclusion verbose $DRY_RUN
+        compress-exclusion verbose
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
@@ -284,7 +287,7 @@ darDiffBackup () {
 darTestBackup () {
     # test the backup
     log  "== Test dar archive: ${ARCHIVEPATH}"
-    dar -Q -t "${ARCHIVEPATH}" $DRY_RUN
+    dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
@@ -301,7 +304,7 @@ darRestoreTest () {
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
-    dar -Q -l "${ARCHIVEPATH}" -ay $DRY_RUN|grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
     awk '{  if ($1 < 10000000) {
             print $0 
@@ -315,16 +318,22 @@ darRestoreTest () {
         return
     fi
 
-    local TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
+    local TEST_RESTOREFILE=""
+    TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     
-    local DAR_RESTORE_DIR=$(dirname "$TEST_RESTOREFILE"|sed 's/^\t+//')
-    local DAR_RESTORE_FILE=$(basename  "$TEST_RESTOREFILE")
-    local TOPDIR=$(echo ${DAR_RESTORE_DIR} |sed -E -n 's|(^.*?/).*|\1|p')
+    local DAR_RESTORE_DIR=""
+    DAR_RESTORE_DIR=$(dirname "$TEST_RESTOREFILE"|sed 's/^\t+//')
+    
+    local DAR_RESTORE_FILE=""
+    DAR_RESTORE_FILE=$(basename  "$TEST_RESTOREFILE")
+
+    local TOPDIR=""
+    TOPDIR=$(echo "${DAR_RESTORE_DIR}" |sed -E -n 's|(^.*?/).*|\1|p')
     if [[ $TOPDIR != "" ]]; then
         rm -fr "/tmp/${TOPDIR}"
     fi
     log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
-    dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE" $DRY_RUN
+    dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
