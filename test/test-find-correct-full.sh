@@ -2,25 +2,25 @@
 
 # Verify that dar-diff finds the newest FULL backup to diff against
 
-SCRIPTPATH=`realpath $0`
-SCRIPTDIRPATH=`dirname $SCRIPTPATH`
-echo SCRIPTDIRPATH: $SCRIPTDIRPATH
+SCRIPTPATH=$(realpath "$0")
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
-source $SCRIPTDIRPATH/test-setup.sh
+source "$SCRIPTDIRPATH"/test-setup.sh
 
 TEST_ARCHIVE_DIR="$TESTDIR/archives"
 
-touch $TEST_ARCHIVE_DIR/TEST_FULL_2019-01-01.1.dar
-touch $TEST_ARCHIVE_DIR/TEST_FULL_2021-12-31.1.dar
-touch $TEST_ARCHIVE_DIR/TEST_FULL_2021-22-33.1.dar  #not a valid date
-touch $TEST_ARCHIVE_DIR/TEST_FULL_2099-12-31.1.dar  # future date
+touch "$TEST_ARCHIVE_DIR"/TEST_FULL_2019-01-01.1.dar
+touch "$TEST_ARCHIVE_DIR"/TEST_FULL_2021-12-31.1.dar
+touch "$TEST_ARCHIVE_DIR"/TEST_FULL_2021-22-33.1.dar  #not a valid date
+touch "$TEST_ARCHIVE_DIR"/TEST_FULL_2099-12-31.1.dar  # future date
 echo files in archive directory:
-ls -lh $MOUNT_POINT
+ls -lh "$MOUNT_POINT"
 
 # run DIFF backup
-$TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir > $TESTDIR/dar-output.txt
+"$TESTDIR"/bin/dar-diff-backup.sh -d TEST --local-backup-dir > "$TESTDIR"/dar-output.txt
 
-egrep "NEWEST archive: +TEST_FULL_2099-12-31" $TESTDIR/dar-output.txt
+grep  -E "NEWEST archive: +TEST_FULL_2099-12-31" "$TESTDIR"/dar-output.txt
 if [[ $? == "0" ]]; then
     echo "script DID use the correct (fake) archive to diff against"
 else
@@ -30,5 +30,3 @@ fi
 
 echo TEST RESULT: $TESTRESULT
 exit $TESTRESULT
-
-
