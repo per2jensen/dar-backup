@@ -19,6 +19,8 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+echo "non directories restored:"
+find /tmp/dar-restore/ ! -type d
  
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
 echo dar exit code: $?
@@ -33,6 +35,8 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+echo "non directories restored:"
+find /tmp/dar-restore/ ! -type d
 
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > "$TESTDIR/DIFF-filelist.txt"
 RESULT=$?
@@ -49,6 +53,8 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+echo "non directories restored:"
+find /tmp/dar-restore/ ! -type d
 
 dar -l  "$MOUNT_POINT/TEST_INC_$DATE" > "$TESTDIR/INC-filelist.txt"
 RESULT=$?

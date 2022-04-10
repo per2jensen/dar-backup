@@ -10,7 +10,6 @@ export RESULT=0
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
-
 git push origin --delete "$TAG" > /dev/null 2>&1
 # add tag
 git tag -a -f  -m "unit test of installer" "$TAG"
@@ -22,6 +21,7 @@ find /tmp -name "dar-backup-linux*.gz" -ls 2> /dev/null
 # remove tag
 git push origin --delete "$TAG" > /dev/null 2>&1
 
+# cleanup before unpacking tar file
 rm -fr /tmp/dar-backup
 
 # Follow install steps given in README.md
@@ -37,8 +37,8 @@ fi
 find /tmp/dar-backup -ls
 cat /tmp/dar-backup/archives/dar-backup.log
 
-echo "The restored file should be here somewhere....."
-find /tmp/dar-restore/ -ls
+echo "non directories restored:"
+find /tmp/dar-restore/ ! -type d
 
 echo "RESULT: $RESULT"
 exit "$RESULT"
