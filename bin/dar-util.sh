@@ -328,13 +328,8 @@ darRestoreTest () {
     local DAR_RESTORE_FILE=""
     DAR_RESTORE_FILE=$(basename  "$TEST_RESTOREFILE")
 
-#    local TOPDIR=""
-#    TOPDIR=$(echo "${DAR_RESTORE_DIR}" |sed -E -n 's|(^.*?/).*|\1|p')
-#    if [[ $TOPDIR != "" ]]; then
-#        rm -fr "/tmp/${TOPDIR}"
-#    fi
     # remove the test restore top dir, before restoring
-    rm fr "$RESTORE_DIR" > /dev/null  2>&1
+    rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
     log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \""$RESTORE_DIR"/${DAR_RESTORE_DIR}/\""
