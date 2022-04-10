@@ -1,5 +1,4 @@
 #! /bin/bash
-export EVERYTHING_OK
 
 
 # mount a server dir using sshfs, as sshfs is a FUSE solution, root or

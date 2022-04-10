@@ -21,7 +21,7 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
-EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
+export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 CMD_DEBUG="n"
 
 
