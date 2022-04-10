@@ -332,16 +332,11 @@ darRestoreTest () {
     if [[ $TOPDIR != "" ]]; then
         rm -fr "/tmp/${TOPDIR}"
     fi
-    log "== Restore test of file: \"/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}\""
+    log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \"/tmp/${DAR_RESTORE_DIR}/\""
     dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
     sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
-    if [[ -e "/tmp/${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}" ]]; then
-        log "== restored file: \"${DAR_RESTORE_FILE}\" found"
-    else
-        log "ERROR File: \"${DAR_RESTORE_FILE}\" not restored to: ${DAR_RESTORE_DIR}"
-    fi
 }
