@@ -1,8 +1,8 @@
+#! /bin/bash
 # test setup for every test script
 # this is sourced in the actual test scripts
 
 DATE=$(date +"%Y-%m-%d")
-DRY_RUN=""
 TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
@@ -21,9 +21,9 @@ failOnError () {
 checkExpectLog () {
   grep -P "$1" "$2" > /dev/null
   if [[ $? == "0" ]]; then
-    echo ok \"$1\" found
+    echo "ok \"$1\" found"
   else
-    echo ERROR: \"$1\" NOT found
+    echo "ERROR: \"$1\" NOT found"
     TESTRESULT=1
   fi
 }
@@ -36,10 +36,10 @@ checkExpectLog () {
 checkDontFindLog () {
   grep -P "$1" "$2" > /dev/null
   if [[ $? == "0" ]]; then
-    echo ERROR \"$1\" was found
+    echo "ERROR \"$1\" was found"
     TESTRESULT=1
   else
-    echo ok \"$1\" not found as expected 
+    echo "ok \"$1\" not found as expected"
   fi
 }
 
@@ -47,32 +47,32 @@ checkDontFindLog () {
 # $1: link paht
 checkExpectSymbolicLink () {
   if [[ -L "$1" ]]; then
-    echo ok Symbolic link: \"$1\" found
+    echo "ok Symbolic link: \"$1\" found"
   else
-    echo ERROR: symbolic link \"$1\" NOT found
+    echo "ERROR: symbolic link \"$1\" NOT found"
     TESTRESULT=1
   fi
 }
 
 
 
-rm -fr $TESTDIR
-mkdir -p $TESTDIR/archives
+rm -fr "$TESTDIR"
+mkdir -p "$TESTDIR/archives"
 
-cp -R $SCRIPTDIRPATH/dirs         $TESTDIR/
-cp -R $SCRIPTDIRPATH/../bin       $TESTDIR/
-cp -R $SCRIPTDIRPATH/../conf      $TESTDIR/
+cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
 # override some conf files with test versions
-cp -R $SCRIPTDIRPATH/conf         $TESTDIR/
+cp -R "$SCRIPTDIRPATH/conf"         "$TESTDIR/"
 
 
 # create templates dir and copy it
-cp -R $SCRIPTDIRPATH/templates    $TESTDIR/
-cp $SCRIPTDIRPATH/../templates/dar_par.dcf.template $TESTDIR/templates/
-cp $SCRIPTDIRPATH/../templates/darrc.template       $TESTDIR/templates/
+cp -R "$SCRIPTDIRPATH/templates"                      "$TESTDIR/"
+cp "$SCRIPTDIRPATH/../templates/dar_par.dcf.template" "$TESTDIR/templates/"
+cp "$SCRIPTDIRPATH/../templates/darrc.template"       "$TESTDIR/templates/"
 
 # install and run FULL backup
-chmod +x $TESTDIR/bin/install.sh
-$TESTDIR/bin/install.sh
+chmod +x "$TESTDIR/bin/install.sh"
+"$TESTDIR/bin/install.sh"
 
-source $TESTDIR/conf/dar-backup.conf
+source "$TESTDIR/conf/dar-backup.conf"
