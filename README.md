@@ -59,10 +59,15 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
     ````
     <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/dar-backup.sh --local-backup-dir
     ````
-    
+
+  - View the log file
+    ````
+    cat <a-directory-under-which-darbackup-is-untarred>/dar-backup/archives/dar-backup.log
+    ````
     During installation, a directory has been created "<a-directory-under-which-darbackup-is-untarred>/dar-backup/archives", where the backups have been stored.
 
-  The programs stay where untarred when running the installer, it makes the scripts executable, creates a soft link and sets up references to the various config files used.  
+
+  The programs stay where untarred when running the installer, it makes the scripts executable, creates some soft links and sets up references to the various config files used.  
 
 # Script features
 
