@@ -301,6 +301,7 @@ darTestBackup () {
 #
 darRestoreTest () {
     log  "== Test restore 1 file from archive: ${ARCHIVEPATH}"
+    local RESTORE_DIR="/tmp/dar-restore"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
     
@@ -332,8 +333,12 @@ darRestoreTest () {
     if [[ $TOPDIR != "" ]]; then
         rm -fr "/tmp/${TOPDIR}"
     fi
-    log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \"/tmp/${DAR_RESTORE_DIR}/\""
-    dar -Q -x "${ARCHIVEPATH}" -R /tmp -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
+    # remove the test restore top dir, before restoring
+    rm fr "$RESTORE_DIR" > /dev/null  2>&1
+    mkdir -p "$RESTORE_DIR"
+
+    log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \""$RESTORE_DIR"/${DAR_RESTORE_DIR}/\""
+    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
