@@ -15,7 +15,7 @@
 -g dar-backup
 
  # Directories to exclude below the Root dir
--P "exclude this one"
+-P dar-backup/archives
  
 # compression level
 -z5
