@@ -26,21 +26,15 @@ rm -fr /tmp/dar-backup
 
 # Follow install steps given in README.md
 tar zxf /tmp/dar-backup-linux-"${TAG}".tar.gz --directory /tmp
-
-# debug
-find /tmp/dar-backup -ls
-
 chmod +x /tmp/dar-backup/bin/install.sh
 /tmp/dar-backup/bin/install.sh
-
-/tmp/dar-backup/bin/dar-backup.sh --local-backup-dir
+find /tmp/dar-backup -ls
+/tmp/dar-backup/bin/dar-backup.sh --local-backup-dir --debug
 if [[ $? != "0" ]]; then
     echo "ERROR delivered backup definition failed"
     RESULT=1
 fi
-echo "The archive and log file should be here somewhere....."
 find /tmp/dar-backup -ls
-
 cat /tmp/dar-backup/archives/dar-backup.log
 
 echo "The restored file should be here somewhere....."
