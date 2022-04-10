@@ -2,29 +2,29 @@
 #
 
 # Include defaults
--B @@CONFDIR@@/defaults-rc
+-B "@@CONFDIR@@/defaults-rc"
 
  # Switch to ordered selection mode, which means that the following
  # options will be considered top to bottom
- -am
+-am
 
 # Backup Root dir
- -R @@CONFDIR@@/../..
+-R "@@CONFDIR@@/../.."
 
 # Directories to backup below the Root dir
 -g dar-backup
 
  # Directories to exclude below the Root dir
- -P "exclude this one"
+-P "exclude this one"
  
 # compression level
- -z5
+-z5
 
 # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
- -n
+-n
  
 # size of each slice in the archive
- --slice 4G
+--slice 4G
 
 # bypass directores marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
