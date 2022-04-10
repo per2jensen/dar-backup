@@ -338,7 +338,7 @@ darRestoreTest () {
     mkdir -p "$RESTORE_DIR"
 
     log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \""$RESTORE_DIR"/${DAR_RESTORE_DIR}/\""
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "$DAR_RESTORE_DIR" -I "$DAR_RESTORE_FILE"
+    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
