@@ -1,20 +1,11 @@
 # test setup for every test script
 # this is sourced in the actual test scripts
 
-DATE=`date +"%Y-%m-%d"`
+DATE=$(date +"%Y-%m-%d")
 DRY_RUN=""
 TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
-
-# Get the options
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-      --dry-run) DRY_RUN="--dry-run"; echo DRY_RUN enabled ;;
-  esac
-  shift
-done
-
 
 failOnError () {
   if [[ $1 != "0"  ]]; then
