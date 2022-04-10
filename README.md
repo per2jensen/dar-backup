@@ -311,10 +311,13 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   ````
   dar -l /path/to/archive |grep "your search string"
   ````
-  and the tell dar to go into (-g) a specific directory and restore the specific file (-I) (to /tmp in this example)
+  and the tell dar to go into (-g) a specific directory and restore the specific file
   ````
-  dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/  -I file_to_restore
+  dar -x /path/to/archive -R /tmp -g path/to/directory/in/archive/file_to_restore
   ````
+  
+  The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
+  
 
 ## <a id="par2-verification"></a>  par2 verification/repair
 You can run a par2 verification on an archive like this:
