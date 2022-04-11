@@ -1,26 +1,21 @@
-
 # Include defaults
--B @@CONFDIR@@/defaults-rc
+-B "@@CONFDIR@@/defaults-rc"
 
 # Switch to ordered selection mode, which means that the following
 # options will be considered top to bottom
 -am
 
-
-
 # Backup Root dir
--R /tmp/dar-backup-test
+-R "@@CONFDIR@@/.."
 
 # Directories to backup below the Root dir
--g dirs
+-g "dirs"
 
 # Directories to exclude below the Root dir
 -P "dirs/exclude this one"
  
-
 # compression level
 -z5
-
 
 # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
 -n
