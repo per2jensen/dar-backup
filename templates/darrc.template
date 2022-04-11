@@ -1,8 +1,4 @@
 
-##############################################################
-# target: par2
-# creates error correction data (to a certain extent....)
-
 par2:
   -B "@@CONFDIR@@/dar_par.dcf"
 
@@ -145,5 +141,5 @@ verbose:
 #  -vf
 
 # -va equivalent to "-vm -vs -vt"
-# -va
+#  -va
 
