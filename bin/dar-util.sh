@@ -242,7 +242,7 @@ darBackup () {
 
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
-        -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
+        -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
         par2 \
         compress-exclusion verbose
     RESULT=$?
