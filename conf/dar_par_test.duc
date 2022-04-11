@@ -1,4 +1,6 @@
-#!/bin/sh
+#! /bin/bash
+
+echo "PAR2 started: \"$0\""
 
 ###
 #
@@ -38,12 +40,12 @@ if [ ! -r $SLICE ]; then
 fi
 
 echo "$PAR verification slice $SLICE..."
-if ! $PAR v "$SLICE" ; then
+if ! "$PAR" v "$SLICE" ; then
   echo "trying to repair the slice..."
-  if ! $PAR r "$SLICE" ; then
+  if ! "$PAR" r "$SLICE" ; then
      echo "PAR repairation failed. (read-only filesystem ?)"
      exit 1
   fi
   echo "verifying after reparation..."
-  exec $PAR v "$SLICE"
+  exec "$PAR" v "$SLICE"
 fi
