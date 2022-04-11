@@ -9,18 +9,18 @@ SERVER=some-server
 
 # the directory on the server used to store backups
 # not relevant if --local-backup-dir is used
-SERVER_DIR=/some/dir
+SERVER_DIR="/some/dir"
 
 # dar archives are written here, change to a more suitable location
 # use --local-backup-dir for not trying to do an sshfs mount
 # TODO rename to something like ARCHIVE_DIR
-MOUNT_POINT=@@ARCHIVE_DIR@@/archives
+MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
 # path to log file
-LOG_LOCATION=@@ARCHIVE_DIR@@/archives
+LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
 
 # should all output be captured in a file
 DEBUG=n
 
 # path to debug log file
-DEBUG_LOCATION=/tmp/dar-debug.log
+DEBUG_LOCATION="/tmp/dar-debug.log"
