@@ -55,7 +55,6 @@ checkExpectSymbolicLink () {
 }
 
 
-
 rm -fr "$TESTDIR"
 mkdir -p "$TESTDIR/archives"
 
@@ -63,15 +62,16 @@ cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
 # override some conf files with test versions
-cp -R "$SCRIPTDIRPATH/conf"         "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/test/conf"    "$TESTDIR/"
 
 
-# create templates dir and copy it
-cp -R "$SCRIPTDIRPATH/templates"                      "$TESTDIR/"
-cp "$SCRIPTDIRPATH/../templates/dar_par.dcf.template" "$TESTDIR/templates/"
-cp "$SCRIPTDIRPATH/../templates/darrc.template"       "$TESTDIR/templates/"
+# test templates dir and copy it
+cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
+# non-test templates
+cp "$SCRIPTDIRPATH/../templates/dar_par.dcf.template"     "$TESTDIR/templates/"
+cp "$SCRIPTDIRPATH/../templates/darrc.template"           "$TESTDIR/templates/"
 
-# install and run FULL backup
+
 chmod +x "$TESTDIR/bin/install.sh"
 "$TESTDIR/bin/install.sh"
 
