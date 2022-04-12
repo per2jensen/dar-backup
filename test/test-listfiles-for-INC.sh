@@ -6,7 +6,7 @@ SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 
-source $SCRIPTDIRPATH/test-setup.sh
+source $SCRIPTDIRPATH/setup.sh
 
 # run FULL backup
 $TESTDIR/bin/dar-backup.sh -d TEST --local-backup-dir

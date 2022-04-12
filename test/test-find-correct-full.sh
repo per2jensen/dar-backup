@@ -6,7 +6,7 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
-source "$SCRIPTDIRPATH"/test-setup.sh
+source "$SCRIPTDIRPATH"/setup.sh
 
 TEST_ARCHIVE_DIR="$TESTDIR/archives"
 

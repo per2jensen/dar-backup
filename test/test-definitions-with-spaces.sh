@@ -14,9 +14,8 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
-source "$SCRIPTDIRPATH"/test-setup.sh
+source "$SCRIPTDIRPATH"/setup.sh
 
-source "$SCRIPTDIRPATH"/test-setup.sh
 source "$TESTDIR"/conf/dar-backup.conf
 
 mv "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITON"

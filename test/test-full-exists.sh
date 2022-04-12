@@ -6,7 +6,7 @@ SCRIPTPATH=`realpath $0`
 SCRIPTDIRPATH=`dirname $SCRIPTPATH`
 echo SCRIPTDIRPATH: $SCRIPTDIRPATH
 
-source $SCRIPTDIRPATH/test-setup.sh
+source $SCRIPTDIRPATH/setup.sh
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST $DRY_RUN --local-backup-dir
