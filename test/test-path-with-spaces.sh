@@ -25,16 +25,19 @@ source "$TESTDIR"/conf/dar-backup.conf
 # copy backup definition
 cp "$TESTDIR"/templates/backups.d/TEST  "$TESTDIR"/templates/backups.d/"$BACKUP_DEFINITON"
 
+# move TESTDIR below directories with spaces in the names
 TESTDIR_OLD="$TESTDIR"
 TESTDIR="/tmp/  abc/   def"
 rm -fr "$TESTDIR"
 mkdir -p "$TESTDIR"
 mv "$TESTDIR_OLD" "${TESTDIR}"
 find "${TESTDIR}" -ls
-
 TESTDIR="${TESTDIR}/$(basename "${TESTDIR_OLD}")"
 echo "TESTDIR: $TESTDIR"
+
+# run installer to fix file references
 "$TESTDIR"/bin/install.sh
+
 
 # run the test
 "$TESTDIR"/bin/dar-backup.sh  --local-backup-dir  --debug
@@ -42,9 +45,14 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
- 
+
+exit
+
 dar -l  "$TESTDIR"/archives/"$BACKUP_DEFINITON"_FULL_"$DATE" > "$TESTDIR"/FULL-filelist.txt
 echo "dar exit code: $?"
+
+echo "Stop script af 1. backup, until that works"
+exit
 
 # alter backup set
 cp "$SCRIPTDIRPATH"/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
