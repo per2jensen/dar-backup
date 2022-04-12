@@ -1,9 +1,9 @@
-#! /bin/bash -x
+#! /bin/bash
 
 # use the standard setup
 # run install.sh
 # rename the backup definition from TEST --> "A backup definition"
-# move the installation to a path containger spaces in the directory names
+# move the installation to a path containing spaces in the directory names
 # run install.sh again (now 2 backup definitions)
 # run dar-backup.sh
 # add file GREENLAND.JPEG to include dir and to the exclude dir
@@ -40,19 +40,15 @@ echo "TESTDIR: $TESTDIR"
 
 
 # run the test
-"$TESTDIR"/bin/dar-backup.sh  --local-backup-dir  --debug
+"$TESTDIR"/bin/dar-backup.sh  --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
 
-exit
-
 dar -l  "$TESTDIR"/archives/"$BACKUP_DEFINITON"_FULL_"$DATE" > "$TESTDIR"/FULL-filelist.txt
 echo "dar exit code: $?"
 
-echo "Stop script af 1. backup, until that works"
-exit
 
 # alter backup set
 cp "$SCRIPTDIRPATH"/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
@@ -98,8 +94,10 @@ echo "FULL dar archive:"
 cat "$TESTDIR"/FULL-filelist.txt 
 echo "DIFF dar archive:"
 cat "$TESTDIR"/DIFF-filelist.txt
+echo "DIFF dar archive:"
+cat "$TESTDIR"/INC-filelist.txt
 echo "Logfile:"
-cat "$TESTDIR"/dar-backup.log
+cat "$LOG_LOCATION"/dar-backup.log
 echo RESULTS for FULL backup:
 # FULL backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
