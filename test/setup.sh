@@ -62,7 +62,7 @@ cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
 # override some conf files with test versions
-cp -R "$SCRIPTDIRPATH/test/conf"    "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/conf"    "$TESTDIR/"
 
 
 # test templates dir and copy it
