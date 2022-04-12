@@ -64,9 +64,6 @@ mkdir -p "$TESTDIR/archives"
 cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
-# override some conf files with test versions
-cp -R "$SCRIPTDIRPATH/conf"    "$TESTDIR/"
-
 
 # test templates dir and copy it
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
@@ -74,8 +71,8 @@ cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
 cp "$SCRIPTDIRPATH/../templates/dar_par.dcf.template"     "$TESTDIR/templates/"
 cp "$SCRIPTDIRPATH/../templates/darrc.template"           "$TESTDIR/templates/"
 
-
 chmod +x "$TESTDIR/bin/install.sh"
 "$TESTDIR/bin/install.sh"
 
+# dar-backup.conf has been generated from the template, now use it
 source "$TESTDIR/conf/dar-backup.conf"
