@@ -54,6 +54,8 @@ checkExpectSymbolicLink () {
   fi
 }
 
+echo "setup.sh:  TESTDIR:       $TESTDIR"
+echo "setup.sh:  SCRIPTDIRPATH: $SCRIPTDIRPATH"
 
 rm -fr "$TESTDIR"
 mkdir -p "$TESTDIR/archives"
