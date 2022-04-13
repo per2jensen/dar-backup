@@ -2,7 +2,6 @@
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
-echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"

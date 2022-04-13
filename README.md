@@ -355,17 +355,21 @@ One way to get an overview is to use the script 'ls-archives.sh'
 
 Here is a (fictive files) example:
 ````
- ~ programmer/dar-backup/bin/ls-archives.sh 
+ ~ programmer/dar-backup/bin/ls-archives.sh
 Mountpoint: /home/pj/mnt/dar
-dar-backup_FULL_2022-02-13     slices: 1   (1G)   total: 1,6M        
-some-files_DIFF_2022-01-23     slices: 1   (1G)   total: 8,5M        
-some-files_DIFF_2022-02-13     slices: 1   (1G)   total: 6,9M        
-some-files_FULL_2022-01-08     slices: 100 (7G)   total: 729G        
-TEST_FULL_2022-02-13           slices: 1   (1G)   total: 12K         
-Total disk usage in /home/pj/mnt/dar: 730G 
+pj_homedir_DIFF_2022-03-27     slices: 1   (4G) total: 3,7G   Saved: 1216    Removed: 227     
+pj_homedir_FULL_2022-01-08     slices: 5   (7G) total: 36G    Saved: 82301   Removed: 0       
+pj_homedir_INC_2022-04-03      slices: 1   (1G) total: 654M   Saved: 130     Removed: 6       
+pj_homedir_INC_2022-04-09      slices: 1   (1G) total: 714M   Saved: 474     Removed: 11      
+pj_homedir_INC_2022-04-12      slices: 1   (4G) total: 3,3G   Saved: 858     Removed: 19
+Total disk usage in /home/pj/mnt/dar: 47G 
 
 ````
-If you see an archive that is significantly smaller than a previous one (for example fewer slices), you should probably find out why that is. There may be good reasons like:
+"Saved" is the number of files saved in the archive.
+
+"Removed" is the number of files (and directories I think), that was not found during the backupm but is present in the archive file list.
+
+If you see an archive that is significantly smaller than a previous one (for example fewer slices), or a ton of files have been removed, you should probably find out why that is. There may be good reasons like:
  
   - You have cleaned up
   - The backup definition has more excludes
