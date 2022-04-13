@@ -10,7 +10,7 @@
 
     - FULL backup on December 30 10:03:00
     - DIFF backups on the first day of a month (including Jan) 19:03:00
-    - INC backups starting on the fouth day of a month 19:03:00, repeating every 3 days
+    - INC backups starting on the fourth day of a month 19:03:00, repeating every 3 days
   
 ### Installation
 

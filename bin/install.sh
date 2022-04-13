@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 
 # set correct dir paths in config files
 # make the backup executable
