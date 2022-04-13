@@ -100,7 +100,7 @@ if [[ "$BACKUPDEF" == "" ]]; then
         log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
-        log "== start processing backup: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
+        log "== start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
         runBackupDef
       fi
   done
@@ -111,7 +111,7 @@ else
         log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
         listFilesToBackup
       else
-        log "== start processing a single backup: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+        log "== start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
         runBackupDef
       fi
   else 
