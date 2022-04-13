@@ -1,0 +1,8 @@
+[Unit]
+Description=dar-backup DIFF
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart="@@DAR_BACKUP_DIR@@/bin/dar-diff-backup.sh"

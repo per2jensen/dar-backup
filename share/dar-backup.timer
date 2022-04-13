@@ -1,9 +1,9 @@
 [Unit]
-Description=dar backup timer
+Description=dar-backup FULL timer
 
 [Timer]
-OnCalendar=Sat *-*-* 13:31:30
-Unit=dar-backup.service
+# yearly the day before new years, that is typically a vacation day for Per
+OnCalendar= *-12-30 10:03:00
 
 [Install]
 WantedBy=timers.target

@@ -1,4 +1,4 @@
-# Misc stuff not installed
+  # Misc stuff not installed
 
 ## systemd timer & service for DIFF backups
 
@@ -16,15 +16,35 @@
   systemctl --user start  dar-backup.timer
   systemctl --user daemon-reload
   ````
-  - verify your timer is listed
+  - verify your timer is listed, and that the "NEXT" time is correct
 
-````
+  ````
   systemctl --user list-timers
   ````
+### View systemd status
+
+  ````
+  systemctl --user status dar-backup.service
+  ````
+
+
+### view systemd log
+
+  - View systemd messages 
+  ````
+  journalctl --user -u dar-backup.service
+  ````
+
+  - View systemd messages for a time period
+  ````
+  journalctl --user -u dar-backup.service --since "2022-04-13 08:00:00"  --until "2022-04-13 09:00:00"
+  ````
+
+
 
 ### systemd documentation
 
   - [systemd website](https://systemd.io/)
-  - [systemd timer directives](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
-  - [systemd service (unit) directives](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)
+  - [systemd timer](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
+  - [systemd service (unit)](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)
   

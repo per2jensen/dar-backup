@@ -44,3 +44,8 @@ for file in "$SCRIPTDIRPATH"/../templates/backups.d/*; do
     base=$(basename "$file")
     sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/backups.d/$base"  > "$SCRIPTDIRPATH/../backups.d/$base"
 done
+
+for file in "$SCRIPTDIRPATH"/../templates/systemd/*; do
+    base=$(basename "$file")
+    sed -e "s|@@DAR_BACKUP_DIR@@|${SCRIPTDIRPATH}/..|" "$SCRIPTDIRPATH/../templates/systemd/$base"  > "$SCRIPTDIRPATH/../share/$base"
+done

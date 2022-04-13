@@ -1,0 +1,8 @@
+[Unit]
+Description=dar-backup FULL
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart="@@DAR_BACKUP_DIR@@/bin/dar-backup.sh"
