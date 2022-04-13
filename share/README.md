@@ -21,3 +21,10 @@
 ````
   systemctl --user list-timers
   ````
+
+### systemd documentation
+
+  - [systemd website](https://systemd.io/)
+  - [systemd timer directives](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
+  - [systemd service (unit) directives](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)
+  
