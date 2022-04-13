@@ -14,7 +14,7 @@
   ````
   systemctl --user enable dar-backup.timer
   systemctl --user start  dar-backup.timer
-  sudo systemctl daemon-reload
+  systemctl --user daemon-reload
   ````
   - verify your timer is listed
 
