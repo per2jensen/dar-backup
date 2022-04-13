@@ -18,7 +18,8 @@
   - install the files in systemd
 
   ````
-  cp <dar-backup>/share/*.{timer|service} ~/.config/systemd/user/ 
+  cp <dar-backup>/share/*.timer ~/.config/systemd/user/ 
+  cp <dar-backup>/share/*.service ~/.config/systemd/user/ 
   systemctl --user enable dar-backup.timer
   systemctl --user start  dar-backup.timer
   
