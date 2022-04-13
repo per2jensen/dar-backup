@@ -3,7 +3,7 @@ Description=dar-backup DIFF timer
 
 [Timer]
 # Monthly DIFF on the first day of Feb through Dec
-OnCalendar=*-02..12-01 19:03:00
+OnCalendar=*-*-01 19:03:00
 
 [Install]
 WantedBy=timers.target

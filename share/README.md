@@ -1,50 +1,66 @@
-  # Misc stuff not installed
+  # Systemd backup schedule
 
-## systemd timer & service for DIFF backups
+## Systemd timers & services
 
-  A timer and service file is provided for use on linux systems with systemd, which can be deployed in a user's systemd directory.
+  Systemd timers and service files for FULL, DIIF and INC backups can be found in the share/ directory.
+  "
+  The files are ready to be copied by the user to "~/.config/systemd/user"
+
+  The timers have been setup like this:
+
+    - FULL backup on December 30 10:03:00
+    - DIFF backups on the first day of a month (including Jan) 19:03:00
+    - INC backups starting on the fouth day of a month 19:03:00, repeating every 3 days
   
-### installation
+### Installation
 
-  - edit the timer and set the time/frequency to your liking
-  - edit the service and point to the location of the dar-diff-backup.sh script
-  - copy the timer and service files to ~/.config/systemd/user/
+  - copy the "share/*.timers" &  "share/*.service" to ~/.config/systemd/user/
   - install the files in systemd
 
   ````
+  cp <dar-backup>/share/*.{timer|service} ~/.config/systemd/user/ 
   systemctl --user enable dar-backup.timer
   systemctl --user start  dar-backup.timer
+  
+  systemctl --user enable dar-diff-backup.timer
+  systemctl --user start  dar-diff-backup.timer
+  
+  systemctl --user enable dar-inc-backup.timer
+  systemctl --user start  dar-inc-backup.timer
+  
   systemctl --user daemon-reload
   ````
-  - verify your timer is listed, and that the "NEXT" time is correct
+  - verify your timers are listed, and that the "NEXT" time is correct for each timer
 
   ````
   systemctl --user list-timers
   ````
+
 ### View systemd status
+  Do this to view systemd status for your services
 
   ````
   systemctl --user status dar-backup.service
+  systemctl --user status dar-diff-backup.service
+  systemctl --user status dar-inc-backup.service
   ````
 
+### View systemd log
 
-### view systemd log
-
-  - View systemd messages 
+  - View systemd messages for the FULL service
   ````
   journalctl --user -u dar-backup.service
   ````
 
-  - View systemd messages for a time period
+  - View systemd messages for a time period for the FULL service
   ````
   journalctl --user -u dar-backup.service --since "2022-04-13 08:00:00"  --until "2022-04-13 09:00:00"
   ````
 
 
-
-### systemd documentation
+### Systemd documentation
 
   - [systemd website](https://systemd.io/)
   - [systemd timer](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
   - [systemd service (unit)](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)
-  
+

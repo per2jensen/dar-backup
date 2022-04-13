@@ -67,18 +67,21 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
     During installation, a directory has been created "<a-directory-under-which-darbackup-is-untarred>/dar-backup/archives", where the backups have been stored.
 
 
-  The programs stay where untarred when running the installer, it makes the scripts executable, creates some soft links and sets up references to the various config files used.  
+  The programs stay where untarred, when running the installer.
+  
+  It makes scripts executable, creates some soft links, sets up references to the various config files used and lastly generates systemd service files.
 
 # Script features
 
   - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
     http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
-  - Test the archive after 
-  - Tries to find a file < 10MB, and restores it under /tmp
+  - Test the archive after a backup
+  - Search for a file < 10MB, and restore it under /tmp as part of the backup
   - Copies dar_static to server (handy to have the statically linked binary available in the future)
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
+  - Systemd services and schedules for FULL, DIFF & INC ready to be dropped into ~/.config/systemd/user (see share/)
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
