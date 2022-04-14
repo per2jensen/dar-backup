@@ -243,7 +243,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   The defaults used by the scripts (for example file types not to compress) are linked by backup definitions. The defaults are stored in conf/defaults-rc.
 
-  The demo backup definition templates/backups.d/TEST links defaults-rc in the first directive.
+  The demo backup definition templates/backups.d/dar-backup links defaults-rc in the first directive.
 
 # Examples
 
