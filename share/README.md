@@ -2,7 +2,7 @@
 
 ## Systemd timers & services
 
-  Systemd timers and service files for FULL, DIIF and INC backups can be found in the share/ directory.
+  Systemd timers and service files for FULL, DIFF and INC backups can be found in the share/ directory.
   "
   The files are ready to be copied by the user to "~/.config/systemd/user"
 
