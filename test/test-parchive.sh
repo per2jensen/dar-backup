@@ -23,7 +23,7 @@ if [[ $RESULT != "0" ]]; then
 fi
 
 # introduce "bitrot"
-# 512 random chars, 10kB into the archive
+# 4096 random chars, 10kB into the archive
 echo "==> introduce bitrot"
 BITROT=$(tr -dc 'a-z0-9' < /dev/random|head -c4096)
 printf "BITROT data:\n%s\n" "$BITROT"
