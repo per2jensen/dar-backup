@@ -41,7 +41,7 @@ fi
 
 # does par2 detect bitrot
 echo "==> par2 verify archive"
-par2 v "$ARCHIVEFILE" > /dev/null
+par2 v -q "$ARCHIVEFILE" 
 RESULT=$?
 if [[ $RESULT == "0" ]]; then
     echo "par2 did NOT detect bitrot"
@@ -50,7 +50,7 @@ fi
 
 # fix bitrot
 echo "==> par2 repair archive"
-par2 r "$ARCHIVEFILE"
+par2 r -q "$ARCHIVEFILE"
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "par2 did NOT repair bitrot"
@@ -68,7 +68,7 @@ fi
 
 # test archive with par2
 echo "==> par2 verify archive"
-par2 v "$ARCHIVEFILE"  > /dev/null 
+par2 v -q "$ARCHIVEFILE"
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "par2 did NOT repair bitrot"
