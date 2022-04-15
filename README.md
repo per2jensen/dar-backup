@@ -75,7 +75,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
-    http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
+    - 3 8K blocks bitrot in a test archive is repairable (see [testcase](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive.sh)) 
+  - http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
   - Test the archive after a backup
   - Search for a file < 10MB, and restore it under /tmp as part of the backup
   - Copies dar_static to server (handy to have the statically linked binary available in the future)

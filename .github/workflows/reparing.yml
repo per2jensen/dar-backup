@@ -23,3 +23,21 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-parchive.sh
           $GITHUB_WORKSPACE/test/test-parchive.sh
+  repair-3pcs-8k-blocks-bitrot:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2
+
+      - name: repair 3x8192 bytes bitrot in archive
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-parchive-multiple-8k-blocks.sh
+          $GITHUB_WORKSPACE/test/test-parchive-multiple-8k-blocks.sh
+
+
+
+
+
