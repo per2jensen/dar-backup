@@ -25,7 +25,7 @@ fi
 # introduce "bitrot"
 # 512 random chars, 10kB into the archive
 echo "==> introduce bitrot"
-BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c4096)
+BITROT=$(cat /dev/random | tr -dc 'a-z0-9' | head -c4096)
 printf "BITROT data:\n%s\n" "$BITROT"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
 echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=4096 seek=$((10*1024)) conv=notrunc
