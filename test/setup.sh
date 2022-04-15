@@ -56,7 +56,7 @@ checkExpectSymbolicLink () {
 
 echo "setup.sh:  TESTDIR:       $TESTDIR"
 echo "setup.sh:  SCRIPTDIRPATH: $SCRIPTDIRPATH"
-find "$SCRIPTDIRPATH"/.. ! -path "*/.github*" ! -path "*/.git*"
+#find "$SCRIPTDIRPATH"/.. ! -path "*/.github*" ! -path "*/.git*"
 
 rm -fr "$TESTDIR"
 mkdir -p "$TESTDIR/archives"
@@ -64,6 +64,8 @@ mkdir -p "$TESTDIR/archives"
 cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../share" "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/"
 
 # test templates dir and copy it
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
