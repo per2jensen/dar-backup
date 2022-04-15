@@ -33,7 +33,7 @@ for file in "${SCRIPTDIRPATH}"/test-*.sh; do
 done
 
 if [[ $TESTRESULT == "0" ]]; then
-    printf "SUCCESS - all testcases succeeded (except test-fail.sh) \n"
+    printf "SUCCESS - all testcases succeeded (test-fail.sh must fail) \n"
 fi
 exit "$TESTRESULT"
 
