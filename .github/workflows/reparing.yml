@@ -1,0 +1,25 @@
+name: archive-repairing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  repair-512B-bitrot:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2
+
+      - name: repair 512 bytes bitrot
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-parchive.sh
+          $GITHUB_WORKSPACE/test/test-parchive.sh
