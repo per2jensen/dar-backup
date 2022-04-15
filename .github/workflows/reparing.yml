@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  repair-512B-bitrot:
+  repair-4k-bitrot:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -19,7 +19,7 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
 
-      - name: repair 512 bytes bitrot
+      - name: repair 4096 bytes bitrot
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-parchive.sh
           $GITHUB_WORKSPACE/test/test-parchive.sh
