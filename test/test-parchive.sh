@@ -26,7 +26,8 @@ fi
 # 512 random chars, 10kB into the archive
 echo "==> introduce bitrot"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 512 |head -n1|dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
+BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 512 |head -n1)
+echo "$BITROT"|dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
 
 
 # does dar detect the changes
