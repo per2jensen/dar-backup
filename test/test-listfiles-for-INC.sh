@@ -18,6 +18,7 @@ cp $SCRIPTDIRPATH/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"  # don't back
 
 cp "$TESTDIR/dirs/include this one/Krummi.JPG" "$TESTDIR/dirs/include this one/Krummi.jpg" 
 touch "$TESTDIR/dirs/include this one/Krummi-empty.JPG"
+touch "$TESTDIR/dirs/include this one/Krummi-empty2.JPG"
 
 # run DIFF backup
 $TESTDIR/bin/dar-diff-backup.sh -d TEST --local-backup-dir
@@ -34,8 +35,7 @@ touch "$TESTDIR/dirs/include this one/Krummi-empty3.JPG"
 # run listFiles
 $TESTDIR/bin/dar-inc-backup.sh -d TEST --list-files --local-backup-dir
 failOnError $?
-NO_LISTED=$(cat /tmp/dar-INC-filelist.txt|grep -i "adding file"|wc -l)
-
+NO_LISTED=$(cat /tmp/dar-INC-filelist.txt|grep -E -i "adding file|adding symlink"|wc -l)
 if [[ $NO_LISTED != "4" ]]; then
     TESTRESULT=1
 fi
