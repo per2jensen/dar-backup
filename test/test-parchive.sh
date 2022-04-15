@@ -2,7 +2,7 @@
 
 # run install.sh
 # run dar-backup.sh
-# on purpose introduce "bitrot", 512 random chars 10kB into the archive
+# on purpose introduce "bitrot", 4k random chars 10k into the archive
 # repair via "par2 r"
 # verify repair is successful using "dar -t" and "par2 v"
 
@@ -25,15 +25,14 @@ fi
 # introduce "bitrot"
 # 512 random chars, 10kB into the archive
 echo "==> introduce bitrot"
-BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c512)
+BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c4096)
 printf "BITROT data:\n%s\n" "$BITROT"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-echo "$BITROT"|dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
-
+echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=4096 seek=$((10*1024)) conv=notrunc
 
 # does dar detect the changes
 echo "==> dar test archive"
-dar -t $TESTDIR/archives/TEST_FULL_${DATE} 
+dar -t "$TESTDIR/archives/TEST_FULL_${DATE}"
 RESULT=$?
 if [[ $RESULT == "0" ]]; then
     echo "dar did NOT detect bitrot"
@@ -60,7 +59,7 @@ fi
 
 # test archive with dar
 echo "==> dar test archive"
-dar -t $TESTDIR/archives/TEST_FULL_${DATE}   > /dev/null
+dar -t "$TESTDIR/archives/TEST_FULL_${DATE}"   > /dev/null
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "archive was not repaired"
@@ -69,13 +68,12 @@ fi
 
 # test archive with par2
 echo "==> par2 verify archive"
-par2 v "$ARCHIVEFILE"  > /dev/null > /dev/null
+par2 v "$ARCHIVEFILE"  > /dev/null 
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "par2 did NOT repair bitrot"
     TESTRESULT=1
 fi
-
 
 echo TEST RESULT: "$TESTRESULT"
 exit "$TESTRESULT"
