@@ -2,9 +2,9 @@
 
 # run install.sh
 # run dar-backup.sh
-# on purpose introduce "bitrot"
-# try to repair via Parchive
-# verify repair is successful
+# on purpose introduce "bitrot", 512 random chars 10kB into the archive
+# repair via "par2 r"
+# verify repair is successful using "dar -t" and "par2 v"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -16,17 +16,21 @@ source "$TESTDIR/conf/dar-backup.conf"
 TESTRESULT=0
 
 # run the test
-"$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir
+"$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir > /dev/null
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
 
 # introduce "bitrot"
+# 512 random chars, 10kB into the archive
+echo "==> introduce bitrot"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-echo "__PER-JENSEN__æøå" |dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
+cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 512 |head -n1|dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
+
 
 # does dar detect the changes
+echo "==> dar test archive"
 dar -t $TESTDIR/archives/TEST_FULL_${DATE} 
 RESULT=$?
 if [[ $RESULT == "0" ]]; then
@@ -35,7 +39,8 @@ if [[ $RESULT == "0" ]]; then
 fi
 
 # does par2 detect bitrot
-par2 v "$ARCHIVEFILE" 
+echo "==> par2 verify archive"
+par2 v "$ARCHIVEFILE" > /dev/null
 RESULT=$?
 if [[ $RESULT == "0" ]]; then
     echo "par2 did NOT detect bitrot"
@@ -43,6 +48,7 @@ if [[ $RESULT == "0" ]]; then
 fi
 
 # fix bitrot
+echo "==> par2 repair archive"
 par2 r "$ARCHIVEFILE"
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
@@ -51,7 +57,8 @@ if [[ $RESULT != "0" ]]; then
 fi
 
 # test archive with dar
-dar -t $TESTDIR/archives/TEST_FULL_${DATE} 
+echo "==> dar test archive"
+dar -t $TESTDIR/archives/TEST_FULL_${DATE}   > /dev/null
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "archive was not repaired"
@@ -59,7 +66,8 @@ if [[ $RESULT != "0" ]]; then
 fi
 
 # test archive with par2
-par2 v "$ARCHIVEFILE" 
+echo "==> par2 verify archive"
+par2 v "$ARCHIVEFILE"  > /dev/null > /dev/null
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     echo "par2 did NOT repair bitrot"
