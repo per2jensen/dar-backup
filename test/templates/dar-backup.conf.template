@@ -20,7 +20,7 @@ MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
 
 # should all output be captured in a file
-DEBUG=y
+DEBUG=n
 
 # path to debug log file
 DEBUG_LOCATION="/tmp/dar-debug.log"
