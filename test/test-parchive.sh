@@ -28,7 +28,7 @@ echo "==> introduce bitrot"
 BITROT=$(tr -dc 'a-z0-9' < /dev/random|head -c4096)
 printf "BITROT data:\n%s\n" "$BITROT"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=4096 seek=$((10*1024)) conv=notrunc
+echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=4096 seek=$((10*1024))  oflag=seek_bytes conv=notrunc
 
 # does dar detect the changes
 echo "==> dar test archive"

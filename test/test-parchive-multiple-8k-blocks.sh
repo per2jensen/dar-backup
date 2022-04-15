@@ -27,14 +27,14 @@ fi
 echo "==> introduce bitrot block 1"
 BITROT=$(tr -dc 'a-z0-9' < /dev/random|head -c8192)
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((10*1024)) conv=notrunc
+echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((10*1024)) oflag=seek_bytes  conv=notrunc
 
 echo "==> introduce bitrot block 2"
 BITROT=$(tr -dc 'a-z0-9' < /dev/random|head -c8192)
-echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((100*1024)) conv=notrunc
+echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((100*1024)) oflag=seek_bytes conv=notrunc
 
 BITROT=$(tr -dc 'a-z0-9' < /dev/random|head -c8192)
-echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((400*1024)) conv=notrunc
+echo "$BITROT"|tr -d '\n'|dd of="$ARCHIVEFILE" bs=8192 seek=$((400*1024)) oflag=seek_bytes conv=notrunc
 
 
 # does dar detect the changes
