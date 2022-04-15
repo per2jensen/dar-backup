@@ -15,7 +15,7 @@ source "$TESTDIR/conf/dar-backup.conf"
 
 TESTRESULT=0
 
-# run the test
+# do a backup
 "$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir > /dev/null
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
@@ -25,8 +25,9 @@ fi
 # introduce "bitrot"
 # 512 random chars, 10kB into the archive
 echo "==> introduce bitrot"
+BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c512)
+printf "BITROT data:\n%s\n" "$BITROT"
 ARCHIVEFILE=$TESTDIR/archives/TEST_FULL_${DATE}.1.dar
-BITROT=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 512 |head -n1)
 echo "$BITROT"|dd of="$ARCHIVEFILE" bs=1 seek=$((10*1024)) conv=notrunc
 
 
