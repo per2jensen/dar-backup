@@ -28,7 +28,7 @@ for file in "${SCRIPTDIRPATH}"/test-*.sh; do
             TESTRESULT=1
         fi
     fi
-    printf "%-6s: test #: %-3s %-60s \n" "${RESULT}" "${TESTNO}" "${file}"
+    printf "%-6s: #: %-3s %-60s \n" "${RESULT}" "${TESTNO}" "${file}"
     TESTNO=$(( $TESTNO + 1 ))
 done
 
