@@ -15,9 +15,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  I needed the following:
  - Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
  - Backup primarily photos, video and different types of documents
- - Archives must be tested and a restore test (however small) to be performed during the backup
- - Archives stored on a server with a reliable file system (hence the need to mount a directory over sshfs)
- - Archive test + restore test when I am moving archives around.
+ - Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
+ - During backup archives must be tested and a restore test (however small) performed
+ - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
+ - Easy to verify healthy archives, when they are moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
  
