@@ -319,24 +319,19 @@ darRestoreTest () {
         return
     fi
 
+    #file to restore inclusive path
     local TEST_RESTOREFILE=""
     TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     
-    local DAR_RESTORE_DIR=""
-    DAR_RESTORE_DIR=$(dirname "$TEST_RESTOREFILE"|sed 's/^\t+//')
-    
-    local DAR_RESTORE_FILE=""
-    DAR_RESTORE_FILE=$(basename  "$TEST_RESTOREFILE")
-
     # remove the test restore top dir, before restoring
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
-    log "== Restore test of file: \"${DAR_RESTORE_FILE}\" to: \""$RESTORE_DIR"/${DAR_RESTORE_DIR}/\""
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${DAR_RESTORE_DIR}/${DAR_RESTORE_FILE}"
+    log "== Restore test of file: \"${TEST_RESTOREFILE}\"" 
+    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
-    sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${DAR_RESTORE_FILE}\" result: $RESULT"
+    sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $RESULT"
 }
