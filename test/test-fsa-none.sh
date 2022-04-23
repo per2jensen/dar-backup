@@ -6,8 +6,10 @@
 # setup a btrfs file system, backup and restore to another type of filesystem
 
 # setup a btrfs file system
+# set an attibute not supported on ext4 file systems
 # run install.sh
 # run dar-backup.sh
+# restore the file with ext4 unsupprted attribute
 # add file GREENLAND.JEP to include dir and to the exclude dir
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
@@ -33,11 +35,16 @@ cp -R "$TESTDIR" "$BTRFS_MOUNT_POINT"
 "$BTRFS_MOUNT_POINT"/dar-backup-test/bin/install.sh
 
 
-
 # set new TESTDIR location
 TESTDIR="$BTRFS_MOUNT_POINT"/dar-backup-test
 MOUNT_POINT="$TESTDIR/archives"
 LOG_LOCATION="$MOUNT_POINT"
+
+ATTRIBUTE_FILE="${TESTDIR}/dirs/attribute-test"
+# set a non ext{2,3,4} attibute
+touch "$ATTRIBUTE_FILE"
+chattr +c "$ATTRIBUTE_FILE"
+
 
 # run the test
 "$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir --fsa-scope-none
@@ -49,7 +56,24 @@ echo "non directories restored:"
 find /tmp/dar-restore/ ! -type d
  
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
-echo dar exit code: $?
+RESULT=$?
+echo dar exit code: $RESULT
+if [[ $RESULT != "0" ]]; then
+    TESTRESULT=1
+fi
+
+# test restore the attribute-test file
+rm -fr "/tmp/dar-restore/dirs"
+echo "Restore test of \"attribute-test\""
+dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R /tmp/dar-restore -g "dirs/attribute-test"  --fsa-scope none
+RESULT=$?
+if [[ $RESULT != "0" ]]; then
+    TESTRESULT=1
+    echo "ERROR: \"attribute-test\" was not restored, exit code: $RESULT"
+else 
+    echo "\"attribute-test\"  successfully restored, exit code: $RESULT"
+fi
+
 
 # alter backup set
 cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/include this one/"
@@ -113,6 +137,7 @@ echo RESULTS for FULL backup:
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
+checkExpectLog   "\[Saved\].*?dirs/attribute-test"                  "$TESTDIR/FULL-filelist.txt" 
 checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
 
