@@ -159,7 +159,7 @@ jobs:
           chmod +x $GITHUB_WORKSPACE/test/test-restore-link.sh
           $GITHUB_WORKSPACE/test/test-restore-link.sh
 
-
+  backup-btrfs-file-system:
     # backup from a BTRFS file system
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
