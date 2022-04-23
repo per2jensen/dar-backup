@@ -159,6 +159,21 @@ jobs:
           chmod +x $GITHUB_WORKSPACE/test/test-restore-link.sh
           $GITHUB_WORKSPACE/test/test-restore-link.sh
 
+
+    # backup from a BTRFS file system
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Run some commands
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2
+      
+      - name: Run the test script
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-fsa-none.sh
+          $GITHUB_WORKSPACE/test/test-fsa-none.sh
+
         
 
 
