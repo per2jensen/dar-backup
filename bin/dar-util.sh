@@ -274,7 +274,7 @@ darDiffBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         par2 \
-        compress-exclusion verbose
+        compress-exclusion verbose 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
@@ -328,7 +328,7 @@ darRestoreTest () {
     mkdir -p "$RESTORE_DIR"
 
     log "== Restore test of file: \"${TEST_RESTOREFILE}\"" 
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}"
+    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE}
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1

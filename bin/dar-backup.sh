@@ -9,13 +9,11 @@
 # which mode: FULL, DIFF or INC
 SCRIPTNAME=$(basename "$0")
 
-echo =======================================================
-echo   "$SCRIPTNAME" started: "$(date -Iseconds)"
-echo =======================================================
 
 
 MODE=""
 BACKUPDEF=""
+FSA_SCOPE_NONE="" 
 CURRENT_BACKUPDEF=""
 DAR_ARCHIVE=""
 ARCHIVEPATH=""
@@ -39,16 +37,25 @@ while [ -n "$1" ]; do
       --list-files|-l)
           LIST_FILES=1
           ;;
+      --fsa-scope-none)
+          FSA_SCOPE_NONE=" --fsa-scope none "
+          ;;
       --debug)
           CMD_DEBUG=y
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--debug]"
+          echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--fsa-scope-none] [--debug]"
+          echo "   --backupdef is a filename in backups.d/"
+          echo "   --list-files list files that will be backed up (slow, be patient)"
+          echo "   --local-backup-dir don't mount a remote directory for backup, test, restore operations"
+          echo "   --fsa-scope-none useful when restoring to another type of file system, than when backup was done (for example the restore test)"
+          echo "   --debug write debug log messages"
           exit
           ;;
   esac
   shift
 done
+
 
 export DATE=""
 DATE=$(date -I)
@@ -66,8 +73,17 @@ if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
   exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
 fi
 
-
 source "${SCRIPTDIRPATH}/dar-util.sh"
+
+STARTTIME="$(date -Iseconds)"
+log =======================================================
+log "  $SCRIPTNAME started: $STARTTIME"
+log =======================================================
+log "BACKUPDEF=$BACKUPDEF"
+log "LOCAL_BACKUP_DIR=$LOCAL_BACKUP_DIR"
+log "LIST_FILES=$LIST_FILES"
+log "FSA_SCOPE_NONE=$FSA_SCOPE_NONE"
+log "CMD_DEBUG=$CMD_DEBUG"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL

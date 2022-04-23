@@ -324,6 +324,16 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
   
 
+## restore test fails with exit code 5
+  If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
+
+  That occurs if you backup a files store on one type of filesystem and restores on another.
+  My home directory is on the btrfs filesystem, while /tmp (for the restore test) is on zfs.
+
+  The restore test will result in an exit code 5, due to the different filesystem used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
+
+  Use the dar-backup option --fsa-scope-none to avoid this type of error.
+
 ## <a id="par2-verification"></a>  par2 verification/repair
 You can run a par2 verification on an archive like this:
 ````
