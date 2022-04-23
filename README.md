@@ -327,10 +327,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 ## restore test fails with exit code 5
   If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
 
-  That occurs if you backup a files store on one type of filesystem and restores on another.
-  My home directory is on the btrfs filesystem, while /tmp (for the restore test) is on zfs.
+  That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
+  My home directory is on a btrfs filesystem, while /tmp (for the restore test) is on zfs.
 
-  The restore test will result in an exit code 5, due to the different filesystem used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
+  The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
 
   Use the dar-backup option --fsa-scope-none to avoid this type of error.
 
