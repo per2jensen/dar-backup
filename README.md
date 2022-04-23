@@ -147,6 +147,14 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
 
+## --fsa-scope-none
+
+  If you encounter restore errors due to file system incompatibility on file attributes, use this option when restoring.
+
+  The issue might arise if you backup files on an ext4 file system, and for example restore to an Apple file system.
+
+  See more in the section on [restore exit code 5](#fsa-scope-none)
+
 ## --debug
   Make bash print all statements via the "set -x" option. Save output to debug log file.
 
@@ -324,7 +332,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
   
 
-## restore test fails with exit code 5
+## <a id="fsa-scope-none"> restore test fails with exit code 5
   If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
 
   That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
