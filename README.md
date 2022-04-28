@@ -338,6 +338,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
   The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
   
+## restore test fails with exit code 4
+  "dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
+
+  Thus the dar option "--comparison-field=ignore-owner" has been placed in the defaults-rc file. This causes dar to restore without an error. It is a good option when using dar as a non-privileged user. 
 
 ## <a id="fsa-scope-none"> restore test fails with exit code 5
   If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
