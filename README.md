@@ -7,12 +7,6 @@
 # Github location
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
-# Note on "dar" in Ubuntu 22.04
-  I have had a backup issue after upgrading to ubuntu 22.04 (2022-04-23). Using the statically linked version 2.7.4 made by the dar author, makes my backups come through.
-
-  I will look into over the coming period.
-
-
 # My use case
 
  I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
