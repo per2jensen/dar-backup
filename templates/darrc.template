@@ -1,4 +1,13 @@
 
+# default options when extract (-x) is used
+extract:
+  # don't restore File Specific Attributes
+  #--fsa-scope none
+
+  # ignore owner, useful when used by a non-privileged user
+  --comparison-field=ignore-owner
+
+
 par2:
   -B "@@CONFDIR@@/dar_par.dcf"
 

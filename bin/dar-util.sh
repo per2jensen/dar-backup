@@ -328,7 +328,7 @@ darRestoreTest () {
     mkdir -p "$RESTORE_DIR"
 
     log "== Restore test of file: \"${TEST_RESTOREFILE}\"" 
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE}
+    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE} -B "${SCRIPTDIRPATH}/../conf/defaults-rc"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
