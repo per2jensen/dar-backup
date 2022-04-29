@@ -195,7 +195,8 @@ runBackupDef () {
 # $1: the exit code from the backup operation
 _TestRestore () {
     if [[ $1 == "0" ]]; then
-        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT"
+        getNoFiles 
+        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT, Saved: $NO_SAVED_FILES, Removed: $NO_REMOVED_FILES"
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
     else 
         if [[ $1 == "5" ]]; then
@@ -233,6 +234,36 @@ backupTestRestore () {
     _TestRestore $RESULT
 }
 
+# find number of files Saved and Removed in a backup
+# store data in NO_SAVED_FILES and NO_REMOVED_FILES
+getNoFiles () {
+    sleep 1
+    local TEMPFILE=/tmp/filelist_$(date +%s)
+    NO_SAVED_FILES="unknown"
+    NO_REMOVED_FILES="unknown"
+    if [[ -f "$TEMPFILE"  ]]; then
+        rm "$TEMPFILE"
+        if [[ $? != "0" ]]; then
+            return
+        fi
+    fi
+    dar -Q -l "${ARCHIVEPATH}" > "$TEMPFILE"
+    RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        return
+    fi
+    NO_SAVED_FILES=$(grep -E -c "\[Saved.*?\] +-" "$TEMPFILE")
+    if [[ "$NO_SAVED_FILES" == "" ]]; then
+        NO_SAVED_FILES="0"
+    fi
+
+    NO_REMOVED_FILES=$(grep -c " REMOVED ENTRY " "$TTEMPFILE")
+    if [[ "$NO_REMOVED_FILES" == "" ]]; then
+        NO_REMOVED_FILES="0"
+    fi
+
+    rm "$TEMPFILE"
+}
 
 # do a dar backup
 darBackup () {

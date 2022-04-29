@@ -22,6 +22,9 @@ LIST_FILES=""  # boolean: list files to back up
 export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 CMD_DEBUG="n"
 
+export NO_SAVED_FILES="unknown"
+export NO_REMOVED_FILES="unknown"
+
 
 # Get the options
 while [ -n "$1" ]; do
