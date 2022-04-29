@@ -515,6 +515,7 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 # TODO
   - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
   - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken (whatever type), in order to make them as small as possible. Hmm, need to decide on the best way forward.
+  - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
 # Projects this script benefits from
