@@ -257,7 +257,7 @@ getNoFiles () {
         NO_SAVED_FILES="0"
     fi
 
-    NO_REMOVED_FILES=$(grep -c " REMOVED ENTRY " "$TTEMPFILE")
+    NO_REMOVED_FILES=$(grep -c " REMOVED ENTRY " "$TEMPFILE")
     if [[ "$NO_REMOVED_FILES" == "" ]]; then
         NO_REMOVED_FILES="0"
     fi
