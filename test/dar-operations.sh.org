@@ -1,0 +1,59 @@
+#! /bin/bash
+
+# -I in list operation fails
+
+rm -fr dar-test
+mkdir dar-test
+cd dar-test
+
+git clone https://github.com/per2jensen/dar-backup
+
+dar -c shell-scripts -R dar-backup
+
+find dar-backup -name "*.sh"
+
+dar -l shell-scripts |grep  "\.sh$"
+
+dar -l shell-scripts -I "*.sh"
+
+
+========================
+
+# backup restore 
+
+rm -fr dar-test
+mkdir dar-test
+cd dar-test
+
+git clone https://github.com/per2jensen/dar-backup
+
+tar cvf dar-backup-pre.tar dar-backup/
+
+dar -N -c dar-backup -R . -g dar-backup 
+
+rm -fr dar-backup
+
+dar -x dar-backup
+
+tar cvf dar-backup-after.tar dar-backup/
+
+sha256sum "./*.tar"
+
+
+# restore shell scripts using -I works
+rm -fr dar-backup
+dar -x dar-backup -I "*.sh"
+find dar-backup/ -type f
+
+
+# restore a specifik shell script
+# this restores empty directories below the "test" directory
+dar -x dar-backup -g  dar-backup/test -I report-deleted-files.sh
+find dar-backup/
+
+# restore a single file and the necessary directory structure (and no more)
+dar -x dar-backup -g  dar-backup/test/report-deleted-files.sh
+find dar-backup/
+
+
+
