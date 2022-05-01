@@ -43,7 +43,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
 
 # How to install
-  - Download a dar-backup tar file from the (releases)[https://github.com/per2jensen/dar-backup/releases] 
+  - Download a dar-backup tar file from the [releases](https://github.com/per2jensen/dar-backup/releases)
   - untar 
     ````
     tar zxf <the-tar-file> --directory <a-directory-under-which-darbackup-is-untarred>
