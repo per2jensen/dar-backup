@@ -33,6 +33,7 @@ cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/exclude this one/"
 mkdir "$TESTDIR/dirs/new-dir"
 touch "$TESTDIR/dirs/new-dir/new-file"
 rm "$TESTDIR/dirs/include this one/Abe.jpg"
+rm "$TESTDIR/dirs/include this one/Abe-link"
 
 # run DIFF backup
 "$TESTDIR/bin/dar-diff-backup.sh" -d TEST --local-backup-dir
@@ -112,6 +113,14 @@ echo RESULTS for DIFF backup:
 # DIFF backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
 checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
+NO_REMOVED=$(grep -c -E "\- REMOVED ENTRY \-" "$TESTDIR/DIFF-filelist.txt")
+if [[  $NO_REMOVED == "2"  ]]; then
+    echo "ok Number of entries removed: $NO_REMOVED"
+else
+    echo "error wrong number or removed entries in the DIFF archive"
+    TESTRESULT=1
+fi
+
 
 echo RESULTS for INCREMENTAL backup:
 # INC backup
@@ -128,7 +137,7 @@ if [[  $NO_REMOVED == "1"  ]]; then
     echo "ok Number of entries removed: $NO_REMOVED"
     echo "note: dar should report both removed file and removed dir......."
 else
-    echo "error more than one entry removed in the INCREMENTAL archive"
+    echo "error wrong number of entries removed in the INCREMENTAL archive"
     TESTRESULT=1
 fi
 
