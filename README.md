@@ -477,18 +477,21 @@ An example of a timer and service for installation in the user's systemd directo
   The script has reached version 1.0 - I trust it.
 
 ## 'dar' itself
-My ubuntu 21.04 currently gives me this:
-````
-~ dar --version
+My ubuntu 22.04 currently gives me this:
 
- dar version 2.6.13, Copyright (C) 2002-2020 Denis Corbin
+````
+dar --version
+
+ dar version 2.7.3, Copyright (C) 2002-2022 Denis Corbin
    Long options support         : YES
 
- Using libdar 6.2.7 built with compilation time options:
-   Libz compression (gzip)      : YES
-   Libbz2 compression (bzip2)   : YES
-   Liblzo2 compression (lzo)    : YES
-   Liblzma compression (xz)     : YES
+ Using libdar 6.4.2 built with compilation time options:
+   gzip compression (libz)      : YES
+   bzip2 compression (libbzip2) : YES
+   lzo compression (liblzo2)    : YES
+   xz compression (liblzma)     : YES
+   zstd compression (libzstd)   : YES
+   lz4 compression (liblz4)     : YES
    Strong encryption (libgcrypt): YES
    Public key ciphers (gpgme)   : YES
    Extended Attributes support  : YES
@@ -499,15 +502,18 @@ My ubuntu 21.04 currently gives me this:
    Furtive read mode support    : YES
    Linux ext2/3/4 FSA support   : YES
    Mac OS X HFS+ FSA support    : NO
+   Linux statx() support        : YES
    Detected system/CPU endian   : little
    Posix fadvise support        : YES
    Large dir. speed optimi.     : YES
-   Timestamp read accuracy      : 1 microsecond
-   Timestamp write accuracy     : 1 microsecond
+   Timestamp read accuracy      : 1 nanosecond
+   Timestamp write accuracy     : 1 nanosecond
    Restores dates of symlinks   : YES
    Multiple threads (libthreads): NO 
-   Delta compression support    : NO
-   Remote repository support    : NO
+   Delta compression (librsync) : NO
+   Remote repository (libcurl)  : NO
+   argon2 hashing (libargon2)   : YES
+
 ````
 I can confirm large file support works. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
 
@@ -515,6 +521,10 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 # TODO
   - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
   - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken (whatever type), in order to make them as small as possible. Hmm, need to decide on the best way forward.
+  - Setup a scheduled "find and delete" old backups. Shouldn't be too difficult, for now I have been ok with manual cleanups.
+  - - [nice webpage on the find command using file stampstamps](https://linoxide.com/find-files-modified-last-number-of-days/) 
+  - - list "INC" backups older than 30 days
+  - - ```` find ~/mnt/dar/ -name "*_INC_*" -ctime "+30" -exec ls -l "{}" \; ````
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 

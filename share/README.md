@@ -6,13 +6,19 @@
   "
   The files are ready to be copied by the user to "~/.config/systemd/user"
 
+## Grandfather, father, son backup strategy
+  I use a variation of the [grandfather-father-son](https://en.wikipedia.org/wiki/Backup_rotation_scheme#Grandfather-father-son) backup strategy. The setup of backups detailed below is fitting for me, given the the current speed of changes to my filesystems.
+
+  It is very easy to change the installed timers into a different variation of the backup strategy. I encourage you to always view the timer setup, as described below, after changes.
+
+
   The timers have been setup like this:
 
     - FULL backup on December 30 10:03:00
     - DIFF backups on the first day of a month (including Jan) 19:03:00
     - INC backups starting on the fourth day of a month 19:03:00, repeating every 3 days
   
-### Installation
+## Installation
 
   - copy the "share/*.timers" &  "share/*.service" to ~/.config/systemd/user/
   - install the files in systemd
@@ -37,7 +43,7 @@
   systemctl --user list-timers
   ````
 
-### View systemd status
+## View systemd status
   Do this to view systemd status for your services
 
   ````
@@ -46,7 +52,7 @@
   systemctl --user status dar-inc-backup.service
   ````
 
-### View systemd log
+## View systemd log
 
   - View systemd messages for the FULL service
   ````
@@ -59,7 +65,7 @@
   ````
 
 
-### Systemd documentation
+## Systemd documentation
 
   - [systemd website](https://systemd.io/)
   - [systemd timer](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
