@@ -4,6 +4,6 @@ StartLimitIntervalSec=120
 StartLimitBurst=1
 [Service]
 Type=oneshot
-TimeoutStartSec=infinity
+TimeoutSec=infinity
 RemainAfterExit=true
 ExecStart="@@DAR_BACKUP_DIR@@/bin/dar-inc-backup.sh"
