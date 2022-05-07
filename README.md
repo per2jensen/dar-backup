@@ -84,7 +84,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Copies dar_static to server (handy to have the statically linked binary available in the future)
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
-  - Systemd services and schedules for FULL, DIFF & INC ready to be dropped into ~/.config/systemd/user (see share/)
+  - Systemd services and schedules for FULL, DIFF & INC ready to be dropped into ~/.config/systemd/user (see [share/](https://github.com/per2jensen/dar-backup/tree/main/share))
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
