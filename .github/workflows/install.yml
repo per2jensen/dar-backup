@@ -26,6 +26,13 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
+      - name: test git tag operation
+        run: |
+          pwd
+          git pull
+          git status
+          git tag
+      
       - name: run install steps
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-install-package.sh
