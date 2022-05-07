@@ -7,10 +7,8 @@ _DIR=$(pwd)
 # check if this is running in a Github Action
 if [[ -d "/home/runner/work/dar-backup/dar-backup" ]]; then
     cd "/home/runner/work/dar-backup/dar-backup"
-    pwd
-    git status
-    git tag
-    export TAG=$(git tag |sort -V|tail -n 1)
+    git tag -list "v*"
+    export TAG=$(git tag --list "v*"|sort -V|tail -n 1)
     cd "$_DIR"
 fi
 export RESULT=0
