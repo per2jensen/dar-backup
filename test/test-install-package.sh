@@ -13,6 +13,7 @@ if [[ -d "/home/runner/work/dar-backup/dar-backup" ]]; then
 fi
 export RESULT=0
 
+TAG=v1.0.11
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
