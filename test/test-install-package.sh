@@ -3,8 +3,13 @@
 #
 # Build tar file from latest tag, run install process, execute install backup definition
 #
-
-export TAG=$(git tag |sort -V|tail -n 1)
+_DIR=$(PWD)
+# check if this is running in a Github Action
+if [[ -d "/home/runner/work/dar-backup/dar-backup" ]]; then
+    cd /home/runner/work/dar-backup/dar-backup
+    export TAG=$(git tag |sort -V|tail -n 1)
+    cd _DIR
+fi
 export RESULT=0
 
 SCRIPTPATH=$(realpath "$0")
@@ -12,7 +17,7 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
 
 "$SCRIPTDIRPATH"/mk-release.sh "$TAG"
-find /tmp -name "dar-backup-linux*.gz" -ls 2>&1 /dev/null
+find /tmp -name "dar-backup-linux*.gz" -ls 2> /dev/null
 
 
 # cleanup before unpacking tar file
