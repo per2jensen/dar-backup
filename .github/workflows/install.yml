@@ -24,7 +24,7 @@ jobs:
           git config user.email "<>"
 
       - name: Install required packages
-        run:  sudo apt install -y dar dar-static  par2
+        run:  sudo apt install -y dar dar-static  par2 git
 
       - name: run install steps
         run: |
