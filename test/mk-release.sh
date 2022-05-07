@@ -20,10 +20,10 @@ if [[ -e "$DIR" ]]; then rm -fr "$DIR" || exit 1; fi
 if [[ -f "/tmp/$TARFILE" ]]; then rm "/tmp/$TARFILE" || exit 1; fi
 
 cd /tmp || exit 1
-git clone https://github.com/per2jensen/dar-backup.git
+git clone https://github.com/per2jensen/dar-backup.git || exit 1
 cd dar-backup || exit 1
 
-git  checkout "tags/$1" -b "release-$1"
+git  checkout "tags/$1" -b "release-$1" || exit 1
 chmod +x bin/install.sh
 rm -fr "$DIR/.git"
 rm -fr "$DIR/.github"
@@ -34,3 +34,5 @@ cd $DIR/.. || exit 1
 tar czvf "$TARFILE" dar-backup
 echo SHA256:
 sha256sum "$TARFILE"
+
+echo "SUCCESS: a release tarball from tag: \"$TAG\" was produced"
