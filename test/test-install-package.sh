@@ -1,28 +1,22 @@
 #! /bin/bash -x
 
 #
-# Build tar file, run install process, execute install backup definition
+# Build tar file from latest tag, run install process, execute install backup definition
 #
 
-export TAG="DEV_install_package_dont_use"
+export TAG=$(git tag |sort -V|tail -n 1)
 export RESULT=0
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
-git push origin --delete "$TAG" > /dev/null 2>&1
-# add tag
-git tag -a -f  -m "unit test of installer" "$TAG"
-git push --tags
 
 "$SCRIPTDIRPATH"/mk-release.sh "$TAG"
-find /tmp -name "dar-backup-linux*.gz" -ls 2> /dev/null
+find /tmp -name "dar-backup-linux*.gz" -ls 2>&1 /dev/null
 
-# remove tag
-git push origin --delete "$TAG" > /dev/null 2>&1
 
 # cleanup before unpacking tar file
-rm -fr /tmp/dar-backup
+rm -fr /tmp/dar-backup || exit 1
 
 # Follow install steps given in README.md
 tar zxf /tmp/dar-backup-linux-"${TAG}".tar.gz --directory /tmp
