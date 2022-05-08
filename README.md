@@ -71,26 +71,26 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   The programs stay where untarred, when running the installer.
   
-  It makes scripts executable, creates some soft links, sets up references to the various config files used and lastly generates systemd service files.
+  The installer makes scripts executable, creates soft links, sets up references to the various config files used, and lastly generates systemd service files (they are not deployed).
 
 # Script features
 
   - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
     - 3 8K blocks bitrot in a test archive is repairable (see [testcase1](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive.sh), [testcase2](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive-multiple-8k-blocks.sh)) 
-  - http://dar.linux.free.fr/doc/usage_notes.html#Parchive 
+  - See more on integration to [parchive](http://dar.linux.free.fr/doc/usage_notes.html#Parchive)
   - Test the archive after a backup
-  - Search for a file < 10MB, and restore it under /tmp as part of the backup
+  - Search for a file < 10MB, and restore it under /tmp as part of the backup verification
   - Copies dar_static to server (handy to have the statically linked binary available in the future)
-  - Simple to add backups, including directories to include and to exclude in each backup
+  - Simple to add backups, including directories to include and to exclude in each backup definition
   - Run a single backup definition from backups.d/
-  - Systemd services and schedules for FULL, DIFF & INC ready to be dropped into ~/.config/systemd/user (see [share/](https://github.com/per2jensen/dar-backup/tree/main/share))
+  - Systemd services and schedules for FULL, DIFF & INC generated when installing, ready to be dropped into ~/.config/systemd/user (see [share/](https://github.com/per2jensen/dar-backup/tree/main/share))
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
-  - test cases: an automatic backup test is now performed on every commit using Githup actions
+  - test cases: verify backups work, the installer, parchive error correction and more on every commit via Githup Actions
 
 # Invocation
 
@@ -211,16 +211,45 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
     Alter the demo backups.d/dar-backup file to your taste
   
-    ````
-    # Set backup root
-    -R /home/pj/tmp
+    
+````
 
-    # Directories to backup below the root dir set above, add as many directories as you want on new lines
-    -g dba 
+      # definition to backup the deployed version
 
-    # Directories to exclude, add as many directories as you want on new lines
-    -P "dba/first dir"
-    ````
+      # ===========================================
+      # @@CONFDIR@@ is replaced at install time
+      # ===========================================
+
+      # Include defaults
+      -B "@@CONFDIR@@/defaults-rc"
+
+      # Switch to ordered selection mode, which means that the following
+      # options will be considered top to bottom
+      -am
+
+      # Backup Root dir
+      -R "@@CONFDIR@@/../.."
+
+      # Directories to backup below the Root dir
+      -g dar-backup
+
+      # Directories to exclude below the Root dir
+      -P dar-backup/archives
+      
+      # compression level
+      -z5
+
+      # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+      -n
+      
+      # size of each slice in the archive
+      --slice 4G
+
+      # bypass directores marked as cache directories
+      # http://dar.linux.free.fr/doc/Features.html
+      --cache-directory-tagging
+
+````
 
   - Make the install.sh script executable and run it. 
   
