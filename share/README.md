@@ -64,6 +64,14 @@
   journalctl --user -u dar-backup.service --since "2022-04-13 08:00:00"  --until "2022-04-13 09:00:00"
   ````
 
+## Example: run INC service & tail journal
+  This example shows how to start the systemd "dar-inc-back.service" and view the status messages showing up in the systemd journal
+  ````
+  systemctl --user start dar-inc-backup.service
+
+  journalctl --user -n 50 -f -u dar-inc-backup.service
+  ````
+  
 
 ## Systemd documentation
 
