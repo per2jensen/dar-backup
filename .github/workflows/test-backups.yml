@@ -141,3 +141,15 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-saved-removed.sh
           $GITHUB_WORKSPACE/test/test-saved-removed.sh
+  run-restore-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static par2
+      
+      - name: Run the test script
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-run-restore-test.sh
+          $GITHUB_WORKSPACE/test/test-run-restore-test.sh
