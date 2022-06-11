@@ -81,12 +81,18 @@ copyDarStatic () {
     fi
 }
 
+
+setArchivePath () {
+    ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
+}
+
+
 # Generate list of files that would have been backed up in a DIFF or INC
 #
 listFilesToBackup () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
-    ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
-        
+    setArchivePath
+
     echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-"${MODE}"-filelist.txt
     if [[ $MODE == "FULL"  ]]; then 
       # dryrun  showing what to backup (-vt)
@@ -338,11 +344,6 @@ darRestoreTest () {
     
     dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
     rm -f $RESTORE_FILE > /dev/null 2>&1
-    awk '{  if ($1 < 10000000) {
-            print $0 
-            exit
-           }
-    }' $FILELIST > "$RESTORE_FILE"
 
     LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
     if [[ $LIST_SIZE == "0" ]]; then
@@ -350,9 +351,28 @@ darRestoreTest () {
         return
     fi
 
+    awk '{  if ($1 < 10000000) {
+            print $0 
+            exit
+           }
+    }' $FILELIST > "$RESTORE_FILE"
+
+    RESTORE_FILE_SIZE=$(wc -c "$RESTORE_FILE"|cut -d" " -f1)
+    if [[ $RESTORE_FILE_SIZE == "0" ]]; then
+        sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
+        return
+    fi
+
+
+
+
     #file to restore inclusive path
     local TEST_RESTOREFILE=""
     TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
+    if [[ $TEST_RESTOREFILE == "" ]]; then
+        log "No file found to perform restore test on, this might be an error"
+        return
+    fi
     
     # remove the test restore top dir, before restoring
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1

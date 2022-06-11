@@ -21,6 +21,7 @@ LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
 export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 CMD_DEBUG="n"
+RUN_RESTORE_TEST="n"
 
 export NO_SAVED_FILES="unknown"
 export NO_REMOVED_FILES="unknown"
@@ -46,13 +47,19 @@ while [ -n "$1" ]; do
       --debug)
           CMD_DEBUG=y
           ;;
+      --run-restore-test)
+          RUN_RESTORE_TEST="y"
+          shift
+          DAR_ARCHIVE="$1"
+          ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--fsa-scope-none] [--debug]"
-          echo "   --backupdef is a filename in backups.d/"
-          echo "   --list-files list files that will be backed up (slow, be patient)"
-          echo "   --local-backup-dir don't mount a remote directory for backup, test, restore operations"
-          echo "   --fsa-scope-none useful when restoring to another type of file system, than when backup was done (for example the restore test)"
-          echo "   --debug write debug log messages"
+          echo "$SCRIPTNAME --help|-h  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--fsa-scope-none] [--run-restore-test  <dar archive>]  [--debug]"
+          echo "   --backupdef, where <backup definition> is a filename in backups.d/"
+          echo "   --list-files, list files that will be backed up (slow, be patient)"
+          echo "   --local-backup-dir, don't mount a remote directory for backup, test, restore operations"
+          echo "   --fsa-scope-none, useful when restoring to another type of file system, than when backup was done (for example the restore test)"
+          echo "   --debug, give bash the '-x' option to log all activity"
+          echo "   --run-restore-test, where <dar archive> is an existing archive"
           exit
           ;;
   esac
@@ -82,11 +89,12 @@ STARTTIME="$(date -Iseconds)"
 log =======================================================
 log "  $SCRIPTNAME started: $STARTTIME"
 log =======================================================
-log "BACKUPDEF=$BACKUPDEF"
-log "LOCAL_BACKUP_DIR=$LOCAL_BACKUP_DIR"
-log "LIST_FILES=$LIST_FILES"
-log "FSA_SCOPE_NONE=$FSA_SCOPE_NONE"
-log "CMD_DEBUG=$CMD_DEBUG"
+log "BACKUPDEF=${BACKUPDEF}"
+log "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
+log "LIST_FILES=${LIST_FILES}"
+log "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
+log "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
+log "CMD_DEBUG=${CMD_DEBUG}"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
@@ -110,32 +118,38 @@ mountPrereqs
 # copy dar_static to server
 copyDarStatic
 
-# check if a single backup definition is to be run
-if [[ "$BACKUPDEF" == "" ]]; then
-  # loop over backup definition in backups.d/
-  for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
-      CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
-      if [[ $LIST_FILES  ==  "1" ]]; then
-        log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
-        listFilesToBackup
-      else
-        log "== start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
-        runBackupDef
-      fi
-  done
+# check if a restore test is chosen
+if [[ "$RUN_RESTORE_TEST" == "y"  ]]; then
+  # set up variables the restore function expects
+  setArchivePath
+  darRestoreTest
 else
-  if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
-      CURRENT_BACKUPDEF="$BACKUPDEF"
-      if [[ $LIST_FILES  ==  "1" ]]; then
-        log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
-        listFilesToBackup
-      else
-        log "== start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
-        runBackupDef
-      fi
-  else 
-    log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
+  # check if a single backup definition is to be run
+  if [[ "$BACKUPDEF" == "" ]]; then
+    # loop over backup definition in backups.d/
+    for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
+        CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
+        if [[ $LIST_FILES  ==  "1" ]]; then
+          log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
+          listFilesToBackup
+        else
+          log "== start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
+          runBackupDef
+        fi
+    done
+  else
+    if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
+        CURRENT_BACKUPDEF="$BACKUPDEF"
+        if [[ $LIST_FILES  ==  "1" ]]; then
+          log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
+          listFilesToBackup
+        else
+          log "== start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+          runBackupDef
+        fi
+    else 
+      log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
+    fi
   fi
 fi
-
 exit "$EVERYTHING_OK"
