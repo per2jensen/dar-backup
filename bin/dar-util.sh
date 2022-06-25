@@ -108,7 +108,7 @@ listFilesToBackup () {
             echo "newest FULL: ${NEWEST_ARCHIVE}"
             if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
                 echo "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-                exit  
+                return
             fi
             # dryrun  showing what to backup (-vt)
             dar -vt -c "${ARCHIVEPATH}" \
@@ -174,7 +174,7 @@ runBackupDef () {
                 log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
                 exit 100 
             fi
-            log "NEWEST archive: $NEWEST_ARCHIVE"
+            log "Create DIFF compared to: $NEWEST_ARCHIVE"
             # backup
             diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
         else 
@@ -184,7 +184,7 @@ runBackupDef () {
                     log  "ERROR DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
                     exit 101 
                 fi
-                log "NEWEST archive: $NEWEST_ARCHIVE"
+                log "Create INC compared to: $NEWEST_ARCHIVE"
                 # backup
                 diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
             else

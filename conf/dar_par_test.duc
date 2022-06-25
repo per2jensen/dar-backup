@@ -1,7 +1,5 @@
 #! /bin/bash
 
-echo "PAR2 started: \"$0\""
-
 ###
 #
 # this script is to be launched on dar command line when testing an archive with -s option (slicing)
