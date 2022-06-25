@@ -20,7 +20,7 @@ ls -lh "$MOUNT_POINT"
 # run DIFF backup
 "$TESTDIR"/bin/dar-diff-backup.sh -d TEST --local-backup-dir > "$TESTDIR"/dar-output.txt
 
-grep  -E "NEWEST archive: +TEST_FULL_2099-12-31" "$TESTDIR"/dar-output.txt
+grep  -E "Create DIFF compared to: +TEST_FULL_2099-12-31" "$TESTDIR"/dar-output.txt
 if [[ $? == "0" ]]; then
     echo "script DID use the correct (fake) archive to diff against"
 else
