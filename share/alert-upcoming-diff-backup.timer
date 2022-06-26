@@ -1,8 +1,8 @@
 [Unit]
-Description=alert upcoming DIFF backup
+Description=alert upcoming DIFF dar-backup
 
 [Timer]
-# Monthly DIFF on the first day of Feb through Dec
+# Monthly DIFF on the first day of month
 OnCalendar=*-*-01 07:03:00
 
 [Install]

@@ -2,7 +2,6 @@
 Description=alert upcoming FULL dar-backup
 
 [Timer]
-# yearly the day before new years, that is typically a vacation day for Per
 OnCalendar=*-12-28 10:03:00
 
 [Install]

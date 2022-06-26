@@ -4,6 +4,6 @@ StartLimitIntervalSec=120
 StartLimitBurst=1
 [Service]
 Type=oneshot
-TimeoutSec=5 min
+TimeoutSec=300
 RemainAfterExit=true
-ExecStart="@@DAR_BACKUP_DIR@@/bin/send-msg.sh 'NOTICE: FULL dar-backup coming up'"
+ExecStart=@@DAR_BACKUP_DIR@@/bin/../bin/send-msg.sh "NOTICE: FULL dar-backup coming up"

@@ -1,9 +1,10 @@
-  # Systemd backup schedule
+# Systemd timers and services
 
-## Systemd timers & services
+  Systemd timers and service files can be found in the share/ directory.
+  The following is here: 
+    - FULL, DIFF and INC backups 
+    - Alert sent on upcoming FULL & DIFF backups.
 
-  Systemd timers and service files for FULL, DIFF and INC backups can be found in the share/ directory.
-  "
   The files are ready to be copied by the user to "~/.config/systemd/user"
 
 ## Grandfather, father, son backup strategy
@@ -34,6 +35,12 @@
   
   systemctl --user enable dar-inc-backup.timer
   systemctl --user start  dar-inc-backup.timer
+
+  systemctl --user enable alert-upcoming-full-backup.timer
+  systemctl --user start  alert-upcoming-full-backup.timer
+
+  systemctl --user enable alert-upcoming-diff-backup.timer
+  systemctl --user start  alert-upcoming-diff-backup.timer
   
   systemctl --user daemon-reload
   ````
@@ -71,9 +78,9 @@
 
   journalctl --user -n 50 -f -u dar-inc-backup.service
   ````
-  
 
-## Systemd documentation
+
+# Systemd documentation
 
   - [systemd website](https://systemd.io/)
   - [systemd timer](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
