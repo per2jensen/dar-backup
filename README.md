@@ -156,6 +156,12 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   See more in the section on [restore exit code 5](#fsa-scope-none)
 
+## --run-restore-test archive
+  If you for some reason need to rerun a restore test from an existing archive, use this option.
+  'archive' is the dar archive name without ".<slice#>.dar"
+
+  dar-backup expects the archive to be located at the path set in SERVER_DIR in the config file.
+  
 ## --debug
   Make bash print all statements via the "set -x" option. Save output to debug log file.
 
