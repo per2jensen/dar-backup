@@ -1,0 +1,9 @@
+[Unit]
+Description=alert upcoming FULL dar-backup
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+TimeoutSec=5 min
+RemainAfterExit=true
+ExecStart="@@DAR_BACKUP_DIR@@/bin/send-msg.sh 'NOTICE: FULL dar-backup coming up'"

@@ -1,0 +1,11 @@
+[Unit]
+Description=alert upcoming DIFF backup
+
+[Timer]
+# Monthly DIFF on the first day of Feb through Dec
+OnCalendar=*-*-01 07:03:00
+
+[Install]
+WantedBy=timers.target
+
+
