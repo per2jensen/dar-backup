@@ -1,3 +1,6 @@
+#
+#  Configuration file for automated tests
+#
 # Environment variables.
 
 # the Discord webhook address to send messages to
@@ -24,3 +27,9 @@ DEBUG=n
 
 # path to debug log file
 DEBUG_LOCATION="/tmp/dar-debug.log"
+
+# age in days for DIFF archives to be cleaned up (deleted)
+DIFF_AGE=100
+
+# age in days for INC archives to be cleaned up (deleted)
+INC_AGE=40
