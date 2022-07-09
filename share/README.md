@@ -19,6 +19,7 @@
     - FULL backup on December 30 10:03:00
     - DIFF backups on the first day of a month (including Jan) 19:03:00
     - INC backups starting on the fourth day of a month 19:03:00, repeating every 3 days
+    - cleanup old DIFFs & INCs every night at 21:07
   
 ## Installation
 
@@ -42,6 +43,10 @@
 
   systemctl --user enable alert-upcoming-diff-backup.timer
   systemctl --user start  alert-upcoming-diff-backup.timer
+
+  systemctl --user enable dar-cleanup.timer
+  systemctl --user start  dar-cleanup.timer
+
   
   systemctl --user daemon-reload
   ````

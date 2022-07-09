@@ -1,0 +1,9 @@
+[Unit]
+Description=cleanup up old DIFF & INC archives
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+TimeoutSec=60
+RemainAfterExit=true
+ExecStart="@@DAR_BACKUP_DIR@@/bin/cleanup.sh"

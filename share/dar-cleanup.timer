@@ -1,0 +1,10 @@
+[Unit]
+Description=dar-cleanup DIFF & INC timer
+
+[Timer]
+OnCalendar=*-*-* 21:07:00
+
+[Install]
+WantedBy=timers.target
+
+
