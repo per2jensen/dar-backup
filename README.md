@@ -90,7 +90,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Logs to a logfile in a user configured directory
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
-  - test cases: verify backups work, the installer, parchive error correction and more on every commit via Githup Actions
+  - Cleanup script removes DIFFs older than 100 days, and INCs older than 40 days. FULL backups are not touched.
+  - Test cases: verify backups work, the installer, parchive error correction and more on every commit via Githup Actions
 
 # Invocation
 
