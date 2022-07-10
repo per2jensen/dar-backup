@@ -43,12 +43,12 @@ mountPrereqs
 while IFS= read -r -d "" file
 do
   rm -f "${file}" &&  log "clean up: \"${file}\""
-done <   <(find "${MOUNT_POINT}" -name "*DIFF*.dar*" -ctime "+${DIFF_AGE}" -print0)
+done <   <(find "${MOUNT_POINT}" -name "*_DIFF_*.dar*" -ctime "+${DIFF_AGE}" -print0)
 
 # delete INCs older than INC_AGE days
 while IFS= read -r -d "" file
 do
   rm -f "${file}"  &&  log "clean up: \"${file}\""
-done <   <(find "${MOUNT_POINT}" -name "*INC*.dar*" -ctime "+${INC_AGE}" -print0)
+done <   <(find "${MOUNT_POINT}" -name "*_INC_*.dar*" -ctime "+${INC_AGE}" -print0)
 
-log "$0 ended normally"
+log "$SCRIPTNAME ended normally"
