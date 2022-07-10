@@ -4,6 +4,7 @@
   The following is here: 
   
     - FULL, DIFF and INC backups 
+    - Scheduled cleanups of old archives
     - Alert sent on upcoming FULL & DIFF backups.
 
   The files are ready to be copied by the user to "~/.config/systemd/user"
@@ -19,11 +20,11 @@
     - FULL backup on December 30 10:03:00
     - DIFF backups on the first day of a month (including Jan) 19:03:00
     - INC backups starting on the fourth day of a month 19:03:00, repeating every 3 days
-    - cleanup old DIFFs & INCs every night at 21:07
+    - Cleanup old DIFFs & INCs every night at 21:07
   
 ## Installation
 
-  - copy the "share/*.timers" &  "share/*.service" to ~/.config/systemd/user/
+  - Copy the "share/*.timers" &  "share/*.service" to ~/.config/systemd/user/
   - install the files in systemd
 
   ````

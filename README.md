@@ -517,6 +517,7 @@ An example of a timer and service for installation in the user's systemd directo
   The script has reached version 1.0 - I trust it.
 
 ## 'dar' itself
+
 My ubuntu 22.04 currently gives me this:
 
 ````
@@ -559,22 +560,13 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 
 
 # TODO
-  - Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
-  - An INC backup checks if a previous DIFF has been made. It doesn't care if a newer FULL has been created.
-  - Currently INC backups are relative the latest DIFF - that makes it easy to restore.  Incremental backups are usually relative to the latest backup taken (whatever type), in order to make them as small as possible. Hmm, need to decide on the best way forward.
-  - Setup a scheduled "find and delete" old backups. Shouldn't be too difficult, for now I have been ok with manual cleanups.
-  - - [nice webpage on the find command using file stampstamps](https://linoxide.com/find-files-modified-last-number-of-days/) 
-  - - ````
-      # delete DIFFs older than 92 days
-      find ~/mnt/dar -name "*DIFF*" -ctime "+92" -exec rm -f "{}" \;
-      # delete INCs older than 32 days
-      find ~/mnt/dar -name "*INC*" -ctime "+32" -exec rm -f "{}" \;
 
-      ````
+  - Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
 # Projects this script benefits from
+
  1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
