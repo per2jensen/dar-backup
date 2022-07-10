@@ -76,8 +76,16 @@ sed -i s/DIFF_AGE.*/DIFF_AGE=0/ "$TESTDIR"/conf/dar-backup.conf
 
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir
 
-grep "clean up:" "$TESTDIR"/archives/dar-backup.log|grep DIFF
-if [[ "$?" != "1" ]]; then
+COUNT=$(grep -c "clean up:" "$TESTDIR"/archives/dar-backup.log)
+echo "COUNT: $COUNT"
+if [[ "$COUNT" != "3" ]]; then
+  echo number of INC cleanups is wrong
+  exit 1
+fi
+
+COUNT=$(grep -c -E "clean up: .*?DIFF" "$TESTDIR"/archives/dar-backup.log)
+echo "COUNT: $COUNT"
+if [[ "$COUNT" != "0" ]]; then
   echo a DIFF archive was found, should only have been INCs
   exit 1
 fi
@@ -89,9 +97,18 @@ sed -i s/INC_AGE.*/INC_AGE=0/ "$TESTDIR"/conf/dar-backup.conf
 
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir
 
-COUNT=$(grep -c "clean up:" "$TESTDIR"/archives/dar-backup.log)
-if [[ "$COUNT" != "6" ]]; then
-  echo total number of files deleted expected to be 6
+COUNT=$(grep -c -E "clean up: .*?DIFF" "$TESTDIR"/archives/dar-backup.log)
+echo "COUNT: $COUNT"
+if [[ "$COUNT" != "3" ]]; then
+  echo total number of DIFFs deleted expected to be 3
+  exit 1
+fi
+
+# check no FULLs has been cleaned up
+COUNT=$(grep -c -E "clean up: .*?FULL" "$TESTDIR"/archives/dar-backup.log)
+echo "COUNT: $COUNT"
+if [[ "$COUNT" != "0" ]]; then
+  echo one or more FULL archives were cleaned up
   exit 1
 fi
 

@@ -30,7 +30,11 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
-log "$0 started"
+SCRIPTNAME=$(basename "$0")
+STARTTIME="$(date -Iseconds)"
+log "======================================================="
+log "$SCRIPTNAME started: $STARTTIME"
+log "======================================================="
 
 # make sure mounts are in order
 mountPrereqs
