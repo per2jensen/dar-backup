@@ -6,6 +6,7 @@
     - FULL, DIFF and INC backups 
     - Scheduled cleanups of old archives
     - Alert sent on upcoming FULL & DIFF backups.
+    - Cleanups of old DIFFs and INCs
 
   The files are ready to be copied by the user to "~/.config/systemd/user"
 
