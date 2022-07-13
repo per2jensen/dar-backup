@@ -3,11 +3,11 @@
 
 
 create:
-        -E '\'@@CONFDIR@@/dar_par_create.duc\' "%p" "%b" "%N" "%e" "%c" 5'
+        -E '\'@@CONFDIR@@/../bin/dar_par_create.duc\' "%p" "%b" "%N" "%e" "%c" 5'
 # 5 stands for 5% of redundancy
 
 test:
-        -E '\'@@CONFDIR@@/dar_par_test.duc\' "%p" "%b" "%N" "%e" "%c"'
+        -E '\'@@CONFDIR@@/../bin/dar_par_test.duc\' "%p" "%b" "%N" "%e" "%c"'
 
 
 # fix from Sergey Feo

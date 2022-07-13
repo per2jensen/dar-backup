@@ -1,5 +1,8 @@
 #! /bin/bash
 
+SCRIPTPATH=$(realpath "$0")
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+source "${SCRIPTDIRPATH}/dar-util.sh"
 
 ###
 #
@@ -28,8 +31,9 @@ if [ "$1" = "" -a "$2" = "" -a "$3" = "" -a "$4" = "" -a "$6" = "" ]; then
   exit 1
 fi
 
+log "PAR2 repair data for slice: $2.$3"
+
 # change according to you need
 PAR=par2
 
 exec "$PAR" c -r"$6" -n1 "$1/$2.$3.$4" >/dev/null 2>&1
-# script returned code it those of par
