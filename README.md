@@ -111,6 +111,11 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   The installer makes scripts executable, creates soft links, sets up references to the various config files used.
   The install also generates systemd service files, which can be put in ~/.config/systemd/user/ (they are not deployed).
 
+  Once installed:
+  
+  - Have a look at config file in conf/, and tweak it to your needs
+  - Then create a backup definition in backups.d/, using the "dar-backup" file as your starting point.
+
 # <a id="script-features"> Script features
 
   - Take full backups, differential backups or incremental backups
