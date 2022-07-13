@@ -82,32 +82,34 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Download a dar-backup tar file from the [releases](https://github.com/per2jensen/dar-backup/releases)
   - untar 
     ````
-    tar zxf <the-tar-file> --directory <a-directory-under-which-darbackup-is-untarred>
+    UNTAR_LOCATION=<a-directory-under-which-darbackup-is-untarred>
+    tar zxf <the-tar-file> --directory "$UNTAR_LOCATION"
     ````
   - make install script executable
     ````
-    chmod +x <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/install.sh
+    chmod +x "$UNTAR_LOCATION"/dar-backup/bin/install.sh
     ````
   - Run install.sh
     ````
-    <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/install.sh
+    "$UNTAR_LOCATION"/dar-backup/bin/install.sh
     ````
 
   - Take a backup of the installation
     ````
-    <a-directory-under-which-darbackup-is-untarred>/dar-backup/bin/dar-backup.sh --local-backup-dir
+    "$UNTAR_LOCATION"/dar-backup/bin/dar-backup.sh --local-backup-dir
     ````
 
   - View the log file
     ````
-    cat <a-directory-under-which-darbackup-is-untarred>/dar-backup/archives/dar-backup.log
+    cat "$UNTAR_LOCATION"/dar-backup/archives/dar-backup.log
     ````
     During installation, a directory has been created "<a-directory-under-which-darbackup-is-untarred>/dar-backup/archives", where the backups have been stored.
 
 
-  The programs stay where untarred, when running the installer.
+  All files stay where untarred, when running the installer.
   
-  The installer makes scripts executable, creates soft links, sets up references to the various config files used, and lastly generates systemd service files (they are not deployed).
+  The installer makes scripts executable, creates soft links, sets up references to the various config files used.
+  The install also generates systemd service files, which can be put in ~/.config/systemd/user/ (they are not deployed).
 
 # <a id="script-features"> Script features
 
