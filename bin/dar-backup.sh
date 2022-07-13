@@ -152,4 +152,7 @@ else
     fi
   fi
 fi
+if [[ "$EVERYTHING_OK"  == "0" ]]; then
+  log "$SCRIPTNAME ended without errors"
+fi 
 exit "$EVERYTHING_OK"
