@@ -425,6 +425,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   Use the dar-backup option --fsa-scope-none to avoid this type of error.
 
 ## <a id="par2-verification"></a>  par2 verification/repair
+
+### Use parchive solo
 You can run a par2 verification on an archive like this:
 ````
 for file in <archive>*.dar.par2; do
@@ -435,6 +437,45 @@ if there are problems with a slice, try to repair it like this:
 ````
   par2 repair <archive>.<slice number>.dar.par2
 ````
+
+### Use par parchive integration
+You can also use dar's slice functionality to verify slices using parchive:
+````
+dar -t <archives-path>/<the-archive> -E '<dar-backup install path>/bin/dar_par_test.duc  "%p" "%b" "%N" "%e" "%c"'
+````
+This example verifies an archive from the test/test-backup.sh script:
+````
+dar -t /tmp/dar-backup-test/archives/TEST_FULL_2022-07-13 -E '/tmp/dar-backup-test/bin/dar_par_test.duc  "%p" "%b" "%N" "%e" "%c"'
+
+par2 verification slice /tmp/dar-backup-test/archives/TEST_FULL_2022-07-13.1.dar...
+Loading "TEST_FULL_2022-07-13.1.dar.par2".
+Loaded 4 new packets
+Loading "TEST_FULL_2022-07-13.1.dar.vol00+99.par2".
+Loaded 99 new packets including 99 recovery blocks
+
+There are 1 recoverable files and 0 other files.
+The block size used was 348 bytes.
+There are a total of 1983 data blocks.
+The total size of the data files is 690027 bytes.
+
+Verifying source files:
+
+Opening: "TEST_FULL_2022-07-13.1.dar"
+Target: "TEST_FULL_2022-07-13.1.dar" - found.
+
+All files are correct, repair is not required.
+
+
+ --------------------------------------------
+ 7 item(s) treated
+ 0 item(s) with error
+ 0 item(s) ignored (excluded by filters)
+ --------------------------------------------
+ Total number of items considered: 7
+ --------------------------------------------
+
+````
+
 
 ## <a id="par2-redundency"></a> par2 create redundency files
 If you have merged archives, you will need to create the .par2 redundency files manually.
