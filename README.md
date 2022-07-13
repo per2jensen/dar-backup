@@ -1,13 +1,49 @@
 
-# Full, differential or incremental backups using 'dar' 
+# Table of contents
 
-  The wonderful 'dar' (Disk Archiver) (https://github.com/Edrusb/DAR) is used for 
+- [Full, differential or incremental backups using 'dar'](#full-diff-inc)
+- [My use case](#my-use-case) 
+- [Inspiration](#inspiration) 
+- [How to install](#how-to-install) 
+- [Script features](#script-features) 
+- [Requirements](#requirements) 
+- [Invocation](#invocation)
+- [Options](#options)  
+- [How to use](#how-to-use) 
+- [darrc](#darrc) 
+- [Examples](#examples) 
+  - [how to run a single backup definition](#run-a-single-definition) 
+  - [how to test that the archive is healthy](#test-archive) 
+  - [how to restore a directory](#restore-dir) 
+  - [how to restore a single file](#restore-file) 
+  - [restore test fails with exit code 4](#restore-test-exit-code-4) 
+  - [restore test fails with exit code 5](#restore-test-exit-code-5) 
+  - [par2 verification/repair](#par2-verification)</a>  
+  - [par2 create redundency files](#par2-redundency)</a> 
+  - [performance tip](#performance-tip) 
+  - [overview of archives](#overview-of-archives) 
+  - [merge FULL with DIFF, creating new FULL](#merge-full-diff) 
+  - [verbosity](#verbosity) 
+  - [trim the log file ](#trim-log-file) 
+- [list all dar archives, sorted on slice number](#list-sort-slice-no) 
+- [dar static tip](#static-dar) 
+- [ Exit values](#exit-codes)
+- [Systemd stuff (not installed by default)](#systemd-files) 
+- [Version](#version) 
+- [TODO](#todo)
+- [Projects this script benefits from](#dependencies)
+- [License](#license) 
+
+
+# <a id="full-diff-inc"> Full, differential or incremental backups using 'dar' 
+
+  The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
 # Github location
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
-# My use case
+# <a id="my-use-case"> My use case
 
  I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
  - a non-privileged user (me :-)) can perform a mount
@@ -24,7 +60,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  I do not need the encryption features of dar, as all storage is already encrypted.
  
 
-# Inspiration
+# <a id="inspiration"> Inspiration
 
   I have used 'dar' before, and is now back. Thank you Denis Corbin for a great
   backup solution and for 20+ years of work/support. Outstanding!
@@ -42,7 +78,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
 
-# How to install
+# <a id="how-to-install"> How to install
   - Download a dar-backup tar file from the [releases](https://github.com/per2jensen/dar-backup/releases)
   - untar 
     ````
@@ -73,7 +109,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
   The installer makes scripts executable, creates soft links, sets up references to the various config files used, and lastly generates systemd service files (they are not deployed).
 
-# Script features
+# <a id="script-features"> Script features
 
   - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
@@ -97,7 +133,18 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Cleanup script removes DIFFs older than 100 days, and INCs older than 40 days. FULL backups are not touched.
   - Test cases: verify backups work, the installer, parchive error correction and more on every commit via Githup Actions
 
-# Invocation
+# <a id="requirements"> Requirements
+  - sshfs (if mounting a server directory)
+  - dar
+  - par2
+  - curl
+
+  On Ubuntu, install the requirements this way:
+  ````
+    sudo apt install sshfs dar dar-static par2 curl
+  ````
+
+# <a id="invocation"> Invocation
 
  - FULL backup of files/directories in the backup definition
 
@@ -122,19 +169,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  ````
 
 
-
-# Requirements
-  - sshfs (if mounting a server directory)
-  - dar
-  - par2
-  - curl
-
-  On Ubuntu, install the requirements this way:
-  ````
-    sudo apt install sshfs dar dar-static par2 curl
-  ````
-
-# Options
+# <a id="options">  Options
 
   The script has a few options to modify it's behavior:
 
@@ -175,7 +210,9 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   Terse usage information
 
-# How to use
+# 
+
+# <a id="how-to-use"> How to use
   
   I use Ubuntu on my workstation, so this script is a 'bash' script. The 'dar' program is from the Ubuntu package, I also have par2 installed.
 
@@ -289,16 +326,16 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
     the archive name is: 'TEST_FULL_2021_08_29'
 
-# darrc
+# <a id="darrc"> darrc
   The scripts do not use ~/.darrc nor do they use /etc/darrc
 
   The defaults used by the scripts (for example file types not to compress) are linked by backup definitions. The defaults are stored in conf/defaults-rc.
 
   The demo backup definition templates/backups.d/dar-backup links defaults-rc in the first directive.
 
-# Examples
+# <a id="examples"> Examples
 
-## how to run a single backup definition
+## <a id="run-a-single-definition"> how to run a single backup definition
   Backup definitions are placed in the backups.d/ directory. Each definition corresponds to a separate 'dar' archive.
   By default the dar-backup.sh loops over all definitions and runs the specified backups.
 
@@ -308,7 +345,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   ````
   where "the definition" is the filename in backups.d/
   
-## how to test that the archive is healthy
+## <a id="test-archive"> how to test that the archive is healthy
   If you have copied the archive somewhere, it gives peace of mind to know the archive is still healthy.
   ````
   dar -vd -t <the archive>
@@ -317,7 +354,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   Another way to verify the archives is to use [par2 verification](#par2-verification)
 
-## how to restore a directory
+## <a id="restore-dir"> how to restore a directory
   I do a "list" and "grep" like this
   ````
   dar -l /path/to/archive |grep "your search string"
@@ -360,7 +397,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
 
 
-## how to restore a single file
+## <a id="restore-file"> how to restore a single file
   Much like restoring a directory, I seek out the file with a "list" and "grep"
   ````
   dar -l /path/to/archive |grep "your search string"
@@ -372,12 +409,12 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
   The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
   
-## restore test fails with exit code 4
+## <a id="restore-test-exit-code-4"> restore test fails with exit code 4
   "dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
 
   Thus the dar option "--comparison-field=ignore-owner" has been placed in the defaults-rc file. This causes dar to restore without an error. It is a good option when using dar as a non-privileged user. 
 
-## <a id="fsa-scope-none"> restore test fails with exit code 5
+## <a id="restore-test-exit-code-5"> <a id="fsa-scope-none"> restore test fails with exit code 5
   If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
 
   That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
@@ -409,12 +446,12 @@ done
 ````  
 where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
   
-## performance tip
+## <a id="performance-tip"> performance tip
   This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
   
   Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the the par2 data in memory.
   
-## overview of archives
+## <a id="overview-of-archives"> overview of archives
 Once you har a fair amount of archives, it can become a bit hard to have an overview of what's there.
 One way to get an overview is to use the script 'ls-archives.sh'
 
@@ -445,7 +482,7 @@ For convenience it also prints that total amount of storage used in the director
 
 The reason the total is bigger than the sum of slices, is that the total includes parity files.
 
-## merge FULL with DIFF, creating new FULL
+## <a id="merge-full-diff"> merge FULL with DIFF, creating new FULL
   Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
   One way to do that, is to let dar create a FULL archive from scratch, another is to merge a FULL archive with a DIFF, and from there do DIFF's until they once again gets too large for your taste.
   
@@ -464,10 +501,10 @@ The reason the total is bigger than the sum of slices, is that the total include
   1. When not providing an --overwriting-policy, the dar default is "Oo", which means use the file from the "adding" archive (-@ option), and also the extended atttibutes from that file also. To me, that is the natural way of merging the two archives.
   2. I specified "-ak" to prevent decompressing/compressing - that didn't work, due to different compression types used in the 2 archives (it is a feature for a future version of dar though)
 
-## verbosity
+## <a id="verbosity"> verbosity
 The file conf/defaults-rc contains various verbosity settings, that can be enabled by removing the "#" char. A brief explanation to each option is provided.
 
-## trim the log file 
+## <a id="trim-log-file"> trim the log file 
   'dar' notes every directory is has processed, that can clutter the log file. If you want to trim the log file after the fact, try this:
   ````
   # remove lots of directory notices from the log file
@@ -477,7 +514,7 @@ The file conf/defaults-rc contains various verbosity settings, that can be enabl
   sed -i '/^Finished Inspecting/d' ~/dar-backup.log 
   ````   
 
-## list all dar archives, sorted on slice number
+## <a id="list-sort-slice-no"> list all dar archives, sorted on slice number
 If you want to check that all slices are found for an archive, you can use the commands shown below.
 
 In this example, I am listing my archive "media-files_FULL_" for the date set in the DARDATE env variable.
@@ -493,13 +530,13 @@ ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0
 ````
 
 
-# dar static tip
+# <a id="static-dar"> dar static tip
   The script now backs up the /usr/bin/dar_static executable with your archives, if the static version is found.
 
   If you at some point in the future need to extract files from the archive, you know you have correct binary at hand.
 
 
-# Exit values
+# <a id="exit-codes"> Exit values
 | #   | Description |
 | --- | ----------- |
 | 0 | script ended without errors |
@@ -507,12 +544,11 @@ ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0
 | 100 | FULL backup not found |
 
 
-# shared, not installed
-## systemd user timer & service
+# <a id="systemd-files"> Systemd stuff (not installed by default)
 
-An example of a timer and service for installation in the user's systemd directory is provided
+Plug in timers and service files can be found in the [shared section](share/README.md)
 
-# Version
+# <a id="version"> Version
 ## dar-backup script
   The script has reached version 1.0 - I trust it.
 
@@ -559,20 +595,20 @@ dar --version
 I can confirm large file support works. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
 
 
-# TODO
+# <a id="todo"> TODO
 
   - Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
-# Projects this script benefits from
+# <a id="dependencies"> Projects this script benefits from
 
  1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)
 
-# License
+# <a id="license"> License
 
   These scripts are licensed under the GPLv3 license.
   Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html
