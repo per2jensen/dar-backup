@@ -153,3 +153,15 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-run-restore-test.sh
           $GITHUB_WORKSPACE/test/test-run-restore-test.sh
+  check-if-archive-exists:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static par2
+      
+      - name: Run the test script
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-archive-exists.sh
+          $GITHUB_WORKSPACE/test/test-archive-exists.sh

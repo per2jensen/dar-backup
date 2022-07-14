@@ -34,6 +34,18 @@ log () {
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
 
+# check if an archive exists, before starting dar
+# $1 argument: a variable, NOT is's value
+# look here: https://stackoverflow.com/questions/540298/passing-arguments-by-reference
+archiveExists () {
+    local -n exists=$1
+    DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
+    setArchivePath
+    local COUNT=$(find "$MOUNT_POINT" -name "${DAR_ARCHIVE}*" -type f|wc -l)
+    if [[ "$COUNT" != "0" ]]; then
+        exists=1
+    fi
+}
 
 # A little hack'ish, if LOCAL_BACKUP_DIR is set, use $MOUNT_POINT as the 
 # local directory to store backups in. Useful for testing and if a server has 
@@ -164,6 +176,12 @@ runBackupDef () {
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
  
+    local isExists=0
+    archiveExists isExists
+    if [[ "$isExists" != "0" ]]; then
+        log "WARN archive: \"$DAR_ARCHIVE\" already exists, skipping"
+        return
+    fi
     if [[ $MODE == "FULL"  ]]; then 
       # backup
       backupTestRestore 
