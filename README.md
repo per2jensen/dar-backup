@@ -430,8 +430,9 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Lastly restore the latest INC,  using -wa option in case overwriting files was necessary.
   - Make sure firefox is closed
   - Move the working snap away
-  - Move the restoref firefox snap to ~/snap
+  - Move the restored firefox snap to ~/snap
   - Test firefox
+  - Make sure firefox is closed
   - Delete the restored snap
   - Move working snap back
 
@@ -449,6 +450,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   mv /tmp/snap/firefox ~/snap/
 
   firefox
+
+  killall firefox
 
   rm -fr ~/snap/firefox
 
