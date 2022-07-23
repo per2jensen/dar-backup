@@ -262,6 +262,12 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
       # path to debug log file
       DEBUG_LOCATION=/tmp/dar-debug.log
+
+      # age in days for DIFF archives to be cleaned up (deleted)
+      DIFF_AGE=100
+
+      # age in days for INC archives to be cleaned up (deleted)
+      INC_AGE=40
     ````
   - Define backups in the "backups.d" directory, just drop files in the directory
   
