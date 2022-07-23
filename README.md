@@ -15,7 +15,8 @@
   - [how to run a single backup definition](#run-a-single-definition) 
   - [how to test that the archive is healthy](#test-archive) 
   - [how to restore a directory](#restore-dir) 
-  - [how to restore a single file](#restore-file) 
+  - [how to restore a single file](#restore-file)
+  - [how to restore firefox snap](#restore-firefox-snap) 
   - [restore test fails with exit code 4](#restore-test-exit-code-4) 
   - [restore test fails with exit code 5](#restore-test-exit-code-5) 
   - [par2 verification/repair](#par2-verification)</a>  
