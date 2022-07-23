@@ -415,6 +415,44 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   ````
   
   The "-I" option works on the file name only, and not path/file-name as the "-g" option. So using "-I" could select and restore more than one file in a directory tree.
+
+## <a id="restore-firefox-snap"> how to restore firefox snap
+
+  I'm using the supplied Ubuntu 22.04 firefox snap package. It doesn't do everything I want it to,
+  but I try to use the supplied version if it works for me. Over time that leads to fewer hassles.
+
+  I have done a test restore of the snap, to see if I can restore firefox snap and get a working browser with all bookmarks intacts. I could :-), here is the procedure I followed:
+   
+  - Restore the snap to /tmp
+  - First restore the FULL archive (no snap there)
+  - Then restore the latest DIFF, using -wa option in case overwriting files was necessary.
+  - Lastly restore the latest INC,  using -wa option in case overwriting files was necessary.
+  - Make sure firefox is closed
+  - Move the working snap away
+  - Move the restoref firefox snap to ~/snap
+  - Test firefox
+  - Delete the restored snap
+  - Move working snap back
+
+  ````
+  dar -x mnt/dar/pj_homedir_FULL_2022-01-08 -R /tmp -g snap/firefox
+
+  dar -x mnt/dar/pj_homedir_DIFF_2022-06-25 -R /tmp -g snap/firefox -wa
+
+  dar -x mnt/dar/pj_homedir_INC_2022-07-22  -R /tmp -g snap/firefox -wa
+
+  killall firefox
+
+  mv ~/snap/firefox ~/snap/firefox-org
+
+  mv /tmp/snap/firefox ~/snap/
+
+  firefox
+
+  rm -fr ~/snap/firefox
+
+  mv ~/snap/firefox-org ~/snap/forefox
+  ````
   
 ## <a id="restore-test-exit-code-4"> restore test fails with exit code 4
   "dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
