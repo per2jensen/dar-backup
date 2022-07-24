@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/bash -x
 # test setup for every test script
 # this is sourced in the actual test scripts
 
