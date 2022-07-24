@@ -23,7 +23,8 @@
   - [par2 create redundency files](#par2-redundency)</a> 
   - [performance tip](#performance-tip) 
   - [overview of archives](#overview-of-archives) 
-  - [merge FULL with DIFF, creating new FULL](#merge-full-diff) 
+  - [merge FULL with DIFF, creating new FULL](#merge-full-diff)
+  - [cleanup a usbdisk for old archives](#cleanup-usbdisk) 
   - [verbosity](#verbosity) 
   - [trim the log file ](#trim-log-file) 
 - [list all dar archives, sorted on slice number](#list-sort-slice-no) 
@@ -577,6 +578,23 @@ It could also be an error, so it is good to know why archive sizes change over t
 For convenience it also prints that total amount of storage used in the directory used.
 
 The reason the total is bigger than the sum of slices, is that the total includes parity files.
+
+## <a id="cleanup-usbdisk"> clean up a usbdisk for old archives
+  I copy dar achives from my server to different usbdisks, which are rotated out of my home.
+  That provides increased redundency and increases the chances of recovery in the event, that all computers are stolen or my home burns down to the ground.
+
+  The cleanup script can be used to remove old archives located anywhere on the file system. It uses the DIFF_AGE and INC_AGE settings from the [configuration file](https://github.com/per2jensen/dar-backup/blob/main/templates/dar-backup.conf.template) when cleaning up.
+
+  The option --alternate-archive-dir is used, most commonly together with the --local-backup-dir option. An example can be seen in the [testscript](https://github.com/per2jensen/dar-backup/blob/main/test/test-cleanup-alternate-dir.sh)
+
+  For this example, let's assume that a usbdisk with dar archives has been mounted on /media/pj/usbdisk. In order to cleanup old archives on the usbdisk, do the following
+  
+  ````
+  <dar-backup>/bin/cleanup.sh --local-backup-dir --alternate-archive-dir "/media/pj/usbdisk"
+  ````
+  
+  The log messages are written to the logfile configured in the config file.
+
 
 ## <a id="merge-full-diff"> merge FULL with DIFF, creating new FULL
   Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
