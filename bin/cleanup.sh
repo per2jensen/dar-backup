@@ -53,16 +53,53 @@ log "Cleanup in: \"$MOUNT_POINT\""
 # make sure mounts are in order
 mountPrereqs
 
-# delete DIFFs older than DIFF_AGE days
-while IFS= read -r -d "" file
-do
-  rm -f "${file}" &&  log "clean up: \"${file}\""
-done <   <(find "${MOUNT_POINT}" -name "*_DIFF_*.dar*" -ctime "+${DIFF_AGE}" -print0)
 
-# delete INCs older than INC_AGE days
+# date --date="-1 days" -I
+
+# ls /tmp/dar-backup-test/archives/*.dar|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+# 
+
+DIFF_AGE_DATE=$(date --date="-${DIFF_AGE} days" -I)
+DIFF_AGE_SECS=$(date +%s --date "$DIFF_AGE_DATE")
+#echo DIFF_AGE_DATE: $DIFF_AGE_DATE
+#echo DIFF_AGE_SECS: $DIFF_AGE_SECS
+
+#clean up DIFFs
 while IFS= read -r -d "" file
 do
-  rm -f "${file}"  &&  log "clean up: \"${file}\""
-done <   <(find "${MOUNT_POINT}" -name "*_INC_*.dar*" -ctime "+${INC_AGE}" -print0)
+  #echo $file
+  FILE_DATE=$(echo $file|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  #echo date: $FILE_DATE
+  FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
+  #echo file date secs: $FILE_DATE_SECS
+  #echo DIFFS secs:     $DIFF_AGE_SECS
+  if (( DIFF_AGE_SECS >= FILE_DATE_SECS )); then
+    #echo should be deleted: $file
+    rm -f "${file}" &&  log "clean up: \"${file}\""
+  fi
+done <   <(find "$MOUNT_POINT" -name "*_DIFF_*.dar*" -print0)
+
+
+
+INC_AGE_DATE=$(date --date="-${INC_AGE} days" -I)
+INC_AGE_SECS=$(date +%s --date "$INC_AGE_DATE")
+#echo INC_AGE_DATE: $INC_AGE_DATE
+#echo INC_AGE_SECS: $INC_AGE_SECS
+
+#clean up INCs
+while IFS= read -r -d "" file
+do
+  #echo $file
+  FILE_DATE=$(echo $file|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  #echo date: $FILE_DATE
+  FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
+  #echo file date secs: $FILE_DATE_SECS
+  #echo INC secs:       $INC_AGE_SECS
+  if (( INC_AGE_SECS >= FILE_DATE_SECS )); then
+    #echo should be deleted: $file
+    rm -f "${file}" &&  log "clean up: \"${file}\""
+  fi
+done <   <(find "$MOUNT_POINT" -name "*_INC_*.dar*" -print0)
 
 log "$SCRIPTNAME ended normally"
+
