@@ -7,6 +7,7 @@
 # DIFF_AGE & INC_AGE is defined in the conf file
 
 LOCAL_BACKUP_DIR=""
+ALTERNATE_ARCHIVE_DIR=""
 
 # Get the options
 while [ -n "$1" ]; do
@@ -15,9 +16,15 @@ while [ -n "$1" ]; do
           echo "$MOUNT_POINT" used as local backup directory....
           LOCAL_BACKUP_DIR=1
           ;;
+      --alternate-archive-dir)
+          shift
+          ALTERNATE_ARCHIVE_DIR="$1"
+          echo Cleaning up in: \"$ALTERNATE_ARCHIVE_DIR\"
+          ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  [--local-backup-dir]"
           echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
+          echo "   --alternate-archive-dir, cleanup in another directory than the one configure, this probably requires --local-backup-dir also"
           exit
           ;;
   esac
@@ -30,11 +37,18 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
+# set MOUNT_POINT to the alternate archive dir
+# this (most probably) requires the --local-backup-dir option to be set also
+if [[ $ALTERNATE_ARCHIVE_DIR != "" ]]; then
+  MOUNT_POINT="$ALTERNATE_ARCHIVE_DIR"
+fi
+
 SCRIPTNAME=$(basename "$0")
 STARTTIME="$(date -Iseconds)"
 log "======================================================="
 log "$SCRIPTNAME started: $STARTTIME"
 log "======================================================="
+log "Cleanup in: \"$MOUNT_POINT\""
 
 # make sure mounts are in order
 mountPrereqs
