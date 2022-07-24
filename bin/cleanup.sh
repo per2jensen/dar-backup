@@ -68,7 +68,8 @@ DIFF_AGE_SECS=$(date +%s --date "$DIFF_AGE_DATE")
 while IFS= read -r -d "" file
 do
   #echo $file
-  FILE_DATE=$(echo $file|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  FILE_DATE=$(echo $file|grep -o -E "_DIFF_[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
   #echo date: $FILE_DATE
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   #echo file date secs: $FILE_DATE_SECS
@@ -77,7 +78,7 @@ do
     #echo should be deleted: $file
     rm -f "${file}" &&  log "clean up: \"${file}\""
   fi
-done <   <(find "$MOUNT_POINT" -name "*_DIFF_*.dar*" -print0)
+done <   <(find "$MOUNT_POINT" -type f -name "*_DIFF_*.dar*" -print0)
 
 
 
@@ -90,7 +91,8 @@ INC_AGE_SECS=$(date +%s --date "$INC_AGE_DATE")
 while IFS= read -r -d "" file
 do
   #echo $file
-  FILE_DATE=$(echo $file|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  FILE_DATE=$(echo $file|grep -o -E "_INC_[0-9]{4}-[0-9]{2}-[0-9]{2}")
+  FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}") 
   #echo date: $FILE_DATE
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   #echo file date secs: $FILE_DATE_SECS
@@ -99,7 +101,7 @@ do
     #echo should be deleted: $file
     rm -f "${file}" &&  log "clean up: \"${file}\""
   fi
-done <   <(find "$MOUNT_POINT" -name "*_INC_*.dar*" -print0)
+done <   <(find "$MOUNT_POINT" -type f -name "*_INC_*.dar*" -print0)
 
 log "$SCRIPTNAME ended normally"
 

@@ -24,6 +24,12 @@ touch "$TESTDIR"/archives/TEST_DIFF_${DAY_2_OLD}.dar
 touch "$TESTDIR"/archives/TEST_INC_${DAY_1_OLD}.dar
 touch "$TESTDIR"/archives/TEST_INC_${DAY_2_OLD}.dar
 
+#check that a direcotry name does not mess anythin up (it did on a usbdisk  disk :-) )
+mkdir "$TESTDIR"/archives/"$DAY_2_OLD"
+touch "$TESTDIR"/archives/"$DAY_2_OLD"/TEST_DIFF_${DAY_2_OLD}.dar
+touch "$TESTDIR"/archives/"$DAY_2_OLD"/TEST_INC_${DAY_2_OLD}.dar
+
+
 # set DIFF_AGE and INC_AGE so that one DIFF and one INC are cleaned up
 sed -i s/INC_AGE.*/INC_AGE=2/ "$TESTDIR"/conf/dar-backup.conf
 sed -i s/DIFF_AGE.*/DIFF_AGE=2/ "$TESTDIR"/conf/dar-backup.conf
@@ -32,14 +38,14 @@ sed -i s/DIFF_AGE.*/DIFF_AGE=2/ "$TESTDIR"/conf/dar-backup.conf
 
 COUNT=$(grep -c -E "clean up:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
-if [[ "$COUNT" != "1" ]]; then
+if [[ "$COUNT" != "2" ]]; then
   echo number of DIFF cleanups is wrong
   TEST_RESULT=1
 fi
 
 COUNT=$(grep -c -E "clean up:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
-if [[ "$COUNT" != "1" ]]; then
+if [[ "$COUNT" != "2" ]]; then
   echo number of INC cleanups is wrong
   TEST_RESULT=1
 fi
@@ -52,14 +58,14 @@ sed -i s/INC_AGE.*/INC_AGE=1/   "$TESTDIR"/conf/dar-backup.conf
 
 COUNT=$(grep -c -E "clean up:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
-if [[ "$COUNT" != "2" ]]; then
+if [[ "$COUNT" != "3" ]]; then
   echo number of DIFF cleanups is wrong
   TEST_RESULT=1
 fi
 
 COUNT=$(grep -c -E "clean up:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
-if [[ "$COUNT" != "2" ]]; then
+if [[ "$COUNT" != "3" ]]; then
   echo number of INC cleanups is wrong
   TEST_RESULT=1
 fi
