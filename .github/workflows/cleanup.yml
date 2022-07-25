@@ -47,8 +47,29 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: verify alternate directory is cleaned up
+      - name: the test
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-cleanup-alternate-dir.sh
           $GITHUB_WORKSPACE/test/test-cleanup-alternate-dir.sh
+
+  cleanup-fail-on-dir-not-found:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
+
+      - name: the test
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-no-dir.sh
+          $GITHUB_WORKSPACE/test/test-cleanup-fail-no-dir.sh
 

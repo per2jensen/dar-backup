@@ -13,18 +13,16 @@ ALTERNATE_ARCHIVE_DIR=""
 while [ -n "$1" ]; do
   case "$1" in
       --local-backup-dir)
-          echo "$MOUNT_POINT" used as local backup directory....
           LOCAL_BACKUP_DIR=1
           ;;
       --alternate-archive-dir)
           shift
           ALTERNATE_ARCHIVE_DIR="$1"
-          echo Cleaning up in: \"$ALTERNATE_ARCHIVE_DIR\"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--local-backup-dir]"
+          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>]"
           echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
-          echo "   --alternate-archive-dir, cleanup in another directory than the one configure, this probably requires --local-backup-dir also"
+          echo "   --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
           exit
           ;;
   esac
@@ -33,6 +31,7 @@ done
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+SCRIPTNAME=$(basename "$0")
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
@@ -40,10 +39,14 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 # set MOUNT_POINT to the alternate archive dir
 # this (most probably) requires the --local-backup-dir option to be set also
 if [[ $ALTERNATE_ARCHIVE_DIR != "" ]]; then
+  if [[ ! -d "$ALTERNATE_ARCHIVE_DIR"  ]]; then
+    log "ERROR alternate archive directory: \"$ALTERNATE_ARCHIVE_DIR\" not found, $SCRIPTNAME exiting"
+    exit 1
+  fi
   MOUNT_POINT="$ALTERNATE_ARCHIVE_DIR"
 fi
 
-SCRIPTNAME=$(basename "$0")
+
 STARTTIME="$(date -Iseconds)"
 log "======================================================="
 log "$SCRIPTNAME started: $STARTTIME"
