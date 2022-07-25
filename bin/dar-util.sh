@@ -66,7 +66,7 @@ mountPrereqs () {
 
 
 sendDiscordMsg () {
-    log "== send Discord message: $1"
+    log "Send Discord message: $1"
     curl -i -H "Accept: application/json"  \
         -H "Content-Type:application/json"  \
         -X POST --data "{\"content\": \"$1\"}" \
@@ -84,12 +84,12 @@ copyDarStatic () {
     if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
         if [[ $? == "0" ]]; then
-            log "== dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
+            log "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
         else
-            log "== something went wrong, copying dar_static"
+            log "ERROR something went wrong, copying dar_static"
         fi
     else
-        log "== dar_static not found"
+        log "dar_static not found"
     fi
 }
 
@@ -334,14 +334,14 @@ darDiffBackup () {
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
-    log "Diff backup result: $RESULT"
+    log "Backup result: $RESULT"
 }
 
 
 # test a dar backup
 darTestBackup () {
     # test the backup
-    log  "== Test dar archive: ${ARCHIVEPATH}"
+    log  "Test dar archive: ${ARCHIVEPATH}"
     dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
@@ -355,7 +355,7 @@ darTestBackup () {
 #
 #
 darRestoreTest () {
-    log  "== Test restore 1 file from archive: ${ARCHIVEPATH}"
+    log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
     local RESTORE_DIR="/tmp/dar-restore"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
@@ -365,7 +365,7 @@ darRestoreTest () {
 
     LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
     if [[ $LIST_SIZE == "0" ]]; then
-        log "== no files found for restore test in: ${ARCHIVEPATH}"
+        log "No files found for restore test in: ${ARCHIVEPATH}"
         return
     fi
 
@@ -396,7 +396,7 @@ darRestoreTest () {
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
-    log "== Restore test of file: \"${TEST_RESTOREFILE}\"" 
+    log "Restore test of file: \"${TEST_RESTOREFILE}\"" 
     dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE} -B "${SCRIPTDIRPATH}/../conf/defaults-rc"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
