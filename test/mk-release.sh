@@ -30,6 +30,7 @@ rm -fr "$DIR/.github"
 rm -fr "$DIR/test"
 
 echo "This package is built from tag: $1" > VERSION
+sed -i "s/@@DEV-VERSION@@/$1/" bin/dar-backup.sh
 cd $DIR/.. || exit 1
 tar czvf "$TARFILE" dar-backup
 echo SHA256:
