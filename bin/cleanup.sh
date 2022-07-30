@@ -9,6 +9,10 @@
 LOCAL_BACKUP_DIR=""
 ALTERNATE_ARCHIVE_DIR=""
 
+SCRIPTPATH=$(realpath "$0")
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+SCRIPTNAME=$(basename "$0")
+
 # Get the options
 while [ -n "$1" ]; do
   case "$1" in
@@ -29,9 +33,6 @@ while [ -n "$1" ]; do
   shift
 done
 
-SCRIPTPATH=$(realpath "$0")
-SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
-SCRIPTNAME=$(basename "$0")
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
