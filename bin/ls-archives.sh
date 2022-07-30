@@ -51,9 +51,6 @@ fi
 # make sure mounts are in order
 mountPrereqs
 
-
-
-
 FILELIST="/tmp/dar-354Ay2534-filelist.txt"
 echo Mountpoint: ${MOUNT_POINT}
 
@@ -63,7 +60,6 @@ if [[ $BACKUPDEF != "" ]]; then
 fi
 
 for archive in $(find ${MOUNT_POINT} -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
-#for archive in $(ls ${MOUNT_POINT}/*.dar|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
     BASE=$(basename ${archive})
     NO_SLICES=$(find ${MOUNT_POINT} -name "${BASE}*.dar"|wc -l)
     SLICE_SIZE=$(ls -l --block-size=G "${MOUNT_POINT}/${BASE}.1.dar"|cut -d" " -f5)
