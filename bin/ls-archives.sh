@@ -2,16 +2,68 @@
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+SCRIPTNAME=$(basename "$0")
+
+
+LOCAL_BACKUP_DIR=""
+ALTERNATE_ARCHIVE_DIR=""
+BACKUPDEF=""
+
+# Get the options
+while [ -n "$1" ]; do
+  case "$1" in
+      --local-backup-dir)
+          LOCAL_BACKUP_DIR=1
+          ;;
+      --alternate-archive-dir)
+          shift
+          ALTERNATE_ARCHIVE_DIR="$1"
+          ;;
+      --backupdef|-d)
+          shift
+          BACKUPDEF="$1"
+          ;;
+      --help|-h)
+          echo "$SCRIPTNAME [--help|-h] [--backupdef|-d <backup definition>] [--local-backup-dir] [--alternate-archive-dir <directory>]"
+          echo "   --backupdef, list only archives for this backup definition"
+          echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
+          echo "   --alternate-archive-dir, list another directory than the one configured, this probably requires --local-backup-dir also"
+          exit
+          ;;
+  esac
+  shift
+done
+
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
+# set MOUNT_POINT to the alternate archive dir
+# this (most probably) requires the --local-backup-dir option to be set also
+if [[ $ALTERNATE_ARCHIVE_DIR != "" ]]; then
+  if [[ ! -d "$ALTERNATE_ARCHIVE_DIR"  ]]; then
+    log "ERROR alternate archive directory: \"$ALTERNATE_ARCHIVE_DIR\" not found, $SCRIPTNAME exiting"
+    exit 1
+  fi
+  MOUNT_POINT="$ALTERNATE_ARCHIVE_DIR"
+fi
+
 # make sure mounts are in order
 mountPrereqs
 
+
+
+
 FILELIST="/tmp/dar-354Ay2534-filelist.txt"
 echo Mountpoint: ${MOUNT_POINT}
-for archive in $(ls ${MOUNT_POINT}/*.dar|grep -E "*_FULL_*|*_DIFF_*|*_INC_*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
+
+SEARCHCRIT="*.dar"
+if [[ $BACKUPDEF != "" ]]; then
+    SEARCHCRIT="${BACKUPDEF}*.dar"
+fi
+
+for archive in $(find ${MOUNT_POINT} -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
+#for archive in $(ls ${MOUNT_POINT}/*.dar|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
     BASE=$(basename ${archive})
     NO_SLICES=$(find ${MOUNT_POINT} -name "${BASE}*.dar"|wc -l)
     SLICE_SIZE=$(ls -l --block-size=G "${MOUNT_POINT}/${BASE}.1.dar"|cut -d" " -f5)
