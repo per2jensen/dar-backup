@@ -8,6 +8,7 @@
 
 LOCAL_BACKUP_DIR=""
 ALTERNATE_ARCHIVE_DIR=""
+SPECIFIC_ARCHIVE=""
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -23,10 +24,15 @@ while [ -n "$1" ]; do
           shift
           ALTERNATE_ARCHIVE_DIR="$1"
           ;;
+      --cleanup-archive)
+          shift
+          SPECIFIC_ARCHIVE="$1"
+          ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>]"
-          echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
-          echo "   --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
+          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-archive]"
+          echo " --local-backup-dir, don't mount a remote directory for cleanup operations"
+          echo " --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
+          echo " --cleanup-archive, cleanup an archive no matter the date"
           exit
           ;;
   esac
@@ -53,13 +59,39 @@ log "======================================================="
 log "$SCRIPTNAME started: $STARTTIME"
 log "======================================================="
 log "Cleanup in: \"$MOUNT_POINT\""
+log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
+log "Cleanup archive: \"$SPECIFIC_ARCHIVE\""
+
 
 # make sure mounts are in order
 mountPrereqs
 
+# check if type and date given for the --cleanup-archive seems reasonable
+if [[ $SPECIFIC_ARCHIVE != ""  ]]; then 
+  CLEANUP_DATE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "20[2-9][0-9]-[01][1-9]-[0-3][1-9]")
+  TYPE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "DIFF|INC")
+  #echo "cleanup date: \"$CLEANUP_DATE\", type: \"$TYPE\""
+  if [[ $CLEANUP_DATE == "" ]]; then
+    log "archive date \"$CLEANUP_DATE\" is bad, exiting"
+    exit 1
+  fi
+  if [[ $TYPE == "" ]]; then
+    log "archive type \"$TYPE\" is bad, exiting"
+    exit 1
+  fi
+
+  while IFS= read -r -d "" file
+  do
+    rm -f "${file}" &&  log "clean up: \"${file}\""
+  done <   <(find "$MOUNT_POINT" -type f -name "${SPECIFIC_ARCHIVE}*.dar*" -print0)
+
+  log "$SCRIPTNAME ended normally"
+  exit
+fi
+
+
 DIFF_AGE_DATE=$(date --date="-${DIFF_AGE} days" -I)
 DIFF_AGE_SECS=$(date +%s --date "$DIFF_AGE_DATE")
-
 #clean up DIFFs
 while IFS= read -r -d "" file
 do
@@ -75,7 +107,6 @@ done <   <(find "$MOUNT_POINT" -type f -name "*_DIFF_*.dar*" -print0)
 
 INC_AGE_DATE=$(date --date="-${INC_AGE} days" -I)
 INC_AGE_SECS=$(date +%s --date "$INC_AGE_DATE")
-
 #clean up INCs
 while IFS= read -r -d "" file
 do
