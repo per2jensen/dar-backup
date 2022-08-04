@@ -54,7 +54,7 @@ while [ -n "$1" ]; do
           DAR_ARCHIVE="$1"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME [--help|-h] [--version|-v]  [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--fsa-scope-none] [--run-restore-test  <dar archive>]  [--debug]"
+          echo "$SCRIPTNAME [--help|-h] [--version|-v] [--verbose] [--backupdef|-d <backup definition>]  [--list-files|-l] [--local-backup-dir] [--fsa-scope-none] [--run-restore-test  <dar archive>]  [--debug]"
           echo "   --backupdef, where <backup definition> is a filename in backups.d/"
           echo "   --list-files, list files that will be backed up (slow, be patient)"
           echo "   --local-backup-dir, don't mount a remote directory for backup, test, restore operations"
