@@ -66,6 +66,10 @@ while [ -n "$1" ]; do
           echo "$SCRIPTNAME $VERSION"
           exit
           ;;
+      *)
+          echo option \"$1\" not recognized, exiting
+          exit
+          ;;
   esac
   shift
 done

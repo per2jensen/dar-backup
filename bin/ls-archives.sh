@@ -30,6 +30,10 @@ while [ -n "$1" ]; do
           echo "   --alternate-archive-dir, list another directory than the one configured, this probably requires --local-backup-dir also"
           exit
           ;;
+      *)
+          echo option \"$1\" not recognized, exiting
+          exit
+          ;;
   esac
   shift
 done
