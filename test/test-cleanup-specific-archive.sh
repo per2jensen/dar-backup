@@ -14,9 +14,9 @@ source "$TESTDIR/conf/dar-backup.conf"
 DAY_1_OLD=$(date --date="-1 days" -I)
 
 touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.1.dar
-touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.1.dar.par
+touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.1.dar.vol000+100.par2
 touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.2.dar
-touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.2.dar.par
+touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.2.dar.vol000+100.par2
 
 touch "$TESTDIR"/archives/TEST_INC_${DAY_1_OLD}.1.dar
 touch "$TESTDIR"/archives/TEST_INC_${DAY_1_OLD}.2.dar
