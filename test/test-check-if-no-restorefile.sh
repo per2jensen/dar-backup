@@ -9,13 +9,13 @@ echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 source "$SCRIPTDIRPATH"/setup.sh
 
 # run the test
-"$TESTDIR"/bin/dar-backup.sh -d TEST --local-backup-dir
+"$TESTDIR"/bin/dar-backup.sh --verbose -d TEST --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
 
-"$TESTDIR"/bin/dar-diff-backup.sh -d TEST --local-backup-dir
+"$TESTDIR"/bin/dar-diff-backup.sh --verbose -d TEST --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1

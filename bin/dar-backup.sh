@@ -20,7 +20,8 @@ ARCHIVEPATH=""
 LOCAL_BACKUP_DIR=""
 LIST_FILES=""  # boolean: list files to back up
 export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
-CMD_DEBUG="n"
+export CMD_DEBUG="n"
+export VERBOSE="n"
 RUN_RESTORE_TEST="n"
 
 export NO_SAVED_FILES="unknown"
@@ -60,7 +61,12 @@ while [ -n "$1" ]; do
           echo "   --fsa-scope-none, useful when restoring to another type of file system, than when backup was done (for example the restore test)"
           echo "   --debug, give bash the '-x' option to log all activity"
           echo "   --run-restore-test, where <dar archive> is an existing archive"
+          echo "   --help, this terse usage info"
+          echo "   --verbose, more log messages included being sent to Discord"
           exit
+          ;;
+      --verbose)
+          VERBOSE="y"
           ;;
       --version|-v)
           echo "$SCRIPTNAME $VERSION"
@@ -103,6 +109,7 @@ log "LIST_FILES=${LIST_FILES}"
 log "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
 log "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
 log "CMD_DEBUG=${CMD_DEBUG}"
+log "VERBOSE=${VERBOSE}"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
@@ -138,10 +145,10 @@ else
     for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
         CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
         if [[ $LIST_FILES  ==  "1" ]]; then
-          log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
+          log "list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
           listFilesToBackup
         else
-          log "== start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
+          log "start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
           runBackupDef
         fi
     done
@@ -149,10 +156,10 @@ else
     if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
         CURRENT_BACKUPDEF="$BACKUPDEF"
         if [[ $LIST_FILES  ==  "1" ]]; then
-          log "== list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
+          log "list files to backup, mode: ${MODE}, definition: ${BACKUPDEF}"
           listFilesToBackup
         else
-          log "== start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+          log "start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
           runBackupDef
         fi
     else 
@@ -160,7 +167,9 @@ else
     fi
   fi
 fi
-if [[ "$EVERYTHING_OK"  == "0" ]]; then
-  log "$SCRIPTNAME ended without errors"
+if [[ "$EVERYTHING_OK" == "0" ]]; then
+  sendDiscordMsg "$SCRIPTNAME ended without errors"
+else
+  sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
 fi 
 exit "$EVERYTHING_OK"

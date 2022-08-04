@@ -214,6 +214,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 ## --debug
   Make bash print all statements via the "set -x" option. Save output to debug log file.
 
+## --verbose
+  More chatty log messages written to log file and sent to Discord
+
+  Without the option the log file is much more lean and easy to glance over, to see the status of a backup run.
 
 ## --help
 

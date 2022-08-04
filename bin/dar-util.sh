@@ -20,7 +20,9 @@ mountDar () {
         log "ERROR ${SERVER}:${SERVER_DIR} not mounted, exiting"
         exit 1
     fi
-    log "mount ${SERVER}:${SERVER_DIR} to ${MOUNT_POINT}, result: $RESULT"
+    if [[ $VERBOSE == "y" ]]; then 
+        log "mount ${SERVER}:${SERVER_DIR} to ${MOUNT_POINT}, result: $RESULT"
+    fi
 }
 
 function _date_time() {
@@ -53,12 +55,14 @@ archiveExists () {
 # 
 mountPrereqs () {
     if [[ $LOCAL_BACKUP_DIR == "1" ]]; then
-        log "bypassing mounting a server dir..., \"LOCAL_BACKUP_DIR\" is set"
+        if [[ $VERBOSE == "y" ]]; then 
+            log "bypassing mounting a server dir..., \"LOCAL_BACKUP_DIR\" is set"
+        fi
     else
         # mount the server somewhere
         mountDar
         if [[ $RESULT != "0" ]]; then
-            sendDiscordMsg "${SCRIPTNAME}: ${SERVER_DIR} not mounted on ${MOUNT_POINT}, exiting"
+            sendDiscordMsg "ERROR ${SCRIPTNAME}: ${SERVER_DIR} not mounted on ${MOUNT_POINT}, exiting"
             exit 1
         fi
     fi
@@ -66,7 +70,7 @@ mountPrereqs () {
 
 
 sendDiscordMsg () {
-    log "Send Discord message: $1"
+    log "$1"
     curl -i -H "Accept: application/json"  \
         -H "Content-Type:application/json"  \
         -X POST --data "{\"content\": \"$1\"}" \
@@ -84,12 +88,16 @@ copyDarStatic () {
     if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
         if [[ $? == "0" ]]; then
-            log "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
+            if [[ $VERBOSE == "y" ]]; then 
+                log "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
+            fi
         else
             log "ERROR something went wrong, copying dar_static"
         fi
     else
-        log "dar_static not found"
+        if [[ $VERBOSE == "y" ]]; then 
+            log "dar_static not found"
+        fi
     fi
 }
 
@@ -220,11 +228,13 @@ runBackupDef () {
 _TestRestore () {
     if [[ $1 == "0" ]]; then
         getNoFiles 
-        sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT, Saved: $NO_SAVED_FILES, Removed: $NO_REMOVED_FILES"
+        if [[ "$VERBOSE" == "y" ]]; then 
+            sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT, Saved: $NO_SAVED_FILES, Removed: $NO_REMOVED_FILES"
+        fi
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
     else 
         if [[ $1 == "5" ]]; then
-            if [[ $DEBUG == "y" ]]; then
+            if [[ $DEBUG == "y" && $VERBOSE == "y" ]]; then
                 local NO_ERRORS=""
                 NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
                 sendDiscordMsg "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
@@ -232,7 +242,11 @@ _TestRestore () {
                 sendDiscordMsg "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             fi
         else
-            sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
+            if [[ $VERBOSE == "y" ]]; then
+                sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
+            else
+                log  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
+            fi
             return
         fi
     fi
@@ -341,13 +355,18 @@ darDiffBackup () {
 # test a dar backup
 darTestBackup () {
     # test the backup
-    log  "Test dar archive: ${ARCHIVEPATH}"
+    if [[ $VERBOSE == "y" ]]; then 
+      log  "Test dar archive: ${ARCHIVEPATH}"
+    fi
     dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
+        log "ERROR test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     fi
-    sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
+    if [[ "$VERBOSE" == "y" ]]; then 
+      sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
+    fi
 }
 
 
@@ -355,7 +374,9 @@ darTestBackup () {
 #
 #
 darRestoreTest () {
-    log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
+    if [[ $VERBOSE == "y" ]]; then 
+      log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
+    fi
     local RESTORE_DIR="/tmp/dar-restore"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
@@ -365,7 +386,9 @@ darRestoreTest () {
 
     LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
     if [[ $LIST_SIZE == "0" ]]; then
-        log "No files found for restore test in: ${ARCHIVEPATH}"
+        if [[ $VERBOSE == "y" ]]; then 
+          log "No files found for restore test in: ${ARCHIVEPATH}"
+        fi
         return
     fi
 
@@ -388,7 +411,9 @@ darRestoreTest () {
     local TEST_RESTOREFILE=""
     TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     if [[ $TEST_RESTOREFILE == "" ]]; then
-        log "No file found to perform restore test on, this might be an error"
+        if [[ $VERBOSE == "y" ]]; then 
+            log "No file found to perform restore test on, this might be an error"
+        fi
         return
     fi
     
@@ -396,11 +421,15 @@ darRestoreTest () {
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
-    log "Restore test of file: \"${TEST_RESTOREFILE}\"" 
+    if [[ $VERBOSE == "y" ]]; then 
+      log "Restore test of file: \"${TEST_RESTOREFILE}\"" 
+    fi
     dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE} -B "${SCRIPTDIRPATH}/../conf/defaults-rc"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
-    sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $RESULT"
+    if [[ $VERBOSE == "y" ]]; then 
+      sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $RESULT"
+    fi
 }
