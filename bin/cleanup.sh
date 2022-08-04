@@ -35,6 +35,10 @@ while [ -n "$1" ]; do
           echo " --cleanup-archive, cleanup an archive no matter the date"
           exit
           ;;
+      *)
+          echo option \"$1\" not recognized, exiting
+          exit
+          ;;
   esac
   shift
 done
