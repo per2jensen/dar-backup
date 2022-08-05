@@ -122,8 +122,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   - Take full backups, differential backups or incremental backups
   - Uses the par2 functionality for file repair, 5% error correction configured
-    - 3 8K blocks bitrot in a test archive is repairable (see [testcase1](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive.sh), [testcase2](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive-multiple-8k-blocks.sh)) 
-  - See more on integration to [parchive](http://dar.linux.free.fr/doc/usage_notes.html#Parchive)
+    - As an example 3 8K blocks bitrot introduced in a test archive is repairable. That amounts to just about 5% bitrot (see [testcase1](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive.sh), [testcase2](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive-multiple-8k-blocks.sh)) 
+    - See more on integration to [parchive](http://dar.linux.free.fr/doc/usage_notes.html#Parchive)
   - Test the archive after a backup
   - Search for a file < 10MB, and restore it under /tmp as part of the backup verification
   - Copies dar_static to server (handy to have the statically linked binary available in the future)
@@ -138,9 +138,9 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
     - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
-  - Status messages are sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
+  - Status messages can be sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Cleanup script removes DIFFs older than 100 days, and INCs older than 40 days. FULL backups are not touched.
-  - Test cases: verify backups work, the installer, parchive error correction and more on every commit via Githup Actions
+  - Test cases: verify backups work, the installer, parchive error correction, cleanup and more on every commit via Githup Actions
 
 # <a id="requirements"> Requirements
   - sshfs (if mounting a server directory)
