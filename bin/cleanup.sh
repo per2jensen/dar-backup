@@ -72,15 +72,21 @@ mountPrereqs
 
 # check if type and date given for the --cleanup-archive seems reasonable
 if [[ $SPECIFIC_ARCHIVE != ""  ]]; then 
-  CLEANUP_DATE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "20[2-9][0-9]-[01][1-9]-[0-3][1-9]")
+  TODAYS_SECS=$(date +%s --date $(date -I))
+  REGEX_END_OF_DATE_SECS=$(date +%s --date "2029-12-31")
+  if (( $TODAYS_SECS > $REGEX_END_OF_DATE_SECS  )); then
+    log "ERROR regex date checker no longer valid, please modify it, exiting"
+    exit 1
+  fi
+  CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "202[2-9]-(0[1-9]|1[12])-([0-2][0-9]|3[01])")
   TYPE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "DIFF|INC")
   #echo "cleanup date: \"$CLEANUP_DATE\", type: \"$TYPE\""
   if [[ $CLEANUP_DATE == "" ]]; then
-    log "archive date \"$CLEANUP_DATE\" is bad, exiting"
+    log "ERROR archive date is bad, exiting"
     exit 1
   fi
   if [[ $TYPE == "" ]]; then
-    log "archive type \"$TYPE\" is bad, exiting"
+    log ERROR "archive type \"$TYPE\" is bad, exiting"
     exit 1
   fi
 

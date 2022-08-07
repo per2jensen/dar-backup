@@ -58,5 +58,47 @@ if [[ "$COUNT" != "8" ]]; then
   TEST_RESULT=1
 fi
 
+
+#test 4 fail on date
+TEST_DATE=2022-13-01
+touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-archive "TEST_DIFF_${TEST_DATE}"
+if [[ $? != "1" ]]; then 
+  TEST_RESULT=1
+fi
+
+# test 5 fail on date
+TEST_DATE=2023-04-32
+touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-archive "TEST_DIFF_${TEST_DATE}"
+if [[ $? != "1" ]]; then 
+  TEST_RESULT=1
+fi
+
+# test 6 fail on date
+TEST_DATE=2021-01-01
+touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-archive "TEST_DIFF_${TEST_DATE}"
+if [[ $? != "1" ]]; then 
+  TEST_RESULT=1
+fi
+
+# test 7 fail on date
+TEST_DATE=2022-011-01
+touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-archive "TEST_DIFF_${TEST_DATE}"
+if [[ $? != "1" ]]; then 
+  TEST_RESULT=1
+fi
+
+# test 8 fail on date
+TEST_DATE=2022-01-1
+touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-archive "TEST_DIFF_${TEST_DATE}"
+if [[ $? != "1" ]]; then 
+  TEST_RESULT=1
+fi
+
+
 echo TEST_RESULT: $TEST_RESULT
 exit $TEST_RESULT
