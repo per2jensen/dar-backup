@@ -12,6 +12,7 @@
 - [How to use](#how-to-use) 
 - [darrc](#darrc) 
 - [Examples](#examples) 
+  - [default to not mount a remote directory](#default-to-not-mount-remote-dir)
   - [how to run a single backup definition](#run-a-single-definition) 
   - [how to test that the archive is healthy](#test-archive) 
   - [how to restore a directory](#restore-dir) 
@@ -353,6 +354,19 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   The demo backup definition templates/backups.d/dar-backup links defaults-rc in the first directive.
 
 # <a id="examples"> Examples
+
+## <a id="default-to-not-mount-remote-dir"> default to not mount a remote directory
+  By default dar-backup expects to mount a remote directory using sshfs, to save archives there.
+  
+  That might not be your use case, you might want to use a directory already mounted, or a local disk on your machine. You have two options to bypass the sshfs mount.
+
+  1.  Use the option "--local-backup-dir" option on the command line, which tells dar-backup not to do a mount.
+
+  2.  Put the environment variable LOCAL_BACKUP_DIR in the conf/dar-backup.conf file like this:
+  ````
+  LOCAL_BACKUP_DIR=1
+  ````
+  This way you will not need to use the --local-backup-dir option, it is set as a default for all scrips in the dar-backup package.
 
 ## <a id="run-a-single-definition"> how to run a single backup definition
   Backup definitions are placed in the backups.d/ directory. Each definition corresponds to a separate 'dar' archive.
