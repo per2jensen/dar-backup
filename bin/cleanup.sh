@@ -24,7 +24,7 @@ while [ -n "$1" ]; do
           shift
           ALTERNATE_ARCHIVE_DIR="$1"
           ;;
-      --cleanup-archive)
+      --cleanup-specific-archive)
           shift
           SPECIFIC_ARCHIVE="$1"
           ;;
@@ -32,7 +32,7 @@ while [ -n "$1" ]; do
           echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-archive]"
           echo " --local-backup-dir, don't mount a remote directory for cleanup operations"
           echo " --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
-          echo " --cleanup-archive, cleanup an archive no matter the date"
+          echo " --cleanup-specific-archive, cleanup a specific archive no matter the date"
           exit
           ;;
       *)
@@ -64,7 +64,7 @@ log "$SCRIPTNAME started: $STARTTIME"
 log "======================================================="
 log "Cleanup in: \"$MOUNT_POINT\""
 log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
-log "Cleanup archive: \"$SPECIFIC_ARCHIVE\""
+log "Specific archive: \"$SPECIFIC_ARCHIVE\""
 
 
 # make sure mounts are in order
