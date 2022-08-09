@@ -5,5 +5,5 @@ StartLimitBurst=1
 [Service]
 Type=oneshot
 TimeoutSec=300
-RemainAfterExit=true
+RemainAfterExit=no
 ExecStart=@@DAR_BACKUP_DIR@@/bin/../bin/send-msg.sh "NOTICE: DIFF dar-backup coming up"
