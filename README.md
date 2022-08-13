@@ -178,7 +178,6 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  dar-inc-backup.sh
  ````
 
-
 # <a id="options">  Options
 
   The script has a few options to modify it's behavior:
@@ -189,14 +188,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   'definition' is one of the filenames in backups.d/
 
-## --list-files
-
-  Use this option to see what will be backed up.
-  The result is stored in one of /tmp/dar-{FULL|DIFF|INC}-filelist.txt, depending on what type of backup you choose.
-
-## --local-backup-dir
-
-  Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
+## --debug
+  Make bash print all statements via the "set -x" option. Save output to debug log file.
 
 ## --fsa-scope-none
 
@@ -206,25 +199,33 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   See more in the section on [restore exit code 5](#fsa-scope-none)
 
-## --run-restore-test archive
+## --help
+
+  Terse usage information
+
+## --list-files
+
+  Use this option to see what will be backed up.
+  The result is stored in one of /tmp/dar-{FULL|DIFF|INC}-filelist.txt, depending on what type of backup you choose.
+
+## --local-backup-dir
+
+  Make the script bypass mounting a remote server directory using sshfs. The backup archives are stored in the "MOUNT_POINT" config setting. This directory can of course be mounted by some other method :-)
+
+# --run-restore-test archive
   If you for some reason need to rerun a restore test from an existing archive, use this option.
   'archive' is the dar archive name without ".<slice#>.dar"
 
   dar-backup expects the archive to be located at the path set in SERVER_DIR in the config file.
-  
-## --debug
-  Make bash print all statements via the "set -x" option. Save output to debug log file.
 
 ## --verbose
   More chatty log messages written to log file and sent to Discord
 
   Without the option the log file is much more lean and easy to glance over, to see the status of a backup run.
 
-## --help
+## --version
+  Prints the release number or the substitution variable if it is a development version.
 
-  Terse usage information
-
-# 
 
 # <a id="how-to-use"> How to use
   
