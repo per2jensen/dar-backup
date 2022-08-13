@@ -211,7 +211,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   If you for some reason need to rerun a restore test from an existing archive, use this option.
   'archive' is the dar archive name without ".<slice#>.dar"
 
-  dar-backup expects the archive to be located at the path set in SERVER_DIR in the config file.
+  dar-backup expects the archive to be located at the path set in MOUNT_POINT in the config file.
 
 ## --verbose
   More chatty log messages written to log file and sent to Discord
