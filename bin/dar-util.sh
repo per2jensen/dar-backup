@@ -107,59 +107,6 @@ setArchivePath () {
 }
 
 
-# Generate list of files that would have been backed up in a DIFF or INC
-#
-listFilesToBackup () {
-    DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
-    setArchivePath
-
-    echo "Files that will backed up in next \"${MODE}\" backup" > /tmp/dar-"${MODE}"-filelist.txt
-    if [[ $MODE == "FULL"  ]]; then 
-      # dryrun  showing what to backup (-vt)
-      # use TEMPDARARCHIVE in tmp, or an "overwriting slice" error occurs
-      TEMPDARARCHIVE=/tmp/dar-temp-full-3490843
-      dar -vt -c "${TEMPDARARCHIVE}" \
-        -N \
-        -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-        --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
-    else
-        if [[ $MODE == "DIFF" ]]; then
-            findNewestForType FULL
-            echo "newest FULL: ${NEWEST_ARCHIVE}"
-            if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                echo "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-                return
-            fi
-            # dryrun  showing what to backup (-vt)
-            dar -vt -c "${ARCHIVEPATH}" \
-            -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-            -N \
-            -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-            --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
-        else 
-            if [[ $MODE == "INC" ]]; then
-                findNewestForType DIFF
-                echo "newest DIFF: ${NEWEST_ARCHIVE}"
-                if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                    echo "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
-                    return 
-                fi
-                # dryrun  showing what to backup (-vt)
-                dar -vt -c "${ARCHIVEPATH}" \
-                -A "${MOUNT_POINT}/$NEWEST_ARCHIVE" \
-                -N \
-                -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
-                --dry-run >> /tmp/dar-"${MODE}"-filelist.txt
-            else
-                echo "neither FULL, DIFF nor INC specified"
-                return
-            fi
-        fi
-    fi
-}
-
-
-
 # find newest archive for type
 # $1: type is FULL|DIFF|INC
 # NEWEST_ARCHIVE is set to the archive name only, not including path
