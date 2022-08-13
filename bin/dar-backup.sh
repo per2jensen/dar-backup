@@ -70,6 +70,7 @@ while [ -n "$1" ]; do
           ;;
       --version|-v)
           echo "$SCRIPTNAME $VERSION"
+          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
           exit
           ;;
       *)
