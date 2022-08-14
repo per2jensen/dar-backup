@@ -1,0 +1,33 @@
+name: list
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  list-definitions:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
+
+      - name: test ls-archives.sh --listdef
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-list-definitions.sh
+          $GITHUB_WORKSPACE/test/test-list-definitions.sh
+
