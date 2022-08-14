@@ -8,6 +8,7 @@ SCRIPTNAME=$(basename "$0")
 LOCAL_BACKUP_DIR=""
 ALTERNATE_ARCHIVE_DIR=""
 BACKUPDEF=""
+LISTDEF=""
 
 # Get the options
 while [ -n "$1" ]; do
@@ -23,11 +24,15 @@ while [ -n "$1" ]; do
           shift
           BACKUPDEF="$1"
           ;;
+      --listdef|-l)
+          LISTDEF="1"
+          ;;
       --help|-h)
-          echo "$SCRIPTNAME [--help|-h] [--backupdef|-d <backup definition>] [--local-backup-dir] [--alternate-archive-dir <directory>]"
-          echo "   --backupdef, list only archives for this backup definition"
+          echo "$SCRIPTNAME [--help|-h] [--backupdef|-d <backup definition>] [--listdef|-l][--local-backup-dir] [--alternate-archive-dir <directory>]"
+          echo "   --backupdef <backup definition>, list only archives for this backup definition"
+          echo "   --listdef, list backup definitions"
           echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
-          echo "   --alternate-archive-dir, list another directory than the one configured, this probably requires --local-backup-dir also"
+          echo "   --alternate-archive-dir <directory>, list another directory than the one configured, this probably requires --local-backup-dir also"
           exit
           ;;
       *)
@@ -41,6 +46,12 @@ done
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
+
+# list backup definitions and exit (--listdef or -l)
+if [[ $LISTDEF == "1" ]]; then
+  find $SCRIPTDIRPATH/../backups.d/ -type f -print
+  exit 
+fi
 
 # set MOUNT_POINT to the alternate archive dir
 # this (most probably) requires the --local-backup-dir option to be set also
