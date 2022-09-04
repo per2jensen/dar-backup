@@ -34,6 +34,7 @@
 - [Systemd stuff (not installed by default)](#systemd-files) 
 - [Version](#version) 
 - [TODO](#todo)
+- [Successful restores](#successful-restores)
 - [Projects this script benefits from](#dependencies)
 - [License](#license) 
 
@@ -42,6 +43,11 @@
 
   The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
+
+# <a id="license"> License
+
+  These scripts are licensed under the GPLv3 license.
+  Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
 # Github location
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
@@ -729,6 +735,18 @@ I can confirm large file support works. At one point I mistakenly omitted slices
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
+# <a id="#successful-restores"> Successful restores :-)
+
+  **2022-09-02** 
+
+  My ~/snap/firefox directory had vanished, I think due to installing firefox from the Mozilla website (installed due to boot issues caused by a full zfs /boot filled by snapshots).
+
+  Before running the Mozilla download, I did a "dar-inc-backup.sh -d pj_homedir", which came in handy an hour later :-)
+
+  I followed the [recipe to restore firefox snap](#restore-firefox-snap), and had my full firefox snap user files back in a few minutes. 
+  
+  'dar' really rocks!
+
 # <a id="dependencies"> Projects this script benefits from
 
  1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
@@ -736,8 +754,4 @@ I can confirm large file support works. At one point I mistakenly omitted slices
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)
 
-# <a id="license"> License
-
-  These scripts are licensed under the GPLv3 license.
-  Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html
 
