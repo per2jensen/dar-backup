@@ -80,7 +80,7 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     log "ERROR regex date checker no longer valid, please modify it, exiting"
     exit 1
   fi
-  CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "202[2-9]-(0[1-9]|1[12])-([0-2][0-9]|3[01])")
+  CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "202[2-9]-(0[1-9]|1[012])-([0-2][0-9]|3[01])")
   if [[ $CLEANUP_DATE == "" ]]; then
     log "ERROR archive date is bad, exiting"
     exit 1
