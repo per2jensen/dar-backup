@@ -34,7 +34,7 @@
 - [Systemd stuff (not installed by default)](#systemd-files) 
 - [Version](#version) 
 - [TODO](#todo)
-- [Successful restores](#successful-restores)
+- [Successful restores](#success-restores)
 - [Projects this script benefits from](#dependencies)
 - [License](#license) 
 
@@ -64,7 +64,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  - Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
  - During backup archives must be tested and a restore test (however small) performed
  - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
- - Easy to verify healthy archives, when they are moved around.
+ - Easy to verify archives' integrity, after being moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
  
@@ -735,7 +735,7 @@ I can confirm large file support works. At one point I mistakenly omitted slices
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
-# <a id="#successful-restores"> Successful restores :-)
+# <a id="success-restores"> Successful restores :-)
 
   **2022-09-02** 
 
