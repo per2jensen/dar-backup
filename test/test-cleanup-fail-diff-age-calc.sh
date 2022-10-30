@@ -35,7 +35,7 @@ sed -i s/DIFF_AGE.*/DIFF_AGE=2MUST-FAIL/ "$TESTDIR"/conf/dar-backup.conf
 
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir
 
-COUNT=$(grep -c -E "ERROR.*?DIIF_AGE_DATE" "$TESTDIR"/archives/dar-backup.log)
+COUNT=$(grep -c -E "ERROR.*?DIFF_AGE_DATE" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" == "0" ]]; then
   echo \"FAIL\" message on wrong DIFF age not found
