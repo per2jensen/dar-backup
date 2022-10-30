@@ -4,6 +4,8 @@
 # - DIFF archives + par2 files older than DIFF_AGE
 # - INC archives + par2 files older than INC_AGE
 # 
+# will only work on DIFF and INC, not FULL archives
+#
 # DIFF_AGE & INC_AGE is defined in the conf file
 
 LOCAL_BACKUP_DIR=""
@@ -79,12 +81,13 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     exit 1
   fi
   CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "202[2-9]-(0[1-9]|1[12])-([0-2][0-9]|3[01])")
-  TYPE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "DIFF|INC")
-  #echo "cleanup date: \"$CLEANUP_DATE\", type: \"$TYPE\""
   if [[ $CLEANUP_DATE == "" ]]; then
     log "ERROR archive date is bad, exiting"
     exit 1
   fi
+  
+  # will only work on DIFF and INC, not FULL archives
+  TYPE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "DIFF|INC")
   if [[ $TYPE == "" ]]; then
     log ERROR "archive type \"$TYPE\" is bad, exiting"
     exit 1
@@ -105,7 +108,7 @@ DIFF_AGE_SECS=$(date +%s --date "$DIFF_AGE_DATE")
 #clean up DIFFs
 while IFS= read -r -d "" file
 do
-  FILE_DATE=$(echo $file|grep -o -E "_DIFF_[0-9]{4}-[0-9]{2}-[0-9]{2}")  # don't find dates in directory names
+  FILE_DATE=$(echo $file|grep -o -E "_DIFF_[0-9]{4}-[0-9]{2}-[0-9]{2}")  # does no find dates in directory names due to _DIFF_
   FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( DIFF_AGE_SECS >= FILE_DATE_SECS )); then
@@ -120,7 +123,7 @@ INC_AGE_SECS=$(date +%s --date "$INC_AGE_DATE")
 #clean up INCs
 while IFS= read -r -d "" file
 do
-  FILE_DATE=$(echo $file|grep -o -E "_INC_[0-9]{4}-[0-9]{2}-[0-9]{2}") # don't find dates in directory names
+  FILE_DATE=$(echo $file|grep -o -E "_INC_[0-9]{4}-[0-9]{2}-[0-9]{2}") # does not find dates in directory names due to _INC_
   FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}") 
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( INC_AGE_SECS >= FILE_DATE_SECS )); then
