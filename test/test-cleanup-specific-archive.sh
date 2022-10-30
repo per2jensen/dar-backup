@@ -33,6 +33,7 @@ if [[ "$COUNT" != "4" ]]; then
   TEST_RESULT=1
 fi
 
+
 COUNT=$(grep -c -E "clean up:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" != "0" ]]; then
@@ -64,6 +65,7 @@ TEST_DATE=2022-13-01
 touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_DIFF_${TEST_DATE}"
 if [[ $? != "1" ]]; then 
+  echo test 4 fails
   TEST_RESULT=1
 fi
 
@@ -72,6 +74,7 @@ TEST_DATE=2023-04-32
 touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_DIFF_${TEST_DATE}"
 if [[ $? != "1" ]]; then 
+  echo test 5 fails
   TEST_RESULT=1
 fi
 
@@ -80,6 +83,7 @@ TEST_DATE=2021-01-01
 touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_DIFF_${TEST_DATE}"
 if [[ $? != "1" ]]; then 
+  echo test 6 fails
   TEST_RESULT=1
 fi
 
@@ -88,6 +92,7 @@ TEST_DATE=2022-011-01
 touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_DIFF_${TEST_DATE}"
 if [[ $? != "1" ]]; then 
+  echo test 7 fails
   TEST_RESULT=1
 fi
 
@@ -96,6 +101,7 @@ TEST_DATE=2022-01-1
 touch "$TESTDIR"/archives/TEST_DIFF_${TEST_DATE}.1.dar
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_DIFF_${TEST_DATE}"
 if [[ $? != "1" ]]; then 
+  echo test 8 fails
   TEST_RESULT=1
 fi
 
