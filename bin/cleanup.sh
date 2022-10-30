@@ -104,6 +104,10 @@ fi
 
 
 DIFF_AGE_DATE=$(date --date="-${DIFF_AGE} days" -I)
+if [[ $? != "0" ]]; then
+  log "ERROR \"DIFF_AGE_DATE\" calc error"
+  exit 1
+fi
 DIFF_AGE_SECS=$(date +%s --date "$DIFF_AGE_DATE")
 #clean up DIFFs
 while IFS= read -r -d "" file
@@ -119,6 +123,10 @@ done <   <(find "$MOUNT_POINT" -type f -name "*_DIFF_*.dar*" -print0)
 
 
 INC_AGE_DATE=$(date --date="-${INC_AGE} days" -I)
+if [[ $? != "0" ]]; then
+  log "ERROR \"INC_AGE_DATE\" calc error"
+  exit 1
+fi
 INC_AGE_SECS=$(date +%s --date "$INC_AGE_DATE")
 #clean up INCs
 while IFS= read -r -d "" file

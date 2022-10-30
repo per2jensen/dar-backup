@@ -93,3 +93,13 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-cleanup-specific-archive.sh
           $GITHUB_WORKSPACE/test/test-cleanup-specific-archive.sh
+
+      - name: fail on wrong DIFF_AGE configuration
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-diff-age-calc.sh
+          $GITHUB_WORKSPACE/test/test-cleanup-fail-diff-age-calc.sh
+
+      - name: fail on wrong INC_AGE configuration
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-inc-age-calc.sh
+          $GITHUB_WORKSPACE/test/test-cleanup-fail-inc-age-calc.sh
