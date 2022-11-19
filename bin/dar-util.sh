@@ -250,6 +250,16 @@ getNoFiles () {
     rm "$TEMPFILE"
 }
 
+
+# explain exit code
+# if $RESULT is a known value in this function, print a single line explanation
+exitCodeExpl () {
+    if [[ "$RESULT" == "11" ]]; then
+        log "Exit code \"11\" means archive contains dirty files"
+    fi
+}
+
+
 # do a dar backup
 darBackup () {
     log "==========================================================="
@@ -265,9 +275,9 @@ darBackup () {
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
+    exitCodeExpl 
     log "Full backup result: $RESULT"
 }
-
 
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
@@ -295,6 +305,7 @@ darDiffBackup () {
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
     fi
+    exitCodeExpl
     log "Backup result: $RESULT"
 }
 
@@ -350,9 +361,6 @@ darRestoreTest () {
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
     fi
-
-
-
 
     #file to restore inclusive path
     local TEST_RESTOREFILE=""
