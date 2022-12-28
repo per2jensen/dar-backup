@@ -208,8 +208,12 @@ _TestRestore () {
 diffBackupTestRestore () {
     darDiffBackup "$1"
     _TestRestore $RESULT
-}
 
+    echo "SCRIPTDIRPATH: ${SCRIPTDIRPATH}"
+
+    "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
+    log "par2 repair data for \"${DAR_ARCHIVE}\", result: $RESULT"
+}
 
 
 # The standard recipe for backing up a FS_ROOT, test the archive and test restore one file
@@ -217,6 +221,8 @@ diffBackupTestRestore () {
 backupTestRestore () {
     darBackup
     _TestRestore $RESULT
+    "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
+    log "par2 repair data for \"${DAR_ARCHIVE}\", result: $RESULT"
 }
 
 # find number of files Saved and Removed in a backup
@@ -269,7 +275,6 @@ darBackup () {
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
-        par2 \
         compress-exclusion verbose
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
@@ -299,7 +304,6 @@ darDiffBackup () {
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
-        par2 \
         compress-exclusion verbose 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
