@@ -6,6 +6,32 @@
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
 
+
+# run par2 verify
+# $1: directory of archives
+# $2: dar archive name
+verify_par2 () {
+    while IFS= read -r -d "" file
+    do
+        echo "Verify par2 repair data for: \"$file\""
+        par2 v "$file"
+        if [[ $? != "0" ]]; then
+            echo "verifying par2 repair data failed"
+            exit 1
+        fi
+    done <   <(find "$1" -type f -name "$2.*.dar.par2" -print0)
+
+    PAR2_FILES=$(find "$1" -type f -name "$2.*.dar.par2" |wc -l)
+    if (( PAR2_FILES > 0 )); then
+            echo "par2 repair files verified being OK"
+    fi
+    if (( PAR2_FILES == 0 )); then
+            echo "par2 repair files were not generated"
+            exit 1
+    fi
+}
+
+
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
@@ -25,6 +51,10 @@ find /tmp/dar-restore/ ! -type d
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
 echo dar exit code: $?
 
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_FULL_$DATE"
+
+
 # alter backup set
 cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/include this one/"
 cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/exclude this one/"
@@ -43,6 +73,9 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_DIFF_$DATE"
 
 # modify a file backed up in the DIFF
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
@@ -68,6 +101,9 @@ if [[ $TESTRESULT != "0" ]]; then
     exit 1
 fi
 
+
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_INC_$DATE"
 
 echo .
 echo ..

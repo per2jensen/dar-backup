@@ -1,5 +1,9 @@
 #! /bin/bash
 
+# Generate par2 repair files of .dar files
+#
+#
+
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
@@ -32,6 +36,20 @@ while [ -n "$1" ]; do
   shift
 done
 
+if [[ $ARCHIVE_DIR == ""  ]]; then
+    echo "ERROR \"ARCHIVE_DIR\" not given, $SCRIPTNAME exiting"
+    exit 1
+fi
+if [[ $DAR_ARCHIVE == ""  ]]; then
+    echo "ERROR \"DAR_ARCHIVE\" not given, $SCRIPTNAME exiting"
+    exit 1
+fi
+ 
+
+if [[ ! -d "$ARCHIVE_DIR"  ]]; then
+    echo "ERROR alternate archive directory: \"$ARCHIVE_DIR\" not found, $SCRIPTNAME exiting"
+    exit 1
+fi
 
 RESULT=0
 while IFS= read -r -d "" file
@@ -45,11 +63,19 @@ done <   <(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" -print0)
 
 
 PAR2_FILES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar.par2" |wc -l)
-if (( $PAR2_FILES > 0 )); then
+if (( PAR2_FILES > 0 )); then
     if [[ $RESULT == "0" ]]; then
         echo "par2 successfully generated repair files"
+        exit 0
     fi
 fi
 
+if [[ $RESULT != "0" ]]; then
+    echo "par2 generation of repair files failed"
+    exit 1
+fi
 
-exit $RESULT
+if (( PAR2_FILES == 0 )); then
+        echo "no par2 repair files was generated"
+        exit 1
+fi
