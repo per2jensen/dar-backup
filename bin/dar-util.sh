@@ -144,25 +144,24 @@ runBackupDef () {
         if [[ $MODE == "DIFF" ]]; then
             findNewestForType FULL
             if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-                exit 100 
+                log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\""
+            else
+                log "Create DIFF compared to: $NEWEST_ARCHIVE"
+                # backup
+                diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
             fi
-            log "Create DIFF compared to: $NEWEST_ARCHIVE"
-            # backup
-            diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
         else 
             if [[ $MODE == "INC" ]]; then
                 findNewestForType DIFF
                 if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                    log  "ERROR DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\", exiting"
-                    exit 101 
+                    log  "ERROR DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
+                else
+                    log "Create INC compared to: $NEWEST_ARCHIVE"
+                    # backup
+                    diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
                 fi
-                log "Create INC compared to: $NEWEST_ARCHIVE"
-                # backup
-                diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
             else
-                log "ERROR neither FULL, DIFF nor INC specified, exiting"
-                exit 1
+                log "ERROR neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
             fi
         fi
     fi
