@@ -24,10 +24,6 @@ mkdir "$ARCHIVE_DIR" > /dev/null 2>&1
 
 
 #template files
-FILE="$SCRIPTDIRPATH/../conf/dar_par.dcf"
-_backup_file "$FILE"
-sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/dar_par.dcf.template" > "$FILE"
-
 FILE="$SCRIPTDIRPATH/../conf/defaults-rc"
 _backup_file "$FILE"
 sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/darrc.template" > "$FILE"

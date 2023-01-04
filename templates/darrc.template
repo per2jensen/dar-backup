@@ -7,10 +7,6 @@ extract:
   # ignore owner, useful when used by a non-privileged user
   --comparison-field=ignore-owner
 
-
-par2:
-  -B "@@CONFDIR@@/dar_par.dcf"
-
 compress-exclusion:
 # First setting case insensitive mode on:
 -an
