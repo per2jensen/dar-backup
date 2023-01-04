@@ -70,7 +70,6 @@ cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/"
 # test templates dir and copy it
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
 # non-test templates
-cp "$SCRIPTDIRPATH/../templates/dar_par.dcf.template"     "$TESTDIR/templates/"
 cp "$SCRIPTDIRPATH/../templates/darrc.template"           "$TESTDIR/templates/"
 
 chmod +x "$TESTDIR/bin/install.sh"

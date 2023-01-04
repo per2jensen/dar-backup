@@ -13,8 +13,6 @@ _backup_file () {
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
-chmod +x "${SCRIPTDIRPATH}"/*.sh "${SCRIPTDIRPATH}"/*.duc 
-
 ARCHIVE_DIR="$SCRIPTDIRPATH/../archives"
 mkdir "$ARCHIVE_DIR" > /dev/null 2>&1
 
