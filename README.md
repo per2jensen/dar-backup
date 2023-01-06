@@ -85,7 +85,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
   - I like being able to verify that an archive is good, once it has been stored remotely. When I copy the archives from the server to somewhere else, I am again able to verify that the archive is healthy.
 
-  - The built in par2 integration provides a method to maybe be able to salvage a broken archive in the future.
+  - par2 files provides a method to maybe salvage a broken archive in the future.
 
 # <a id="how-to-install"> How to install
   - Download a dar-backup tar file from the [releases](https://github.com/per2jensen/dar-backup/releases)
@@ -128,7 +128,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 # <a id="script-features"> Script features
 
   - Take full backups, differential backups or incremental backups
-  - Uses the par2 functionality for file repair, 5% error correction configured
+  - Uses par2 for file repair, 5% error correction configured
     - As an example 3 8K blocks bitrot introduced in a test archive is repairable. That amounts to just about 5% bitrot (see [testcase1](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive.sh), [testcase2](https://github.com/per2jensen/dar-backup/blob/main/test/test-parchive-multiple-8k-blocks.sh)) 
     - See more on integration to [parchive](http://dar.linux.free.fr/doc/usage_notes.html#Parchive)
   - Test the archive after a backup
@@ -240,8 +240,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Setup an ssh access using a key for logging into the server
   - A Discord webhook is needed for the messages to be sent
   - A 'darrc' file is generated in the conf dir, once the install.sh script has been run.
-    It controls which files not to compress, and points to the par2 configuration, also in
-    conf dir
+    It controls which files not to compress
   - Fill in some data in the dar-backup.conf file, and delete the 2 lines at the top
     ````
      Environment variables.
@@ -675,7 +674,6 @@ ls media-files_FULL_${DARDATE}.*.dar|egrep media-files_FULL_${DARDATE}[.][0-9][0
 | --- | ----------- |
 | 0 | script ended without errors |
 | 1 | script exited with an error |
-| 100 | FULL backup not found |
 
 
 # <a id="systemd-files"> Systemd stuff (not installed by default)
