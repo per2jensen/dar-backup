@@ -16,6 +16,7 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 ARCHIVE_DIR="$SCRIPTDIRPATH/../archives"
 mkdir "$ARCHIVE_DIR" > /dev/null 2>&1
 
+chmod +x "$SCRIPTDIRPATH"/*.sh
 
 (cd "$SCRIPTDIRPATH"; rm dar-diff-backup.sh > /dev/null 2>&1; ln -s dar-backup.sh dar-diff-backup.sh) 
 (cd "$SCRIPTDIRPATH"; rm dar-inc-backup.sh  > /dev/null 2>&1; ln -s dar-backup.sh dar-inc-backup.sh)
