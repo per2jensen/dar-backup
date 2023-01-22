@@ -430,7 +430,6 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  I can now check out the directory */data/tmp/home/pj/data/2022/2022-01-08-Seiko*, and verify the restore worked (it did).
 
 
-
 ## <a id="restore-file"> how to restore a single file
   Much like restoring a directory, I seek out the file with a "list" and "grep"
   ````
