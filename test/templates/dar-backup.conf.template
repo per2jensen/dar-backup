@@ -19,6 +19,9 @@ SERVER_DIR="/some/dir"
 # TODO rename to something like ARCHIVE_DIR
 MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
+# Name of catalog database
+CATALOG_DB=dar-backup.catalog
+
 # path to log file
 LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
 
