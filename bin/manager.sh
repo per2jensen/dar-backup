@@ -83,6 +83,12 @@ if [[ $CREATE_CATALOG == "1"  ]]; then
         exit 1
     fi
 
+    echo ######################################################################################
+    echo must loop over all backup definitions and create a catalog for each definitions
+    echo "exciting until that code change has been made :-)"
+    echo ######################################################################################
+    exit 1
+
     log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG_DB\""    
     dar_manager --create "$MOUNT_POINT"/"$CATALOG_DB"
     if [[ $? != "0" ]]; then
@@ -96,7 +102,7 @@ fi
 # loop over all archives in the directory
 if [[ $ARCHIVE_DIR_TO_ADD != "" ]]; then
     SEARCHCRIT="*.dar"
-    for archive in $(find ${MOUNT_POINT} -type f -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
+    for archive in $(find ${MOUNT_POINT} -type f -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s); do
         BASE=$(basename ${archive})
         log "INFO add \"$MOUNT_POINT/$BASE\" to catalog"
         dar_manager --base "$MOUNT_POINT/$CATALOG_DB"  --add $(realpath "$MOUNT_POINT/$BASE")
