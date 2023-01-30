@@ -96,7 +96,7 @@ fi
 # loop over all archives in the directory
 if [[ $ARCHIVE_DIR_TO_ADD != "" ]]; then
     SEARCHCRIT="*.dar"
-    for archive in $(find ${MOUNT_POINT} -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
+    for archive in $(find ${MOUNT_POINT} -type f -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_DIFF_.*|.*_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u); do
         BASE=$(basename ${archive})
         log "INFO add \"$MOUNT_POINT/$BASE\" to catalog"
         dar_manager --base "$MOUNT_POINT/$CATALOG_DB"  --add $(realpath "$MOUNT_POINT/$BASE")
