@@ -2,7 +2,7 @@ name: catalog
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dar-manager ]
   pull_request:
     branches: [ main ]
 
