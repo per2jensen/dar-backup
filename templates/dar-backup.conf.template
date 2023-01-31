@@ -17,7 +17,7 @@ SERVER_DIR="/some/dir"
 MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
 # Name of catalog database
-CATALOG_DB=dar-backup.catalog
+CATALOG_SUFFIX=.catalog
 
 # path to log file
 LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
