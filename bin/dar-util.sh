@@ -211,7 +211,13 @@ diffBackupTestRestore () {
     echo "SCRIPTDIRPATH: ${SCRIPTDIRPATH}"
 
     "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    RESULT=$?
+    if [[ $RESULT == "0" ]]; then
+        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    else
+        log "ERROR par repair data not created for \"${DAR_ARCHIVE}\""
+        EVERYTHING_OK=1
+    fi
 }
 
 
@@ -221,7 +227,13 @@ backupTestRestore () {
     darBackup
     _TestRestore $RESULT
     "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    RESULT=$?
+    if [[ $RESULT == "0" ]]; then
+        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    else
+        log "ERROR par repair data not created for \"${DAR_ARCHIVE}\""
+        EVERYTHING_OK=1
+    fi
 }
 
 # find number of files Saved and Removed in a backup
