@@ -114,8 +114,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
                 log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""    
                 dar_manager --create "$MOUNT_POINT"/"$CATALOG"
                 if [[ $? != "0" ]]; then
-                    log "ERROR somethin went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
-                    exit $?
+                    log "ERROR somethin went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
                 fi
             fi
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
@@ -128,7 +127,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""    
             dar_manager --create "$MOUNT_POINT"/"$CATALOG"
             if [[ $? != "0" ]]; then
-                log "ERROR somethin went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
+                log "ERROR something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
                 exit $?
             fi
         fi
@@ -152,8 +151,8 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
                 dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ARCHIVE")
                 RESULT=$?
                 if [[ $RESULT != "0" ]]; then
-                    log "ERROR something went wrong, dar_manager error: \"$RESULT\""
-                    exit $RESULT
+                    log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\", continuing with next backup definition"
+                    break
                 fi
             done
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
@@ -167,7 +166,7 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ARCHIVE")
             RESULT=$?
             if [[ $RESULT != "0" ]]; then
-                log "ERROR something went wrong, dar_manager error: \"$RESULT\""
+                log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
                 exit $RESULT
             fi
         done
