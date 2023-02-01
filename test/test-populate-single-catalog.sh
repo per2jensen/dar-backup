@@ -1,13 +1,6 @@
 #! /bin/bash
 
-# test creation of catalog
-#   - make 5 backup definitions   
-#   - do a backup
-#   - create the catalog
-#   - populate the catalog with archive data
-#   - list catalog
-#   - check catalog
-#   - restore files
+# test adding achives to catalog for single backup definition
 
 TESTRESULT=0
 
@@ -38,14 +31,41 @@ if [[ $? != "0" ]]; then
   exit 1
 fi
 
-# populate catalogs with archive data
-"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --local-backup-dir
+# populate catalogs with archive data, one at a time
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR some or all archives were not added to catalog, exiting
+  exit 1
+fi
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST2 --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR some or all archives were not added to catalog, exiting
+  exit 1
+fi
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST3 --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR some or all archives were not added to catalog, exiting
+  exit 1
+fi
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST4 --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR some or all archives were not added to catalog, exiting
+  exit 1
+fi
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST5 --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR some or all archives were not added to catalog, exiting
+  exit 1
+fi
+"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def dar-backup --local-backup-dir
 if [[ $? != "0" ]]; then
   echo ERROR some or all archives were not added to catalog, exiting
   exit 1
 fi
 
-# list the catalog
+
+
+# list the catalogs
 while IFS= read -r -d "" file
 do
     CURRENT_BACKUPDEF=$(basename "$file")
@@ -77,23 +97,6 @@ do
     fi
 done <  <(find "${TESTDIR}"/backups.d -type f -print0)
 
-
-# restore files to temp dirs from catalogs
-while IFS= read -r -d "" file
-do
-    CURRENT_BACKUPDEF=$(basename "$file")
-    CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
-
-    TEMPDIR=$(mktemp -d)
-    echo restoring "\"$CURRENT_BACKUPDEF\""  to "\"$TEMPDIR\"" from catalog "\"$CATALOG\""
-    dar_manager  --base "$(realpath "$TESTDIR"/archives/"$CATALOG")" -e "-R $TEMPDIR" -r "dirs"
-    if [[ $? != "0" ]]; then
-      echo ERROR dar_manager restore failed
-      TESTRESULT=1
-    fi
-    find "$TEMPDIR" -type f 
-    rm -fr "$TEMPDIR"
-done  <  <(find "${TESTDIR}"/backups.d -type f -print0)
 
 if [[ "$TESTRESULT" == "0" ]]; then
   echo "Test case succeeded"

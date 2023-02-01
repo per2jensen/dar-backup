@@ -26,8 +26,48 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: create/populate/test catalog
+      - name: create/populate/test/restore multiple catalogs
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-create-catalog.sh
           $GITHUB_WORKSPACE/test/test-create-catalog.sh
+  create-single-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
+
+      - name: create single catalog
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-create-single-catalog.sh
+          $GITHUB_WORKSPACE/test/test-create-single-catalog.sh
+  populate-single-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
+
+      - name: populate single catalog
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-populate-single-catalog.sh
+          $GITHUB_WORKSPACE/test/test-populate-single-catalog.sh
 
