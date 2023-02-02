@@ -288,7 +288,13 @@ darBackup () {
         -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
         compress-exclusion verbose
     RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    if [[ $RESULT == "0" ]]; then
+        "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+        if [[ $? != "0" ]]; then
+            log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+            EVERYTHING_OK=1
+        fi
+    else
         EVERYTHING_OK=1
     fi
     exitCodeExpl 
@@ -317,10 +323,17 @@ darDiffBackup () {
         -A "$1" \
         compress-exclusion verbose 
     RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    if [[ $RESULT == "0" ]]; then
+        "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}"  --local-backup-dir
+        if [[ $? != "0" ]]; then
+            log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+            EVERYTHING_OK=1
+        fi
+    else
         EVERYTHING_OK=1
     fi
     exitCodeExpl
+
     log "Backup result: $RESULT"
 }
 
