@@ -4,13 +4,23 @@
 #
 
 # TODO skal LOCAL_BACKUP_DIR bruges ?
-
 LOCAL_BACKUP_DIR=""
+
+# work on this dir, instead of MOUNT_POINT 
 ALTERNATE_ARCHIVE_DIR=""
+
+# boolean, True=do create missing catalogs
 CREATE_CATALOG=""
+
+# add all archives in a dir
 ADD_DIR=""
 ARCHIVE_DIR_TO_ADD=""
+
+# add archives for this backup definition to "$BACKUP_DEF".catalog
 BACKUP_DEF=""
+
+# add this archive to catalog, require BACKUP_DEF to be specified also
+ADD_SPECIFIC_ARCHIVE=""
 
 
 SCRIPTPATH=$(realpath "$0")
@@ -39,14 +49,18 @@ while [ -n "$1" ]; do
           shift
           BACKUP_DEF="$1"
           ;;
+      --add-specific-archive)
+          shift
+          ADD_SPECIFIC_ARCHIVE="$1"
+          ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>]"
-          echo " --local-backup-dir, don't mount a remote directory for cleanup operations"
-          echo " --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
-          echo " --create-catalog"
-          echo " --add-dir <dir name>"
-          echo " --backup-def <file in backup.d/>, operate only on this one backup definition"
-
+          echo " --local-backup-dir, don't mount a remote directory for operations"
+          echo " --alternate-archive-dir, use another directory than the one configured, this probably requires --local-backup-dir also"
+          echo " --create-catalog, create missing catalogs"
+          echo " --add-dir <dir name>, add archives for existing backup definitions to catalogs"
+          echo " --backup-def <file in backup.d/>, operate only on this specific backup definition"
+          echo " --specific-archive <archive name>, the short form without .<slice>.dar"
           exit
           ;;
       *)
@@ -75,6 +89,7 @@ fi
 
 
 
+
 # set MOUNT_POINT to the alternate archive dir
 # this (most probably) requires the --local-backup-dir option to be set also
 if [[ $ALTERNATE_ARCHIVE_DIR != "" ]]; then
@@ -91,7 +106,7 @@ log "======================================================="
 log "$SCRIPTNAME started: $STARTTIME"
 log "======================================================="
 log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
-log "Specific archive: \"$SPECIFIC_ARCHIVE\""
+log "Specific archive: \"$ADD_SPECIFIC_ARCHIVE\""
 log "Create catalog: \"$CREATE_CATALOG\""
 log "Add directory:  \"$ADD_DIR\""
 log "Directory to add to catalog: \"$ARCHIVE_DIR_TO_ADD\""
@@ -114,7 +129,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
                 log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""    
                 dar_manager --create "$MOUNT_POINT"/"$CATALOG"
                 if [[ $? != "0" ]]; then
-                    log "ERROR somethin went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
+                    log "ERROR something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
                 fi
             fi
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
@@ -172,4 +187,24 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
         done
     fi
 fi
+
+if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
+    _DEF_=$(echo "$ADD_SPECIFIC_ARCHIVE" |grep -E "^.*?_" | cut -d _ -f 1)
+    if [[ ! -e "${SCRIPTDIRPATH}"/../backups.d/"$_DEF_"  ]]; then
+        log "ERROR backup definition \"$_DEF_\" not found (--specific-archive option probably not correct), exiting"
+        exit 1
+    fi
+    CATALOG=${_DEF_}${CATALOG_SUFFIX}
+    log "INFO add \"$MOUNT_POINT/$ADD_SPECIFIC_ARCHIVE\" to catalog \"$CATALOG\""
+    dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ADD_SPECIFIC_ARCHIVE")
+    RESULT=$?
+    if [[ $RESULT != "0" ]]; then
+        log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
+        exit $RESULT
+    fi
+fi
+
+
+
+
 log "$SCRIPTNAME ended normally"
