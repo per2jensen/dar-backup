@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# test adding achives to catalog for single backup definition
+# test adding achives to catalog for multiple different backup definitions
 
 TESTRESULT=0
 
@@ -17,6 +17,14 @@ cp "$TESTDIR"/backups.d/TEST "$TESTDIR"/backups.d/TEST3
 cp "$TESTDIR"/backups.d/TEST "$TESTDIR"/backups.d/TEST4 
 cp "$TESTDIR"/backups.d/TEST "$TESTDIR"/backups.d/TEST5 
 
+# create catalogs
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR catalog was not created, exiting
+  exit 1
+fi
+
+
 # do backups
 "$TESTDIR/bin/dar-backup.sh" --local-backup-dir
 RESULT=$?
@@ -24,12 +32,6 @@ if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
 
-# create catalogs
-"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
-if [[ $? != "0" ]]; then
-  echo ERROR catalog was not created, exiting
-  exit 1
-fi
 
 # populate catalogs with archive data, one at a time
 "$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def TEST --local-backup-dir

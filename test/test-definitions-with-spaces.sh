@@ -20,6 +20,14 @@ source "$TESTDIR"/conf/dar-backup.conf
 
 mv "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITON"
 
+# create catalogs
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR catalog was not created, exiting
+  exit 1
+fi
+
+
 # run the test
 "$TESTDIR"/bin/dar-backup.sh -d "$BACKUP_DEFINITON" --local-backup-dir
 RESULT=$?

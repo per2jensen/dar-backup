@@ -77,3 +77,6 @@ chmod +x "$TESTDIR/bin/install.sh"
 
 # dar-backup.conf has been generated from the template, now use it
 source "$TESTDIR/conf/dar-backup.conf"
+
+# create dar catalog
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir

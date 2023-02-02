@@ -19,6 +19,14 @@ rm -fr "$DIR"/test
 chmod +x "$DIR/bin/install.sh"
 "$DIR/bin/install.sh"
 
+# create catalogs
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR catalog was not created, exiting
+  exit 1
+fi
+
+
 find "$DIR" -ls
 
 "${DIR}/bin/dar-backup.sh" -d dar-backup --local-backup-dir
