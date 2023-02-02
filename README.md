@@ -124,6 +124,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
   - Have a look at config file in conf/, and tweak it to your needs
   - Then create a backup definition in backups.d/, using the "dar-backup" file as your starting point.
+    - don't use "_" in the backup definition name. This char is searched for to figure out a backup definition name from an archive name
 
 # <a id="script-features"> Script features
 
