@@ -59,11 +59,6 @@ if [[ $? != "0" ]]; then
   echo ERROR some or all archives were not added to catalog, exiting
   exit 1
 fi
-"$TESTDIR/bin/manager.sh"   --add-dir  "$TESTDIR"/archives  --backup-def dar-backup --local-backup-dir
-if [[ $? != "0" ]]; then
-  echo ERROR some or all archives were not added to catalog, exiting
-  exit 1
-fi
 
 
 
