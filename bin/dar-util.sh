@@ -227,6 +227,7 @@ backupTestRestore () {
     darBackup
     _TestRestore $RESULT
     "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
+
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
@@ -289,7 +290,9 @@ darBackup () {
         compress-exclusion verbose
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
-        "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+        if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+        fi
         if [[ $? != "0" ]]; then
             log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
             EVERYTHING_OK=1
@@ -324,7 +327,9 @@ darDiffBackup () {
         compress-exclusion verbose 
     RESULT=$?
     if [[ $RESULT == "0" ]]; then
-        "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}"  --local-backup-dir
+        if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+        fi
         if [[ $? != "0" ]]; then
             log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
             EVERYTHING_OK=1
@@ -363,14 +368,13 @@ darRestoreTest () {
     if [[ $VERBOSE == "y" ]]; then 
       log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
     fi
-    local RESTORE_DIR="/tmp/dar-restore"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
-    
     dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+
     rm -f $RESTORE_FILE > /dev/null 2>&1
 
-    LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
+    LIST_SIZE=$(wc -c < "$FILELIST")
     if [[ $LIST_SIZE == "0" ]]; then
         if [[ $VERBOSE == "y" ]]; then 
           log "No files found for restore test in: ${ARCHIVEPATH}"
@@ -383,8 +387,10 @@ darRestoreTest () {
             exit
            }
     }' $FILELIST > "$RESTORE_FILE"
+    log "RESTORE_FILE: $RESTORE_FILE"
 
-    RESTORE_FILE_SIZE=$(wc -c "$RESTORE_FILE"|cut -d" " -f1)
+    RESTORE_FILE_SIZE=$(wc -c < "$RESTORE_FILE")
+    log "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
     if [[ $RESTORE_FILE_SIZE == "0" ]]; then
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
@@ -401,17 +407,42 @@ darRestoreTest () {
     fi
     
     # remove the test restore top dir, before restoring
+    local RESTORE_DIR="/tmp/dar-restore"
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
     if [[ $VERBOSE == "y" ]]; then 
-      log "Restore test of file: \"${TEST_RESTOREFILE}\"" 
+      log "ARCHIVEPATH: \"$ARCHIVEPATH\""
+      log "RESTORE_DIR: \"$RESTORE_DIR\""
+      log "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
+      log "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
+      log "Restore test of file: \"$TEST_RESTOREFILE\"" 
     fi
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE} -B "${SCRIPTDIRPATH}/../conf/defaults-rc"
-    RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    if [[ $FSA_SCOPE_NONE != "" ]]; then
+        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" "$FSA_SCOPE_NONE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        RESULT=$?
+        if [[ $RESULT != "0" ]]; then
+            EVERYTHING_OK=1
+        fi
+    else
+        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        RESULT=$?
+        if [[ $RESULT != "0" ]]; then
+            EVERYTHING_OK=1
+        fi
+    fi
+    
+    # check restored file exists
+    _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
+    log "Check if restored file \"$_TESTPATH\" exists"
+    ls "$_TESTPATH" >> /dev/null 2>&1
+    if [[ $? == "0" ]]; then
+        log "The restored file does exist"
+    else
+        log "ERROR restored file not found"
         EVERYTHING_OK=1
     fi
+
     if [[ $VERBOSE == "y" ]]; then 
       sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $RESULT"
     fi
