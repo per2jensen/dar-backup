@@ -23,7 +23,7 @@ chmod +x "$SCRIPTDIRPATH"/*.sh
 
 
 #template files
-FILE=$(realpath "$SCRIPTDIRPATH/../conf/defaults-rc")
+FILE="$SCRIPTDIRPATH/../conf/defaults-rc"
 _backup_file "$FILE"
 sed -e "s|@@CONFDIR@@|$(realpath "${SCRIPTDIRPATH}"/../conf)|" "$SCRIPTDIRPATH/../templates/darrc.template" > "$FILE"
 
