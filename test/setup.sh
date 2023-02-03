@@ -65,7 +65,7 @@ cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../share" "$TESTDIR/"
-cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/" && rm "$TESTDIR"/templates/backups.d/dar-backup
 
 # test templates dir and copy it
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
