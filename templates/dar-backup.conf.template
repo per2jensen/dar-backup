@@ -16,6 +16,9 @@ SERVER_DIR="/some/dir"
 # TODO rename to something like ARCHIVE_DIR
 MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
+# use catalogs or not, default is no - to not break existing setups
+USE_CATALOGS=n
+
 # Name of catalog database
 CATALOG_SUFFIX=.catalog
 
