@@ -20,6 +20,7 @@ ARCHIVEPATH=""
 LOCAL_BACKUP_DIR=""
 export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
 export CMD_DEBUG="n"
+export CMD_USE_CATALOGS="n"
 export VERBOSE="n"
 RUN_RESTORE_TEST="n"
 
@@ -44,10 +45,16 @@ while [ -n "$1" ]; do
       --debug)
           CMD_DEBUG=y
           ;;
+      --verbose)
+          VERBOSE="y"
+          ;;
       --run-restore-test)
           RUN_RESTORE_TEST="y"
           shift
           DAR_ARCHIVE="$1"
+          ;;
+      --use-catalogs)
+          CMD_USE_CATALOGS="y"
           ;;
       --help|-h)
           echo "$SCRIPTNAME [--backupdef|-d <backup definition>] [--local-backup-dir] [--fsa-scope-none] [--run-restore-test  <dar archive>] [--version|-v] [--verbose] [--debug] [--help|-h]"
@@ -57,6 +64,7 @@ while [ -n "$1" ]; do
           echo "   --verbose, more log messages included being sent to Discord"
           echo "   --run-restore-test <dar archive> (archive name without <slice#>.dar)"
           echo "   --debug, give bash the '-x' option to log all activity to configured file"
+          echo "   --use-catalogs, override default config file setting to use dar catalogs"
           echo "   --help, this terse usage info"
           exit
           ;;
@@ -103,6 +111,7 @@ log "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
 log "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
 log "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
 log "CMD_DEBUG=${CMD_DEBUG}"
+log "CMD_USE_CATALOGS=${CMD_USE_CATALOGS}"
 log "VERBOSE=${VERBOSE}"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
