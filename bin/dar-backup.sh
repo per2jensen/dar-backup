@@ -98,7 +98,22 @@ if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
   exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
 fi
 
+
 source "${SCRIPTDIRPATH}/dar-util.sh"
+
+# check if catalogs have been initialized, if configured to be used
+if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
+  while IFS= read -r -d "" file
+  do
+      _CURRENT_BACKUPDEF=$(basename "$file")
+      CATALOG=${_CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
+      if [[ ! -e  "$MOUNT_POINT"/"$CATALOG" ]]; then
+        log "ERROR Catalog \"$CATALOG\" for backup definition \"$CURRENT_BACKUPDEF\" is missing, continuing"
+        EVERYTHING_OK=1
+      fi
+  done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
+fi
+
 
 STARTTIME="$(date -Iseconds)"
 log =======================================================
@@ -163,4 +178,5 @@ if [[ "$EVERYTHING_OK" == "0" ]]; then
 else
   sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
 fi 
+
 exit "$EVERYTHING_OK"
