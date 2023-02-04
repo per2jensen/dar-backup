@@ -19,10 +19,11 @@ find "$TESTDIR" -name "*.catalog"
 # do backups
 "$TESTDIR/bin/dar-backup.sh" --local-backup-dir  --verbose
 RESULT=$?
-if [[ $RESULT != "0" ]]; then
+if [[ $RESULT != "1" ]]; then  # dar-backup should report the missing catalog error
     TESTRESULT=1
 fi
 
+echo "Find catalogs, there should not be any...."
 find "$TESTDIR" -name "*.catalog"
 
 
@@ -42,6 +43,7 @@ done <  <(find "${TESTDIR}"/backups.d -type f -print0)
 echo "Now do backup with catalog enabled"
 
 rm -f "$TESTDIR"/archives/TEST_FULL_*
+
 # create catalogs
 "$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
 if [[ $? != "0" ]]; then
@@ -61,7 +63,7 @@ echo "List catalogs"
 while IFS= read -r -d "" file
 do
     CURRENT_BACKUPDEF=$(basename "$file")
-    CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
+    CATALOG="${CURRENT_BACKUPDEF}"${CATALOG_SUFFIX}
     _ARCHIVENAME="${CURRENT_BACKUPDEF}"_FULL_$(date -I)
     echo "List catalog \"$CATALOG\" for archive: \"$_ARCHIVENAME\""
     dar_manager  -l --base "$(realpath "$TESTDIR"/archives/"$CATALOG")" | grep "$_ARCHIVENAME"
@@ -77,7 +79,7 @@ echo "Check catalogs"
 while IFS= read -r -d "" file
 do
     CURRENT_BACKUPDEF=$(basename "$file")
-    CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
+    CATALOG="${CURRENT_BACKUPDEF}"${CATALOG_SUFFIX}
     echo "check catalog "\"$CATALOG\"
     if [[ -e "$TESTDIR"/archives/"$CATALOG" ]]; then 
       dar_manager -c --base "$(realpath "$TESTDIR"/archives/"${CATALOG}")" 
