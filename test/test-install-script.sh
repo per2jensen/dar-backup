@@ -6,18 +6,18 @@
 
 RESULT=0
 
-DIR=/tmp/dar-backup
+TESTDIR=/tmp/dar-backup
 
-rm -fr "$DIR"
+rm -fr "$TESTDIR"
 cp -R ~/git/dar-backup /tmp/
-cd "$DIR"
+cd "$TESTDIR"
 
-rm -fr "$DIR"/.git
-rm -fr "$DIR"/.github
-rm -fr "$DIR"/test
+rm -fr "$TESTDIR"/.git
+rm -fr "$TESTDIR"/.github
+rm -fr "$TESTDIR"/test
 
-chmod +x "$DIR/bin/install.sh"
-"$DIR/bin/install.sh"
+chmod +x "$TESTDIR/bin/install.sh"
+"$TESTDIR/bin/install.sh"
 
 # create catalogs
 "$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
@@ -27,9 +27,9 @@ if [[ $? != "0" ]]; then
 fi
 
 
-find "$DIR" -ls
+find "$TESTDIR" -ls
 
-"${DIR}/bin/dar-backup.sh" -d dar-backup --local-backup-dir
+"${TESTDIR}/bin/dar-backup.sh" -d dar-backup --local-backup-dir
 if [[ $? != "0" ]]; then
     RESULT=1
 fi
