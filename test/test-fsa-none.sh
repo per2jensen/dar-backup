@@ -30,7 +30,7 @@ mount | grep "$BTRFS_MOUNT_POINT"
 if [[  $? == "0" ]]; then
     sudo umount "$BTRFS_MOUNT_POINT"
     if [[ $? != "0" ]]; then
-        echo "umount of "$BTRFS_MOUNT_POINT" failed, exiting"
+        echo "umount of $BTRFS_MOUNT_POINT failed, exiting"
         exit 1
     fi
 fi
