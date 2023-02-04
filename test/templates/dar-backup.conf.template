@@ -20,7 +20,7 @@ SERVER_DIR="/some/dir"
 MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
 # use catalogs or not, default is no - to not break existing setups
-USE_CATALOGS=n
+USE_CATALOGS=y
 
 # Name of catalog database
 CATALOG_SUFFIX=.catalog
