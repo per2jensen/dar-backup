@@ -169,8 +169,9 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             SEARCHCRIT="${CURRENT_BACKUPDEF}*.dar"
             for archive in $(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT"|grep -E "${CURRENT_BACKUPDEF}_FULL_.*|${CURRENT_BACKUPDEF}_DIFF_.*|${CURRENT_BACKUPDEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s); do
                 ARCHIVE=$(basename "${archive}")
-                log "INFO add \"$MOUNT_POINT/$ARCHIVE\" to catalog \"$CATALOG\""
-                dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ARCHIVE")
+                _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
+                log "INFO add \"$_REALPATH\" to catalog \"$CATALOG\""
+                dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
                 RESULT=$?
                 if [[ $RESULT != "0" ]]; then
                     log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\", continuing with next backup definition"
@@ -185,7 +186,8 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
         for archive in $(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT"|grep -E "${BACKUP_DEF}_FULL_.*|${BACKUP_DEF}_DIFF_.*|${BACKUP_DEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s); do
             ARCHIVE=$(basename "${archive}")
             log "INFO add \"$MOUNT_POINT/$ARCHIVE\" to catalog \"$CATALOG\""
-            dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ARCHIVE")
+            _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
+            dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
             RESULT=$?
             if [[ $RESULT != "0" ]]; then
                 log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
@@ -203,7 +205,8 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     fi
     CATALOG=${_DEF_}${CATALOG_SUFFIX}
     log "INFO add \"$MOUNT_POINT/$ADD_SPECIFIC_ARCHIVE\" to catalog \"$CATALOG\""
-    dar_manager --base "$MOUNT_POINT/$CATALOG"  --add $(realpath "$MOUNT_POINT/$ADD_SPECIFIC_ARCHIVE")
+    _REALPATH="$(realpath "$MOUNT_POINT"/"$ADD_SPECIFIC_ARCHIVE")"
+    dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --add "$_REALPATH"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
