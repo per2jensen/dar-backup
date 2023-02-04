@@ -829,9 +829,9 @@ dar --version
 I can confirm large file support works. At one point I mistakenly omitted slices, and an archive ~550 GB was created, tested + a single file restore was performed. Kudos to dar, par2 and the ubuntu servers that hosted the archive :-).
 
 
-# <a id="todo"> TODO
+# TODO
 
-  - Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
+  - [dar-manager branch]  Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
