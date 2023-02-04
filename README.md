@@ -28,7 +28,7 @@
   - [cleanup a usbdisk for old archives](#cleanup-usbdisk) 
   - [verbosity](#verbosity) 
   - [trim the log file ](#trim-log-file)
-  - [restore using fsa-scope](#fsa-scope-none) 
+  - [restore using fsa-scope option](#fsa-scope) 
 
 - [list all dar archives, sorted on slice number](#list-sort-slice-no) 
 - [dar static tip](#static-dar) 
@@ -650,7 +650,7 @@ The file conf/defaults-rc contains various verbosity settings, that can be enabl
   sed -i '/^Finished Inspecting/d' ~/dar-backup.log 
   ````   
 
-## <a id="fsa-scope-none"> fsa-scope 
+## fsa scope 
 You might switch file systems over time, or backup on one type of file system and restore on another.
 In this case a restore problem can occur if the file system restored to does not support file attributes used on the file system that was backed up.
 
