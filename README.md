@@ -28,7 +28,7 @@
   - [cleanup a usbdisk for old archives](#cleanup-usbdisk) 
   - [verbosity](#verbosity) 
   - [trim the log file ](#trim-log-file)
-  - [restore using "--fsa-scope none"](#fsa-scope-none) 
+  - [restore using fsa-scope](#fsa-scope-none) 
 
 - [list all dar archives, sorted on slice number](#list-sort-slice-no) 
 - [dar static tip](#static-dar) 
