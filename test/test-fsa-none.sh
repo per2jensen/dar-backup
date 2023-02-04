@@ -10,7 +10,7 @@
 # run install.sh
 # run dar-backup.sh
 # restore the file with ext4 unsupprted attribute
-# add file GREENLAND.JEP to include dir and to the exclude dir
+# add file GREENLAND.JEP to "include dir" and to the "exclude dir"
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
 
@@ -21,8 +21,20 @@ echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 source "$SCRIPTDIRPATH/setup.sh"
 source "$TESTDIR/conf/dar-backup.conf"
 
+
 BTRFS_FILE="/tmp/btrfs-file"
 BTRFS_MOUNT_POINT="/tmp/mnt/btrfs"
+
+# check if mounted btrfs exist
+mount | grep "$BTRFS_MOUNT_POINT"
+if [[  $? == "0" ]]; then
+    sudo umount "$BTRFS_MOUNT_POINT"
+    if [[ $? != "0" ]]; then
+        echo "umount of "$BTRFS_MOUNT_POINT" failed, exiting"
+        exit 1
+    fi
+fi
+rm -f "$BTRFS_FILE"
 
 # setup a btrfs filesystem
 dd if=/dev/zero of="$BTRFS_FILE" bs=1024 count=150000
@@ -47,14 +59,15 @@ chattr +c "$ATTRIBUTE_FILE"
 
 
 # run the test
-"$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir --fsa-scope-none
+"$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir --fsa-scope-none --verbose 
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
 echo "non directories restored:"
 find /tmp/dar-restore/ ! -type d
- 
+
+
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
 RESULT=$?
 echo dar exit code: $RESULT
@@ -73,6 +86,13 @@ if [[ $RESULT != "0" ]]; then
 else 
     echo "\"attribute-test\"  successfully restored, exit code: $RESULT"
 fi
+if [[ -e "/tmp/dar-restore/dirs/attribute-test" ]]; then
+    echo "Restored file found"
+else    
+    echo "Restore file not found"
+    TESTRESULT=1
+fi
+
 
 
 # alter backup set
@@ -93,6 +113,8 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+
+
 
 # modify a file backed up in the DIFF
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
