@@ -654,9 +654,9 @@ The file conf/defaults-rc contains various verbosity settings, that can be enabl
 You might switch file systems over time, or backup on one type of file system and restore on another.
 In this case a restore problem can occur if the file system restored to does not support file attributes used on the file system that was backed up.
 
-'dar' can work around this using the "--fsa-scope" option (<a id="http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS">dar manual page</a>)
+'dar' can work around this using the "--fsa-scope" option ([dar manual page](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS))
 
-The test case <a id="test/test-fsa-none.sh">test-fsa-none</a> verifies this. It does the following:
+The test case [test-fsa-none.sh](https://github.com/per2jensen/dar-backup/blob/main/test/test-fsa-none.sh) verifies this. It does the following:
 - creates a btrfs file system
 - touches a file
 - set a file attribute not supported on the file system being restore to (zfs in my setup)
