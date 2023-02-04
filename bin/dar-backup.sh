@@ -11,6 +11,7 @@ SCRIPTNAME=$(basename "$0")
 
 VERSION=@@DEV-VERSION@@
 
+
 MODE=""
 BACKUPDEF=""
 FSA_SCOPE_NONE="" 
@@ -40,13 +41,10 @@ while [ -n "$1" ]; do
           LOCAL_BACKUP_DIR=1
           ;;
       --fsa-scope-none)
-          FSA_SCOPE_NONE=" --fsa-scope none "
+          FSA_SCOPE_NONE="y"
           ;;
       --debug)
           CMD_DEBUG=y
-          ;;
-      --verbose)
-          VERBOSE="y"
           ;;
       --run-restore-test)
           RUN_RESTORE_TEST="y"
@@ -60,7 +58,7 @@ while [ -n "$1" ]; do
           echo "$SCRIPTNAME [--backupdef|-d <backup definition>] [--local-backup-dir] [--fsa-scope-none] [--run-restore-test  <dar archive>] [--version|-v] [--verbose] [--debug] [--help|-h]"
           echo "   --backupdef <backup definition>, run a single definition (a filename in backups.d/)"
           echo "   --local-backup-dir, don't sshfs-mount a remote directory on MOUNT_POINT"
-          echo "   --fsa-scope-none, useful when restoring to different file system type"
+          echo "   --fsa-scope-none, useful when restoring to different file system type, do not fail on unsupported file attributes"
           echo "   --verbose, more log messages included being sent to Discord"
           echo "   --run-restore-test <dar archive> (archive name without <slice#>.dar)"
           echo "   --debug, give bash the '-x' option to log all activity to configured file"
