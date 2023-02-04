@@ -22,6 +22,8 @@ BACKUP_DEF=""
 # add this archive to catalog, require BACKUP_DEF to be specified also
 ADD_SPECIFIC_ARCHIVE=""
 
+# when used in normal backup operations, outputs a single notice on adding an archive to it's catalog
+ALMOST_QUIET="n"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -53,6 +55,9 @@ while [ -n "$1" ]; do
           shift
           ADD_SPECIFIC_ARCHIVE="$1"
           ;;
+      --almost-quiet)
+          ALMOST_QUIET="y"
+          ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>]"
           echo " --local-backup-dir, don't mount a remote directory for operations"
@@ -61,6 +66,7 @@ while [ -n "$1" ]; do
           echo " --add-dir <dir name>, add archives for existing backup definitions to catalogs"
           echo " --backup-def <file in backup.d/>, operate only on this specific backup definition"
           echo " --specific-archive <archive name>, the short form without .<slice>.dar"
+          echo " --almost-quiet, outputs a single notice on adding an archive to it's catalog"
           exit
           ;;
       *)
@@ -102,15 +108,16 @@ fi
 
 
 STARTTIME="$(date -Iseconds)"
-log "======================================================="
-log "$SCRIPTNAME started: $STARTTIME"
-log "======================================================="
-log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
-log "Specific archive: \"$ADD_SPECIFIC_ARCHIVE\""
-log "Create catalog: \"$CREATE_CATALOG\""
-log "Add directory:  \"$ADD_DIR\""
-log "Directory to add to catalog: \"$ARCHIVE_DIR_TO_ADD\""
-
+if [[ $ALMOST_QUIET == "n" ]]; then
+    log "======================================================="
+    log "$SCRIPTNAME started: $STARTTIME"
+    log "======================================================="
+    log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
+    log "Specific archive: \"$ADD_SPECIFIC_ARCHIVE\""
+    log "Create catalog: \"$CREATE_CATALOG\""
+    log "Add directory:  \"$ADD_DIR\""
+    log "Directory to add to catalog: \"$ARCHIVE_DIR_TO_ADD\""
+fi
 
 # make sure mounts are in order
 mountPrereqs
@@ -203,8 +210,5 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
         exit $RESULT
     fi
 fi
-
-
-
 
 log "$SCRIPTNAME ended normally"
