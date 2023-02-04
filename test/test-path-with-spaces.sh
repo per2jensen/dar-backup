@@ -37,6 +37,12 @@ echo "TESTDIR: $TESTDIR"
 # run installer to fix file references
 "$TESTDIR"/bin/install.sh
 
+# create catalogs 
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR catalog was not created, exiting
+  exit 1
+fi
 
 # run the test
 "$TESTDIR"/bin/dar-backup.sh  --local-backup-dir
