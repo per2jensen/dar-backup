@@ -27,7 +27,9 @@
   - [merge FULL with DIFF, creating new FULL](#merge-full-diff)
   - [cleanup a usbdisk for old archives](#cleanup-usbdisk) 
   - [verbosity](#verbosity) 
-  - [trim the log file ](#trim-log-file) 
+  - [trim the log file ](#trim-log-file)
+  - [restore using "--fsa-scope none"](#fsa-scope-none) 
+
 - [list all dar archives, sorted on slice number](#list-sort-slice-no) 
 - [dar static tip](#static-dar) 
 - [ Exit values](#exit-codes)
@@ -147,6 +149,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages can be sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Cleanup script removes DIFFs older than 100 days, and INCs older than 40 days. FULL backups are not touched.
+  - Backup on one type of file system, restore on another type while disregarding file attributes not available there
+    - example: backup on btrfs filesystem, restore on ext4 (use the dar option "--fsa-scope none")
   - Test cases: verify backups work, the installer, parchive error correction, cleanup and more on every commit via Githup Actions
 
 # <a id="requirements"> Requirements
@@ -645,6 +649,105 @@ The file conf/defaults-rc contains various verbosity settings, that can be enabl
   # remove more directory notices from the log file
   sed -i '/^Finished Inspecting/d' ~/dar-backup.log 
   ````   
+
+## <a id="fsa-scope-none"> fsa-scope 
+You might switch file systems over time, or backup on one type of file system and restore on another.
+In this case a restore problem can occur if the file system restored to does not support file attributes used on the file system that was backed up.
+
+'dar' can work around this using the "--fsa-scope" option (<a id="http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS">dar manual page</a>)
+
+The test case <a id="test/test-fsa-none.sh">test-fsa-none</a> verifies this. It does the following:
+- creates a btrfs file system
+- touches a file
+- set a file attribute not supported on the file system being restore to (zfs in my setup)
+  - chattr +c "$ATTRIBUTE_FILE"
+- does a restore with the "--fsa-scope none" option
+- verifies the restored file exists
+
+To test it your self, try this
+```
+BTRFS_FILE="/tmp/btrfs-file"
+BTRFS_MOUNT_POINT="/tmp/mnt/btrfs"
+
+# setup a btrfs filesystem
+dd if=/dev/zero of="$BTRFS_FILE" bs=1024 count=150000
+mkfs.btrfs "$BTRFS_FILE"
+sudo rm -fr "$BTRFS_MOUNT_POINT"
+mkdir -p "$BTRFS_MOUNT_POINT"
+sudo mount "$BTRFS_FILE" "$BTRFS_MOUNT_POINT"
+sudo chmod 777 "$BTRFS_MOUNT_POINT"
+
+ATTRIBUTE_FILE="${BTRFS_MOUNT_POINT}/attribute-test"
+# set an attibute
+touch "$ATTRIBUTE_FILE"
+chattr +c "$ATTRIBUTE_FILE"
+
+ARCHIVE=attribute-test
+# take a backup
+dar -c /tmp/$ARCHIVE -R /tmp/mnt -g btrfs
+
+# list the contents of the archive
+dar -l /tmp/$ARCHIVE
+
+# restore to /tmp
+dar -x /tmp/$ARCHIVE -R /tmp -g "btrfs/attribute-test"
+```
+
+I get this output from dar, while restoring to /tmp (which is zfs file system)
+```
+dar -x /tmp/$ARCHIVE -R /tmp -g "btrfs/attribute-test"
+Restoration of EA for /tmp/btrfs/attribute-test aborted: Error while adding EA btrfs.compression : Operation not supported
+Restoration of FSA for /tmp/btrfs/attribute-test aborted: Failed set extX family FSA: Operation not supported
+/tmp/btrfsCould not restore original file ownership: Operation not permitted
+
+
+ --------------------------------------------
+ 2 inode(s) restored
+    including 0 hard link(s)
+ 0 inode(s) not restored (not saved in archive)
+ 0 inode(s) not restored (overwriting policy decision)
+ 0 inode(s) ignored (excluded by filters)
+ 0 inode(s) failed to restore (filesystem error)
+ 0 inode(s) deleted
+ --------------------------------------------
+ Total number of inode(s) considered: 2
+ --------------------------------------------
+ EA restored for 0 inode(s)
+ FSA restored for 0 inode(s)
+ --------------------------------------------
+```
+
+Now restore using the --fsa-scope option
+```
+dar -x /tmp/$ARCHIVE -R /tmp -g "btrfs/attribute-test" --fsa-scope none
+Restoration of EA for /tmp/btrfs/attribute-test aborted: Error while adding EA btrfs.compression : Operation not supported
+/tmp/btrfsCould not restore original file ownership: Operation not permitted
+
+
+ --------------------------------------------
+ 2 inode(s) restored
+    including 0 hard link(s)
+ 0 inode(s) not restored (not saved in archive)
+ 0 inode(s) not restored (overwriting policy decision)
+ 0 inode(s) ignored (excluded by filters)
+ 0 inode(s) failed to restore (filesystem error)
+ 0 inode(s) deleted
+ --------------------------------------------
+ Total number of inode(s) considered: 2
+ --------------------------------------------
+ EA restored for 0 inode(s)
+ FSA restored for 0 inode(s)
+ --------------------------------------------
+
+```
+It is seen that the error message "Restoration of FSA ..." has gone.
+
+Cleanup:
+```
+sudo umount "$BTRFS_MOUNT_POINT"
+rm -f "$BTRFS_FILE"
+```
+
 
 ## <a id="list-sort-slice-no"> list all dar archives, sorted on slice number
 If you want to check that all slices are found for an archive, you can use the commands shown below.
