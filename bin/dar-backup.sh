@@ -108,7 +108,7 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
       _CURRENT_BACKUPDEF=$(basename "$file")
       CATALOG=${_CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
       if [[ ! -e  "$MOUNT_POINT"/"$CATALOG" ]]; then
-        log "ERROR Catalog \"$CATALOG\" for backup definition \"$CURRENT_BACKUPDEF\" is missing, continuing"
+        log "ERROR Catalog \"$CATALOG\" for backup definition \"$_CURRENT_BACKUPDEF\" is missing, continuing"
         EVERYTHING_OK=1
       fi
   done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
