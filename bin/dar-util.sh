@@ -292,16 +292,16 @@ darBackup () {
     if [[ $RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
-        fi
-        if [[ $? != "0" ]]; then
-            log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
-            EVERYTHING_OK=1
+            if [[ $? != "0" ]]; then
+                log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+                EVERYTHING_OK=1
+            fi
         fi
     else
         EVERYTHING_OK=1
     fi
     exitCodeExpl 
-    log "Full backup result: $RESULT"
+    log "Backup result: $EVERYTHING_OK"
 }
 
 # do a dar differential backup
@@ -329,17 +329,16 @@ darDiffBackup () {
     if [[ $RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
-        fi
-        if [[ $? != "0" ]]; then
-            log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
-            EVERYTHING_OK=1
+            if [[ $? != "0" ]]; then
+                log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+                EVERYTHING_OK=1
+            fi
         fi
     else
         EVERYTHING_OK=1
     fi
     exitCodeExpl
-
-    log "Backup result: $RESULT"
+    log "Backup result: $EVERYTHING_OK"
 }
 
 
