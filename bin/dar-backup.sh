@@ -101,6 +101,11 @@ fi
 
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
+
+STARTTIME="$(date -Iseconds)"
+log =======================================================
+log "  $SCRIPTNAME started: $STARTTIME"
+log =======================================================
 # check if catalogs have been initialized, if configured to be used
 if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
   while IFS= read -r -d "" file
@@ -113,12 +118,6 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
       fi
   done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
 fi
-
-
-STARTTIME="$(date -Iseconds)"
-log =======================================================
-log "  $SCRIPTNAME started: $STARTTIME"
-log =======================================================
 log "BACKUPDEF=${BACKUPDEF}"
 log "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
 log "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
