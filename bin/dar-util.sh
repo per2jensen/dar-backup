@@ -293,7 +293,7 @@ darBackup () {
     _RESULT=$?
     if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
-            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             if [[ $? != "0" ]]; then
                 log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
                 EVERYTHING_OK=1
@@ -303,29 +303,26 @@ darBackup () {
         EVERYTHING_OK=1
     fi
     exitCodeExpl "$_RESULT" 
-    log "Backup result: $_RESULT"
+    RESULT=$_RESULT
+    log "Backup result: $RESULT"
 }
 
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
-
-echo "\$1:  $1"
-
     local _RESULT
-    grep _FULL_ "$1" # > /dev/null 2>&1
+    echo "$1" | grep _FULL_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
         log "==============================================================================="
         log "== Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
         log "==============================================================================="
     fi
-    grep _DIFF_ "$1" # > /dev/null 2>&1
+    echo "$1" | grep _DIFF_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
         log "==============================================================================="
         log "== Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
         log "==============================================================================="
     fi
-
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
@@ -334,7 +331,7 @@ echo "\$1:  $1"
     _RESULT=$?
     if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
-            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             if [[ $? != "0" ]]; then
                 log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
                 EVERYTHING_OK=1
@@ -344,7 +341,8 @@ echo "\$1:  $1"
         EVERYTHING_OK=1
     fi
     exitCodeExpl "$_RESULT"
-    log "Backup result: $_RESULT"
+    RESULT=$_RESULT
+    log "Backup result: $RESULT"
 }
 
 
