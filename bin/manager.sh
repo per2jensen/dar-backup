@@ -25,8 +25,11 @@ ADD_SPECIFIC_ARCHIVE=""
 # remove this archive from catalog
 REMOVE_SPECIFIC_ARCHIVE=""
 
+# list catalog for backup definition
+LIST_CATALOG=""
+
 # when used in normal backup operations, outputs a single notice on adding an archive to it's catalog
-ALMOST_QUIET="n"
+VERBOSE="n"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -64,8 +67,11 @@ while [ -n "$1" ]; do
           shift
           REMOVE_SPECIFIC_ARCHIVE="$1"
           ;;
-      --almost-quiet)
-          ALMOST_QUIET="y"
+      --list)
+          LIST_CATALOG="1"
+          ;;
+      --verbose)
+          VERBOSE="y"
           ;;
       --help|-h)
           echo "$SCRIPTNAME --help|-h  [--create-catalog] [--add-specific-archive <archive name>] [--remove-specific-archive <archive name>] [--almost-quiet] [--backup-def <backup definition>] [--add-dir <dir name>] [--alternate-archive-dir <directory>] [--local-backup-dir]"
@@ -73,9 +79,10 @@ while [ -n "$1" ]; do
           echo " --alternate-archive-dir, estrict to one backup definition using --backup-def, this probably requires --local-backup-dir also"
           echo " --create-catalog, create missing catalogs. Restrict to one backup definition using --backup-def"
           echo " --add-dir <dir name>, add all archives in <dir_name> for existing backup definitions to catalogs"
-          echo " --backup-def <backup definition>, restict --create-catalog and --alternate-archive-dir"
+          echo " --backup-def <backup definition>, restict --create-catalog, --alternate-archive-dir and --list"
           echo " --add-specific-archive <archive name>, the short form without .<slice>.dar"
           echo " --remove-specific-archive <archive name>, the short form without .<slice>.dar"
+          echo " --list, list catalogs for all backup definitions, or a single definition (use --backup-def)"
           echo " --almost-quiet, outputs a single notice on an archive operation in the catalog"
           exit
           ;;
@@ -132,7 +139,7 @@ fi
 
 
 STARTTIME="$(date -Iseconds)"
-if [[ $ALMOST_QUIET == "n" ]]; then
+if [[ $VERBOSE == "y" ]]; then
     log "======================================================="
     log "$SCRIPTNAME started: $STARTTIME"
     log "======================================================="
@@ -146,6 +153,27 @@ fi
 
 # make sure mounts are in order
 mountPrereqs
+
+
+# list catalogs for all backup definitions
+# or for a specific backup definition given 
+# by --backup-def
+if [[ $LIST_CATALOG == "1" ]]; then
+    if [[ $BACKUP_DEF == "" ]]; then
+        while IFS= read -r "file"
+        do
+            CURRENT_BACKUPDEF=$(basename "$file")
+            CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
+            dar_manager --list -Q --base "$MOUNT_POINT"/"$CATALOG" | grep -E -v "^[[:alnum:]]"
+        done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print)
+    else
+        CATALOG=${BACKUP_DEF}${CATALOG_SUFFIX}
+        dar_manager --list -Q --base "$MOUNT_POINT"/"$CATALOG" | grep -E -v "^[[:alnum:]]"
+    fi
+    exit
+fi
+
+
 
 
 # create catalog for all backup definitions
@@ -179,6 +207,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             fi
         fi
     fi
+    exit
 fi
 
 
