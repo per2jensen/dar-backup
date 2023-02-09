@@ -270,16 +270,18 @@ getNoFiles () {
 
 
 # explain exit code
-# if $RESULT is a known value in this function, print a single line explanation
+# if $1 is a known value in this function, print a single line explanation
 exitCodeExpl () {
-    if [[ "$RESULT" == "11" ]]; then
+    if [[ "$1" == "11" ]]; then
         log "Exit code \"11\" means archive contains dirty files"
     fi
 }
 
 
+
 # do a dar backup
 darBackup () {
+    local _RESULT
     log "==========================================================="
     log "Start dar backup of: ${DAR_ARCHIVE}"
     log "==========================================================="
@@ -288,8 +290,8 @@ darBackup () {
         -N \
         -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
         compress-exclusion verbose
-    RESULT=$?
-    if [[ $RESULT == "0" ]]; then
+    _RESULT=$?
+    if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
             if [[ $? != "0" ]]; then
@@ -300,23 +302,27 @@ darBackup () {
     else
         EVERYTHING_OK=1
     fi
-    exitCodeExpl 
-    log "Backup result: $EVERYTHING_OK"
+    exitCodeExpl "$_RESULT" 
+    log "Backup result: $_RESULT"
 }
 
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
-    grep _FULL_ "$1" > /dev/null 2>&1
+
+echo "\$1:  $1"
+
+    local _RESULT
+    grep _FULL_ "$1" # > /dev/null 2>&1
     if [[ $? == "0" ]]; then
         log "==============================================================================="
-        log "== Start dar DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
+        log "== Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
         log "==============================================================================="
     fi
-    grep _DIFF_ "$1" > /dev/null 2>&1
+    grep _DIFF_ "$1" # > /dev/null 2>&1
     if [[ $? == "0" ]]; then
         log "==============================================================================="
-        log "== Start dar INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
+        log "== Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
         log "==============================================================================="
     fi
 
@@ -325,8 +331,8 @@ darDiffBackup () {
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         compress-exclusion verbose 
-    RESULT=$?
-    if [[ $RESULT == "0" ]]; then
+    _RESULT=$?
+    if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --almost-quiet --local-backup-dir
             if [[ $? != "0" ]]; then
@@ -337,8 +343,8 @@ darDiffBackup () {
     else
         EVERYTHING_OK=1
     fi
-    exitCodeExpl
-    log "Backup result: $EVERYTHING_OK"
+    exitCodeExpl "$_RESULT"
+    log "Backup result: $_RESULT"
 }
 
 
