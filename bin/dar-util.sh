@@ -34,9 +34,16 @@ function _date_time() {
 # write log message to log
 # $1: the message if there is 
 log () {
-
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
+
+# only print this if --verbose option has been set or config file VERBOSE="y"
+log_verbose () {
+    if [[ "$VERBOSE" == "y" ]]; then
+        echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+    fi
+}
+
 
 log_error () {
     echo -e "$(_date_time) \e[1m\e[31mERROR\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
@@ -136,7 +143,7 @@ findNewestForType () {
     PREV=$(ls "${MOUNT_POINT}"/"${CURRENT_BACKUPDEF}"_"${1}"*.dar|tail -n 1)
     # {#} is the length of an env var
     if [[ ${#PREV} -lt 4 ]]; then
-        log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
+        log_warn  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
         return
     fi
     NEWEST_ARCHIVE=$(grep -E  "${CURRENT_BACKUPDEF}_${1}_[0-9]{4}-[0-9]{2}-[0-9]{2}" -o  <<< "$PREV" )
@@ -410,10 +417,10 @@ darRestoreTest () {
             exit
            }
     }' $FILELIST > "$RESTORE_FILE"
-    log "RESTORE_FILE: $RESTORE_FILE"
+    log_verbose "RESTORE_FILE: $RESTORE_FILE"
 
     RESTORE_FILE_SIZE=$(wc -c < "$RESTORE_FILE")
-    log "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
+    log_verbose "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
     if [[ $RESTORE_FILE_SIZE == "0" ]]; then
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
@@ -423,9 +430,7 @@ darRestoreTest () {
     local TEST_RESTOREFILE=""
     TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     if [[ $TEST_RESTOREFILE == "" ]]; then
-        if [[ $VERBOSE == "y" ]]; then 
-            log "No file found to perform restore test on, this might be an error"
-        fi
+        log_verbose "No file found to perform restore test on, this might be an error"
         return
     fi
     
@@ -434,13 +439,12 @@ darRestoreTest () {
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
-    if [[ $VERBOSE == "y" ]]; then 
-      log "ARCHIVEPATH: \"$ARCHIVEPATH\""
-      log "RESTORE_DIR: \"$RESTORE_DIR\""
-      log "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
-      log "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
-      log "Restore test of file: \"$TEST_RESTOREFILE\"" 
-    fi
+    log_verbose "ARCHIVEPATH: \"$ARCHIVEPATH\""
+    log_verbose "RESTORE_DIR: \"$RESTORE_DIR\""
+    log_verbose "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
+    log_verbose "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
+    log_verbose "Restore test of file: \"$TEST_RESTOREFILE\"" 
+
     if [[ $FSA_SCOPE_NONE != "" ]]; then
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         RESULT=$?
@@ -457,10 +461,10 @@ darRestoreTest () {
     
     # check restored file exists
     _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
-    log "Check if restored file \"$_TESTPATH\" exists"
+    log_verbose "Check if restored file \"$_TESTPATH\" exists"
     ls "$_TESTPATH" >> /dev/null 2>&1
     if [[ $? == "0" ]]; then
-        log "The restored file does exist"
+        log_verbose "The restored file does exist"
     else
         log_error "restored file not found"
         EVERYTHING_OK=1

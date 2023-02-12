@@ -28,6 +28,9 @@ CATALOG_SUFFIX=.catalog
 # path to log file
 LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
 
+# print more info, not quite debug
+VERBOSE="n"
+
 # should all output be captured in a file
 DEBUG=n
 
