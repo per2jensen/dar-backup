@@ -116,12 +116,16 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
   do
       _CURRENT_BACKUPDEF=$(basename "$file")
       CATALOG=${_CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
+      log_verbose "check if CATALOG: \"$CATALOG\" exists"
       if [[ ! -e  "$MOUNT_POINT"/"$CATALOG" ]]; then
         log_error "Catalog \"$CATALOG\" for backup definition \"$_CURRENT_BACKUPDEF\" is missing, continuing"
         EVERYTHING_OK=1
+      else 
+        log_verbose "CATALOG: \"$CATALOG\" does exist"
       fi
-  done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
+  done <  <(find "${MOUNT_POINT}"/../backups.d -type f -print0)
 fi
+
 log_verbose "BACKUPDEF=${BACKUPDEF}"
 log_verbose "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
 log_verbose "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
@@ -177,6 +181,7 @@ else
   fi
 fi
 if [[ "$EVERYTHING_OK" == "0" ]]; then
+  log_success "Backup ended, all ok"
   sendDiscordMsg "$SCRIPTNAME ended without errors"
 else
   sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
