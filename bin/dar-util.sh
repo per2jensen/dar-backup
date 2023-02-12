@@ -17,7 +17,7 @@ mountDar () {
     mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
-        log "ERROR ${SERVER}:${SERVER_DIR} not mounted, exiting"
+        log_error "${SERVER}:${SERVER_DIR} not mounted, exiting"
         exit 1
     fi
     if [[ $VERBOSE == "y" ]]; then 
@@ -112,7 +112,7 @@ copyDarStatic () {
                 log "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
             fi
         else
-            log "ERROR something went wrong, copying dar_static"
+            log_error "something went wrong, copying dar_static"
         fi
     else
         if [[ $VERBOSE == "y" ]]; then 
@@ -154,7 +154,7 @@ runBackupDef () {
     local isExists=0
     archiveExists isExists
     if [[ "$isExists" != "0" ]]; then
-        log "WARN archive: \"$DAR_ARCHIVE\" already exists, skipping"
+        log_warn "archive: \"$DAR_ARCHIVE\" already exists, skipping"
         return
     fi
     if [[ $MODE == "FULL"  ]]; then 
@@ -181,7 +181,7 @@ runBackupDef () {
                     diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
                 fi
             else
-                log "ERROR neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
+                log_error "neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
             fi
         fi
     fi
@@ -235,7 +235,7 @@ diffBackupTestRestore () {
     if [[ $RESULT == "0" ]]; then
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
-        log "ERROR par repair data not created for \"${DAR_ARCHIVE}\""
+        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
         EVERYTHING_OK=1
     fi
 }
@@ -252,7 +252,7 @@ backupTestRestore () {
     if [[ $RESULT == "0" ]]; then
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
-        log "ERROR par repair data not created for \"${DAR_ARCHIVE}\""
+        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
         EVERYTHING_OK=1
     fi
 }
@@ -315,7 +315,7 @@ darBackup () {
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             if [[ $? != "0" ]]; then
-                log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+                log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
                 EVERYTHING_OK=1
             fi
         fi
@@ -353,7 +353,7 @@ darDiffBackup () {
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             if [[ $? != "0" ]]; then
-                log "ERROR archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+                log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
                 EVERYTHING_OK=1
             fi
         fi
@@ -376,7 +376,7 @@ darTestBackup () {
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
-        log "ERROR test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+        log_error "test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     fi
     if [[ "$VERBOSE" == "y" ]]; then 
       sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -462,7 +462,7 @@ darRestoreTest () {
     if [[ $? == "0" ]]; then
         log "The restored file does exist"
     else
-        log "ERROR restored file not found"
+        log_error "restored file not found"
         EVERYTHING_OK=1
     fi
 
