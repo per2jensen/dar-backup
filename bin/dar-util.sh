@@ -26,15 +26,26 @@ mountDar () {
 }
 
 function _date_time() {
-    date +"%Y-%m-%d %H:%M:%S"
+    local _date=$(date +"%Y-%m-%d %H:%M:%S,%N")
+    echo ${_date:0:23}
 }
 
 
 # write log message to log
-# $1: the message
+# $1: the message if there is 
 log () {
+
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
+
+log_error () {
+    echo -e "$(_date_time) \e[1m\e[31mERROR\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+log_warn () {
+    echo -e "$(_date_time) \e[35mWARN\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
 
 # check if an archive exists, before starting dar
 # $1 argument: a variable, NOT is's value
