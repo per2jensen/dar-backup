@@ -309,9 +309,7 @@ exitCodeExpl () {
 # do a dar backup
 darBackup () {
     local _RESULT
-    log "==========================================================="
-    log "Start dar backup of: ${DAR_ARCHIVE}"
-    log "==========================================================="
+    log "Start FULL backup of: ${DAR_ARCHIVE}"
 
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
@@ -340,15 +338,11 @@ darDiffBackup () {
     local _RESULT
     echo "$1" | grep _FULL_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
-        log "==============================================================================="
-        log "== Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
-        log "==============================================================================="
+        log "Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
     echo "$1" | grep _DIFF_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
-        log "==============================================================================="
-        log "== Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
-        log "==============================================================================="
+        log "Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
@@ -396,7 +390,7 @@ darTestBackup () {
 #
 darRestoreTest () {
     if [[ $VERBOSE == "y" ]]; then 
-      log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
+      log  "Test restoring 1 file from archive: ${ARCHIVEPATH}"
     fi
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
