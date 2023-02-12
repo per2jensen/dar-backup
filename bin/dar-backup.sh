@@ -67,7 +67,7 @@ while [ -n "$1" ]; do
           exit
           ;;
       --verbose)
-          VERBOSE="y"
+          CMD_VERBOSE="y"
           ;;
       --version|-v)
           echo "$SCRIPTNAME $VERSION"
@@ -92,6 +92,10 @@ export SCRIPTDIRPATH=""
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
+if [[ $CMD_VERBOSE == "y" ]]; then
+    VERBOSE="y"
+fi
+
 
 if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
   set -x
@@ -113,18 +117,18 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
       _CURRENT_BACKUPDEF=$(basename "$file")
       CATALOG=${_CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
       if [[ ! -e  "$MOUNT_POINT"/"$CATALOG" ]]; then
-        log "ERROR Catalog \"$CATALOG\" for backup definition \"$_CURRENT_BACKUPDEF\" is missing, continuing"
+        log_error "Catalog \"$CATALOG\" for backup definition \"$_CURRENT_BACKUPDEF\" is missing, continuing"
         EVERYTHING_OK=1
       fi
   done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
 fi
-log "BACKUPDEF=${BACKUPDEF}"
-log "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
-log "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
-log "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
-log "CMD_DEBUG=${CMD_DEBUG}"
-log "CMD_USE_CATALOGS=${CMD_USE_CATALOGS}"
-log "VERBOSE=${VERBOSE}"
+log_verbose "BACKUPDEF=${BACKUPDEF}"
+log_verbose "LOCAL_BACKUP_DIR=${LOCAL_BACKUP_DIR}"
+log_verbose "FSA_SCOPE_NONE=${FSA_SCOPE_NONE}"
+log_verbose "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
+log_verbose "CMD_DEBUG=${CMD_DEBUG}"
+log_verbose "CMD_USE_CATALOGS=${CMD_USE_CATALOGS}"
+log_verbose "VERBOSE=${VERBOSE}"
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
@@ -168,7 +172,7 @@ else
         log "start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
         runBackupDef
     else 
-      log "ERROR backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
+      log_error "backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
     fi
   fi
 fi
