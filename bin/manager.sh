@@ -35,6 +35,39 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
 
+
+show_help() {
+    cat << EOF
+
+NAME
+    $SCRIPTNAME - creates/maintains dar catalogs for dar archives for backup definitions
+
+SYNOPSIS
+    $SCRIPTNAME  --list [--backup-def <definition>] 
+
+    $SCRIPTNAME  --create-catalog [--backup-def <definition>] 
+
+    $SCRIPTNAME  --add-dir <directory> [--backup-def <definition>] 
+
+    $SCRIPTNAME  --add-specific-archive <archive name>
+
+    $SCRIPTNAME  --remove-specific-archive <archive name>
+
+OPTIONS
+    --list, list catalogs for all backup definitions, or a single definition (use --backup-def)
+    --local-backup-dir, don't mount a remote directory for operations
+    --alternate-archive-dir, override MOUNT_POINT (from .conf file)
+    --create-catalog, create missing catalogs. Restrict to one backup definition using --backup-def
+    --add-dir <dir name>, add all archives in <dir_name> for existing backup definitions to catalogs
+    --backup-def <backup definition>, restict another operation to work only on this backup definition
+    --add-specific-archive <archive name>, the short form without .<slice>.dar
+    --remove-specific-archive <archive name>, the short form without .<slice>.dar
+    --verbose|-v, output start up params and more
+    --help|-h, output this help message
+EOF
+}
+
+
 # Get the options
 while [ -n "$1" ]; do
   case "$1" in
@@ -70,20 +103,11 @@ while [ -n "$1" ]; do
       --list)
           LIST_CATALOG="1"
           ;;
-      --verbose)
+      --verbose|-v)
           VERBOSE="y"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--create-catalog] [--add-specific-archive <archive name>] [--remove-specific-archive <archive name>] [--almost-quiet] [--backup-def <backup definition>] [--add-dir <dir name>] [--alternate-archive-dir <directory>] [--local-backup-dir]"
-          echo " --local-backup-dir, don't mount a remote directory for operations"
-          echo " --alternate-archive-dir, estrict to one backup definition using --backup-def, this probably requires --local-backup-dir also"
-          echo " --create-catalog, create missing catalogs. Restrict to one backup definition using --backup-def"
-          echo " --add-dir <dir name>, add all archives in <dir_name> for existing backup definitions to catalogs"
-          echo " --backup-def <backup definition>, restict --create-catalog, --alternate-archive-dir and --list"
-          echo " --add-specific-archive <archive name>, the short form without .<slice>.dar"
-          echo " --remove-specific-archive <archive name>, the short form without .<slice>.dar"
-          echo " --list, list catalogs for all backup definitions, or a single definition (use --backup-def)"
-          echo " --almost-quiet, outputs a single notice on an archive operation in the catalog"
+          show_help
           exit
           ;;
       *)
@@ -100,29 +124,29 @@ source "${SCRIPTDIRPATH}/dar-util.sh"
 
 # sanity chekcs before starting
 if [[ $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD == "" ]]; then
-    log "ERROR archive dir not given, exiting"
+    log_error "archive dir not given, exiting"
     exit 1
 fi
 
 if [[ $_ADD_SPECIFIC_ARCHIVE == "1" && $_ADD_SPECIFIC_ARCHIVE == "" ]]; then
-    log "ERROR specific archive to add not given, exiting"
+    log_error "specific archive to add not given, exiting"
     exit 1
 fi
 
 if [[ $_REMOVE_SPECIFIC_ARCHIVE == "1" && $REMOVE_SPECIFIC_ARCHIVE == "" ]]; then
-    log "ERROR specific archive to remove not given, exiting"
+    log_error "specific archive to remove not given, exiting"
     exit 1
 fi
 
 if [[ $_ADD_SPECIFIC_ARCHIVE == "1" && $_REMOVE_SPECIFIC_ARCHIVE == "1" ]]; then
-    log "ERROR you can't add and remove archives in the same operation, exiting"
+    log_error "you can't add and remove archives in the same operation, exiting"
     exit 1
 fi
 
 
 if [[ $BACKUP_DEF != "" ]]; then
     if [[ ! -e "${SCRIPTDIRPATH}"/../backups.d/"$BACKUP_DEF"  ]]; then
-        log "ERROR backup definition \"$BACKUP_DEF\" not found, exiting"
+        log_error "backup definition \"$BACKUP_DEF\" not found, exiting"
         exit 1
     fi
 fi
@@ -131,7 +155,7 @@ fi
 # this (most probably) requires the --local-backup-dir option to be set also
 if [[ $ALTERNATE_ARCHIVE_DIR != "" ]]; then
   if [[ ! -d "$ALTERNATE_ARCHIVE_DIR"  ]]; then
-    log "ERROR alternate archive directory: \"$ALTERNATE_ARCHIVE_DIR\" not found, $SCRIPTNAME exiting"
+    log_error "alternate archive directory: \"$ALTERNATE_ARCHIVE_DIR\" not found, $SCRIPTNAME exiting"
     exit 1
   fi
   MOUNT_POINT="$ALTERNATE_ARCHIVE_DIR"
@@ -184,25 +208,25 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             CURRENT_BACKUPDEF=$(basename "$file")
             CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
             if [[ -e "$MOUNT_POINT/$CATALOG" ]]; then
-                log "WARN  \"$MOUNT_POINT/$CATALOG\" already exists, go to next"
+                log_warn "\"$MOUNT_POINT/$CATALOG\" already exists, go to next"
             else
                 log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""
                 dar_manager --create "$MOUNT_POINT"/"$CATALOG"
                 if [[ $? != "0" ]]; then
-                    log "ERROR something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
+                    log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
                 fi
             fi
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print)
     else
         CATALOG=${BACKUP_DEF}${CATALOG_SUFFIX}
         if [[ -e "$MOUNT_POINT/$CATALOG" ]]; then
-            log "WARN  \"$MOUNT_POINT/$CATALOG\" already exists, exiting"
+            log_warn "\"$MOUNT_POINT/$CATALOG\" already exists, exiting"
             exit 0
         else
             log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""
             dar_manager --create "$MOUNT_POINT"/"$CATALOG"
             if [[ $? != "0" ]]; then
-                log "ERROR something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
+                log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
                 exit $?
             fi
         fi
@@ -229,7 +253,7 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
                 dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
                 RESULT=$?
                 if [[ $RESULT != "0" ]]; then
-                    log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
+                    log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
                     exit $RESULT
                 fi
             done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${CURRENT_BACKUP_DEF}_FULL_.*|${CURRENT_BACKUP_DEF}_DIFF_.*|${CURRENT_BACKUP_DEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s)
@@ -247,7 +271,7 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
             RESULT=$?
             if [[ $RESULT != "0" ]]; then
-                log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
+                log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
                 exit $RESULT
             fi
         done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${BACKUP_DEF}_FULL_.*|${BACKUP_DEF}_DIFF_.*|${BACKUP_DEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s)
@@ -258,7 +282,7 @@ fi
 if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     _DEF_=$(echo "$ADD_SPECIFIC_ARCHIVE" |grep -E "^.*?_" | cut -d _ -f 1)
     if [[ ! -e "${SCRIPTDIRPATH}"/../backups.d/"$_DEF_"  ]]; then
-        log "ERROR backup definition \"$_DEF_\" not found (--add-specific-archive option probably not correct), exiting"
+        log_error "backup definition \"$_DEF_\" not found (--add-specific-archive option probably not correct), exiting"
         exit 1
     fi
     CATALOG="${_DEF_}""${CATALOG_SUFFIX}"
@@ -267,7 +291,7 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --add "$_REALPATH"
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
-        log "ERROR something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
+        log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
         exit $RESULT
     fi
 fi
@@ -279,7 +303,7 @@ fi
 if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
     _DEF_=$(echo "$REMOVE_SPECIFIC_ARCHIVE" |grep -E "^.*?_" | cut -d _ -f 1)
     if [[ ! -e "${SCRIPTDIRPATH}"/../backups.d/"$_DEF_"  ]]; then
-        log "ERROR backup definition \"$_DEF_\" not found (--remove-specific-archive option probably not correct), exiting"
+        log_error "backup definition \"$_DEF_\" not found (--remove-specific-archive option probably not correct), exiting"
         exit 1
     fi
     CATALOG="${_DEF_}""${CATALOG_SUFFIX}"
