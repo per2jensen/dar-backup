@@ -7,6 +7,8 @@ TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
 
+source "$TESTDIR/bin/dar-util.sh"
+
 failOnError () {
   if [[ $1 != "0"  ]]; then
       echo operation failed, exiting

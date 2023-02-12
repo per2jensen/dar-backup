@@ -46,6 +46,15 @@ log_warn () {
     echo -e "$(_date_time) \e[35mWARN\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
 
+log_success () {
+    echo -e "$(_date_time) \e[1m\e[32mSUCCESS\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+log_fail () {
+    echo -e "$(_date_time) \e[1m\e[31mFAIL\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+
 
 # check if an archive exists, before starting dar
 # $1 argument: a variable, NOT is's value

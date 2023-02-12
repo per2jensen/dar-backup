@@ -94,8 +94,10 @@ do
     fi
 done <  <(find "${TESTDIR}"/backups.d -type f -print0)
 
-
 if [[ "$TESTRESULT" == "0" ]]; then
-  echo "Test case succeeded"
+  log_success "Test case succeeded"
+else
+  log_fail "Test case failed"
 fi
+
 exit "$TESTRESULT"
