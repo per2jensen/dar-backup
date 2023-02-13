@@ -43,23 +43,26 @@ NAME
     $SCRIPTNAME - creates/maintains dar catalogs for dar archives for backup definitions
 
 SYNOPSIS
-    $SCRIPTNAME  --list [--backup-def <definition>] 
+    $SCRIPTNAME  --list|-1 [--backup-def <definition>] 
 
-    $SCRIPTNAME  --create-catalog [--backup-def <definition>] 
+    $SCRIPTNAME  --create-catalog [--backup-def|-d <definition>]
 
-    $SCRIPTNAME  --add-dir <directory> [--backup-def <definition>] 
+    $SCRIPTNAME  --add-dir <directory> [--backup-def <definition>]
 
     $SCRIPTNAME  --add-specific-archive <archive name>
 
     $SCRIPTNAME  --remove-specific-archive <archive name>
 
+    $SCRIPTNAME  --help|-h
+
+
 OPTIONS
-    --list, list catalogs for all backup definitions, or a single definition (use --backup-def)
+    --list|-l, list catalogs for all backup definitions, or a single definition (use --backup-def)
     --local-backup-dir, don't mount a remote directory for operations
     --alternate-archive-dir, override MOUNT_POINT (from .conf file)
     --create-catalog, create missing catalogs. Restrict to one backup definition using --backup-def
     --add-dir <dir name>, add all archives in <dir_name> for existing backup definitions to catalogs
-    --backup-def <backup definition>, restict another operation to work only on this backup definition
+    --backup-def|-d <backup definition>, restict another operation to work only on this backup definition
     --add-specific-archive <archive name>, the short form without .<slice>.dar
     --remove-specific-archive <archive name>, the short form without .<slice>.dar
     --verbose|-v, output start up params and more
@@ -86,7 +89,7 @@ while [ -n "$1" ]; do
           shift
           ARCHIVE_DIR_TO_ADD="$1"
           ;;
-      --backup-def)
+      --backup-def|-d)
           shift
           BACKUP_DEF="$1"
           ;;
@@ -100,7 +103,7 @@ while [ -n "$1" ]; do
           shift
           REMOVE_SPECIFIC_ARCHIVE="$1"
           ;;
-      --list)
+      --list|-l)
           LIST_CATALOG="1"
           ;;
       --verbose|-v)
