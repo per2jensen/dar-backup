@@ -1,9 +1,5 @@
 name: backups
 
-runs:
-  using: 'nodejs16'
-  main: 'main.js'
-
 # Controls when the workflow will run
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
@@ -21,7 +17,7 @@ jobs:
   backup-full-diff-inc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -34,7 +30,7 @@ jobs:
   program-path-with-spaces:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -47,7 +43,7 @@ jobs:
   multiple-backup-definitions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -60,7 +56,7 @@ jobs:
   bakcup-def-spaces:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -73,7 +69,7 @@ jobs:
   diff-against-full-correct:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -86,7 +82,7 @@ jobs:
   discard-restoretest-if-no-files:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -98,7 +94,7 @@ jobs:
   check-link-restore-handled-correct:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -111,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     # backup from a BTRFS file system
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -123,7 +119,7 @@ jobs:
   report-saved-removed:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2
@@ -135,7 +131,7 @@ jobs:
   run-restore-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static par2
@@ -147,7 +143,7 @@ jobs:
   check-if-archive-exists:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install required packages
         run:  sudo apt install -y dar dar-static par2
