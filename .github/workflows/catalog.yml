@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
       # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
       # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
       # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
       # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
       # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
