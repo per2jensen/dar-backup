@@ -1,6 +1,6 @@
 name: backups
 
-runs-on:
+runs:
   using: 'nodejs16'
   main: 'main.js'
 
