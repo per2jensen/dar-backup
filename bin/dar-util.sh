@@ -347,10 +347,18 @@ darDiffBackup () {
     if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
-            if [[ $? != "0" ]]; then
-                log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+            local _CATRESULT=$?
+            case $_CATRESULT in
+            0)
+                ;;
+            5) 
+                log_warn "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
+                ;;
+            *)
+                log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
                 EVERYTHING_OK=1
-            fi
+                ;;
+            esac                
         fi
     else
         EVERYTHING_OK=1

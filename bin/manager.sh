@@ -166,17 +166,15 @@ fi
 
 
 STARTTIME="$(date -Iseconds)"
-if [[ $VERBOSE == "y" ]]; then
-    log "======================================================="
-    log "$SCRIPTNAME started: $STARTTIME"
-    log "======================================================="
-    log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
-    log "Add specific archive: \"$ADD_SPECIFIC_ARCHIVE\""
-    log "Remove specific archive: \"$REMOVE_SPECIFIC_ARCHIVE\""
-    log "Create catalog: \"$CREATE_CATALOG\""
-    log "Add directory: \"$ADD_DIR\", \"$ARCHIVE_DIR_TO_ADD\""
-    log "Backup definition: \"$BACKUP_DEF\""
-fi
+log_verbose "======================================================="
+log_verbose "$SCRIPTNAME started: $STARTTIME"
+log_verbose "======================================================="
+log_verbose "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
+log_verbose "Add specific archive: \"$ADD_SPECIFIC_ARCHIVE\""
+log_verbose "Remove specific archive: \"$REMOVE_SPECIFIC_ARCHIVE\""
+log_verbose "Create catalog: \"$CREATE_CATALOG\""
+log_verbose "Add directory: \"$ADD_DIR\", \"$ARCHIVE_DIR_TO_ADD\""
+log_verbose "Backup definition: \"$BACKUP_DEF\""
 
 # make sure mounts are in order
 mountPrereqs
@@ -253,13 +251,20 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
                 ARCHIVE="$(basename "${archive}")"
                 _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
                 log "INFO add \"$_REALPATH\" to catalog \"$CATALOG\""
-                dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
+                dar_manager --base "$MOUNT_POINT/$CATALOG" -Q --add "$_REALPATH"
                 RESULT=$?
-                if [[ $RESULT != "0" ]]; then
+                case $RESULT in
+                0)
+                    ;;
+                5)
+                    log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
+                    ;;
+                *)
                     log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
                     exit $RESULT
-                fi
-            done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${CURRENT_BACKUP_DEF}_FULL_.*|${CURRENT_BACKUP_DEF}_DIFF_.*|${CURRENT_BACKUP_DEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s)
+                    ;;
+                esac
+            done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${CURRENT_BACKUP_DEF}_FULL_.*|${CURRENT_BACKUP_DEF}_DIFF_.*|${CURRENT_BACKUP_DEF}_INC_.*"| grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o| sort -u| sort -t "_" -k 3,3)
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print)
     else
         CATALOG=${BACKUP_DEF}${CATALOG_SUFFIX}
@@ -271,13 +276,20 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             ARCHIVE="$(basename "${archive}")"
             _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
             log "INFO add \"$_REALPATH\" to catalog \"$CATALOG\""
-            dar_manager --base "$MOUNT_POINT/$CATALOG"  --add "$_REALPATH"
+            dar_manager --base "$MOUNT_POINT/$CATALOG" -Q --add "$_REALPATH"
             RESULT=$?
-            if [[ $RESULT != "0" ]]; then
+            case $RESULT in
+            0)
+                ;;
+            5)
+                log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
+                ;;
+            *)
                 log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
                 exit $RESULT
-            fi
-        done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${BACKUP_DEF}_FULL_.*|${BACKUP_DEF}_DIFF_.*|${BACKUP_DEF}_INC_.*"|grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o|sort -u|sort -s)
+                ;;
+            esac
+        done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${BACKUP_DEF}_FULL_.*|${BACKUP_DEF}_DIFF_.*|${BACKUP_DEF}_INC_.*"| grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o| sort -u| sort -t "_" -k 3,3)
     fi
 fi
 
