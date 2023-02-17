@@ -452,10 +452,11 @@ darRestoreTest () {
     # check restored file exists
     _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
     log_verbose "Check if restored file \"$_TESTPATH\" exists"
-    if [[ -e "$_TESTPATH" ]]; then
-        log_verbose "yes, the restored file does exist"
+    ls "$_TESTPATH"
+    if [[ $? == "0" ]]; then
+        log_verbose "yes, the restored file is found"
     else
-        log_error "no, the file does not found"
+        log_error "no, the file is not found"
         EVERYTHING_OK=1
     fi
 
