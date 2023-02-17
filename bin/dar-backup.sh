@@ -167,13 +167,13 @@ else
     # loop over backup definition in backups.d/
     for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
         CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
-        log "start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
+        log "==> start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
         runBackupDef
     done
   else
     if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then
         CURRENT_BACKUPDEF="$BACKUPDEF"
-        log "start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
+        log "==> start processing a single backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"
         runBackupDef
     else 
       log_error "backup definition: ${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF} does not exist"
