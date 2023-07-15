@@ -4,7 +4,8 @@ Description=dar-backup DIFF timer
 [Timer]
 # Monthly DIFF on the first day of the month
 OnCalendar=*-*-01 19:03:00
-
+# Make sure the service is run on next login after "onCalendar", if machine was not turned on
+Persistent=true
 [Install]
 WantedBy=timers.target
 
