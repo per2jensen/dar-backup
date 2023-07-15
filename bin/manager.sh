@@ -199,8 +199,6 @@ if [[ $LIST_CATALOG == "1" ]]; then
 fi
 
 
-
-
 # create catalog for all backup definitions
 if [[ $CREATE_CATALOG == "1" ]]; then
     if [[ $BACKUP_DEF == "" ]]; then
