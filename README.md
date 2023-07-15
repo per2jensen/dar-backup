@@ -6,11 +6,13 @@
 - [Inspiration](#inspiration) 
 - [How to install](#how-to-install) 
 - [Script features](#script-features) 
-- [Requirements](#requirements) 
+- [Requirements](#requirements)
+- [Naming conventions](#naming-conventions) 
 - [Invocation](#invocation)
 - [Options](#options)  
 - [How to use](#how-to-use) 
-- [darrc](#darrc) 
+- [darrc](#darrc)
+- [Catalogs via dar_manager](doc/catalogs.md)
 - [Examples](#examples) 
   - [default to not mount a remote directory](#default-to-not-mount-remote-dir)
   - [how to run a single backup definition](#run-a-single-definition) 
@@ -126,6 +128,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   
   - Have a look at config file in conf/, and tweak it to your needs
   - Then create a backup definition in backups.d/, using the "dar-backup" file as your starting point.
+    - don't use "_" in the backup definition name. This char is searched for to figure out a backup definition name from an archive name
 
 # <a id="script-features"> Script features
 
@@ -163,6 +166,14 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   ````
     sudo apt install sshfs dar dar-static par2 curl
   ````
+
+# <a id="naming-conventions"> Naming conventions
+Due to the way the script looks for underscores ("_") in file names, underscores
+cannot be used on backupo definition names.
+
+The script checks for underscores in definition names, issues an ERROR in the
+log file and discards the backup definition.
+
 
 # <a id="invocation"> Invocation
 

@@ -1,8 +1,8 @@
-name: cleanup
+name: catalog
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dar-manager ]
   pull_request:
     branches: [ main ]
 
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  cleanup:
+  create-catalog:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -26,12 +26,11 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: test INC & DIFF cleanup
+      - name: create/populate/test/restore multiple catalogs
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup.sh
-          $GITHUB_WORKSPACE/test/test-cleanup.sh
-
-  cleanup-alternate-dir:
+          chmod +x $GITHUB_WORKSPACE/test/test-create-catalog.sh
+          $GITHUB_WORKSPACE/test/test-create-catalog.sh
+  create-single-catalog:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -47,12 +46,11 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: the test
+      - name: create single catalog
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-alternate-dir.sh
-          $GITHUB_WORKSPACE/test/test-cleanup-alternate-dir.sh
-
-  cleanup-fail-on-dir-not-found:
+          chmod +x $GITHUB_WORKSPACE/test/test-create-single-catalog.sh
+          $GITHUB_WORKSPACE/test/test-create-single-catalog.sh
+  populate-single-catalog:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -68,12 +66,11 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: the test
+      - name: populate single catalog
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-no-dir.sh
-          $GITHUB_WORKSPACE/test/test-cleanup-fail-no-dir.sh
-
-  cleanup-specific-archive:
+          chmod +x $GITHUB_WORKSPACE/test/test-populate-single-catalog.sh
+          $GITHUB_WORKSPACE/test/test-populate-single-catalog.sh
+  add-archive-to-catalog:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -89,17 +86,28 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: the test
+      - name: populate single catalog
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-specific-archive.sh
-          $GITHUB_WORKSPACE/test/test-cleanup-specific-archive.sh
+          chmod +x $GITHUB_WORKSPACE/test/test-populate-catalog-single-archive.sh
+          $GITHUB_WORKSPACE/test/test-populate-catalog-single-archive.sh
+  remove-archive-from-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
 
-      - name: fail on wrong DIFF_AGE configuration
-        run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-diff-age-calc.sh
-          $GITHUB_WORKSPACE/test/test-cleanup-fail-diff-age-calc.sh
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: fail on wrong INC_AGE configuration
+      - name: remove 1 entry from a catalog
         run: |
-          chmod +x $GITHUB_WORKSPACE/test/test-cleanup-fail-inc-age-calc.sh
-          $GITHUB_WORKSPACE/test/test-cleanup-fail-inc-age-calc.sh
+          chmod +x $GITHUB_WORKSPACE/test/test-remove-single-archive-from-catalog.sh
+          $GITHUB_WORKSPACE/test/test-remove-single-archive-from-catalog.sh
+          

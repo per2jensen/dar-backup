@@ -1,30 +1,51 @@
-#! /bin/bash -x
+#! /bin/bash 
 
 #
 # cp ~/git/dar-backup to /tmp, run install process, execute install backup definition
 #
 
+
+SCRIPTPATH=$(realpath "$0")
+SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
+source "$SCRIPTDIRPATH/../bin/dar-util.sh"
+
 RESULT=0
 
-DIR=/tmp/dar-backup
+INSTALLTEST=/tmp/installtest
+TESTDIR="$INSTALLTEST"/dar-backup
 
-rm -fr "$DIR"
-cp -R ~/git/dar-backup /tmp/
-cd "$DIR"
+rm -fr "$TESTDIR"
+mkdir "$INSTALLTEST"
 
-rm -fr "$DIR"/.git
-rm -fr "$DIR"/.github
-rm -fr "$DIR"/test
+cp -R ~/git/dar-backup "$INSTALLTEST"
 
-chmod +x "$DIR/bin/install.sh"
-"$DIR/bin/install.sh"
+cd "$TESTDIR"
 
-find "$DIR" -ls
+rm -fr "$TESTDIR"/.git
+rm -fr "$TESTDIR"/.github
+rm -fr "$TESTDIR"/test
 
-"${DIR}/bin/dar-backup.sh" -d dar-backup --local-backup-dir
+chmod +x "$TESTDIR/bin/install.sh"
+"$TESTDIR/bin/install.sh"
+
+# create catalogs
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  log_error "catalog was not created, exiting"
+  exit 1
+fi
+
+find "$TESTDIR" -ls
+
+"${TESTDIR}/bin/dar-backup.sh" -d dar-backup --local-backup-dir
 if [[ $? != "0" ]]; then
     RESULT=1
 fi
 
-echo "RESULT: $RESULT"
+if [[ "$RESULT" == "0" ]]; then
+  log_success "$0"
+else
+  log_fail "$0"
+fi
+
 exit "$RESULT"

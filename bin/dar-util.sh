@@ -13,11 +13,11 @@ mountDar () {
         return
     fi
     mkdir -p "${MOUNT_POINT}" 2>/dev/null
-    sshfs "${SERVER}:${SERVER_DIR}" "${MOUNT_POINT}"
+    sshfs -F  "${SSH_CONFIG}" "${SERVER}:${SERVER_DIR}" "${MOUNT_POINT}"
     mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
-        log "ERROR ${SERVER}:${SERVER_DIR} not mounted, exiting"
+        log_error "${SERVER}:${SERVER_DIR} not mounted, exiting"
         exit 1
     fi
     if [[ $VERBOSE == "y" ]]; then 
@@ -26,15 +26,53 @@ mountDar () {
 }
 
 function _date_time() {
-    date +"%Y-%m-%d %H:%M:%S"
+    local _date=$(date +"%Y-%m-%d %H:%M:%S,%N")
+    echo ${_date:0:23}
 }
 
 
+# return 1 if a backup definition contains underscores
+$1: the definition name to check
+is_definition_name_ok() {
+    echo "$1" | grep "_" > /dev/null    
+    if [[ "$?" == "0" ]]; then 
+        return 1
+    else
+        return 0
+    fi
+}
+
 # write log message to log
-# $1: the message
+# $1: the message if there is 
 log () {
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
+
+# only print this if --verbose option has been set or config file VERBOSE="y"
+log_verbose () {
+    if [[ "$VERBOSE" == "y" ]]; then
+        echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+    fi
+}
+
+
+log_error () {
+    echo -e "$(_date_time) \e[1m\e[31mERROR\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+log_warn () {
+    echo -e "$(_date_time) \e[35mWARN\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+log_success () {
+    echo -e "$(_date_time) \e[1m\e[32mSUCCESS\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+log_fail () {
+    echo -e "$(_date_time) \e[1m\e[31mFAIL\e[0m $1" | tee -a "$LOG_LOCATION/dar-backup.log"
+}
+
+
 
 # check if an archive exists, before starting dar
 # $1 argument: a variable, NOT is's value
@@ -88,11 +126,9 @@ copyDarStatic () {
     if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
         if [[ $? == "0" ]]; then
-            if [[ $VERBOSE == "y" ]]; then 
-                log "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
-            fi
+            log_verbose "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
         else
-            log "ERROR something went wrong, copying dar_static"
+            log_error "something went wrong, copying dar_static"
         fi
     else
         if [[ $VERBOSE == "y" ]]; then 
@@ -116,7 +152,7 @@ findNewestForType () {
     PREV=$(ls "${MOUNT_POINT}"/"${CURRENT_BACKUPDEF}"_"${1}"*.dar|tail -n 1)
     # {#} is the length of an env var
     if [[ ${#PREV} -lt 4 ]]; then
-        log  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
+        log_warn  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
         return
     fi
     NEWEST_ARCHIVE=$(grep -E  "${CURRENT_BACKUPDEF}_${1}_[0-9]{4}-[0-9]{2}-[0-9]{2}" -o  <<< "$PREV" )
@@ -134,7 +170,7 @@ runBackupDef () {
     local isExists=0
     archiveExists isExists
     if [[ "$isExists" != "0" ]]; then
-        log "WARN archive: \"$DAR_ARCHIVE\" already exists, skipping"
+        log_warn "archive: \"$DAR_ARCHIVE\" already exists, skipping"
         return
     fi
     if [[ $MODE == "FULL"  ]]; then 
@@ -144,7 +180,7 @@ runBackupDef () {
         if [[ $MODE == "DIFF" ]]; then
             findNewestForType FULL
             if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                log  "ERROR FULL backup not found for definition \"${CURRENT_BACKUPDEF}\""
+                log_error "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\""
             else
                 log "Create DIFF compared to: $NEWEST_ARCHIVE"
                 # backup
@@ -154,14 +190,14 @@ runBackupDef () {
             if [[ $MODE == "INC" ]]; then
                 findNewestForType DIFF
                 if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
-                    log  "ERROR DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
+                    log_error "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
                 else
                     log "Create INC compared to: $NEWEST_ARCHIVE"
                     # backup
                     diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
                 fi
             else
-                log "ERROR neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
+                log_error "neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
             fi
         fi
     fi
@@ -180,19 +216,15 @@ _TestRestore () {
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
     else 
         if [[ $1 == "5" ]]; then
-            if [[ $DEBUG == "y" && $VERBOSE == "y" ]]; then
+            if [[ $DEBUG == "y" ]]; then
                 local NO_ERRORS=""
                 NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
-                sendDiscordMsg "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
+                log_warn "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             else
-                sendDiscordMsg "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
+                log_warn "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             fi
         else
-            if [[ $VERBOSE == "y" ]]; then
-                sendDiscordMsg  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
-            else
-                log  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
-            fi
+            log_error  "dar ERROR: backup of archive: ${DAR_ARCHIVE} failed"
             return
         fi
     fi
@@ -206,12 +238,17 @@ _TestRestore () {
 # $1 "${MOUNT_POINT}/$NEWEST_ARCHIVE" - the newest backup 
 diffBackupTestRestore () {
     darDiffBackup "$1"
+
     _TestRestore $RESULT
 
-    echo "SCRIPTDIRPATH: ${SCRIPTDIRPATH}"
-
     "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    RESULT=$?
+    if [[ $RESULT == "0" ]]; then
+        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    else
+        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
+        EVERYTHING_OK=1
+    fi
 }
 
 
@@ -219,9 +256,17 @@ diffBackupTestRestore () {
 # this function drives the underlying backup, test and restore functions
 backupTestRestore () {
     darBackup
+
     _TestRestore $RESULT
+
     "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    RESULT=$?
+    if [[ $RESULT == "0" ]]; then
+        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
+    else
+        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
+        EVERYTHING_OK=1
+    fi
 }
 
 # find number of files Saved and Removed in a backup
@@ -257,58 +302,80 @@ getNoFiles () {
 
 
 # explain exit code
-# if $RESULT is a known value in this function, print a single line explanation
+# if $1 is a known value in this function, print a single line explanation
 exitCodeExpl () {
-    if [[ "$RESULT" == "11" ]]; then
-        log "Exit code \"11\" means archive contains dirty files"
+    if [[ "$1" == "11" ]]; then
+        log_warn "Exit code \"11\" means archive contains dirty files"
     fi
 }
 
 
+
 # do a dar backup
 darBackup () {
-    log "==========================================================="
-    log "Start dar backup of: ${DAR_ARCHIVE}"
-    log "==========================================================="
+    local _RESULT
+    log "Start FULL backup of: ${DAR_ARCHIVE}"
 
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
         compress-exclusion verbose
-    RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    _RESULT=$?
+    if [[ $_RESULT == "0" ]]; then
+        if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+            if [[ $? != "0" ]]; then
+                log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
+                EVERYTHING_OK=1
+            fi
+        fi
+    else
         EVERYTHING_OK=1
     fi
-    exitCodeExpl 
-    log "Full backup result: $RESULT"
+    exitCodeExpl "$_RESULT" 
+    RESULT=$_RESULT
+    log "Backup result: $RESULT"
 }
 
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
 darDiffBackup () {
-    grep _FULL_ "$1" > /dev/null 2>&1
+    local _RESULT
+    echo "$1" | grep _FULL_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
-        log "==============================================================================="
-        log "== Start dar DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
-        log "==============================================================================="
+        log "Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
-    grep _DIFF_ "$1" > /dev/null 2>&1
+    echo "$1" | grep _DIFF_  > /dev/null 2>&1
     if [[ $? == "0" ]]; then
-        log "==============================================================================="
-        log "== Start dar INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
-        log "==============================================================================="
+        log "Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
-
     dar -Q -c "${ARCHIVEPATH}" \
         -N \
         -B "${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}" \
         -A "$1" \
         compress-exclusion verbose 
-    RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    _RESULT=$?
+    if [[ $_RESULT == "0" ]]; then
+        if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
+            "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
+            local _CATRESULT=$?
+            case $_CATRESULT in
+            0)
+                ;;
+            5) 
+                log_warn "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
+                ;;
+            *)
+                log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
+                EVERYTHING_OK=1
+                ;;
+            esac                
+        fi
+    else
         EVERYTHING_OK=1
     fi
-    exitCodeExpl
+    exitCodeExpl "$_RESULT"
+    RESULT=$_RESULT
     log "Backup result: $RESULT"
 }
 
@@ -316,14 +383,12 @@ darDiffBackup () {
 # test a dar backup
 darTestBackup () {
     # test the backup
-    if [[ $VERBOSE == "y" ]]; then 
-      log  "Test dar archive: ${ARCHIVEPATH}"
-    fi
+    log  "Test dar archive: ${ARCHIVEPATH}"
     dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         EVERYTHING_OK=1
-        log "ERROR test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+        log_error "test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     fi
     if [[ "$VERBOSE" == "y" ]]; then 
       sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -335,21 +400,16 @@ darTestBackup () {
 #
 #
 darRestoreTest () {
-    if [[ $VERBOSE == "y" ]]; then 
-      log  "Test restore 1 file from archive: ${ARCHIVEPATH}"
-    fi
-    local RESTORE_DIR="/tmp/dar-restore"
+    log  "Test restoring 1 file from archive: ${ARCHIVEPATH}"
     local FILELIST=/tmp/dar_list_49352
     local RESTORE_FILE=/tmp/dar_file_restore_53489
-    
     dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+
     rm -f $RESTORE_FILE > /dev/null 2>&1
 
-    LIST_SIZE=$(wc -c "$FILELIST"|cut -d" " -f1)
+    LIST_SIZE=$(wc -c < "$FILELIST")
     if [[ $LIST_SIZE == "0" ]]; then
-        if [[ $VERBOSE == "y" ]]; then 
-          log "No files found for restore test in: ${ARCHIVEPATH}"
-        fi
+        log_verbose "No files found for restore test in: ${ARCHIVEPATH}"
         return
     fi
 
@@ -358,8 +418,10 @@ darRestoreTest () {
             exit
            }
     }' $FILELIST > "$RESTORE_FILE"
+    log_verbose "RESTORE_FILE: $RESTORE_FILE"
 
-    RESTORE_FILE_SIZE=$(wc -c "$RESTORE_FILE"|cut -d" " -f1)
+    RESTORE_FILE_SIZE=$(wc -c < "$RESTORE_FILE")
+    log_verbose "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
     if [[ $RESTORE_FILE_SIZE == "0" ]]; then
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
@@ -369,24 +431,46 @@ darRestoreTest () {
     local TEST_RESTOREFILE=""
     TEST_RESTOREFILE=$(cut -f2 < "$RESTORE_FILE")
     if [[ $TEST_RESTOREFILE == "" ]]; then
-        if [[ $VERBOSE == "y" ]]; then 
-            log "No file found to perform restore test on, this might be an error"
-        fi
+        log_verbose "No file found to perform restore test on, this might be an error"
         return
     fi
     
     # remove the test restore top dir, before restoring
+    local RESTORE_DIR="/tmp/dar-restore"
     rm -fr "$RESTORE_DIR" > /dev/null  2>&1
     mkdir -p "$RESTORE_DIR"
 
-    if [[ $VERBOSE == "y" ]]; then 
-      log "Restore test of file: \"${TEST_RESTOREFILE}\"" 
+    log_verbose "ARCHIVEPATH: \"$ARCHIVEPATH\""
+    log_verbose "RESTORE_DIR: \"$RESTORE_DIR\""
+    log_verbose "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
+    log_verbose "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
+    log_verbose "Restore test of file: \"$TEST_RESTOREFILE\"" 
+
+    if [[ $FSA_SCOPE_NONE != "" ]]; then
+        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        RESULT=$?
+        if [[ $RESULT != "0" ]]; then
+            EVERYTHING_OK=1
+        fi
+    else
+        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        RESULT=$?
+        if [[ $RESULT != "0" ]]; then
+            EVERYTHING_OK=1
+        fi
     fi
-    dar -Q -x "${ARCHIVEPATH}" -R "$RESTORE_DIR" -g "${TEST_RESTOREFILE}" ${FSA_SCOPE_NONE} -B "${SCRIPTDIRPATH}/../conf/defaults-rc"
-    RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    
+    # check restored file exists
+    _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
+    log_verbose "Check if restored file \"$_TESTPATH\" exists"
+    ls "$_TESTPATH"
+    if [[ $? == "0" ]]; then
+        log_verbose "yes, the restored file is found"
+    else
+        log_error "no, the file is not found"
         EVERYTHING_OK=1
     fi
+
     if [[ $VERBOSE == "y" ]]; then 
       sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $RESULT"
     fi

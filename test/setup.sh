@@ -7,6 +7,8 @@ TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
 
+source "$TESTDIR/bin/dar-util.sh"
+
 failOnError () {
   if [[ $1 != "0"  ]]; then
       echo operation failed, exiting
@@ -65,7 +67,7 @@ cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../bin"       "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../conf"      "$TESTDIR/"
 cp -R "$SCRIPTDIRPATH/../share" "$TESTDIR/"
-cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/"
+cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/" && rm "$TESTDIR"/templates/backups.d/dar-backup
 
 # test templates dir and copy it
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
@@ -77,3 +79,6 @@ chmod +x "$TESTDIR/bin/install.sh"
 
 # dar-backup.conf has been generated from the template, now use it
 source "$TESTDIR/conf/dar-backup.conf"
+
+# create dar catalog
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir

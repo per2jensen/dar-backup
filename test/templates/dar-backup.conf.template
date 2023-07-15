@@ -19,8 +19,17 @@ SERVER_DIR="/some/dir"
 # TODO rename to something like ARCHIVE_DIR
 MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
+# use catalogs or not, default is no - to not break existing setups
+USE_CATALOGS=y
+
+# Name of catalog database
+CATALOG_SUFFIX=.catalog
+
 # path to log file
 LOG_LOCATION="@@ARCHIVE_DIR@@/archives"
+
+# print more info, not quite debug
+VERBOSE="n"
 
 # should all output be captured in a file
 DEBUG=n

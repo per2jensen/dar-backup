@@ -11,6 +11,7 @@ SCRIPTNAME=$(basename "$0")
 ARCHIVE_DIR=""
 DAR_ARCHIVE=""
 
+
 # Get the options
 while [ -n "$1" ]; do
   case "$1" in
@@ -29,7 +30,7 @@ while [ -n "$1" ]; do
           exit
           ;;
       *)
-          echo option \"$1\" not recognized, exiting
+          echo option "\"$1\"" not recognized, exiting
           exit
           ;;
   esac

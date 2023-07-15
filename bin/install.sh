@@ -13,7 +13,7 @@ _backup_file () {
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 
-ARCHIVE_DIR="$SCRIPTDIRPATH/../archives"
+ARCHIVE_DIR=$(realpath "$SCRIPTDIRPATH/../archives")
 mkdir "$ARCHIVE_DIR" > /dev/null 2>&1
 
 chmod +x "$SCRIPTDIRPATH"/*.sh
@@ -25,11 +25,11 @@ chmod +x "$SCRIPTDIRPATH"/*.sh
 #template files
 FILE="$SCRIPTDIRPATH/../conf/defaults-rc"
 _backup_file "$FILE"
-sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/darrc.template" > "$FILE"
+sed -e "s|@@CONFDIR@@|$(realpath "${SCRIPTDIRPATH}"/../conf)|" "$SCRIPTDIRPATH/../templates/darrc.template" > "$FILE"
 
 FILE="$SCRIPTDIRPATH/../conf/dar-backup.conf"
 _backup_file "$FILE"
-sed -e "s|@@ARCHIVE_DIR@@|${SCRIPTDIRPATH}/../|" "$SCRIPTDIRPATH/../templates/dar-backup.conf.template" > "$FILE"        
+sed -e "s|@@ARCHIVE_DIR@@|$(realpath "${SCRIPTDIRPATH}"/..)|" "$SCRIPTDIRPATH/../templates/dar-backup.conf.template" > "$FILE"        
 
 
 if [ ! -d "$SCRIPTDIRPATH/../backups.d" ]; then
@@ -37,10 +37,10 @@ if [ ! -d "$SCRIPTDIRPATH/../backups.d" ]; then
 fi
 for file in "$SCRIPTDIRPATH"/../templates/backups.d/*; do
     base=$(basename "$file")
-    sed -e "s|@@CONFDIR@@|${SCRIPTDIRPATH}/../conf|" "$SCRIPTDIRPATH/../templates/backups.d/$base"  > "$SCRIPTDIRPATH/../backups.d/$base"
+    sed -e "s|@@CONFDIR@@|$(realpath "${SCRIPTDIRPATH}"/../conf)|" "$SCRIPTDIRPATH/../templates/backups.d/$base"  > "$SCRIPTDIRPATH/../backups.d/$base"
 done
 
 for file in "$SCRIPTDIRPATH"/../templates/systemd/*; do
     base=$(basename "$file")
-    sed -e "s|@@DAR_BACKUP_DIR@@|${SCRIPTDIRPATH}/..|" "$SCRIPTDIRPATH/../templates/systemd/$base"  > "$SCRIPTDIRPATH/../share/$base"
+    sed -e "s|@@DAR_BACKUP_DIR@@|$(realpath "${SCRIPTDIRPATH}"/..)|" "$SCRIPTDIRPATH/../templates/systemd/$base"  > "$SCRIPTDIRPATH/../share/$base"
 done

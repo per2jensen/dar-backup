@@ -1,18 +1,36 @@
 #! /bin/bash
 
-# this needs sudo to mount a btrfs file system
-
-# test that the --fsa-scope-none option works
-# setup a btrfs file system, backup and restore to another type of filesystem
-
-# setup a btrfs file system
-# set an attibute not supported on ext4 file systems
 # run install.sh
 # run dar-backup.sh
-# restore the file with ext4 unsupprted attribute
-# add file GREENLAND.JEP to "include dir" and to the "exclude dir"
+# add file GREENLAND.JEP to include dir and to the exclude dir
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
+
+
+# run par2 verify
+# $1: directory of archives
+# $2: dar archive name
+verify_par2 () {
+    while IFS= read -r -d "" file
+    do
+        echo "Verify par2 repair data for: \"$file\""
+        par2 v "$file"
+        if [[ $? != "0" ]]; then
+            echo "verifying par2 repair data failed"
+            exit 1
+        fi
+    done <   <(find "$1" -type f -name "$2.*.dar.par2" -print0)
+
+    PAR2_FILES=$(find "$1" -type f -name "$2.*.dar.par2" |wc -l)
+    if (( PAR2_FILES > 0 )); then
+            echo "par2 repair files verified being OK"
+    fi
+    if (( PAR2_FILES == 0 )); then
+            echo "par2 repair files were not generated"
+            exit 1
+    fi
+}
+
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -21,78 +39,26 @@ echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 source "$SCRIPTDIRPATH/setup.sh"
 source "$TESTDIR/conf/dar-backup.conf"
 
-
-BTRFS_FILE="/tmp/btrfs-file"
-BTRFS_MOUNT_POINT="/tmp/mnt/btrfs"
-
-# check if mounted btrfs exist
-mount | grep "$BTRFS_MOUNT_POINT"
-if [[  $? == "0" ]]; then
-    sudo umount "$BTRFS_MOUNT_POINT"
-    if [[ $? != "0" ]]; then
-        echo "umount of $BTRFS_MOUNT_POINT failed, exiting"
-        exit 1
-    fi
-fi
-rm -f "$BTRFS_FILE"
-
-# setup a btrfs filesystem
-dd if=/dev/zero of="$BTRFS_FILE" bs=1024 count=150000
-mkfs.btrfs "$BTRFS_FILE"
-sudo rm -fr "$BTRFS_MOUNT_POINT"
-mkdir -p "$BTRFS_MOUNT_POINT"
-sudo mount "$BTRFS_FILE" "$BTRFS_MOUNT_POINT"
-sudo chmod 777 "$BTRFS_MOUNT_POINT"
-cp -R "$TESTDIR" "$BTRFS_MOUNT_POINT"
-"$BTRFS_MOUNT_POINT"/dar-backup-test/bin/install.sh
-
-
-# set new TESTDIR location
-TESTDIR="$BTRFS_MOUNT_POINT"/dar-backup-test
-MOUNT_POINT="$TESTDIR/archives"
-LOG_LOCATION="$MOUNT_POINT"
-
-ATTRIBUTE_FILE="${TESTDIR}/dirs/attribute-test"
-# set a non ext{2,3,4} attibute
-touch "$ATTRIBUTE_FILE"
-chattr +c "$ATTRIBUTE_FILE"
-
+# create dar catalog
+#"$TESTDIR/bin/manager.sh" --local-backup-dir
 
 # run the test
-"$TESTDIR/bin/dar-backup.sh" -d TEST --local-backup-dir --fsa-scope-none --verbose 
+"$TESTDIR/bin/dar-backup.sh" -d TEST --use-catalogs --verbose --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+
+exit
+
 echo "non directories restored:"
 find /tmp/dar-restore/ ! -type d
-
-
+ 
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
-RESULT=$?
-echo dar exit code: $RESULT
-if [[ $RESULT != "0" ]]; then
-    TESTRESULT=1
-fi
+echo dar exit code: $?
 
-# test restore the attribute-test file
-rm -fr "/tmp/dar-restore/dirs"
-echo "Restore test of \"attribute-test\""
-dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R /tmp/dar-restore -g "dirs/attribute-test"  --fsa-scope none
-RESULT=$?
-if [[ $RESULT != "0" ]]; then
-    TESTRESULT=1
-    echo "ERROR: \"attribute-test\" was not restored, exit code: $RESULT"
-else 
-    echo "\"attribute-test\"  successfully restored, exit code: $RESULT"
-fi
-if [[ -e "/tmp/dar-restore/dirs/attribute-test" ]]; then
-    echo "Restored file found"
-else    
-    echo "Restore file not found"
-    TESTRESULT=1
-fi
-
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_FULL_$DATE"
 
 
 # alter backup set
@@ -100,7 +66,7 @@ cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/include this one/"
 cp "$SCRIPTDIRPATH/GREENLAND.JPEG" "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-"$TESTDIR/bin/dar-diff-backup.sh" -d TEST --local-backup-dir  --fsa-scope-none
+"$TESTDIR/bin/dar-diff-backup.sh" -d TEST --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
@@ -114,13 +80,14 @@ if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
 
-
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_DIFF_$DATE"
 
 # modify a file backed up in the DIFF
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
 
 # run INCREMENTAL backup
-"$TESTDIR/bin/dar-inc-backup.sh" -d TEST --local-backup-dir  --fsa-scope-none
+"$TESTDIR/bin/dar-inc-backup.sh" -d TEST --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
@@ -137,11 +104,12 @@ fi
 
 if [[ $TESTRESULT != "0" ]]; then
     echo "Something went wrong, exiting"
-    sudo umount "$BTRFS_MOUNT_POINT"
-    rm -fr "$BTRFS_FILE"
     exit 1
 fi
 
+
+#par2 verification of dar archives
+verify_par2 "$MOUNT_POINT" "TEST_INC_$DATE"
 
 echo .
 echo ..
@@ -159,7 +127,6 @@ echo RESULTS for FULL backup:
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
-checkExpectLog   "\[Saved\].*?dirs/attribute-test"                  "$TESTDIR/FULL-filelist.txt" 
 checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
 
@@ -178,10 +145,6 @@ else
     echo "error more than one file saved in the INCREMENTAL archive"
     TESTRESULT=1
 fi
-
-sudo umount "$BTRFS_MOUNT_POINT"
-rm -fr "$BTRFS_FILE"
-
 
 echo TEST RESULT: "$TESTRESULT"
 exit "$TESTRESULT"

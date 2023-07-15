@@ -16,6 +16,17 @@ source "$TESTDIR"/conf/dar-backup.conf
 # make a second backup definition
 cp "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITON_SPACES"
 
+# make a third bad backup definition name containing "_"
+cp "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/CONTAINS_UNDERSCORES"
+
+
+# create catalogs
+"$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
+if [[ $? != "0" ]]; then
+  echo ERROR catalog was not created, exiting
+  exit 1
+fi
+
 # run FULL backup
 "$TESTDIR"/bin/dar-backup.sh --local-backup-dir
 RESULT=$?
@@ -43,6 +54,8 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
+
+checkExpectLog   "=> backup discarded"  "$TESTDIR/archives/dar-backup.log"  
 
 echo TEST RESULT: "$TESTRESULT"
 exit "$TESTRESULT"
