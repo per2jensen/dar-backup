@@ -11,6 +11,7 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 
 source "$SCRIPTDIRPATH/setup.sh"
+source "$TESTDIR/bin/dar-util.sh"
 source "$TESTDIR/conf/dar-backup.conf"
 
 # generate 2 different backups
