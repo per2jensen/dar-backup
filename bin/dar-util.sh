@@ -13,7 +13,7 @@ mountDar () {
         return
     fi
     mkdir -p "${MOUNT_POINT}" 2>/dev/null
-    sshfs "${SERVER}:${SERVER_DIR}" "${MOUNT_POINT}"
+    sshfs -F  "${SSH_CONFIG}" "${SERVER}:${SERVER_DIR}" "${MOUNT_POINT}"
     mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
@@ -30,6 +30,17 @@ function _date_time() {
     echo ${_date:0:23}
 }
 
+
+# return 1 if a backup definition contains underscores
+$1: the definition name to check
+is_definition_name_ok() {
+    echo "$1" | grep "_" > /dev/null    
+    if [[ "$?" == "0" ]]; then 
+        return 1
+    else
+        return 0
+    fi
+}
 
 # write log message to log
 # $1: the message if there is 
