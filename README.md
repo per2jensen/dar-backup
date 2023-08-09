@@ -846,7 +846,7 @@ I can confirm large file support works. At one point I mistakenly omitted slices
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
-# <a id="success-restores"> Successful restores :-)
+# <a id="success-restores"> Successful restores 
 
   **2022-09-02** 
 
@@ -857,6 +857,40 @@ I can confirm large file support works. At one point I mistakenly omitted slices
   I followed the [recipe to restore firefox snap](#restore-firefox-snap), and had my full firefox snap user files back in a few minutes. 
   
   'dar' really rocks!
+
+  **2023-08-06**
+
+  My Ubuntu 23.04 instance decided for unknown reasons to quit on me. I spend an hour trying to figure out what had happened, and then decided to  restore. The restore process consisted of installing Ubuntu 23.04 on the system disk, this time choosing btrfs instead of zfs.
+
+  Half an hour later, I had a working system with my homedir disk mounted. 
+
+  My various snap installs didn't work, as the start shellscripts in /usr/bin were not in place, no problem firefox was only a snap away "sudo snap install firefox".
+
+  Here comes the problem - firefox started up, but would not recognize my profile. I chose to select a new profile, which was a mistake - the working profile from 2 hours ago was deleted !!!
+
+  Backup to the rescue, I did this to get my firefox profile restored:
+
+  ```
+  dar -x mnt/dar/pj_homedir_FULL_2022-12-28 -R /tmp -g snap/firefox
+
+  dar -x mnt/dar/pj_homedir_DIFF_2022-08-01 -R /tmp -g snap/firefox -wa
+
+  dar -x mnt/dar/pj_homedir_INC_2022-08-04  -R /tmp -g snap/firefox -wa
+
+  killall firefox
+
+  mv ~/snap/firefox ~/snap/firefox-org
+
+  mv /tmp/snap/firefox ~/snap/
+
+  firefox
+  ```
+
+Unfortunately it did not work completely, I do not understand why, because I had a fully patched system before the crash.
+
+Any way, I followed [this link](https://support.mozilla.org/en-US/kb/profiles-where-firefox-stores-user-data), and copied over the various .sqlite databases to a new profile and bingo - I have my firefox back :-)
+
+
 
 # <a id="dependencies"> Projects this script benefits from
 
