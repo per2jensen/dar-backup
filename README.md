@@ -28,6 +28,7 @@
   - [overview of archives](#overview-of-archives) 
   - [merge FULL with DIFF, creating new FULL](#merge-full-diff)
   - [cleanup a usbdisk for old archives](#cleanup-usbdisk) 
+  - [cleanup a failed backup](#cleanup-failed-backup)
   - [verbosity](#verbosity) 
   - [trim the log file ](#trim-log-file)
   - [restore using fsa-scope option](#fsa-scope) 
@@ -627,6 +628,26 @@ The reason the total is bigger than the sum of slices, is that the total include
   ````
   
   The log messages are written to the logfile configured in the config file.
+
+
+## <a id="cleanup-failed-backup"> clean up after a failed backup
+  Do not manually cleanup in the directory holding the dar backups.
+  It is easy to delete a wrong file, use the cleanup.sh script instead.
+
+  You can end up with a failed backup for various reasons, for example by initiating a manual backup, and terminate half way through by pressing Ctrl-C a couple of times.
+  A new backup (on the same date) will not go through, because dar and this script will not overwrite an existing backup, it must be deleted or moved before the next backup can be successful.
+
+  Use the --cleanup-specific-archive option to the cleanup.sh script in this situation.
+
+  I had this situation when fixing a bug, and deleted the offending backup this way
+
+  ````
+  <dar-backup>/bin/cleanup.sh --cleanup-specific-archive pCloudDrive_DIFF_2023-09-03
+  ````
+  
+  The log messages are written to the logfile configured in the config file.
+
+
 
 
 ## <a id="merge-full-diff"> merge FULL with DIFF, creating new FULL
