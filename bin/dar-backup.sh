@@ -123,7 +123,7 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
       else 
         log_verbose "CATALOG: \"$CATALOG\" does exist"
       fi
-  done <  <(find "${MOUNT_POINT}"/../backups.d -type f -print0)
+  done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print0)
 fi
 
 log_verbose "BACKUPDEF=${BACKUPDEF}"
