@@ -31,7 +31,7 @@ while [ -n "$1" ]; do
           SPECIFIC_ARCHIVE="$1"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-archive]"
+          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-specific-archive]"
           echo " --local-backup-dir, don't mount a remote directory for cleanup operations"
           echo " --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
           echo " --cleanup-specific-archive, cleanup a specific archive no matter the date"
