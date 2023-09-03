@@ -22,15 +22,4 @@ If an archive was not added to it's catalog, an ERROR is issued, but it is not c
 
 ## Issues
 
-### My cloud drive
-
-Adding dar archives to a catalog for my cloud disk backups often gives this error:
-
-```
-Dates of file's data are not increasing when database's archive number grows. Concerned file is: <the file>
-```
-
-I do not see this error on any of the catalogs with backups of local file systems.
-
-Currently the script logs a warning and keeps going. It needs some more investigation.
-
+Currently no issues
