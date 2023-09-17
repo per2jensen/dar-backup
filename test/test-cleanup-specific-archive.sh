@@ -105,6 +105,24 @@ if [[ $? != "1" ]]; then
   TEST_RESULT=1
 fi
 
+#test 9
+# verify "*" is not allowed
+echo "test 9"
+("$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "TEST_*_${TEST_DATE}")
+if [[ $? != "1" ]]; then 
+  echo test 9 fails
+  TEST_RESULT=1
+fi
+
+#test 10
+# verify "*" is not allowed
+echo "test 10"
+("$TESTDIR"/bin/cleanup.sh --local-backup-dir --alternate-archive-dir "/tmp/*/TEST")
+if [[ $? != "1" ]]; then 
+  echo test 10 fails
+  TEST_RESULT=1
+fi
+
 
 echo TEST_RESULT: $TEST_RESULT
 exit $TEST_RESULT

@@ -46,6 +46,13 @@ while [ -n "$1" ]; do
 done
 
 
+grep "\*" <<< $ALTERNATE_ARCHIVE_DIR
+if [[ $? == "0"  ]]; then
+  echo "\"*\" not allowed in \"ALTERNATE_ARCHIVE_DIR\""
+  exit 1
+fi
+
+
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
@@ -69,10 +76,17 @@ log "Alternate directory: \"$ALTERNATE_ARCHIVE_DIR\""
 log "Specific archive: \"$SPECIFIC_ARCHIVE\""
 
 
+grep "\*" <<< $SPECIFIC_ARCHIVE 
+if [[ $? == "0"  ]]; then
+  log_error "\"*\" not allowed in \"SPECIFIC_ARCHIVE\""
+  exit 1
+fi
+
+
 # make sure mounts are in order
 mountPrereqs
 
-# check if type and date given for the --cleanup-archive seems reasonable
+# check if type and date given for the --cleanup-archive seems reasonable, and then delete files
 if [[ $SPECIFIC_ARCHIVE != ""  ]]; then 
   TODAYS_SECS=$(date +%s --date $(date -I))
   REGEX_END_OF_DATE_SECS=$(date +%s --date "2029-12-31")
@@ -93,7 +107,7 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     exit 1
   fi
 
-  while IFS= read -r -d "" file
+    while IFS= read -r -d "" file
   do
     rm -f "${file}" &&  log "clean up: \"${file}\""
   done <   <(find "$MOUNT_POINT" -type f -name "${SPECIFIC_ARCHIVE}*.dar*" -print0)
