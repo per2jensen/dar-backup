@@ -103,7 +103,7 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
   # will only work on DIFF and INC, not FULL archives
   TYPE=$(echo $SPECIFIC_ARCHIVE|grep -E -o "DIFF|INC")
   if [[ $TYPE == "" ]]; then
-    log ERROR "archive type \"$TYPE\" is bad, exiting"
+    log "ERROR archive type is not DIFF or INC, exiting"
     exit 1
   fi
 
