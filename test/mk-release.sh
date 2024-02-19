@@ -12,6 +12,10 @@ if [[ "$TAG" == "" ]]; then
     echo "TAG \"$1\" does not match required tag patten, exiting"
     exit 1
 fi
+if ! git show-ref --tags --quiet "$1"; then
+ echo "TAG \"$1\" not found, exiting"
+ exit 1
+fi
 
 DIR=/tmp/dar-backup
 TARFILE="dar-backup-linux-${1}.tar.gz"
