@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/bash 
 
 #
 #  Run all "test-*" scripts
