@@ -20,6 +20,8 @@ DAR_ARCHIVE=""
 ARCHIVEPATH=""
 LOCAL_BACKUP_DIR=""
 export EVERYTHING_OK=0 # report this at the end, will be set to 1 if something goes wrong
+export BACKUP_OK=0
+export CATALOG_OK=0
 export CMD_DEBUG="n"
 export CMD_USE_CATALOGS="n"
 export VERBOSE="n"
@@ -146,7 +148,7 @@ if  [[ "$USE_CATALOGS" == "y" || "$CMD_USE_CATALOGS" == "y" ]]; then
       log_verbose "check if CATALOG: \"$MOUNT_POINT/$CATALOG\" exists"
       if [[ ! -e  "$MOUNT_POINT/$CATALOG" ]]; then
         log_error "Catalog \"$CATALOG\" for backup definition \"$_CURRENT_BACKUPDEF\" is missing, continuing"
-        EVERYTHING_OK=1
+        CATALOG_OK=1
       else 
         log_verbose "CATALOG: \"$CATALOG\" does exist"
       fi
@@ -188,11 +190,23 @@ else
     fi
   fi
 fi
-if [[ "$EVERYTHING_OK" == "0" ]]; then
+
+if [[ "$BACKUP_OK" == "0" ]]; then
   log_success "Backup ended, all ok"
   sendDiscordMsg "$SCRIPTNAME ended without errors"
 else
   sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
 fi 
 
-exit "$EVERYTHING_OK"
+if [[ "$CATALOG_OK" == "0" ]]; then
+  log_success "Catalog operations ended ok"
+else
+  log_error "Catalog operations had errors"
+fi 
+
+
+if [[ "$BACKUP_OK" == "0"  &&  "$CATALOG_OK" == "0" ]]; then
+  exit 0
+else
+  exit 1
+fi 

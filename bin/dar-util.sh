@@ -247,7 +247,7 @@ diffBackupTestRestore () {
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
         log_error "par repair data not created for \"${DAR_ARCHIVE}\""
-        EVERYTHING_OK=1
+        BACKUP_OK=1
     fi
 }
 
@@ -265,7 +265,7 @@ backupTestRestore () {
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
         log_error "par repair data not created for \"${DAR_ARCHIVE}\""
-        EVERYTHING_OK=1
+        BACKUP_OK=1
     fi
 }
 
@@ -326,11 +326,11 @@ darBackup () {
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             if [[ $? != "0" ]]; then
                 log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
-                EVERYTHING_OK=1
+                CATALOG_OK=1
             fi
         fi
     else
-        EVERYTHING_OK=1
+        BACKUP_OK=1
     fi
     exitCodeExpl "$_RESULT" 
     RESULT=$_RESULT
@@ -367,12 +367,12 @@ darDiffBackup () {
                 ;;
             *)
                 log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
-                EVERYTHING_OK=1
+                CATALOG_OK=1
                 ;;
             esac                
         fi
     else
-        EVERYTHING_OK=1
+        BACKUP_OK=1
     fi
     exitCodeExpl "$_RESULT"
     RESULT=$_RESULT
@@ -387,7 +387,7 @@ darTestBackup () {
     dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
-        EVERYTHING_OK=1
+        BACKUP_OK=1
         log_error "test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     fi
     if [[ "$VERBOSE" == "y" ]]; then 
@@ -450,13 +450,13 @@ darRestoreTest () {
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         RESULT=$?
         if [[ $RESULT != "0" ]]; then
-            EVERYTHING_OK=1
+            BACKUP_OK=1
         fi
     else
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         RESULT=$?
         if [[ $RESULT != "0" ]]; then
-            EVERYTHING_OK=1
+            BACKUP_OK=1
         fi
     fi
     
@@ -468,7 +468,7 @@ darRestoreTest () {
         log_verbose "yes, the restored file is found"
     else
         log_error "no, the file is not found"
-        EVERYTHING_OK=1
+        BACKUP_OK=1
     fi
 
     if [[ $VERBOSE == "y" ]]; then 

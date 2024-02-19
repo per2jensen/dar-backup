@@ -56,7 +56,7 @@ RESULT=0
 while IFS= read -r -d "" file
 do
     echo "Generate 5% repair data for: \"$file\""
-    par2 c -r5 -n1 "$file"
+    par2 c -r5 -n1 "$file" > /dev/null 2>&1
     if [[ $? != "0" ]]; then
         RESULT=1
     fi
