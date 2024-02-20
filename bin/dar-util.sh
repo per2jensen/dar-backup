@@ -309,6 +309,23 @@ exitCodeExpl () {
     fi
 }
 
+# print a log line if a catalog operation failed somehow
+# set the CATALOG_OK env var if an error happened
+# $1: the exit code from manager.sh script
+catalogOpsResult () {
+    local CATALOGRESULT="$1"
+    case $CATALOGRESULT in
+    0)
+        ;;
+    5) 
+        log_warn "Something not completely right adding \"${DAR_ARCHIVE}\" to it's catalog"
+        ;;
+    *)
+        log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
+        CATALOG_OK=1
+        ;;
+    esac                
+}
 
 
 # do a dar backup
@@ -324,10 +341,7 @@ darBackup () {
     if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
-            if [[ $? != "0" ]]; then
-                log_error "archive \"${DAR_ARCHIVE}\" not added to it's catalog"
-                CATALOG_OK=1
-            fi
+            catalogOpsResult "$?"
         fi
     else
         BACKUP_OK=1
@@ -358,18 +372,7 @@ darDiffBackup () {
     if [[ $_RESULT == "0" ]]; then
         if [[ $CMD_USE_CATALOGS == "y" || $USE_CATALOGS == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
-            local _CATRESULT=$?
-            case $_CATRESULT in
-            0)
-                ;;
-            5) 
-                log_warn "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
-                ;;
-            *)
-                log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
-                CATALOG_OK=1
-                ;;
-            esac                
+            catalogOpsResult "$?"
         fi
     else
         BACKUP_OK=1
