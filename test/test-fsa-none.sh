@@ -1,7 +1,5 @@
 #! /bin/bash
 
-# this needs sudo to mount a btrfs file system
-
 # test that the --fsa-scope-none option works
 # setup a btrfs file system, backup and restore to another type of filesystem
 
@@ -28,7 +26,7 @@ BTRFS_MOUNT_POINT="/tmp/mnt/btrfs"
 # check if mounted btrfs exist
 mount | grep "$BTRFS_MOUNT_POINT"
 if [[  $? == "0" ]]; then
-    sudo umount "$BTRFS_MOUNT_POINT"
+    umount "$BTRFS_MOUNT_POINT"
     if [[ $? != "0" ]]; then
         echo "umount of $BTRFS_MOUNT_POINT failed, exiting"
         exit 1
@@ -39,10 +37,10 @@ rm -f "$BTRFS_FILE"
 # setup a btrfs filesystem
 dd if=/dev/zero of="$BTRFS_FILE" bs=1024 count=150000
 mkfs.btrfs "$BTRFS_FILE"
-sudo rm -fr "$BTRFS_MOUNT_POINT"
+rm -fr "$BTRFS_MOUNT_POINT"
 mkdir -p "$BTRFS_MOUNT_POINT"
-sudo mount "$BTRFS_FILE" "$BTRFS_MOUNT_POINT"
-sudo chmod 777 "$BTRFS_MOUNT_POINT"
+mount "$BTRFS_FILE" "$BTRFS_MOUNT_POINT"
+chmod 777 "$BTRFS_MOUNT_POINT"
 cp -R "$TESTDIR" "$BTRFS_MOUNT_POINT"
 "$BTRFS_MOUNT_POINT"/dar-backup-test/bin/install.sh
 
@@ -78,7 +76,7 @@ fi
 # test restore the attribute-test file
 rm -fr "/tmp/dar-restore/dirs"
 echo "Restore test of \"attribute-test\""
-dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R /tmp/dar-restore -g "dirs/attribute-test"  --fsa-scope none
+dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R /tmp/dar-restore -g "dirs/attribute-test" -Oignore-owner --fsa-scope none
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
@@ -137,7 +135,7 @@ fi
 
 if [[ $TESTRESULT != "0" ]]; then
     echo "Something went wrong, exiting"
-    sudo umount "$BTRFS_MOUNT_POINT"
+    umount "$BTRFS_MOUNT_POINT"
     rm -fr "$BTRFS_FILE"
     exit 1
 fi
@@ -179,7 +177,7 @@ else
     TESTRESULT=1
 fi
 
-sudo umount "$BTRFS_MOUNT_POINT"
+umount "$BTRFS_MOUNT_POINT"
 rm -fr "$BTRFS_FILE"
 
 
