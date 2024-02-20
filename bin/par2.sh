@@ -63,12 +63,18 @@ do
 done <   <(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" -print0)
 
 
-PAR2_FILES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar.par2" |wc -l)
-if (( PAR2_FILES > 0 )); then
+
+NO_OF_DAR_SLICES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" |wc -l)
+NO_OF_PAR2_FILES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar.par2" |wc -l)
+if (( NO_OF_DAR_SLICES == NO_OF_PAR2_FILES )); then
     if [[ $RESULT == "0" ]]; then
         echo "par2 successfully generated repair files"
         exit 0
+    else
+        echo "Number of dar slices not equal to number of par2 files"
+        exit 1
     fi
+    
 fi
 
 if [[ $RESULT != "0" ]]; then
