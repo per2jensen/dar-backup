@@ -1,13 +1,15 @@
 #! /bin/bash
 
 # test creation of catalog
+#   - create ext4 file system in a file, all operations are done there
+#     - this to compare against Per's btrfs file system on /
 #   - make 5 backup definitions   
 #   - do a backup
 #   - create the catalog
 #   - populate the catalog with archive data
 #   - list catalog
 #   - check catalog
-#   - restore files
+#   - restore files using dar_manager and catalog
 
 TESTRESULT=0
 
@@ -18,6 +20,24 @@ echo SCRIPTDIRPATH: "$SCRIPTDIRPATH"
 source "$SCRIPTDIRPATH/setup.sh"
 source "$TESTDIR/bin/dar-util.sh"
 source "$TESTDIR/conf/dar-backup.conf"
+
+# setup a ext4 filesystem
+EXT4_FILE="/tmp/ext4-file"
+EXT4_MOUNT_POINT="/tmp/mnt/ext4"
+dd if=/dev/zero of="$EXT4_FILE" bs=1024 count=150000
+mkfs.ext4 "$EXT4_FILE"
+umount "$EXT4_MOUNT_POINT" > /dev/null 2<&1
+rm -fr "$EXT4_MOUNT_POINT"
+mkdir -p "$EXT4_MOUNT_POINT"
+mount "$EXT4_FILE" "$EXT4_MOUNT_POINT"
+chmod 777 "$EXT4_MOUNT_POINT"
+cp -R "$TESTDIR" "$EXT4_MOUNT_POINT"
+"$EXT4_MOUNT_POINT"/dar-backup-test/bin/install.sh
+
+# set new TESTDIR location
+TESTDIR="$EXT4_MOUNT_POINT"/dar-backup-test
+MOUNT_POINT="$TESTDIR/archives"
+LOG_LOCATION="$MOUNT_POINT"
 
 # generate 5 different backups
 cp "$TESTDIR"/backups.d/TEST "$TESTDIR"/backups.d/TEST2 
@@ -87,9 +107,10 @@ do
     CURRENT_BACKUPDEF=$(basename "$file")
     CATALOG=${CURRENT_BACKUPDEF}${CATALOG_SUFFIX}
 
-    TEMPDIR=$(mktemp -d)
+    TEMPDIR="${EXT4_MOUNT_POINT}/${CURRENT_BACKUPDEF}"
+    mkdir -p "$TEMPDIR"
     echo restoring "\"$CURRENT_BACKUPDEF\""  to "\"$TEMPDIR\"" from catalog "\"$CATALOG\""
-    dar_manager  --base "$(realpath "$TESTDIR"/archives/"$CATALOG")" -e "-R $TEMPDIR -Oignore-owner
+    dar_manager  --base "$(realpath "$TESTDIR"/archives/"$CATALOG")" -e "-R $TEMPDIR  -Oignore-owner
  " -r "dirs"
     if [[ $? != "0" ]]; then
       echo ERROR dar_manager restore failed
