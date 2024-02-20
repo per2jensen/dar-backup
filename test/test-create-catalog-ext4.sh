@@ -11,6 +11,10 @@
 #   - check catalog
 #   - restore files using dar_manager and catalog
 
+# take a look at https://sourceforge.net/p/dar/mailman/message/36981216/ for info
+# on the file ownership issue
+
+
 TESTRESULT=0
 
 SCRIPTPATH=$(realpath "$0")
