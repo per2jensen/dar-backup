@@ -7,8 +7,6 @@ TESTRESULT=0
 
 TESTDIR=/tmp/dar-backup-test
 
-source "$TESTDIR/bin/dar-util.sh"
-
 failOnError () {
   if [[ $1 != "0"  ]]; then
       echo operation failed, exiting
@@ -73,6 +71,8 @@ cp -R "$SCRIPTDIRPATH/../templates" "$TESTDIR/" && rm "$TESTDIR"/templates/backu
 cp -R "$SCRIPTDIRPATH/templates"                          "$TESTDIR/"
 # non-test templates
 cp "$SCRIPTDIRPATH/../templates/darrc.template"           "$TESTDIR/templates/"
+
+source "$TESTDIR/bin/dar-util.sh"
 
 chmod +x "$TESTDIR/bin/install.sh"
 "$TESTDIR/bin/install.sh"
