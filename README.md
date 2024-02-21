@@ -69,7 +69,7 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
  - Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
  - During backup archives must be tested and a restore test (however small) performed
  - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
- - Easy to verify archives' integrity, after being moved around.
+ - Easy to verify archive's integrity, after being moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
  
@@ -178,23 +178,23 @@ log file and discards the backup definition.
 
 # <a id="invocation"> Invocation
 
- - FULL backup of files/directories in the backup definition
+ - FULL backup iterating through all backup definitions
 
  ````
  dar-backup.sh
  ````
 
- - DIFF backup of files/directories in the backup definition
+ - DIFF backup iterating through all backup definitions
 
- The diff is made against the newest full backup of the definition
+ The diff is made against the newest full backup of a backup definition
 
  ````
  dar-diff-backup.sh
  ````
 
- - INCREMENTAL backup of files/directories in the backup definition
+ - INCREMENTAL backup iterating through all backup definitions
 
- The incremental is made against the newest diff backup of the definition, *regardless if there is a newer FULL*
+ The incremental is made against the newest diff backup of a definition, *regardless if there is a newer FULL*
 
  ````
  dar-inc-backup.sh
