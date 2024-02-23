@@ -37,7 +37,17 @@ echo "This package is built from tag: $1" > VERSION
 sed -i "s/@@DEV-VERSION@@/$1/" bin/dar-backup.sh
 cd $DIR/.. || exit 1
 tar czvf "$TARFILE" dar-backup
+
+rm -fr /tmp/dar-backup  || exit 1
+tar -x -f ${TARFILE}  dar-backup/LICENSE  || exit 1
+SHA256=$(sha256sum /tmp/dar-backup/LICENSE |cut -d" " -f1)
+if  [[ "$SHA256" ==  "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986" ]]; then
+    echo LICENSE exists in tarball and is unchanged
+else
+    echo "\"LICENSE\" file has changed, exiting"
+    exit
+fi
+
 echo SHA256:
 sha256sum "$TARFILE"
-
 echo "SUCCESS: a release tarball from tag: \"$TAG\" was produced"
