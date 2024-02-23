@@ -4,6 +4,9 @@
 # make the backup executable
 # create the softlink for the "diff" version
 
+
+VERSION=@@DEV-VERSION@@
+
 _backup_file () {
   if [[ -f "$1" ]]; then
     cp "$1"  "${1}.org"

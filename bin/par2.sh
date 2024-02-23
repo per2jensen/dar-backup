@@ -8,6 +8,8 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
 
+VERSION=@@DEV-VERSION@@
+
 ARCHIVE_DIR=""
 DAR_ARCHIVE=""
 
@@ -27,6 +29,15 @@ while [ -n "$1" ]; do
           echo "$SCRIPTNAME [--help|-h] [--archive|-a <archive name>] [--local-backup-dir] [--alternate-archive-dir <directory>]"
           echo "   --archive-dir <archive directory>"
           echo "   --archive <archive name>, the archive to work on ie: \"TEST_FULL_2022-12-28\""
+          echo "   --version, print version number, license and notice of no warranty"
+          echo "   --help, display this usage notice"
+          exit
+          ;;
+      --version)
+          echo "$SCRIPTNAME $VERSION"
+          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
+          echo "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW, see section 15 and section 16 in the \"LICENSE\" file"
           exit
           ;;
       *)
