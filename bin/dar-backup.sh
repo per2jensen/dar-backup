@@ -65,6 +65,7 @@ while [ -n "$1" ]; do
           echo "   --run-restore-test <dar archive> (archive name without <slice#>.dar)"
           echo "   --debug, give bash the '-x' option to log all activity to configured file"
           echo "   --use-catalogs, override default config file setting to use dar catalogs"
+          echo "   --version, show version number and license"
           echo "   --help, this terse usage info"
           exit
           ;;
@@ -74,6 +75,8 @@ while [ -n "$1" ]; do
       --version|-v)
           echo "$SCRIPTNAME $VERSION"
           echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
+          echo "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW, see section 15 and section 16 in the \"LICENSE\" file"
           exit
           ;;
       *)
