@@ -2,6 +2,7 @@
 # Table of contents
 
 - [Full, differential or incremental backups using 'dar'](#full-diff-inc)
+- [License](#license) 
 - [My use case](#my-use-case) 
 - [Inspiration](#inspiration) 
 - [How to install](#how-to-install) 
