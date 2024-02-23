@@ -16,6 +16,8 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
 
+VERSION=@@DEV-VERSION@@
+
 # Get the options
 while [ -n "$1" ]; do
   case "$1" in
@@ -31,10 +33,18 @@ while [ -n "$1" ]; do
           SPECIFIC_ARCHIVE="$1"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME --help|-h  [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-specific-archive]"
+          echo "$SCRIPTNAME [--help|-h]  [--version|-v] [--local-backup-dir] [--alternate-archive-dir <directory>] [--cleanup-specific-archive]"
           echo " --local-backup-dir, don't mount a remote directory for cleanup operations"
           echo " --alternate-archive-dir, cleanup in another directory than the one configured, this probably requires --local-backup-dir also"
           echo " --cleanup-specific-archive, cleanup a specific archive no matter the date"
+          echo " --version, show version number and license"
+          exit
+          ;;
+      --version|-v)
+          echo "$SCRIPTNAME $VERSION"
+          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
+          echo "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW, see section 15 and section 16 in the \"LICENSE\" file"
           exit
           ;;
       *)

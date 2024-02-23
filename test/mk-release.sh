@@ -34,7 +34,14 @@ rm -fr "$DIR/.github"
 rm -fr "$DIR/test"
 
 echo "This package is built from tag: $1" > VERSION
-sed -i "s/@@DEV-VERSION@@/$1/" bin/dar-backup.sh
+
+# add version number to shell scripts
+while IFS= read -r -d "" file
+do
+    sed -i "s/@@DEV-VERSION@@/$1/" "$file"
+done <  <(find . -name "*.sh" -type f -print0)
+
+
 cd $DIR/.. || exit 1
 tar czvf "$TARFILE" dar-backup
 

@@ -4,6 +4,7 @@ SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
 
+VERSION=@@DEV-VERSION@@
 
 LOCAL_BACKUP_DIR=""
 ALTERNATE_ARCHIVE_DIR=""
@@ -28,11 +29,19 @@ while [ -n "$1" ]; do
           LISTDEF="1"
           ;;
       --help|-h)
-          echo "$SCRIPTNAME [--help|-h] [--backupdef|-d <backup definition>] [--listdef|-l][--local-backup-dir] [--alternate-archive-dir <directory>]"
+          echo "$SCRIPTNAME [--help|-h] [--version|-v] [--backupdef|-d <backup definition>] [--listdef|-l][--local-backup-dir] [--alternate-archive-dir <directory>]"
           echo "   --backupdef <backup definition>, list only archives for this backup definition"
           echo "   --listdef, list backup definitions"
           echo "   --local-backup-dir, don't mount a remote directory for cleanup operations"
           echo "   --alternate-archive-dir <directory>, list another directory than the one configured, this probably requires --local-backup-dir also"
+          echo "   --version, show version number and license"
+          exit
+          ;;
+      --version|-v)
+          echo "$SCRIPTNAME $VERSION"
+          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
+          echo "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW, see section 15 and section 16 in the \"LICENSE\" file"
           exit
           ;;
       *)
