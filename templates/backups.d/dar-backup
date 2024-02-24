@@ -23,6 +23,11 @@
 # size of each slice in the archive
 --slice 4G
 
+# see https://github.com/per2jensen/dar-backup?tab=readme-ov-file#restore-test-exit-code-4
+# useful is running dar using a non-privileged user
+--comparison-field=ignore-owner
+
+
 # bypass directores marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
 --cache-directory-tagging
