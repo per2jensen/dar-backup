@@ -43,7 +43,7 @@ is_definition_name_ok() {
 }
 
 # write log message to log
-# $1: the message if there is 
+# $1: the message 
 log () {
     echo "$(_date_time) $1" | tee -a "$LOG_LOCATION/dar-backup.log"
 }
@@ -316,9 +316,10 @@ catalogOpsResult () {
     local CATALOGRESULT="$1"
     case $CATALOGRESULT in
     0)
+        log "${DAR_ARCHIVE} added to it's catalog"
         ;;
     5) 
-        log_warn "Something not completely right adding \"${DAR_ARCHIVE}\" to it's catalog"
+        log_warn "Something did not go completely right adding \"${DAR_ARCHIVE}\" to it's catalog"
         ;;
     *)
         log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
@@ -391,7 +392,9 @@ darTestBackup () {
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         BACKUP_OK=1
-        log_error "test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+        log_error "Test of archive: ${DAR_ARCHIVE}, result: $RESULT"
+    else
+        log "Test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     fi
     if [[ "$VERBOSE" == "y" ]]; then 
       sendDiscordMsg "dar test af archive: ${DAR_ARCHIVE}, result: $RESULT"
@@ -415,7 +418,6 @@ darRestoreTest () {
         log_verbose "No files found for restore test in: ${ARCHIVEPATH}"
         return
     fi
-
     awk '{  if ($1 < 10000000) {
             print $0 
             exit
@@ -440,14 +442,21 @@ darRestoreTest () {
     
     # remove the test restore top dir, before restoring
     local RESTORE_DIR="/tmp/dar-restore"
-    rm -fr "$RESTORE_DIR" > /dev/null  2>&1
-    mkdir -p "$RESTORE_DIR"
+    if [[ -d "$RESTORE_DIR" ]]; then
+        rm -fr "$RESTORE_DIR" > /dev/null  2>&1
+        if [[ $? != "0" ]]; then
+            log_error "restore directory \"$RESTORE_DIR\" could not be deleted"
+            BACKUP_OK=1
+            return
+        fi
+    fi
+    mkdir -p "$RESTORE_DIR" 
 
     log_verbose "ARCHIVEPATH: \"$ARCHIVEPATH\""
     log_verbose "RESTORE_DIR: \"$RESTORE_DIR\""
     log_verbose "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
     log_verbose "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
-    log_verbose "Restore test of file: \"$TEST_RESTOREFILE\"" 
+    log "Test restoring file: \"$TEST_RESTOREFILE\"" 
 
     if [[ $FSA_SCOPE_NONE != "" ]]; then
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
@@ -462,13 +471,13 @@ darRestoreTest () {
             BACKUP_OK=1
         fi
     fi
-    
+
     # check restored file exists
     _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
-    log_verbose "Check if restored file \"$_TESTPATH\" exists"
+    log "Check if restored file \"$_TESTPATH\" exists"
     ls "$_TESTPATH"
     if [[ $? == "0" ]]; then
-        log_verbose "yes, the restored file is found"
+        log "Restored file was found"
     else
         log_error "no, the file is not found"
         BACKUP_OK=1
