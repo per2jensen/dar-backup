@@ -2,13 +2,23 @@
 
 ## Problems
 
+## dar_manager cannot find dar
+
+dar_manager cannot find it's dar binary, even though they are in the same directory.
+
+I suspect a config somewhere is teasing me - temporary fix
+
+sudo apt remove dar
+sudo ln -s /home/$USER/.local/dar/bin/dar /usr/bin/dar
+
+
 ### --disable-libcurl-linking
 
 currently I get errors building dar if not issueing this config option
 
 
 ## package prereg
-This works on Ubuntu 23.10
+This kind of works on Ubuntu 23.10
 
 ```
 sudo apt install \
@@ -55,6 +65,10 @@ cd /tmp/dar-${DAR_VERSION}
 
 make
 make install-strip
+
+rm ~/.local/dar
+ln -s ~/.local/dar-${DAR_VERSION}  ~/.local/dar
+
 
 ```
 
