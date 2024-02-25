@@ -195,10 +195,9 @@ else
 fi
 
 if [[ "$BACKUP_OK" == "0" ]]; then
-  log_success "Backup ended, all ok"
-  sendDiscordMsg "$SCRIPTNAME ended without errors"
+  log_success "Backup ended ok"
 else
-  sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
+  log_error "Errors found during backup, test or restore-test"
 fi 
 
 if [[ "$CATALOG_OK" == "0" ]]; then
@@ -209,7 +208,9 @@ fi
 
 
 if [[ "$BACKUP_OK" == "0"  &&  "$CATALOG_OK" == "0" ]]; then
+  sendDiscordMsg "$SCRIPTNAME ended without errors"
   exit 0
 else
+  sendDiscordMsg "ERROR: $SCRIPTNAME ended with errors"
   exit 1
 fi 
