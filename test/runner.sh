@@ -11,9 +11,13 @@ rm -f $TESTCASE_LOG
 exec 1> >(tee -a -- $RUNNER_LOG)
 exec 2> >(tee -a -- $RUNNER_LOG >&2)
 DATE=$(date -Iseconds)
+
 echo "------------------------------------------------------------------"
 echo "dar-backup test runner started: $DATE"
 echo "------------------------------------------------------------------"
+echo "dar binary used: $(command -v dar | head -n1)"
+_DAR_=$(dar --version | grep -P -o "dar +version +\d+\.\d+.\d+")
+echo "dar version used: $_DAR_"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -24,6 +28,7 @@ TESTRESULT=0
 TESTNO=1
 RESULT=""
 for file in "${SCRIPTDIRPATH}"/test-*.sh; do
+    #echo "test: \"$file\""
     TIME=$(date "-Iseconds")
     printf "%-20s: #: %-15s %-60s \n" "==>Testcase<==: ${TESTNO}" "${TIME}"  "${file}"  >> $TESTCASE_LOG
     $("$file" >> $TESTCASE_LOG  2>&1)
