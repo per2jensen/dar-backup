@@ -173,12 +173,12 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 Due to the way the script looks for underscores ("_") in file names, underscores
 cannot be used on backupo definition names.
 
-The script checks for underscores in definition names, issues an ERROR in the
-log file and discards the backup definition.
+The script checks for underscores in definition names, if an underscore is found, an ERROR is issued in the log file, and the backup definition is discarded.
 
 
 # <a id="invocation"> Invocation
 
+## All backup definitions are run
  - FULL backup iterating through all backup definitions
 
  ````
@@ -200,6 +200,11 @@ log file and discards the backup definition.
  ````
  dar-inc-backup.sh
  ````
+
+## Run a single backup definition
+
+You can run a FULL, DIFF of INC backup on a specific backup definition using the "-d <backup definition\>", where \<backup definition\> is a file name in the "backups.d" directory.
+
 
 # <a id="options">  Options
 
@@ -863,8 +868,6 @@ I can confirm large file support works. At one point I mistakenly omitted slices
 
 
 # TODO
-
-  - [dar-manager branch]  Use [dar manager](http://dar.linux.free.fr/doc/Tutorial.html) database to ease restores of specific files.
   - Only 1 "REMOVED ENTRY" if a file+dir has been removed. See example in test/test-saved-removed.sh
   - Scheduled verifications of old archives, to  detect bit rot on storage media, could be useful
 
