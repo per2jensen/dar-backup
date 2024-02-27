@@ -6,10 +6,11 @@
 
 dar_manager cannot find it's dar binary, even though they are in the same directory.
 
-I suspect a config somewhere is teasing me - temporary fix
+I suspect a config somewhere is teasing me - temporary "fix" unti I figure out what is wrong:
 
-sudo apt remove dar
-sudo ln -s /home/$USER/.local/dar/bin/dar /usr/bin/dar
+- sudo apt remove dar
+
+- sudo ln -s /home/$USER/.local/dar/bin/dar /usr/bin/dar
 
 
 ### --disable-libcurl-linking
@@ -68,8 +69,6 @@ make install-strip
 
 rm ~/.local/dar
 ln -s ~/.local/dar-${DAR_VERSION}  ~/.local/dar
-
-
 ```
 
 
