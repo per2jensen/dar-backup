@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # verify cleanup.sh works on the directory given in the --alternate-archive-dir option
-# that option requires --local-backup-dir to be givesn also
+# that option requires --local-backup-dir
 
 
 TEST_RESULT=0

@@ -22,6 +22,8 @@
 # 
 # will only work on DIFF and INC, not FULL archives
 #
+# do not call manager if cleanup is performed in a non-standard directory, (--alternate-archive-dir))
+#
 # DIFF_AGE & INC_AGE is defined in the conf file
 
 LOCAL_BACKUP_DIR=""
@@ -33,6 +35,23 @@ SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
 SCRIPTNAME=$(basename "$0")
 
 VERSION=@@DEV-VERSION@@
+
+CLEANUP_OK=0
+
+call_manager () {
+  local ARCHIVE="$1"
+  if [[ "$LOCAL_BACKUP_DIR"  == "1" ]]; then
+    "$SCRIPTDIRPATH"/manager.sh --remove-specific-archive "$ARCHIVE" --local-backup-dir
+    if [[ $? != "0" ]]; then
+      CLEANUP_OK=1
+    fi
+  else
+    "$SCRIPTDIRPATH"/manager.sh --remove-specific-archive "$ARCHIVE"
+    if [[ $? != "0" ]]; then
+      CLEANUP_OK=1
+    fi
+  fi
+}
 
 # Get the options
 while [ -n "$1" ]; do
@@ -112,7 +131,7 @@ fi
 # make sure mounts are in order
 mountPrereqs
 
-# check if type and date given for the --cleanup-archive seems reasonable, and then delete files
+# check if type and date given for the --cleanup-specific-archive seems reasonable, and then delete files
 if [[ $SPECIFIC_ARCHIVE != ""  ]]; then 
   TODAYS_SECS=$(date +%s --date $(date -I))
   REGEX_END_OF_DATE_SECS=$(date +%s --date "2029-12-31")
@@ -120,7 +139,7 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     log "ERROR regex date checker no longer valid, please modify it, exiting"
     exit 1
   fi
-  CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "202[2-9]-(0[1-9]|1[012])-([0-2][0-9]|3[01])")
+  CLEANUP_DATE=$(echo "$SPECIFIC_ARCHIVE"|grep -E -o "20[2-9][0-9]-(0[1-9]|1[012])-(10|20|[0-2][1-9]|3[01])")
   if [[ $CLEANUP_DATE == "" ]]; then
     log "ERROR archive date is bad, exiting"
     exit 1
@@ -133,12 +152,23 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     exit 1
   fi
 
-    while IFS= read -r -d "" file
+  while IFS= read -r -d "" file
   do
     rm -f "${file}" &&  log "clean up: \"${file}\""
+    if [[ $? != "0" ]]; then
+      CLEANUP_OK=1
+    fi
   done <   <(find "$MOUNT_POINT" -type f -name "${SPECIFIC_ARCHIVE}*.dar*" -print0)
 
-  log "$SCRIPTNAME ended normally"
+  echo "ARKIV som skal slettes: $SPECIFIC_ARCHIVE"
+  call_manager "$SPECIFIC_ARCHIVE"
+  echo "tilbage fra manager"
+
+  if [[ "$CLEANUP_OK" == "0" ]]; then
+    log "$SCRIPTNAME ended normally"
+  else
+    log_error "$SCRIPTNAME ended with errors"
+  fi
   exit
 fi
 
@@ -156,10 +186,20 @@ do
   FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}")
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( DIFF_AGE_SECS >= FILE_DATE_SECS )); then
-    rm -f "${file}" &&  log "clean up: \"${file}\""
+    rm -f "${file}"
+    if [[ $? == "0" ]]; then
+      log "clean up: \"${file}\""
+      # do not call manager if cleanup is performed in a non-standard directory
+      if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
+        ARCHIVE=$(echo $file|grep -E -o "^.*20[2-9][0-9]-(0[1-9]|1[012])-(10|20|[0-2][1-9]|3[01])")
+        echo "ARKIV som skal slettes: $ARCHIVE"
+        call_manager "$ARCHIVE"
+      fi
+    else
+      CLEANUP_OK=1
+    fi
   fi
 done <   <(find "$MOUNT_POINT" -type f -name "*_DIFF_*.dar*" -print0)
-
 
 
 INC_AGE_DATE=$(date --date="-${INC_AGE} days" -I)
@@ -175,7 +215,18 @@ do
   FILE_DATE=$(echo $FILE_DATE|grep -o -E "[0-9]{4}-[0-9]{2}-[0-9]{2}") 
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( INC_AGE_SECS >= FILE_DATE_SECS )); then
-    rm -f "${file}" &&  log "clean up: \"${file}\""
+    rm -f "${file}"
+    if [[ $? == "0" ]]; then
+      log "clean up: \"${file}\""
+      # do not call manager if cleanup is performed in a non-standard directory
+      if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
+        ARCHIVE=$(echo $file|grep -E -o "^.*20[2-9][0-9]-(0[1-9]|1[012])-(10|20|[0-2][1-9]|3[01])")
+        echo "ARKIV som skal slettes: $ARCHIVE"
+        call_manager "$ARCHIVE"
+      fi
+    else
+      CLEANUP_OK=1
+    fi
   fi
 done <   <(find "$MOUNT_POINT" -type f -name "*_INC_*.dar*" -print0)
 
