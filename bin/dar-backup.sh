@@ -1,4 +1,20 @@
 #! /bin/bash
+#
+#    Copyright (C) 2024  Per Jensen
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 # Run script as a non-root user if sshfs mounts are used
 # 
 # Will do full backups if called as "dar-backup.sh"
@@ -74,9 +90,10 @@ while [ -n "$1" ]; do
           ;;
       --version|-v)
           echo "$SCRIPTNAME $VERSION"
-          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see \"LICENSE\" file for details"
+          echo "Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file \"LICENSE\" for details."
           echo "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
-APPLICABLE LAW, see section 15 and section 16 in the \"LICENSE\" file"
+APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE." 
+          echo "See section 15 and section 16 in the supplied \"LICENSE\" file."
           exit
           ;;
       *)
