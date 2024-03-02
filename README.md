@@ -15,6 +15,7 @@
 - [darrc](#darrc)
 - [Catalogs via dar_manager](doc/catalogs.md)
 - [Examples](#examples) 
+  - [set path to dar in systemd .service files](#systemd-user-path)
   - [default to not mount a remote directory](#default-to-not-mount-remote-dir)
   - [how to run a single backup definition](#run-a-single-definition) 
   - [how to test that the archive is healthy](#test-archive) 
@@ -377,6 +378,20 @@ You can run a FULL, DIFF of INC backup on a specific backup definition using the
   The demo backup definition templates/backups.d/dar-backup links defaults-rc in the first directive.
 
 # <a id="examples"> Examples
+
+## <a id="systemd-user-path"> path to dar if outside standard systemd PATH  
+  If your dar binaries are not in the systemd user path, this recipe might help:
+  
+  ````
+  # show the ---user environment a service executes in
+  systemctl --user show-environment 
+  ````
+  One way to set a path to dar, is to patch the systemd user .service files like this:
+  ````
+  ExecStart=/bin/bash -c 'PATH=/new/path/to/your/dar:$PATH exec <some path>/dar-backup/bin/<the dar-command>'
+  ````
+  Tip found on [StackExchange](https://unix.stackexchange.com/questions/347873/set-path-for-a-systemd-unit)
+  
 
 ## <a id="default-to-not-mount-remote-dir"> default to not mount a remote directory
   By default dar-backup expects to mount a remote directory using sshfs, to save archives there.
