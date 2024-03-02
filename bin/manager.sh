@@ -357,11 +357,11 @@ if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
             CATALOG_NO=$(echo "$ARCHIVE_LINE"|grep -E "^\s+[0-9]+" -o|grep -E [0-9]+ -o)
             log "found archive \"$REMOVE_SPECIFIC_ARCHIVE\" with CATALOG_NO: $CATALOG_NO"
             dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --delete $CATALOG_NO
-            _RESULT=$?
+            RESULT=$?
             if [[ "$RESULT" == "0" ]]; then
                 log "CATALOG_NO: $CATALOG_NO was removed from $CATALOG"
             else
-                log_error "dar_manager encountered an error, exit code: $_RESULT"
+                log_error "dar_manager encountered an error, exit code: $RESULT"
                 exit 1
             fi
             break
