@@ -251,9 +251,10 @@ if [[ $CREATE_CATALOG == "1" ]]; then
         else
             log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""
             dar_manager --create "$MOUNT_POINT"/"$CATALOG"
-            if [[ $? != "0" ]]; then
+            RESULT=$?
+            if [[ "$RESULT" != "0" ]]; then
                 log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
-                exit $?
+                exit "$RESULT"
             fi
         fi
     fi
@@ -275,7 +276,7 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             do
                 ARCHIVE="$(basename "${archive}")"
                 _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-                log "INFO add \"$_REALPATH\" to catalog \"$CATALOG\""
+                log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
                 dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
                 RESULT=$?
                 case $RESULT in
@@ -300,7 +301,7 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
         do
             ARCHIVE="$(basename "${archive}")"
             _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-            log "INFO add \"$_REALPATH\" to catalog \"$CATALOG\""
+            log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
             dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
             RESULT=$?
             case $RESULT in
@@ -327,8 +328,7 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     fi
     CATALOG="${_DEF_}""${CATALOG_SUFFIX}"
     _REALPATH="$(realpath "$MOUNT_POINT"/"$ADD_SPECIFIC_ARCHIVE")"
-    log "INFO add \"$MOUNT_POINT/$ADD_SPECIFIC_ARCHIVE\" to catalog \"$CATALOG\""
-    dar_manager --base "$MOUNT_POINT"/"$CATALOG" -ai -Q --add "$_REALPATH"
+    dar_manager --base "$MOUNT_POINT"/"$CATALOG" --add "$_REALPATH" -ai -Q 
     RESULT=$?
     if [[ $RESULT != "0" ]]; then
         log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
@@ -357,6 +357,13 @@ if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
             CATALOG_NO=$(echo "$ARCHIVE_LINE"|grep -E "^\s+[0-9]+" -o|grep -E [0-9]+ -o)
             log "found archive \"$REMOVE_SPECIFIC_ARCHIVE\" with CATALOG_NO: $CATALOG_NO"
             dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --delete $CATALOG_NO
+            _RESULT=$?
+            if [[ "$RESULT" == "0" ]]; then
+                log "CATALOG_NO: $CATALOG_NO was removed from $CATALOG"
+            else
+                log_error "dar_manager encountered an error, exit code: $_RESULT"
+                exit 1
+            fi
             break
         fi
     done <  <(dar_manager --base "$MOUNT_POINT"/"$CATALOG" --list)
