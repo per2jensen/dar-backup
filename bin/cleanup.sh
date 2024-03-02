@@ -160,10 +160,8 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
     fi
   done <   <(find "$MOUNT_POINT" -type f -name "${SPECIFIC_ARCHIVE}*.dar*" -print0)
 
-  echo "ARKIV som skal slettes: $SPECIFIC_ARCHIVE"
   call_manager "$SPECIFIC_ARCHIVE"
-  echo "tilbage fra manager"
-
+  
   if [[ "$CLEANUP_OK" == "0" ]]; then
     log "$SCRIPTNAME ended normally"
   else

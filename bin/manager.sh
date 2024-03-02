@@ -276,11 +276,12 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             do
                 ARCHIVE="$(basename "${archive}")"
                 _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-                log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
+                #log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
                 dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
                 RESULT=$?
                 case $RESULT in
                 0)
+                    log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
                     ;;
                 5)
                     log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
@@ -301,11 +302,12 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
         do
             ARCHIVE="$(basename "${archive}")"
             _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-            log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
+            #log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
             dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
             RESULT=$?
             case $RESULT in
             0)
+                log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
                 ;;
             5)
                 log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
@@ -328,9 +330,12 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     fi
     CATALOG="${_DEF_}""${CATALOG_SUFFIX}"
     _REALPATH="$(realpath "$MOUNT_POINT"/"$ADD_SPECIFIC_ARCHIVE")"
+    #log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
     dar_manager --base "$MOUNT_POINT"/"$CATALOG" --add "$_REALPATH" -ai -Q 
     RESULT=$?
-    if [[ $RESULT != "0" ]]; then
+    if [[ $RESULT == "0" ]]; then
+        log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
+    else
         log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
         exit $RESULT
     fi
