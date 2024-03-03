@@ -3,7 +3,7 @@
 # run install.sh
 # copy backup definition TEST --> "A backup definition to verify multiple definitions are handled correctly
 
-BACKUP_DEFINITON_SPACES="A backup definition"
+BACKUP_DEFINITION_SPACES="A backup definition"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -14,7 +14,7 @@ source "$SCRIPTDIRPATH"/setup.sh
 source "$TESTDIR"/conf/dar-backup.conf
 
 # make a second backup definition
-cp "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITON_SPACES"
+cp "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITION_SPACES"
 
 # make a third bad backup definition name containing "_"
 cp "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/CONTAINS_UNDERSCORES"

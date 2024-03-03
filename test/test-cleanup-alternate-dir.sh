@@ -30,14 +30,14 @@ sed -i s/DIFF_AGE.*/DIFF_AGE=2/ "$TESTDIR"/conf/dar-backup.conf
 
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --alternate-archive-dir "$TESTDIR/archives2"
 
-COUNT=$(grep -c -E "clean up:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
+COUNT=$(grep -c -E "removed:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" != "1" ]]; then
   echo number of DIFF cleanups is wrong
   TEST_RESULT=1
 fi
 
-COUNT=$(grep -c -E "clean up:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
+COUNT=$(grep -c -E "removed:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" != "1" ]]; then
   echo number of INC cleanups is wrong
@@ -50,14 +50,14 @@ sed -i s/INC_AGE.*/INC_AGE=1/   "$TESTDIR"/conf/dar-backup.conf
 
 "$TESTDIR"/bin/cleanup.sh --local-backup-dir --alternate-archive-dir "$TESTDIR/archives2"
 
-COUNT=$(grep -c -E "clean up:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
+COUNT=$(grep -c -E "removed:.*_DIFF_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" != "2" ]]; then
   echo number of DIFF cleanups is wrong
   TEST_RESULT=1
 fi
 
-COUNT=$(grep -c -E "clean up:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
+COUNT=$(grep -c -E "removed:.*_INC_" "$TESTDIR"/archives/dar-backup.log)
 echo "COUNT: $COUNT"
 if [[ "$COUNT" != "2" ]]; then
   echo number of INC cleanups is wrong
