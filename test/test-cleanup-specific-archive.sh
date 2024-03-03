@@ -132,5 +132,17 @@ if [[ $? != "1" ]]; then
 fi
 
 
+#test 11
+# verify path is stripped 
+echo "test 11"
+touch "$TESTDIR"/archives/TEST_DIFF_${DAY_1_OLD}.1.dar
+"$TESTDIR"/bin/cleanup.sh --local-backup-dir --cleanup-specific-archive "/some/path/TEST_INC_${DAY_1_OLD}"
+if [[ $? != "0" ]]; then 
+  echo test 11 fails
+  TEST_RESULT=1
+fi
+
+
+
 echo TEST_RESULT: $TEST_RESULT
 exit $TEST_RESULT

@@ -132,7 +132,8 @@ fi
 mountPrereqs
 
 # check if type and date given for the --cleanup-specific-archive seems reasonable, and then delete files
-if [[ $SPECIFIC_ARCHIVE != ""  ]]; then 
+if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
+  SPECIFIC_ARCHIVE="$(basename $SPECIFIC_ARCHIVE)"  
   TODAYS_SECS=$(date +%s --date $(date -I))
   REGEX_END_OF_DATE_SECS=$(date +%s --date "2029-12-31")
   if (( $TODAYS_SECS > $REGEX_END_OF_DATE_SECS  )); then
@@ -186,10 +187,11 @@ do
   if (( DIFF_AGE_SECS >= FILE_DATE_SECS )); then
     rm -f "${file}"
     if [[ $? == "0" ]]; then
-      log "clean up: \"${file}\""
+      log "removed: \"${file}\""
       # do not call manager if cleanup is performed in a non-standard directory
       if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
         ARCHIVE=$(echo $file|grep -E -o "^.*20[2-9][0-9]-(0[1-9]|1[012])-(10|20|[0-2][1-9]|3[01])")
+        ARCHIVE="$(basename "$ARCHIVE")"
         echo "ARKIV som skal slettes: $ARCHIVE"
         call_manager "$ARCHIVE"
       fi
@@ -215,10 +217,11 @@ do
   if (( INC_AGE_SECS >= FILE_DATE_SECS )); then
     rm -f "${file}"
     if [[ $? == "0" ]]; then
-      log "clean up: \"${file}\""
+      log "removed: \"${file}\""
       # do not call manager if cleanup is performed in a non-standard directory
       if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
         ARCHIVE=$(echo $file|grep -E -o "^.*20[2-9][0-9]-(0[1-9]|1[012])-(10|20|[0-2][1-9]|3[01])")
+        ARCHIVE="$(basename "$ARCHIVE")"
         echo "ARKIV som skal slettes: $ARCHIVE"
         call_manager "$ARCHIVE"
       fi
@@ -228,4 +231,8 @@ do
   fi
 done <   <(find "$MOUNT_POINT" -type f -name "*_INC_*.dar*" -print0)
 
-log "$SCRIPTNAME ended normally"
+if [[ "$CLEANUP_OK" == "0" ]]; then
+  log_success  "$SCRIPTNAME ended without errors"
+else
+  log_error "$SCRIPTNAME ended with errors"
+fi 
