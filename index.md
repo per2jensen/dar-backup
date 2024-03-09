@@ -15,9 +15,9 @@ ga('send', 'pageview');
   The wonderful 'dar' (Disk Archiver) (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
-# Version 1.0 released
+# Version 1.5.2 released
 v1.0 was released on February 13, 2022 after having been my trusted backup solution since summer 2021. 
-
+v1.5.2 release on March 9, 2024
 
 # Inspiration
 
@@ -47,6 +47,8 @@ v1.0 was released on February 13, 2022 after having been my trusted backup solut
   - Copies dar_static to server
   - Simple to add backups, including directories to include and to exclude in each backup
   - Run a single backup definition from backups.d/
+  - Adds backup to catalogs, for easier restoring down the line
+  - Cleanup script can run perodically or manually
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     an ssh key setup has to be in place for the automatic mount
   - Logs to a logfile in a user configured directory
