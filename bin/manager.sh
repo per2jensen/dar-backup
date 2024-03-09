@@ -236,7 +236,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             if [[ -e "$MOUNT_POINT/$CATALOG" ]]; then
                 log_warn "\"$MOUNT_POINT/$CATALOG\" already exists, go to next"
             else
-                log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""
+                log "Create catalog DB: \"$MOUNT_POINT/$CATALOG\""
                 dar_manager --create "$MOUNT_POINT"/"$CATALOG"
                 if [[ $? != "0" ]]; then
                     log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
@@ -249,7 +249,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             log_warn "\"$MOUNT_POINT/$CATALOG\" already exists, exiting"
             exit 0
         else
-            log "INFO create catalog DB: \"$MOUNT_POINT/$CATALOG\""
+            log "Create catalog DB: \"$MOUNT_POINT/$CATALOG\""
             dar_manager --create "$MOUNT_POINT"/"$CATALOG"
             RESULT=$?
             if [[ "$RESULT" != "0" ]]; then
@@ -276,21 +276,9 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
             do
                 ARCHIVE="$(basename "${archive}")"
                 _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-                #log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
                 dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
                 RESULT=$?
-                case $RESULT in
-                0)
-                    log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
-                    ;;
-                5)
-                    log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
-                    ;;
-                *)
-                    log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
-                    exit $RESULT
-                    ;;
-                esac
+                catalogOpsResult "$RESULT"  # dar-util.sh
             done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${CURRENT_BACKUP_DEF}_FULL_.*|${CURRENT_BACKUP_DEF}_DIFF_.*|${CURRENT_BACKUP_DEF}_INC_.*"| grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o| sort -u| sort -t "_" -k 3,3)
         done <  <(find "${SCRIPTDIRPATH}"/../backups.d -type f -print)
     else
@@ -302,21 +290,9 @@ if [[  $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD != "" ]]; then
         do
             ARCHIVE="$(basename "${archive}")"
             _REALPATH="$(realpath "$MOUNT_POINT"/"$ARCHIVE")"
-            #log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
             dar_manager --base "$MOUNT_POINT/$CATALOG" -ai -Q --add "$_REALPATH"
             RESULT=$?
-            case $RESULT in
-            0)
-                log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
-                ;;
-            5)
-                log_warn "Some error(s) were found while adding \"${ARCHIVE}\" to it's catalog"
-                ;;
-            *)
-                log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
-                exit $RESULT
-                ;;
-            esac
+            catalogOpsResult "$RESULT"   # dar-util.sh
         done <  <(find "${MOUNT_POINT}" -type f -name "$SEARCHCRIT" -print|grep -E "${BACKUP_DEF}_FULL_.*|${BACKUP_DEF}_DIFF_.*|${BACKUP_DEF}_INC_.*"| grep -E "^.*?[0-9]{4}-[0-9]{2}-[0-9]{2}" -o| sort -u| sort -t "_" -k 3,3)
     fi
 fi
@@ -354,7 +330,7 @@ if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
         exit 1
     fi
     CATALOG="${_DEF_}""${CATALOG_SUFFIX}"
-    log "INFO remove \"$MOUNT_POINT/$REMOVE_SPECIFIC_ARCHIVE\" from catalog \"$CATALOG\""
+    log "Remove archive \"$MOUNT_POINT/$REMOVE_SPECIFIC_ARCHIVE\" from catalog \"$CATALOG\""
     _REALPATH="$(realpath "$MOUNT_POINT"/"$REMOVE_SPECIFIC_ARCHIVE")"
     while IFS=$'\n' read -r "line"
     do
@@ -362,7 +338,7 @@ if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
         GREP_RESULT=$?
         if [[  $GREP_RESULT == "0" ]]; then
             CATALOG_NO=$(echo "$ARCHIVE_LINE"|grep -E "^\s+[0-9]+" -o|grep -E [0-9]+ -o)
-            log "found archive \"$REMOVE_SPECIFIC_ARCHIVE\" with CATALOG_NO: $CATALOG_NO"
+            log "Found archive \"$REMOVE_SPECIFIC_ARCHIVE\" with CATALOG_NO: $CATALOG_NO"
             dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --delete $CATALOG_NO
             RESULT=$?
             if [[ "$RESULT" == "0" ]]; then

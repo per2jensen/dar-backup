@@ -152,6 +152,8 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
   - sshfs *can* be used to mount remote directory (this was previously hard coded into the script)
     - sshfs uses [FUSE](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), allowing a non-privileged user to mount remote storage.
   - Logs to a logfile in a user configured directory
+    - [Log example of a DIFF backup](doc/pics/log-example-01.png) of a single backup definition
+
   - Can save all output to a debug log file, handy if dar exit code is 5 (number files not backed up are listed)
   - Status messages can be sent to a Discord hook, change the sendDiscordMsg() function to suit your needs
   - Cleanup script removes DIFFs older than 100 days, and INCs older than 40 days. FULL backups are not touched.

@@ -323,20 +323,20 @@ exitCodeExpl () {
     fi
 }
 
-# print a log line if a catalog operation failed somehow
+# print a log line with the result of a catalog operation
 # set the CATALOG_OK env var if an error happened
 # $1: the exit code from manager.sh script
 catalogOpsResult () {
     local CATALOGRESULT="$1"
     case $CATALOGRESULT in
     0)
-        log "${DAR_ARCHIVE} added to it's catalog"
+        log "${DAR_ARCHIVE} added to it's catalog" 
         ;;
     5) 
         log_warn "Something did not go completely right adding \"${DAR_ARCHIVE}\" to it's catalog"
         ;;
     *)
-        log_error "Some error were found while adding \"${DAR_ARCHIVE}\" to it's catalog"
+        log_error "Some error was found while adding \"${DAR_ARCHIVE}\" to it's catalog"
         CATALOG_OK=1
         ;;
     esac                
