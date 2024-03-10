@@ -2,7 +2,7 @@
 
 #  - run mk-release.sh by patching it to accept a DEV tag
 #  - unpack the tar file and run the installer
-#  - run the backup up "-d dar-backup"
+#  - run dar-backup (full, diff and inc)
 
 if [[ -n "$1" ]]; then
     LATEST_DEV="$1"
@@ -28,11 +28,7 @@ if [[ "$LATEST_DEV" == "" ]]; then
 fi
 echo LATEST_DEV:  "$LATEST_DEV"
 # build a "release" based on latest DEV tag
-/tmp/mk-release.sh "$LATEST_DEV"
-if [[ "$?" != "0" ]]; then
-    echo a release tar ball was not produced, exiting
-    exit 1
-fi
+/tmp/mk-release.sh "$LATEST_DEV"  ||  { echo a release tar ball was not produced, exiting; exit 1; }
 
 
 UNTAR_LOCATION=/tmp/dar-test-install/ 
