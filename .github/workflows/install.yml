@@ -55,4 +55,4 @@ jobs:
   #     - name: run packaging script, install and run dar-backup
   #       run: |
   #         git config user.name "GitHub Actions Bot"
-          git config user.email "<>"
+  #        git config user.email "<>"
