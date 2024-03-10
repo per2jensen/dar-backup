@@ -54,5 +54,9 @@ jobs:
 
       - name: run packaging script, install and run dar-backup
         run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+          LATEST_DEV=$(git tag|grep -P  "DEV\d.\d"|sort|tail -n1)
+          echo LATEST_DEV tag: "$LATEST_DEV"
           chmod +x $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
-          $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
+          $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh  "$LATEST_DEV"

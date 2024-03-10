@@ -4,6 +4,11 @@
 #  - unpack the tar file and run the installer
 #  - run the backup up "-d dar-backup"
 
+if [[ -n "$1" ]]; then
+    LATEST_DEV="$1"
+    echo \$1:  "$1"
+fi
+
 TEST_RESULT=0
 
 SCRIPTPATH=$(realpath "$0")
@@ -18,7 +23,9 @@ grep "TAG=" /tmp/mk-release.sh
 
 
 # latest DEV tag
-LATEST_DEV=$(git tag|grep -P  "DEV\d.\d"|sort|tail -n1)
+if [[ "$LATEST_DEV" == "" ]]; then 
+    LATEST_DEV=$(git tag|grep -P  "DEV\d.\d"|sort|tail -n1)
+fi
 echo LATEST_DEV:  "$LATEST_DEV"
 # build a "release" based on latest DEV tag
 /tmp/mk-release.sh "$LATEST_DEV"

@@ -4,7 +4,7 @@
 #
 # $1 is the tag to package
 
-if [ -z "${1}" ]; then echo "tag not given, exiting"; exit; fi
+if [ -z "${1}" ]; then echo "tag not given, exiting"; exit 1; fi
 echo tag to create release from: \""$1"\"
 
 TAG=$(grep -P -o "^v\d+\.\d+\.\d+$" <<< "$1")
