@@ -52,7 +52,7 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static  par2 git
 
-      - name: install and backup from HEAD
+      - name: run packaging script, install and run dar-backup
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
           $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
