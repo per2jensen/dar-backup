@@ -30,3 +30,29 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/test/test-install-head.sh
           $GITHUB_WORKSPACE/test/test-install-head.sh
+
+  # package the latest DEV tag
+  # install using the install procedure described in the README
+  # run a full backup
+  # run a diff backup
+  # run an inc backup
+  install-run-latest-DEV:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      
+      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
+      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+      - name: setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required packages
+        run:  sudo apt install -y dar dar-static  par2 git
+
+      - name: install and backup from HEAD
+        run: |
+          chmod +x $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
+          $GITHUB_WORKSPACE/test/test-mk-release-on-dev.sh
