@@ -58,7 +58,7 @@ echo "setup.sh:  TESTDIR:       $TESTDIR"
 echo "setup.sh:  SCRIPTDIRPATH: $SCRIPTDIRPATH"
 #find "$SCRIPTDIRPATH"/.. ! -path "*/.github*" ! -path "*/.git*"
 
-rm -fr "$TESTDIR" || echo "$TESTDIR could not be deleted, exiting" && exit 1
+rm -fr "$TESTDIR" || { echo "$TESTDIR could not be deleted, exiting"; exit 1; }
 mkdir -p "$TESTDIR/archives"
 
 cp -R "$SCRIPTDIRPATH/dirs"         "$TESTDIR/"
