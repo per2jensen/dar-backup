@@ -114,7 +114,7 @@ mountPrereqs () {
 
 sendDiscordMsg () {
     log "$1"
-    curl -i -H "Accept: application/json"  \
+    curl -H "Accept: application/json"  \
         -H "Content-Type:application/json"  \
         -X POST --data "{\"content\": \"$1\"}" \
         https://discord.com/api/webhooks/"${DISCORD_WEBHOOK}" \
