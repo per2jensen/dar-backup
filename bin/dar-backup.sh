@@ -187,14 +187,14 @@ else
   # check if a single backup definition is to be run
   if [[ "$BACKUPDEF" == "" ]]; then
     # loop over backup definition in backups.d/
-    for CURRENT_BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
-        if is_definition_name_ok "$CURRENT_BACKUPDEF"; then
-          CURRENT_BACKUPDEF=$(basename "$CURRENT_BACKUPDEF")
-          log "==> start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
-          runBackupDef
-        else
-          log_error "Backup definition: \"CURRENT_BACKUPDEF\" contains an \"_\" => backup discarded"
-        fi
+    for _BACKUPDEF in "${SCRIPTDIRPATH}"/../backups.d/*; do
+      CURRENT_BACKUPDEF=$(basename "$_BACKUPDEF")
+      if is_definition_name_ok "$CURRENT_BACKUPDEF"; then
+        log "==> start processing backup definition: ${SCRIPTDIRPATH}/../backups.d/${CURRENT_BACKUPDEF}"
+        runBackupDef
+      else
+        log_error "Backup definition: \"$CURRENT_BACKUPDEF\" contains an \"_\" => backup discarded"
+      fi
     done
   else
     if [[ -f "${SCRIPTDIRPATH}/../backups.d/${BACKUPDEF}"  ]]; then

@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 #
 #    Copyright (C) 2024  Per Jensen
 #
@@ -48,12 +48,7 @@ _date_time() {
 # return 1 if a backup definition contains underscores
 $1: the definition name to check
 is_definition_name_ok() {
-    echo "$1" | grep -q "_"  
-    if [[ "$?" == "0" ]]; then 
-        return 1
-    else
-        return 0
-    fi
+    [[ $1 == *_* ]] &&  return 1 || return 0
 }
 
 # write log message to log
@@ -485,8 +480,7 @@ darRestoreTest () {
     # check restored file exists
     _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
     log "Check if restored file \"$_TESTPATH\" exists"
-    ls "$_TESTPATH"
-    if [[ "$?" == "0" ]]; then
+    if [[ -f  "$_TESTPATH" ]]; then
         log "Restored file was found"
     else
         log_error "no, the file is not found"
