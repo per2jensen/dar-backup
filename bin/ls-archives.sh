@@ -105,7 +105,7 @@ for archive in $(find ${MOUNT_POINT} -name "$SEARCHCRIT"|grep -E ".*_FULL_.*|.*_
     SLICE_SIZE=$(ls -l --block-size=G "${MOUNT_POINT}/${BASE}.1.dar"|cut -d" " -f5)
     dar -l  "$MOUNT_POINT/${BASE}" > "$FILELIST" 
     RESULT=$?
-    if [[ $RESULT == "0" ]]; then
+    if [[ $RESULT -eq "0" ]]; then
         SAVED_NO=$(grep -E -c "[Saved].*?] +-"  "$FILELIST")
         REMOVED_NO=$(grep -c " REMOVED ENTRY " "$FILELIST")        
     else 

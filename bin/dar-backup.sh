@@ -124,8 +124,14 @@ if [[ $DEBUG == "y" || $CMD_DEBUG == "y" ]]; then
   exec > >(tee -a "${DEBUG_LOCATION}")  2>&1
 fi
 
-
 source "${SCRIPTDIRPATH}/dar-util.sh"
+
+if [[ -f "${LOG_LOCATION}/dar-backup.log" &&  -w "${LOG_LOCATION}/dar-backup.log" || -w "${LOG_LOCATION}" ]]; then
+  echo "Log location \"$LOG_LOCATION\" is writable, good."
+else
+  echo -e "\e[1m\e[31mERROR\e[0m log file \"$LOG_LOCATION\" is NOT writable, continuing"
+fi
+
 
 
 STARTTIME="$(date -Iseconds)"
@@ -139,6 +145,8 @@ log_verbose "RUN_RESTORE_TEST=${RUN_RESTORE_TEST}"
 log_verbose "CMD_DEBUG=${CMD_DEBUG}"
 log_verbose "CMD_USE_CATALOGS=${CMD_USE_CATALOGS}"
 log_verbose "VERBOSE=${VERBOSE}"
+
+
 
 if [[ $SCRIPTNAME == "dar-backup.sh"  ]]; then
   MODE=FULL
@@ -211,20 +219,20 @@ else
   fi
 fi
 
-if [[ "$BACKUP_OK" == "0" ]]; then
+if [[ "$BACKUP_OK" -eq "0" ]]; then
   log_success "Backup ended ok"
 else
   log_error "Errors found during backup, test or restore-test"
 fi 
 
-if [[ "$CATALOG_OK" == "0" ]]; then
+if [[ "$CATALOG_OK" -eq "0" ]]; then
   log_success "Catalog operations ended ok"
 else
   log_error "Catalog operations had errors"
 fi 
 
 
-if [[ "$BACKUP_OK" == "0"  &&  "$CATALOG_OK" == "0" ]]; then
+if [[ "$BACKUP_OK" -eq "0"  &&  "$CATALOG_OK" -eq "0" ]]; then
   sendDiscordMsg "$SCRIPTNAME ended without errors"
   exit 0
 else

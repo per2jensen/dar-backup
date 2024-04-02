@@ -238,7 +238,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             else
                 log "Create catalog DB: \"$MOUNT_POINT/$CATALOG\""
                 dar_manager --create "$MOUNT_POINT"/"$CATALOG"
-                if [[ $? != "0" ]]; then
+                if [[ $? -ne "0" ]]; then
                     log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\", continuing..."
                 fi
             fi
@@ -252,7 +252,7 @@ if [[ $CREATE_CATALOG == "1" ]]; then
             log "Create catalog DB: \"$MOUNT_POINT/$CATALOG\""
             dar_manager --create "$MOUNT_POINT"/"$CATALOG"
             RESULT=$?
-            if [[ "$RESULT" != "0" ]]; then
+            if [[ "$RESULT" -ne "0" ]]; then
                 log_error "something went wrong creating the catalog: \"$MOUNT_POINT/$CATALOG\""
                 exit "$RESULT"
             fi
@@ -311,7 +311,7 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
     dar_manager --base "$MOUNT_POINT"/"$CATALOG" --add "$_REALPATH" -ai -Q 
     RESULT=$?
-    if [[ $RESULT == "0" ]]; then
+    if [[ $RESULT -eq "0" ]]; then
         log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
     else
         log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
@@ -336,12 +336,12 @@ if [[ $REMOVE_SPECIFIC_ARCHIVE != "" ]]; then
     do
         ARCHIVE_LINE=$(echo "$line"|grep "$REMOVE_SPECIFIC_ARCHIVE")
         GREP_RESULT=$?
-        if [[  $GREP_RESULT == "0" ]]; then
+        if [[  $GREP_RESULT -eq "0" ]]; then
             CATALOG_NO=$(echo "$ARCHIVE_LINE"|grep -E "^\s+[0-9]+" -o|grep -E [0-9]+ -o)
             log "Found archive \"$REMOVE_SPECIFIC_ARCHIVE\" with CATALOG_NO: $CATALOG_NO"
             dar_manager --base "$MOUNT_POINT"/"$CATALOG"  --delete $CATALOG_NO
             RESULT=$?
-            if [[ "$RESULT" == "0" ]]; then
+            if [[ "$RESULT" -eq "0" ]]; then
                 log "CATALOG_NO: $CATALOG_NO was removed from $CATALOG"
             else
                 log_error "dar_manager encountered an error, exit code: $RESULT"

@@ -23,7 +23,7 @@
 mountDar () {
     mount |grep -E "${MOUNT_POINT} +type +fuse.sshfs" > /dev/null 2>&1
     RESULT=$?
-    if [[ "$RESULT" == "0" ]]; then 
+    if [[ "$RESULT" -eq "0" ]]; then 
         return
     fi
     mkdir -p "${MOUNT_POINT}" 2>/dev/null
@@ -33,7 +33,7 @@ mountDar () {
     if [[ "$VERBOSE" == "y" ]]; then 
         log "mount ${SERVER}:${SERVER_DIR} to ${MOUNT_POINT}, result: $RESULT"
     fi
-    if [[ $RESULT != "0" ]]; then
+    if [[ $RESULT -ne "0" ]]; then
         log_error "${SERVER}:${SERVER_DIR} not mounted, exiting"
         exit 1
     fi
@@ -41,12 +41,12 @@ mountDar () {
 
 _date_time() {
     local _date=$(date +"%Y-%m-%d %H:%M:%S,%N")
-    echo ${_date:0:23}
+    echo "${_date:0:23}"
 }
 
 
 # return 1 if a backup definition contains underscores
-$1: the definition name to check
+# $1: the definition name to check
 is_definition_name_ok() {
     [[ $1 == *_* ]] &&  return 1 || return 0
 }
@@ -87,11 +87,11 @@ log_fail () {
 # $1 argument: a variable, NOT is's value
 # look here: https://stackoverflow.com/questions/540298/passing-arguments-by-reference
 archiveExists () {
-    local -n exists=$1
+    local -n exists=$1 # reference to supplied argument
     DAR_ARCHIVE="${CURRENT_BACKUPDEF}_${MODE}_${DATE}"
     setArchivePath
     local COUNT=$(find "$MOUNT_POINT" -name "${DAR_ARCHIVE}*" -type f|wc -l)
-    if [[ "$COUNT" != "0" ]]; then
+    if [[ "$COUNT" -ne "0" ]]; then
         exists=1
     fi
 }
@@ -101,7 +101,7 @@ archiveExists () {
 # been mounted by other means
 # 
 mountPrereqs () {
-    if [[ $LOCAL_BACKUP_DIR == "1" ]]; then
+    if [[ $LOCAL_BACKUP_DIR -eq "1" ]]; then
         if [[ "$VERBOSE" == "y" ]]; then 
             log "bypassing mounting a server dir..., \"LOCAL_BACKUP_DIR\" is set"
         fi
@@ -130,7 +130,7 @@ copyDarStatic () {
     DAR_VERSION=$(dar_static --version |grep -oP "dar.*? version [\d.]+"|grep -oP "[\d.]+$")
     if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
-        if [[ $? == "0" ]]; then
+        if [[ $? -eq "0" ]]; then
             log_verbose "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
         else
             log_error "something went wrong, copying dar_static"
@@ -174,7 +174,7 @@ runBackupDef () {
  
     local isExists=0
     archiveExists isExists
-    if [[ "$isExists" != "0" ]]; then
+    if [[ "$isExists" -ne "0" ]]; then
         log_warn "archive: \"$DAR_ARCHIVE\" already exists, skipping"
         return
     fi
@@ -213,14 +213,14 @@ runBackupDef () {
 #
 # $1: the exit code from the backup operation
 _TestRestore () {
-    if [[ $1 == "0" ]]; then
+    if [[ $1 -eq "0" ]]; then
         getNoFiles 
         if [[ "$VERBOSE" == "y" ]]; then 
             sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $RESULT, Saved: $NO_SAVED_FILES, Removed: $NO_REMOVED_FILES"
         fi
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
     else 
-        if [[ "$1" == "5" ]]; then
+        if [[ "$1" -eq "5" ]]; then
             if [[ "$DEBUG" == "y" ]]; then
                 local NO_ERRORS=""
                 NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
@@ -248,7 +248,7 @@ diffBackupTestRestore () {
 
     "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
     RESULT=$?
-    if [[ "$RESULT" == "0" ]]; then
+    if [[ "$RESULT" -eq "0" ]]; then
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
         log_error "par repair data not created for \"${DAR_ARCHIVE}\""
@@ -266,7 +266,7 @@ backupTestRestore () {
 
     "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
     RESULT=$?
-    if [[ "$RESULT" == "0" ]]; then
+    if [[ "$RESULT" -eq "0" ]]; then
         log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: $RESULT"
     else
         log_error "par repair data not created for \"${DAR_ARCHIVE}\""
@@ -283,13 +283,13 @@ getNoFiles () {
     NO_REMOVED_FILES="unknown"
     if [[ -f "$TEMPFILE"  ]]; then
         rm "$TEMPFILE"
-        if [[ $? != "0" ]]; then
+        if [[ $? -ne "0" ]]; then
             return
         fi
     fi
     dar -Q -l "${ARCHIVEPATH}" > "$TEMPFILE"
     RESULT=$?
-    if [[ "$RESULT" != "0" ]]; then
+    if [[ "$RESULT" -ne "0" ]]; then
         return
     fi
     NO_SAVED_FILES=$(grep -E -c "\[Saved.*?\] +-" "$TEMPFILE")
@@ -344,7 +344,7 @@ darBackup () {
         -B "${SCRIPTDIRPATH}"/../backups.d/"${CURRENT_BACKUPDEF}" \
         compress-exclusion verbose
     _RESULT=$?
-    if [[ "$_RESULT" == "0" ]]; then
+    if [[ "$_RESULT" -eq "0" ]]; then
         if [[ "$CMD_USE_CATALOGS" == "y" || "$USE_CATALOGS" == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             catalogOpsResult "$?"
@@ -362,11 +362,11 @@ darBackup () {
 darDiffBackup () {
     local _RESULT
     echo "$1" | grep -q _FULL_ 
-    if [[ $? == "0" ]]; then
+    if [[ $? -eq "0" ]]; then
         log "Start DIFF backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
     echo "$1" | grep -q _DIFF_ 
-    if [[ "$?" == "0" ]]; then
+    if [[ "$?" -eq "0" ]]; then
         log "Start INCREMENTAL backup of: ${DAR_ARCHIVE}, diff against: $1"
     fi
     dar -Q -c "${ARCHIVEPATH}" \
@@ -375,7 +375,7 @@ darDiffBackup () {
         -A "$1" \
         compress-exclusion verbose 
     _RESULT=$?
-    if [[ "$_RESULT" == "0" ]]; then
+    if [[ "$_RESULT" -eq "0" ]]; then
         if [[ "$CMD_USE_CATALOGS" == "y" || "$USE_CATALOGS" == "y" ]]; then
             "${SCRIPTDIRPATH}/manager.sh" --add-specific-archive "${DAR_ARCHIVE}" --local-backup-dir
             catalogOpsResult "$?"
@@ -395,7 +395,7 @@ darTestBackup () {
     log  "Test dar archive: ${ARCHIVEPATH}"
     dar -Q -t "${ARCHIVEPATH}" 
     RESULT=$?
-    if [[ "$RESULT" != "0" ]]; then
+    if [[ "$RESULT" -ne "0" ]]; then
         BACKUP_OK=1
         log_error "Test of archive: ${DAR_ARCHIVE}, result: $RESULT"
     else
@@ -419,7 +419,7 @@ darRestoreTest () {
     rm -f $RESTORE_FILE > /dev/null 2>&1
 
     LIST_SIZE=$(wc -c < "$FILELIST")
-    if [[ "$LIST_SIZE" == "0" ]]; then
+    if [[ "$LIST_SIZE" -eq "0" ]]; then
         log_verbose "No files found for restore test in: ${ARCHIVEPATH}"
         return
     fi
@@ -432,7 +432,7 @@ darRestoreTest () {
 
     RESTORE_FILE_SIZE=$(wc -c < "$RESTORE_FILE")
     log_verbose "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
-    if [[ "$RESTORE_FILE_SIZE" == "0" ]]; then
+    if [[ "$RESTORE_FILE_SIZE" -eq "0" ]]; then
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
     fi
@@ -449,7 +449,7 @@ darRestoreTest () {
     local RESTORE_DIR="/tmp/dar-restore"
     if [[ -d "$RESTORE_DIR" ]]; then
         rm -fr "$RESTORE_DIR" > /dev/null  2>&1
-        if [[ "$?" != "0" ]]; then
+        if [[ "$?" -ne "0" ]]; then
             log_error "restore directory \"$RESTORE_DIR\" could not be deleted"
             BACKUP_OK=1
             return
@@ -466,13 +466,13 @@ darRestoreTest () {
     if [[ $FSA_SCOPE_NONE != "" ]]; then
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         RESULT=$?
-        if [[ "$RESULT" != "0" ]]; then
+        if [[ "$RESULT" -ne "0" ]]; then
             BACKUP_OK=1
         fi
     else
         dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         RESULT=$?
-        if [[ "$RESULT" != "0" ]]; then
+        if [[ "$RESULT" -ne "0" ]]; then
             BACKUP_OK=1
         fi
     fi

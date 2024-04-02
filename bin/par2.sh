@@ -83,7 +83,7 @@ while IFS= read -r -d "" file
 do
     echo "Generate 5% repair data for: \"$file\""
     par2 c -r5 -n1 "$file" > /dev/null 2>&1
-    if [[ $? != "0" ]]; then
+    if [[ $? -ne "0" ]]; then
         RESULT=1
     fi
 done <   <(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" -print0)
@@ -93,7 +93,7 @@ done <   <(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" -print0)
 NO_OF_DAR_SLICES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar" |wc -l)
 NO_OF_PAR2_FILES=$(find "$ARCHIVE_DIR" -type f -name "${DAR_ARCHIVE}.*.dar.par2" |wc -l)
 if (( NO_OF_DAR_SLICES == NO_OF_PAR2_FILES )); then
-    if [[ $RESULT == "0" ]]; then
+    if [[ $RESULT -eq "0" ]]; then
         echo "par2 successfully generated repair files"
         exit 0
     else
@@ -103,7 +103,7 @@ if (( NO_OF_DAR_SLICES == NO_OF_PAR2_FILES )); then
     
 fi
 
-if [[ $RESULT != "0" ]]; then
+if [[ $RESULT -ne "0" ]]; then
     echo "par2 generation of repair files failed"
     exit 1
 fi

@@ -42,12 +42,12 @@ call_manager () {
   local ARCHIVE="$1"
   if [[ "$LOCAL_BACKUP_DIR"  == "1" ]]; then
     "$SCRIPTDIRPATH"/manager.sh --remove-specific-archive "$ARCHIVE" --local-backup-dir
-    if [[ $? != "0" ]]; then
+    if [[ $? -ne "0" ]]; then
       CLEANUP_OK=1
     fi
   else
     "$SCRIPTDIRPATH"/manager.sh --remove-specific-archive "$ARCHIVE"
-    if [[ $? != "0" ]]; then
+    if [[ $? -ne "0" ]]; then
       CLEANUP_OK=1
     fi
   fi
@@ -92,7 +92,7 @@ done
 
 
 grep "\*" <<< $ALTERNATE_ARCHIVE_DIR
-if [[ $? == "0"  ]]; then
+if [[ $? -eq "0"  ]]; then
   echo "\"*\" not allowed in \"ALTERNATE_ARCHIVE_DIR\""
   exit 1
 fi
@@ -122,7 +122,7 @@ log "Specific archive: \"$SPECIFIC_ARCHIVE\""
 
 
 grep "\*" <<< $SPECIFIC_ARCHIVE 
-if [[ $? == "0"  ]]; then
+if [[ $? -eq "0"  ]]; then
   log_error "\"*\" not allowed in \"SPECIFIC_ARCHIVE\""
   exit 1
 fi
@@ -156,14 +156,14 @@ if [[ $SPECIFIC_ARCHIVE != ""  ]]; then
   while IFS= read -r -d "" file
   do
     rm -f "${file}" &&  log "clean up: \"${file}\""
-    if [[ $? != "0" ]]; then
+    if [[ $? -ne "0" ]]; then
       CLEANUP_OK=1
     fi
   done <   <(find "$MOUNT_POINT" -type f -name "${SPECIFIC_ARCHIVE}*.dar*" -print0)
 
   call_manager "$SPECIFIC_ARCHIVE"
   
-  if [[ "$CLEANUP_OK" == "0" ]]; then
+  if [[ "$CLEANUP_OK" -eq "0" ]]; then
     log "$SCRIPTNAME ended normally"
   else
     log_error "$SCRIPTNAME ended with errors"
@@ -173,7 +173,7 @@ fi
 
 
 DIFF_AGE_DATE=$(date --date="-${DIFF_AGE} days" -I)
-if [[ $? != "0" ]]; then
+if [[ $? -ne "0" ]]; then
   log "ERROR \"DIFF_AGE_DATE\" calc error"
   exit 1
 fi
@@ -186,7 +186,7 @@ do
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( DIFF_AGE_SECS >= FILE_DATE_SECS )); then
     rm -f "${file}"
-    if [[ $? == "0" ]]; then
+    if [[ $? -eq "0" ]]; then
       log "removed: \"${file}\""
       # do not call manager if cleanup is performed in a non-standard directory
       if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
@@ -203,7 +203,7 @@ done <   <(find "$MOUNT_POINT" -type f -name "*_DIFF_*.dar*" -print0)
 
 
 INC_AGE_DATE=$(date --date="-${INC_AGE} days" -I)
-if [[ $? != "0" ]]; then
+if [[ $? -ne "0" ]]; then
   log "ERROR \"INC_AGE_DATE\" calc error"
   exit 1
 fi
@@ -216,7 +216,7 @@ do
   FILE_DATE_SECS=$(date +%s --date "$FILE_DATE")
   if (( INC_AGE_SECS >= FILE_DATE_SECS )); then
     rm -f "${file}"
-    if [[ $? == "0" ]]; then
+    if [[ $? -eq "0" ]]; then
       log "removed: \"${file}\""
       # do not call manager if cleanup is performed in a non-standard directory
       if [[ "$ALTERNATE_ARCHIVE_DIR"  == "" ]]; then
@@ -231,7 +231,7 @@ do
   fi
 done <   <(find "$MOUNT_POINT" -type f -name "*_INC_*.dar*" -print0)
 
-if [[ "$CLEANUP_OK" == "0" ]]; then
+if [[ "$CLEANUP_OK" -eq "0" ]]; then
   log_success  "$SCRIPTNAME ended without errors"
 else
   log_error "$SCRIPTNAME ended with errors"
