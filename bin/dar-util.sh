@@ -213,17 +213,19 @@ runBackupDef () {
 process_backup_result () {
     local result="$1"
     if [[ $1 -eq "0" ]]; then
-        getNoFiles 
+        local no_saved_files="unknown"
+        local no_removed_files="unknown"
         if [[ "$VERBOSE" == "y" ]]; then 
-            sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $result, Saved: $NO_SAVED_FILES, Removed: $NO_REMOVED_FILES"
+            getNoFiles no_saved_files  no_removed_files
+            sendDiscordMsg  "dar backup of archive: ${DAR_ARCHIVE}, result: $result, Saved: $no_saved_files, Removed: $no_removed_files"
         fi
     # dar exit code 5 means some files were not backed up, report how many (if possible) and continue
     else 
         if [[ "$1" -eq "5" ]]; then
             if [[ "$DEBUG" == "y" ]]; then
-                local NO_ERRORS=""
-                NO_ERRORS=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
-                log_warn "exit code = 5: $NO_ERRORS files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
+                local no_errors=""
+                no_errors=$(grep -i "filesystem error" "${DEBUG_LOCATION}"|tail -n1|cut -f 2 -d " ")
+                log_warn "exit code = 5: $no_errors files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             else
                 log_warn "exit code = 5: unknown number of files were not backed up in archive: ${DAR_ARCHIVE}, continuing testing the archive"
             fi
@@ -234,6 +236,28 @@ process_backup_result () {
     fi
 }
 
+# Complete various tasks after a backup
+# test the archive, do a test restore, produce .par2 files
+#
+# $1: the exit code from the backup operation as a named referenced var
+tasksAfterBackup () {
+    local -n result2=$1
+    process_backup_result "$result2"
+
+    if [[ $result2 -eq 0 || $result2 -eq 5 ]]; then
+        darTestBackup 
+
+        darRestoreTest
+
+        "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
+        if [[ $? -eq "0" ]]; then
+            log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: 0"
+        else
+            log_error "par repair data not created for \"${DAR_ARCHIVE}\""
+            BACKUP_OK=1
+        fi
+    fi
+}
 
 # The standard recipe for backing up differentially a FS_ROOT, test the archive and test restore one file
 # this function drives the underlying backup, test and restore functions
@@ -241,20 +265,7 @@ process_backup_result () {
 diffBackupTestRestore () {
     local backup_result
     darDiffBackup "$1" backup_result
-
-    process_backup_result "$backup_result"
-
-    darTestBackup 
-
-    darRestoreTest
-
-    "${SCRIPTDIRPATH}/par2.sh" --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    if [[ $? -eq "0" ]]; then
-        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: 0"
-    else
-        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
-        BACKUP_OK=1
-    fi
+    tasksAfterBackup backup_result
 }
 
 
@@ -263,29 +274,19 @@ diffBackupTestRestore () {
 backupTestRestore () {
     local backup_result
     darBackup backup_result
-
-    process_backup_result "$backup_result"
-
-    darTestBackup 
-
-    darRestoreTest
-
-    "${SCRIPTDIRPATH}/par2.sh"  --archive-dir "${MOUNT_POINT}"  --archive "${DAR_ARCHIVE}"
-    if [[ $? -eq "0" ]]; then
-        log "par2 repair data generated for \"${DAR_ARCHIVE}\", result: 0"
-    else
-        log_error "par repair data not created for \"${DAR_ARCHIVE}\""
-        BACKUP_OK=1
-    fi
+    tasksAfterBackup backup_result
 }
 
 # find number of files Saved and Removed in a backup
-# store data in NO_SAVED_FILES and NO_REMOVED_FILES
+# $1: referenced var no_saved_files
+# $2: referenced var no_removed_files
 getNoFiles () {
+    local -n saved_files=$1
+    local -n removed_files=$2
     sleep 1
     local TEMPFILE=/tmp/filelist_$(date +%s)
-    NO_SAVED_FILES="unknown"
-    NO_REMOVED_FILES="unknown"
+    saved_files="unknown"
+    removed_files="unknown"
     if [[ -f "$TEMPFILE"  ]]; then
         rm "$TEMPFILE"
         if [[ $? -ne "0" ]]; then
@@ -293,20 +294,20 @@ getNoFiles () {
         fi
     fi
     dar -Q -l "${ARCHIVEPATH}" > "$TEMPFILE"
-    if [[ $? -ne "0" ]]; then
+    if [[ $? -ne 0 ]]; then
         return
     fi
-    NO_SAVED_FILES=$(grep -E -c "\[Saved.*?\] +-" "$TEMPFILE")
-    if [[ "$NO_SAVED_FILES" == "" ]]; then
-        NO_SAVED_FILES="0"
+    saved_files=$(grep -E -c "\[Saved.*?\] +-" "$TEMPFILE")
+    if [[ "$saved_files" == "" ]]; then
+        saved_files="0"
     fi
 
-    NO_REMOVED_FILES=$(grep -c " REMOVED ENTRY " "$TEMPFILE")
-    if [[ "$NO_REMOVED_FILES" == "" ]]; then
-        NO_REMOVED_FILES="0"
+    removed_files=$(grep -c " REMOVED ENTRY " "$TEMPFILE")
+    if [[ "$removed_files" == "" ]]; then
+        removed_files="0"
     fi
 
-    rm "$TEMPFILE"
+    rm "$TEMPFILE"  || log_error "\"$TEMPFILE\" could not be deleted"
 }
 
 
