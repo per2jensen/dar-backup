@@ -102,7 +102,7 @@ archiveExists () {
 # been mounted by other means
 # 
 mountPrereqs () {
-    if [[ $LOCAL_BACKUP_DIR -eq "1" ]]; then
+    if [[ $LOCAL_BACKUP_DIR -eq 1 ]]; then
         if [[ "$VERBOSE" == "y" ]]; then 
             log "bypassing mounting a server dir..., \"LOCAL_BACKUP_DIR\" is set"
         fi
@@ -131,7 +131,7 @@ copyDarStatic () {
     DAR_VERSION=$(dar_static --version |grep -oP "dar.*? version [\d.]+"|grep -oP "[\d.]+$")
     if [[ -n $DAR_VERSION ]]; then
         cp "$(which dar_static)"  "${MOUNT_POINT}/dar_static_$DAR_VERSION"
-        if [[ $? -eq "0" ]]; then
+        if [[ $? -eq 0 ]]; then
             log_verbose "dar_static version: $DAR_VERSION copied to: $MOUNT_POINT"
         else
             log_error "something went wrong, copying dar_static"
@@ -151,17 +151,13 @@ setArchivePath () {
 
 # find newest archive for type
 # $1: type is FULL|DIFF|INC
-# NEWEST_ARCHIVE is set to the archive name only, not including path
+# $2: named varible to deliver result to
+# "archive" is set to the archive name only, not including path
 findNewestForType () {
-    NEWEST_ARCHIVE=""
+    local -n archive=$2
     local PREV=""
     PREV=$(ls "${MOUNT_POINT}"/"${CURRENT_BACKUPDEF}"_"${1}"*.dar|tail -n 1)
-    # {#} is the length of an env var
-    if [[ ${#PREV} -lt 4 ]]; then
-        log_warn  "\"$1\" backup not found for definition \"${CURRENT_BACKUPDEF}\""
-        return
-    fi
-    NEWEST_ARCHIVE=$(grep -E  "${CURRENT_BACKUPDEF}_${1}_[0-9]{4}-[0-9]{2}-[0-9]{2}" -o  <<< "$PREV" )
+    archive=$(grep -E  "${CURRENT_BACKUPDEF}_${1}_[0-9]{4}-[0-9]{2}-[0-9]{2}" -o  <<< "$PREV" )
 }
 
 
@@ -174,6 +170,7 @@ runBackupDef () {
     ARCHIVEPATH="${MOUNT_POINT}/${DAR_ARCHIVE}"
  
     local isExists=0
+    local newest_archive=""
     archiveExists isExists
     if [[ "$isExists" -ne "0" ]]; then
         log_warn "archive: \"$DAR_ARCHIVE\" already exists, skipping"
@@ -184,23 +181,23 @@ runBackupDef () {
       backupTestRestore 
     else
         if [[ "$MODE" == "DIFF" ]]; then
-            findNewestForType FULL
-            if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+            findNewestForType FULL newest_archive 
+            if [[ ${#newest_archive} -lt 4 ]]; then
                 log_error "FULL backup not found for definition \"${CURRENT_BACKUPDEF}\""
             else
-                log "Create DIFF compared to: $NEWEST_ARCHIVE"
+                log "Create DIFF compared to: $newest_archive"
                 # backup
-                diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
+                diffBackupTestRestore  "${MOUNT_POINT}/$newest_archive" 
             fi
         else 
             if [[ $MODE == "INC" ]]; then
-                findNewestForType DIFF
-                if [[ ${#NEWEST_ARCHIVE} -lt 4 ]]; then
+                findNewestForType DIFF newest_archive
+                if [[ ${#newest_archive} -lt 4 ]]; then
                     log_error "DIFF backup not found for definition \"${CURRENT_BACKUPDEF}\""
                 else
-                    log "Create INC compared to: $NEWEST_ARCHIVE"
+                    log "Create INC compared to: $newest_archive"
                     # backup
-                    diffBackupTestRestore  "${MOUNT_POINT}/$NEWEST_ARCHIVE" 
+                    diffBackupTestRestore  "${MOUNT_POINT}/$newest_archive" 
                 fi
             else
                 log_error "neither FULL, DIFF nor INC specified for definition \"${CURRENT_BACKUPDEF}\""
