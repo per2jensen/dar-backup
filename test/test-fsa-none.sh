@@ -72,9 +72,9 @@ if [[ $RESULT != "0" ]]; then
 fi
 
 # test restore the attribute-test file
-rm -fr "/tmp/dar-restore/dirs"
+temp_dir=$(mktemp -d) ||  { echo "temp dir not created, exiting"; exit 1; }
 echo "Restore test of \"attribute-test\""
-dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R /tmp/dar-restore -g "dirs/attribute-test" -Oignore-owner --fsa-scope none
+dar -x "$MOUNT_POINT/TEST_FULL_$DATE" -R "$temp_dir" -g "dirs/attribute-test" -Oignore-owner --fsa-scope none
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
@@ -82,7 +82,7 @@ if [[ $RESULT != "0" ]]; then
 else 
     echo "\"attribute-test\"  successfully restored, exit code: $RESULT"
 fi
-if [[ -e "/tmp/dar-restore/dirs/attribute-test" ]]; then
+if [[ -e "${temp_dir}/dirs/attribute-test" ]]; then
     echo "Restored file found"
 else    
     echo "Restore file not found"
