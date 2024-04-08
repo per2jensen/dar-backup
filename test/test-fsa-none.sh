@@ -62,8 +62,6 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
-echo "non directories restored:"
-find /tmp/dar-restore/ ! -type d
 
 
 dar -l  "$MOUNT_POINT/TEST_FULL_$DATE" > "$TESTDIR/FULL-filelist.txt"
@@ -103,15 +101,12 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
-echo "non directories restored:"
-find /tmp/dar-restore/ ! -type d
 
 dar -l  "$MOUNT_POINT/TEST_DIFF_$DATE" > "$TESTDIR/DIFF-filelist.txt"
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
-
 
 
 # modify a file backed up in the DIFF
@@ -123,8 +118,6 @@ RESULT=$?
 if [[ $RESULT != "0" ]]; then
     TESTRESULT=1
 fi
-echo "non directories restored:"
-find /tmp/dar-restore/ ! -type d
 
 dar -l  "$MOUNT_POINT/TEST_INC_$DATE" > "$TESTDIR/INC-filelist.txt"
 RESULT=$?
