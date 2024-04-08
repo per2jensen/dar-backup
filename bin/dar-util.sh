@@ -323,8 +323,8 @@ exitCodeExpl () {
 # set the CATALOG_OK env var if an error happened
 # $1: the exit code from manager.sh script
 catalogOpsResult () {
-    local CATALOGRESULT="$1"
-    case $CATALOGRESULT in
+    local catalogresult="$1"
+    case $catalogresult in
     0)
         log "${DAR_ARCHIVE} added to it's catalog" 
         ;;
@@ -422,15 +422,20 @@ darTestBackup () {
 #
 darRestoreTest () {
     log  "Test restoring 1 file from archive: ${ARCHIVEPATH}"
-    local FILELIST=/tmp/dar_list_49352
-    local restore_file=/tmp/dar_file_restore_53489
+    local filelist=""
+    filelist=$(mktemp) || { BACKUP_OK=1; log_error "temporary filelist name not set."; return; }
+    
+    local restore_file=""
+    restore_file=$(mktemp)  || { BACKUP_OK=1; log_error "temporary restore_file name not set."; return; }
+
     local result
-    dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $FILELIST
+    dar -Q -l "${ARCHIVEPATH}" -ay |grep -E -v "\] +d[-rwx][-rwx][-rwx]"|grep -E "\[Saved\]"|cut -c45- |cut -f 3,5- |tail -n 100 > $filelist
 
     rm -f $restore_file > /dev/null 2>&1
 
-    LIST_SIZE=$(wc -c < "$FILELIST")
-    if [[ "$LIST_SIZE" -eq "0" ]]; then
+    local list_size=""
+    list_size=$(wc -c < "$filelist")
+    if [[ "$list_size" -eq "0" ]]; then
         log_verbose "No files found for restore test in: ${ARCHIVEPATH}"
         return
     fi
@@ -438,50 +443,44 @@ darRestoreTest () {
             print $0 
             exit
            }
-    }' $FILELIST > "$restore_file"
+    }' $filelist > "$restore_file"
     log_verbose "restore_file: $restore_file"
 
-    RESTORE_FILE_SIZE=$(wc -c < "$restore_file")
-    log_verbose "RESTORE_FILESIZE: $RESTORE_FILE_SIZE"
-    if [[ "$RESTORE_FILE_SIZE" -eq "0" ]]; then
+    local restore_file_size=""
+    restore_file_size=$(wc -c < "$restore_file")
+    log_verbose "restore_filesize: $restore_file_size"
+    if [[ "$restore_file_size" -eq "0" ]]; then
         sendDiscordMsg "== test restore discarded due to no file found under for 10000000 bytes in: ${ARCHIVEPATH}"
         return
     fi
 
     #file to restore inclusive path
-    local TEST_RESTOREFILE=""
-    TEST_RESTOREFILE=$(cut -f2 < "$restore_file")
-    if [[ "$TEST_RESTOREFILE" == "" ]]; then
+    local test_restorefile=""
+    test_restorefile=$(cut -f2 < "$restore_file")
+    if [[ "$test_restorefile" == "" ]]; then
         log_verbose "No file found to perform restore test on, this might be an error"
         return
     fi
     
     # remove the test restore top dir, before restoring
-    local RESTORE_DIR="/tmp/dar-restore"
-    if [[ -d "$RESTORE_DIR" ]]; then
-        rm -fr "$RESTORE_DIR" > /dev/null  2>&1
-        if [[ "$?" -ne "0" ]]; then
-            log_error "restore directory \"$RESTORE_DIR\" could not be deleted"
-            BACKUP_OK=1
-            return
-        fi
-    fi
-    mkdir -p "$RESTORE_DIR" 
+    local restore_dir=""
+    restore_dir=$(mktemp -d)  || { BACKUP_OK=1; log_error "temporary restore_dir directory not set."; return; }
+    
 
     log_verbose "ARCHIVEPATH: \"$ARCHIVEPATH\""
-    log_verbose "RESTORE_DIR: \"$RESTORE_DIR\""
+    log_verbose "restore_dir: \"$restore_dir\""
     log_verbose "FSA_SCOPE_NONE: $FSA_SCOPE_NONE"
     log_verbose "SCRIPTDIRPATH: \"$SCRIPTDIRPATH\""
-    log "Test restoring file: \"$TEST_RESTOREFILE\"" 
+    log "Test restoring file: \"$test_restorefile\"" 
 
     if [[ $FSA_SCOPE_NONE != "" ]]; then
-        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        dar -Q -x "$ARCHIVEPATH" -R "$restore_dir" -g "$test_restorefile" --fsa-scope none -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         _result=$?
         if [[ "$_result" -ne "0" ]]; then
             BACKUP_OK=1
         fi
     else
-        dar -Q -x "$ARCHIVEPATH" -R "$RESTORE_DIR" -g "$TEST_RESTOREFILE" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
+        dar -Q -x "$ARCHIVEPATH" -R "$restore_dir" -g "$test_restorefile" -B "$SCRIPTDIRPATH/../conf/defaults-rc"
         _result=$?
         if [[ "$_result" -ne "0" ]]; then
             BACKUP_OK=1
@@ -489,16 +488,20 @@ darRestoreTest () {
     fi
 
     # check restored file exists
-    _TESTPATH="${RESTORE_DIR}/${TEST_RESTOREFILE}"
-    log "Check if restored file \"$_TESTPATH\" exists"
-    if [[ -f  "$_TESTPATH" ]]; then
+    local testpath="${restore_dir}/${test_restorefile}"
+    log "Check if restored file \"$testpath \" exists"
+    if [[ -f  "$testpath" ]]; then
         log "Restored file was found"
     else
         log_error "no, the file is not found"
         BACKUP_OK=1
     fi
 
+    rm -fr "$restore_dir" || log_error "Could not delete restore_dir directory: $restore_dir"
+    rm -f "$restore_file" || log_error "Could not delete restore_file file: $restore_file"
+    rm -f "$filelist" || log_error "Could not delete filelist file: $filelist"
+
     if [[ "$VERBOSE" == "y" ]]; then 
-      sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${TEST_RESTOREFILE}\" result: $_result"
+      sendDiscordMsg "dar restore test of archive: \"$DAR_ARCHIVE\", restored file: \"${test_restorefile}\" result: $_result"
     fi
 }
