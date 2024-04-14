@@ -300,7 +300,7 @@ fi
 # add a specific archive to it's catalog (catalog deduced from archive name)
 if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     ADD_SPECIFIC_ARCHIVE="$(basename "$ADD_SPECIFIC_ARCHIVE")"        
-    echo "$ADD_SPECIFIC_ARCHIVE" |grep "/" > /dev/null
+    echo "$ADD_SPECIFIC_ARCHIVE" |grep -q "/" 
     _DEF_=$(echo "$ADD_SPECIFIC_ARCHIVE" |grep -E "^.*?_" | cut -d _ -f 1)
     if [[ ! -e "${SCRIPTDIRPATH}"/../backups.d/"$_DEF_"  ]]; then
         log_error "backup definition \"$_DEF_\" not found (--add-specific-archive option probably not correct), exiting"
@@ -311,12 +311,18 @@ if [[ $ADD_SPECIFIC_ARCHIVE != "" ]]; then
     log "Add \"$_REALPATH\" to catalog \"$CATALOG\""
     dar_manager --base "$MOUNT_POINT"/"$CATALOG" --add "$_REALPATH" -ai -Q 
     RESULT=$?
-    if [[ $RESULT -eq "0" ]]; then
-        log "\"$_REALPATH\" was added to catalog \"$CATALOG\""
-    else
+    case $RESULT in
+    0)
+        log "${DAR_ARCHIVE} added to it's catalog" 
+        ;;
+    5) 
+        log_warn "Something did not go completely right adding \"${DAR_ARCHIVE}\" to it's catalog"
+        ;;
+    *)
         log_error "something went wrong populating \"$MOUNT_POINT/$CATALOG\", dar_manager error: \"$RESULT\""
-        exit $RESULT
-    fi
+        ;;
+    esac
+    exit $RESULT
 fi
 
 
