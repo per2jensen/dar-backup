@@ -490,7 +490,7 @@ darRestoreTest () {
     # check restored file exists
     local testpath="${restore_dir}/${test_restorefile}"
     log "Check if restored file \"$testpath \" exists"
-    if [[ -f  "$testpath" ]]; then
+    if [[ -f  "$testpath"  || -h "$testpath" ]]; then
         log "Restored file was found"
     else
         log_error "no, the file is not found"
