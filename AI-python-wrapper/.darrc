@@ -1,0 +1,60 @@
+# Default configuration file for dar
+# Place this file in the user's home directory as .darrc or specify it with the -K option
+
+# Set the default slice size to 10GB
+slices=10GB
+
+# Enable archive compression
+compress-algo=gzip
+compress-level=6
+
+# Exclude specific file types from compression
+compress-exclude=*.gz
+compress-exclude=*.bz2
+compress-exclude=*.xz
+compress-exclude=*.zip
+compress-exclude=*.rar
+compress-exclude=*.7z
+compress-exclude=*.tar
+compress-exclude=*.tgz
+compress-exclude=*.tbz2
+compress-exclude=*.txz
+
+# Exclude common image file types from compression
+compress-exclude=*.jpg
+compress-exclude=*.jpeg
+compress-exclude=*.png
+compress-exclude=*.gif
+compress-exclude=*.bmp
+compress-exclude=*.tiff
+compress-exclude=*.svg
+
+# Exclude common movie file types from compression
+compress-exclude=*.mp4
+compress-exclude=*.avi
+compress-exclude=*.mkv
+compress-exclude=*.mov
+compress-exclude=*.wmv
+compress-exclude=*.flv
+compress-exclude=*.mpeg
+compress-exclude=*.mpg
+
+# Set the default base directory for backups
+base-directory=/home
+
+# Exclude common temporary directories and files
+exclude-path=/home/*/.cache/
+exclude-path=/home/*/.local/share/Trash/
+exclude-path=/home/*/.thumbnails/
+exclude-path=/home/*/.gvfs/
+
+# Enable error log
+error-log-file=/var/log/dar_error.log
+
+# Set default verbosity level
+verbosity=2
+
+# Use this option to avoid any user interaction during the execution of dar
+disable-interactivity
+
+# Additional options can be added as needed
