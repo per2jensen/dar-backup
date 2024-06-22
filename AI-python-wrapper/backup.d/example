@@ -1,2 +1,6 @@
--g /home/pj/tmp/
--P /home/pj/tmp/NEF/
+-B .darrc
+-R /
+-s 10G
+-z6
+-g home/pj/tmp
+-P home/pj/tmp/NEF
