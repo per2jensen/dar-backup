@@ -24,9 +24,10 @@ def backup(backup_file, log_file, config_file):
     print(f"Running command: {' '.join(command)}")  # Debug output
     run_command(command, log_file)
 
-def find_files_under_10MB(directories):
+def find_files_under_10MB(root_dir, relative_dirs):
     files_under_10MB = []
-    for directory in directories:
+    for relative_dir in relative_dirs:
+        directory = os.path.join(root_dir, relative_dir)
         print(f"Searching in directory: {directory}")  # Debug output
         for root, _, files in os.walk(directory):
             for file in files:
@@ -39,22 +40,24 @@ def find_files_under_10MB(directories):
     return files_under_10MB
 
 def verify(backup_file, log_file, config_file):
-    # Extract the root directories from the config snippet
+    # Extract the root directory and relative directories from the config snippet
     with open(config_file, 'r') as f:
         config_snippet = f.readlines()
 
-    root_dirs = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-g')]
-    if not root_dirs:
+    root_dir = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-R')][0]
+    relative_dirs = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-g')]
+    
+    if not relative_dirs:
         raise Exception("No include or specific files found in the config snippet.")
     
-    files_under_10MB = find_files_under_10MB([os.path.join('/', rd) for rd in root_dirs])
+    files_under_10MB = find_files_under_10MB(root_dir, relative_dirs)
     if len(files_under_10MB) < 3:
-        raise Exception("Not enough files under 10MB for verification in directories: " + ', '.join(root_dirs))
+        raise Exception("Not enough files under 10MB for verification in directories: " + ', '.join(relative_dirs))
 
     random_files = random.sample(files_under_10MB, 3)
     with tempfile.TemporaryDirectory() as tmpdirname:
         for file in random_files:
-            relative_path = os.path.relpath(file, '/')
+            relative_path = os.path.relpath(file, root_dir)
             restored_file_path = os.path.join(tmpdirname, relative_path)
             os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
             
