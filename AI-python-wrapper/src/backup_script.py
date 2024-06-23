@@ -198,14 +198,13 @@ def list_contents(backup_name, backup_dir, selection=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
-    parser.add_argument('--config-file', help="Specific config snippet file to use.")
+    parser.add_argument('-d', '--backup-definition', help="Specific config snippet file to use.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
     parser.add_argument('--restore', help="Restore a specific backup file.")
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
-    parser.add_argument('-d', '--backup-definition', help="Only list archives for the specified config snippet or perform differential backup for that config snippet.")
 
     args = parser.parse_args()
 
@@ -258,8 +257,8 @@ def main():
     else:
         config_files = []
 
-        if args.config_file:
-            config_files.append((os.path.basename(args.config_file).split('.')[0], os.path.join(backup_d, args.config_file)))
+        if args.backup_definition:
+            config_files.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
         else:
             for root, _, files in os.walk(backup_d):
                 for file in files:
