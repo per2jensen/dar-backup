@@ -38,10 +38,11 @@ def read_config():
         logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
         backup_dir = config['DEFAULT']['BACKUP_DIR']
         test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
+        backup_d = config['DEFAULT']['BACKUP.D']
     except Exception as e:
         logging.error(f"Error reading config file {config_file}: {e}")
         sys.exit(1)
-    return logfile_location, backup_dir, test_restore_dir
+    return logfile_location, backup_dir, test_restore_dir, backup_d
 
 def backup(backup_file, config_file):
     if os.path.exists(backup_file + '.1.dar'):
@@ -197,7 +198,6 @@ def list_contents(backup_name, backup_dir, selection=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
-    parser.add_argument('--config-dir', help="Directory containing config snippets.")
     parser.add_argument('--config-file', help="Specific config snippet file to use.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
     parser.add_argument('--restore', help="Restore a specific backup file.")
@@ -209,7 +209,7 @@ def main():
 
     args = parser.parse_args()
 
-    logfile_location, backup_dir, test_restore_dir = read_config()
+    logfile_location, backup_dir, test_restore_dir, backup_d = read_config()
     setup_logging(logfile_location)
 
     if args.list:
@@ -228,17 +228,11 @@ def main():
     if args.differential_backup:
         config_files = []
         if args.backup_definition:
-            if not args.config_dir:
-                logging.error("Error: --config-dir must be specified when using --backup-definition.")
-                sys.exit(1)
-            config_files.append((args.backup_definition, os.path.join(args.config_dir, args.backup_definition)))
-        elif args.config_dir:
-            for root, _, files in os.walk(args.config_dir):
+            config_files.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
+        else:
+            for root, _, files in os.walk(backup_d):
                 for file in files:
                     config_files.append((file.split('.')[0], os.path.join(root, file)))
-        else:
-            logging.error("Error: Either --config-dir or --backup-definition must be specified for differential backup.")
-            sys.exit(1)
 
         try:
             for snippet_name, config_file in config_files:
@@ -265,14 +259,11 @@ def main():
         config_files = []
 
         if args.config_file:
-            config_files.append((os.path.basename(args.config_file).split('.')[0], args.config_file))
-        elif args.config_dir:
-            for root, _, files in os.walk(args.config_dir):
+            config_files.append((os.path.basename(args.config_file).split('.')[0], os.path.join(backup_d, args.config_file)))
+        else:
+            for root, _, files in os.walk(backup_d):
                 for file in files:
                     config_files.append((file.split('.')[0], os.path.join(root, file)))
-        else:
-            logging.error("Error: Either --config-dir or --config-file must be specified.")
-            sys.exit(1)
 
         try:
             for snippet_name, config_file in config_files:
