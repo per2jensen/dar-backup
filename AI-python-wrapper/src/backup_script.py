@@ -36,10 +36,11 @@ def read_config():
         config.read(config_file)
         logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
         backup_dir = config['DEFAULT']['BACKUP_DIR']
+        test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
     except Exception as e:
         logging.error(f"Error reading config file: {e}")
         sys.exit(1)
-    return logfile_location, backup_dir
+    return logfile_location, backup_dir, test_restore_dir
 
 def backup(backup_file, config_file):
     command = ['dar', '-c', backup_file, '-B', config_file, '-Q']
@@ -66,7 +67,7 @@ def find_files_under_10MB(root_dir, relative_dirs):
                     logging.error(f"Error accessing file {file_path}: {e}")
     return files_under_10MB
 
-def verify(backup_file, config_file):
+def verify(backup_file, config_file, test_restore_dir):
     with open(config_file, 'r') as f:
         config_snippet = f.readlines()
 
@@ -83,18 +84,17 @@ def verify(backup_file, config_file):
         return
 
     random_files = random.sample(files_under_10MB, 3)
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        for file in random_files:
-            relative_path = os.path.relpath(file, root_dir)
-            restored_file_path = os.path.join(tmpdirname, relative_path)
-            os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
-            
-            command = ['dar', '-x', backup_file, '-g', relative_path, '-R', tmpdirname, '-O', '-Q']
-            logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            run_command(command)
+    for file in random_files:
+        relative_path = os.path.relpath(file, root_dir)
+        restored_file_path = os.path.join(test_restore_dir, relative_path)
+        os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+        
+        command = ['dar', '-x', backup_file, '-g', relative_path, '-R', test_restore_dir, '-O', '-Q']
+        logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+        run_command(command)
 
-            if not filecmp.cmp(file, restored_file_path, shallow=False):
-                raise Exception(f"File {relative_path} did not match the original after restoration.")
+        if not filecmp.cmp(file, restored_file_path, shallow=False):
+            raise Exception(f"File {relative_path} did not match the original after restoration.")
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
@@ -110,8 +110,16 @@ def list_backups(backup_dir):
         logging.error(f"Error listing backups: {e}")
         sys.exit(1)
 
-def restore_backup(backup_file):
-    command = ['dar', '-x', backup_file, '-O', '-Q']
+def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
+    backup_file = os.path.join(backup_dir, backup_name)
+    command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
+    if restore_dir:
+        if not os.path.exists(restore_dir):
+            os.makedirs(restore_dir)
+        command.extend(['-R', restore_dir])
+    if selection:
+        selection_criteria = shlex.split(selection)
+        command.extend(selection_criteria)
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
 
@@ -132,11 +140,13 @@ def main():
     parser.add_argument('--config-file', help="Specific config snippet file to use.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
     parser.add_argument('--restore', help="Restore a specific backup file.")
+    parser.add_argument('--restore-dir', help="Directory to restore files to.")
+    parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
 
     args = parser.parse_args()
 
-    logfile_location, backup_dir = read_config()
+    logfile_location, backup_dir, test_restore_dir = read_config()
     setup_logging(logfile_location)
 
     if args.list:
@@ -144,7 +154,8 @@ def main():
         sys.exit(0)
 
     if args.restore:
-        restore_backup(args.restore)
+        restore_dir = args.restore_dir if args.restore_dir else test_restore_dir
+        restore_backup(args.restore, backup_dir, restore_dir, args.selection)
         sys.exit(0)
 
     if args.list_contents:
@@ -170,7 +181,7 @@ def main():
             backup(backup_file, config_file)
             
             logging.info("Starting verification...")
-            verify(backup_file, config_file)
+            verify(backup_file, config_file, test_restore_dir)
             logging.info("Verification completed successfully.")
     except Exception as e:
         logging.error(f"Error: {e}")
