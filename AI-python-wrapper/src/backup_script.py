@@ -42,6 +42,7 @@ def backup(backup_file, log_file, config_file):
     command = ['dar', '-c', backup_file, '-B', config_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
+    logging.info("Backup completed successfully.")
 
 def find_files_under_10MB(root_dir, relative_dirs):
     files_under_10MB = []
@@ -147,8 +148,7 @@ def main():
             backup_file = os.path.join(args.backup_dir, f"{snippet_name}.dar")
             logging.info(f"Starting backup with config file {config_file}...")
             backup(backup_file, args.log_file, config_file)
-            logging.info("Backup completed successfully.")
-
+            
             logging.info("Starting verification...")
             verify(backup_file, config_file)
             logging.info("Verification completed successfully.")
