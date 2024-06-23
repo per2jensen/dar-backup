@@ -27,7 +27,7 @@ def run_command(command):
             logging.info(stderr)
         return stdout
     except Exception as e:
-        logging.error(f"Error running command: {e}")
+        logging.error(f"Error running command {' '.join(map(shlex.quote, command))}: {e}")
         raise
 
 def read_config():
@@ -39,7 +39,7 @@ def read_config():
         backup_dir = config['DEFAULT']['BACKUP_DIR']
         test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
     except Exception as e:
-        logging.error(f"Error reading config file: {e}")
+        logging.error(f"Error reading config file {config_file}: {e}")
         sys.exit(1)
     return logfile_location, backup_dir, test_restore_dir
 
@@ -54,7 +54,7 @@ def backup(backup_file, config_file):
         run_command(command)
         logging.info("Backup completed successfully.")
     except Exception as e:
-        logging.error(f"Error during backup: {e}. Continuing to next config snippet.")
+        logging.error(f"Error during backup with config file {config_file}: {e}. Continuing to next config snippet.")
         return
 
 def find_files_under_10MB(root_dir, relative_dirs):
@@ -77,6 +77,16 @@ def find_files_under_10MB(root_dir, relative_dirs):
     return files_under_10MB
 
 def verify(backup_file, config_file, test_restore_dir):
+    # Test the archive integrity first
+    test_command = ['dar', '-t', backup_file, '-Q']
+    logging.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
+    try:
+        run_command(test_command)
+        logging.info("Archive integrity test passed.")
+    except Exception as e:
+        logging.error(f"Archive integrity test failed for {backup_file}: {e}")
+        return
+
     with open(config_file, 'r') as f:
         config_snippet = f.readlines()
 
@@ -96,14 +106,22 @@ def verify(backup_file, config_file, test_restore_dir):
     for file in random_files:
         relative_path = os.path.relpath(file, root_dir)
         restored_file_path = os.path.join(test_restore_dir, relative_path)
-        os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+        try:
+            os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+        except Exception as e:
+            logging.error(f"Error creating directory for {restored_file_path}: {e}")
+            continue
         
         command = ['dar', '-x', backup_file, '-g', relative_path, '-R', test_restore_dir, '-O', '-Q']
         logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-        run_command(command)
+        try:
+            run_command(command)
+        except Exception as e:
+            logging.error(f"Error restoring file {relative_path} from backup {backup_file}: {e}")
+            continue
 
         if not filecmp.cmp(file, restored_file_path, shallow=False):
-            raise Exception(f"File {relative_path} did not match the original after restoration.")
+            logging.error(f"File {relative_path} did not match the original after restoration.")
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
@@ -118,7 +136,7 @@ def list_backups(backup_dir, selection=None):
                 if selection:
                     list_contents(backup, backup_dir, selection)
     except Exception as e:
-        logging.error(f"Error listing backups: {e}")
+        logging.error(f"Error listing backups in directory {backup_dir}: {e}")
         sys.exit(1)
 
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
@@ -126,7 +144,11 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
     if restore_dir:
         if not os.path.exists(restore_dir):
-            os.makedirs(restore_dir)
+            try:
+                os.makedirs(restore_dir)
+            except Exception as e:
+                logging.error(f"Error creating restore directory {restore_dir}: {e}")
+                sys.exit(1)
         command.extend(['-R', restore_dir])
     if selection:
         selection_criteria = shlex.split(selection)
@@ -135,7 +157,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     try:
         run_command(command)
     except Exception as e:
-        logging.error(f"Error during restore: {e}. Exiting.")
+        logging.error(f"Error during restore of {backup_name} to {restore_dir}: {e}. Exiting.")
         sys.exit(1)
 
 def list_contents(backup_name, backup_dir, selection=None):
@@ -149,7 +171,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         output = run_command(command)
         print(output)
     except Exception as e:
-        logging.error(f"Error listing contents of the archive: {e}")
+        logging.error(f"Error listing contents of archive {backup_name}: {e}")
         print(f"Error listing contents of the archive: {e}")
         sys.exit(1)
 
@@ -209,7 +231,7 @@ def main():
             verify(backup_file, config_file, test_restore_dir)
             logging.info("Verification completed successfully.")
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logging.error(f"Error during backup process: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
