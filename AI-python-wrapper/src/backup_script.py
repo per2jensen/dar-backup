@@ -109,7 +109,7 @@ def verify(backup_file, config_file, test_restore_dir):
 
 def list_backups(backup_dir, selection=None):
     try:
-        backups = [f for f in os.listdir(backup_dir) if f.endswith('.dar')]
+        backups = set(f.rsplit('.', 2)[0] for f in os.listdir(backup_dir) if f.endswith('.dar'))
         if not backups:
             print("No backups available.")
         else:
@@ -140,7 +140,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
 
 def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
-    command = ['dar', '-l', backup_path, '-Q']
+    command = ['dar', '-l', backup_path, '-am', '-Q']
     if selection:
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
