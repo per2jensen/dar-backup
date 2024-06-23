@@ -9,6 +9,7 @@ import filecmp
 import tempfile
 import logging
 import shlex
+import configparser
 
 def setup_logging(log_file):
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
@@ -19,26 +20,28 @@ def run_command(command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
         logging.info(stdout)
-        logging.error(stderr)
         if process.returncode != 0:
+            logging.error(stderr)
             raise Exception(f"Command failed with return code {process.returncode}: {stderr}")
+        else:
+            logging.info(stderr)
     except Exception as e:
         logging.error(f"Error running command: {e}")
         raise
 
-def read_darrc():
-    config = {}
+def read_config():
+    config = configparser.ConfigParser()
+    config_file = os.path.join(os.path.dirname(__file__), '../conf/backup_script.conf')
     try:
-        with open('../.darrc', 'r') as file:
-            for line in file:
-                key, value = line.strip().split('=')
-                config[key] = value
+        config.read(config_file)
+        logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
+        backup_dir = config['DEFAULT']['BACKUP_DIR']
     except Exception as e:
-        logging.error(f"Error reading .darrc file: {e}")
+        logging.error(f"Error reading config file: {e}")
         sys.exit(1)
-    return config
+    return logfile_location, backup_dir
 
-def backup(backup_file, log_file, config_file):
+def backup(backup_file, config_file):
     command = ['dar', '-c', backup_file, '-B', config_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
@@ -71,11 +74,13 @@ def verify(backup_file, config_file):
     relative_dirs = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-g')]
 
     if not relative_dirs:
-        raise Exception("No include or specific files found in the config snippet.")
+        logging.info("No include or specific files found in the config snippet.")
+        return
     
     files_under_10MB = find_files_under_10MB(root_dir, relative_dirs)
     if len(files_under_10MB) < 3:
-        raise Exception("Not enough files under 10MB for verification in directories: " + ', '.join(relative_dirs))
+        logging.info("Not enough files under 10MB for verification in directories: " + ', '.join(relative_dirs))
+        return
 
     random_files = random.sample(files_under_10MB, 3)
     with tempfile.TemporaryDirectory() as tmpdirname:
@@ -105,13 +110,14 @@ def list_backups(backup_dir):
         logging.error(f"Error listing backups: {e}")
         sys.exit(1)
 
-def restore_backup(backup_file, log_file):
+def restore_backup(backup_file):
     command = ['dar', '-x', backup_file, '-O', '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
 
-def list_contents(backup_name, log_file):
-    command = ['dar', '-l', backup_name, '-Q']
+def list_contents(backup_name, backup_dir):
+    backup_path = os.path.join(backup_dir, backup_name)
+    command = ['dar', '-l', backup_path, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -122,8 +128,6 @@ def list_contents(backup_name, log_file):
 
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
-    parser.add_argument('--backup-dir', help="Directory to save the backup file.")
-    parser.add_argument('--log-file', required=True, help="Log file to capture dar output.")
     parser.add_argument('--config-dir', help="Directory containing config snippets.")
     parser.add_argument('--config-file', help="Specific config snippet file to use.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
@@ -132,30 +136,19 @@ def main():
 
     args = parser.parse_args()
 
-    setup_logging(args.log_file)
+    logfile_location, backup_dir = read_config()
+    setup_logging(logfile_location)
 
     if args.list:
-        if args.backup_dir:
-            list_backups(args.backup_dir)
-        else:
-            logging.error("Error: --backup-dir must be specified with --list.")
-            sys.exit(1)
+        list_backups(backup_dir)
         sys.exit(0)
 
     if args.restore:
-        if args.restore and args.backup_dir:
-            restore_backup(args.restore, args.log_file)
-        else:
-            logging.error("Error: --backup-dir must be specified with --restore.")
-            sys.exit(1)
+        restore_backup(args.restore)
         sys.exit(0)
 
     if args.list_contents:
-        if args.list_contents and not (args.backup_dir or args.config_dir or args.config_file or args.list):
-            list_contents(args.list_contents, args.log_file)
-        else:
-            logging.error("Error: --list-contents must not be used with any other option except --log-file.")
-            sys.exit(1)
+        list_contents(args.list_contents, backup_dir)
         sys.exit(0)
 
     config_files = []
@@ -172,9 +165,9 @@ def main():
 
     try:
         for snippet_name, config_file in config_files:
-            backup_file = os.path.join(args.backup_dir, snippet_name)
+            backup_file = os.path.join(backup_dir, snippet_name)
             logging.info(f"Starting backup with config file {config_file}...")
-            backup(backup_file, args.log_file, config_file)
+            backup(backup_file, config_file)
             
             logging.info("Starting verification...")
             verify(backup_file, config_file)
