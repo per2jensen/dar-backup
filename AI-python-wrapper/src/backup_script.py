@@ -125,16 +125,22 @@ def verify(backup_file, config_file, test_restore_dir):
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
-def list_backups(backup_dir, selection=None):
+def list_backups(backup_dir, selection=None, backup_definition=None):
     try:
         backups = set(f.rsplit('.', 2)[0] for f in os.listdir(backup_dir) if f.endswith('.dar'))
         if not backups:
             print("No backups available.")
-        else:
-            for backup in backups:
-                print(backup)
-                if selection:
-                    list_contents(backup, backup_dir, selection)
+            return
+
+        if backup_definition:
+            backups = [b for b in backups if b.startswith(backup_definition)]
+        
+        backups = sorted(backups, key=lambda x: datetime.strptime(x.split('_')[-1], '%Y-%m-%d'))
+
+        for backup in backups:
+            print(backup)
+            if selection:
+                list_contents(backup, backup_dir, selection)
     except Exception as e:
         logging.error(f"Error listing backups in directory {backup_dir}: {e}")
         sys.exit(1)
@@ -184,6 +190,7 @@ def main():
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
+    parser.add_argument('-d', '--backup-definition', help="Only list archives for the specified config snippet.")
 
     args = parser.parse_args()
 
@@ -191,7 +198,7 @@ def main():
     setup_logging(logfile_location)
 
     if args.list:
-        list_backups(backup_dir, args.selection)
+        list_backups(backup_dir, args.selection, args.backup_definition)
         sys.exit(0)
 
     if args.restore:
