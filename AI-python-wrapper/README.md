@@ -14,7 +14,25 @@ With a single config snippet
 python3 src/backup_script.py  --config-file backup.d/example
 
 
-# File selection
+# list contents of an archive
+```
+python3 src/backup_script.py --list-contents example  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+```
+gives
+```
+[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
+--------------------------------+------------+-------+-------+---------+-------------------------------+------------
+[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 10:46:30 2024	home/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 09:17:42 2024	home/pj/tmp
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj	pj	50 Mio	Wed Jun 19 20:52:13 2024	home/pj/tmp/LUT-play
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+```
+
+
+
+
+# dar file selection exmaples
 
 ## select a directory
 ```

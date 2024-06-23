@@ -25,6 +25,7 @@ def run_command(command):
             raise Exception(f"Command failed with return code {process.returncode}: {stderr}")
         else:
             logging.info(stderr)
+        return stdout
     except Exception as e:
         logging.error(f"Error running command: {e}")
         raise
@@ -98,7 +99,7 @@ def verify(backup_file, config_file, test_restore_dir):
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
-def list_backups(backup_dir):
+def list_backups(backup_dir, selection=None):
     try:
         backups = [f for f in os.listdir(backup_dir) if f.endswith('.dar')]
         if not backups:
@@ -106,6 +107,8 @@ def list_backups(backup_dir):
         else:
             for backup in backups:
                 print(backup)
+                if selection:
+                    list_contents(backup, backup_dir, selection)
     except Exception as e:
         logging.error(f"Error listing backups: {e}")
         sys.exit(1)
@@ -123,12 +126,16 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
 
-def list_contents(backup_name, backup_dir):
+def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-Q']
+    if selection:
+        selection_criteria = shlex.split(selection)
+        command.extend(selection_criteria)
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        run_command(command)
+        output = run_command(command)
+        print(output)
     except Exception as e:
         logging.error(f"Error listing contents of the archive: {e}")
         print(f"Error listing contents of the archive: {e}")
@@ -150,7 +157,7 @@ def main():
     setup_logging(logfile_location)
 
     if args.list:
-        list_backups(backup_dir)
+        list_backups(backup_dir, args.selection)
         sys.exit(0)
 
     if args.restore:
@@ -159,7 +166,7 @@ def main():
         sys.exit(0)
 
     if args.list_contents:
-        list_contents(args.list_contents, backup_dir)
+        list_contents(args.list_contents, backup_dir, args.selection)
         sys.exit(0)
 
     config_files = []
