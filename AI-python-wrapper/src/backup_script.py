@@ -110,25 +110,52 @@ def restore_backup(backup_file, log_file):
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
 
+def list_contents(backup_name, log_file):
+    command = ['dar', '-l', backup_name, '-Q']
+    logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    try:
+        run_command(command)
+    except Exception as e:
+        logging.error(f"Error listing contents of the archive: {e}")
+        print(f"Error listing contents of the archive: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
-    parser.add_argument('--backup-dir', required=True, help="Directory to save the backup file.")
+    parser.add_argument('--backup-dir', help="Directory to save the backup file.")
     parser.add_argument('--log-file', required=True, help="Log file to capture dar output.")
     parser.add_argument('--config-dir', help="Directory containing config snippets.")
     parser.add_argument('--config-file', help="Specific config snippet file to use.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
     parser.add_argument('--restore', help="Restore a specific backup file.")
+    parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
 
     args = parser.parse_args()
 
     setup_logging(args.log_file)
 
     if args.list:
-        list_backups(args.backup_dir)
+        if args.backup_dir:
+            list_backups(args.backup_dir)
+        else:
+            logging.error("Error: --backup-dir must be specified with --list.")
+            sys.exit(1)
         sys.exit(0)
 
     if args.restore:
-        restore_backup(args.restore, args.log_file)
+        if args.restore and args.backup_dir:
+            restore_backup(args.restore, args.log_file)
+        else:
+            logging.error("Error: --backup-dir must be specified with --restore.")
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.list_contents:
+        if args.list_contents and not (args.backup_dir or args.config_dir or args.config_file or args.list):
+            list_contents(args.list_contents, args.log_file)
+        else:
+            logging.error("Error: --list-contents must not be used with any other option except --log-file.")
+            sys.exit(1)
         sys.exit(0)
 
     config_files = []
@@ -145,7 +172,7 @@ def main():
 
     try:
         for snippet_name, config_file in config_files:
-            backup_file = os.path.join(args.backup_dir, f"{snippet_name}.dar")
+            backup_file = os.path.join(args.backup_dir, snippet_name)
             logging.info(f"Starting backup with config file {config_file}...")
             backup(backup_file, args.log_file, config_file)
             
