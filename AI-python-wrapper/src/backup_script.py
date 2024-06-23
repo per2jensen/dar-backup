@@ -6,10 +6,10 @@ import sys
 import os
 import random
 import filecmp
-import tempfile
 import logging
 import shlex
 import configparser
+from datetime import datetime
 
 def setup_logging(log_file):
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
@@ -183,7 +183,8 @@ def main():
 
     try:
         for snippet_name, config_file in config_files:
-            backup_file = os.path.join(backup_dir, snippet_name)
+            timestamp = datetime.now().strftime('%Y-%m-%d')
+            backup_file = os.path.join(backup_dir, f"{snippet_name}_FULL_{timestamp}")
             logging.info(f"Starting backup with config file {config_file}...")
             backup(backup_file, config_file)
             
