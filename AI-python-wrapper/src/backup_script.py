@@ -44,10 +44,18 @@ def read_config():
     return logfile_location, backup_dir, test_restore_dir
 
 def backup(backup_file, config_file):
+    if os.path.exists(backup_file + '.1.dar'):
+        logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+        return
+
     command = ['dar', '-c', backup_file, '-B', config_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
-    logging.info("Backup completed successfully.")
+    try:
+        run_command(command)
+        logging.info("Backup completed successfully.")
+    except Exception as e:
+        logging.error(f"Error during backup: {e}. Continuing to next config snippet.")
+        return
 
 def find_files_under_10MB(root_dir, relative_dirs):
     files_under_10MB = []
@@ -124,7 +132,11 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
+    try:
+        run_command(command)
+    except Exception as e:
+        logging.error(f"Error during restore: {e}. Exiting.")
+        sys.exit(1)
 
 def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
@@ -185,6 +197,11 @@ def main():
         for snippet_name, config_file in config_files:
             timestamp = datetime.now().strftime('%Y-%m-%d')
             backup_file = os.path.join(backup_dir, f"{snippet_name}_FULL_{timestamp}")
+            
+            if os.path.exists(backup_file + '.1.dar'):
+                logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+                continue
+            
             logging.info(f"Starting backup with config file {config_file}...")
             backup(backup_file, config_file)
             
