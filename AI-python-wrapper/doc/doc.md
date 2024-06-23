@@ -1,177 +1,93 @@
+Sure! Here is the complete documentation of the script in Markdown format:
+
+markdown
+
 # Backup Script Documentation
-Index
 
-    Introduction
-    Script Options
-        --config-dir
-        --config-file
-        --list
-        --restore
-        --restore-dir
-        --selection
-        --list-contents
-    Examples of Usage
-        Creating a Backup
-        Listing Available Backups
-        Restoring a Backup
-        Listing Contents of a Backup
-    Interaction Details
-    Logging and Error Handling
-    Configuration Files
-        conf/backup_script.conf
-        .darrc
+This script allows you to create, verify, and manage backups using `dar` (Disk ARchive). It supports full and differential backups based on configuration snippets. Below you will find detailed documentation on the available options and how they interact.
 
-# Introduction
+## Index
 
-This document provides detailed information on how to use the backup script, including descriptions of all available options, how they interact with each other, and examples of usage.
+1. [Configuration](#configuration)
+2. [Usage](#usage)
+3. [Options](#options)
+4. [Examples](#examples)
 
-Documented by ChatGPT Copilot :-)
+## Configuration
 
-# Script Options
---config-dir
+Before using the script, ensure that the configuration file (`backup_script.conf`) is correctly set up. This configuration file should contain the following variables:
 
-    Description: Specifies the directory containing configuration snippets for the backups.
-    Usage: --config-dir /path/to/config/directory
-    Interaction: If specified, the script will look for backup configuration snippets in the provided directory.
-
---config-file
-
-    Description: Specifies a single configuration snippet file to use for the backup.
-    Usage: --config-file /path/to/config/file
-    Interaction: If specified, the script will use this specific configuration snippet for the backup. If both --config-dir and --config-file are provided, --config-file will be used for that particular backup instance.
-
---list
-
-    Description: Lists all available backups in the backup directory.
-    Usage: --list
-    Interaction: This option will list the base names of all backup archives without including slice numbers or the .dar extension. It can be combined with --selection to filter the listed contents.
-
---restore
-
-    Description: Restores a specific backup file.
-    Usage: --restore backup_name
-    Interaction: Requires the base name of the backup to restore. Can be combined with --restore-dir and --selection to specify the restore directory and filter which files to restore.
-
---restore-dir
-
-    Description: Specifies the directory to restore files to.
-    Usage: --restore-dir /path/to/restore/directory
-    Interaction: Used with --restore to specify where the restored files should be placed. If not specified, a default directory from the configuration will be used.
-
---selection
-
-    Description: Specifies criteria for selecting specific files or directories within a backup.
-    Usage: --selection "criteria"
-    Interaction: Can be used with --list, --restore, and --list-contents to filter specific files or directories based on the provided criteria.
-
---list-contents
-
-    Description: Lists the contents of a specific backup file.
-    Usage: --list-contents backup_name
-    Interaction: Lists the contents of the specified backup archive, using the -am option to show detailed metadata.
-
-# Examples of Usage
-
-## Creating a Backup
-
-To create a backup using a configuration snippet from a specified directory:
-
-python3 backup_script.py --config-dir /path/to/config/directory
-
-
-To create a backup using a specific configuration file:
-
-python3 backup_script.py --config-file /path/to/config/file
-
-## Listing Available Backups
-
-To list all available backups in the backup directory:
-
-
-python3 backup_script.py --list
-
-## Restoring a Backup
-
-To restore a specific backup to the default restore directory:
-
-
-python3 backup_script.py --restore backup_name
-
-## To restore a specific backup to a specified directory:
-
-
-python3 backup_script.py --restore backup_name --restore-dir /path/to/restore/directory
-
-## To restore specific files or directories from a backup:
-
-
-python3 backup_script.py --restore backup_name --selection "criteria"
-
-## Listing Contents of a Backup
-
-To list the contents of a specific backup:
-
-
-python3 backup_script.py --list-contents backup_name
-
-## To list the contents of a specific backup with selection criteria:
-
-
-python3 backup_script.py --list-contents backup_name --selection "criteria"
-
-# Interaction Details
-
-    --config-dir vs. --config-file: If both options are provided, --config-file takes precedence for that particular backup instance.
-    --restore with --restore-dir: Specifies the directory to restore the files to. If not provided, the default restore directory from the configuration is used.
-    --selection: Can be combined with --list, --restore, and --list-contents to filter specific files or directories within a backup.
-
-# Logging and Error Handling
-
-    Logging: All operations are logged to the file specified in the configuration.
-    Error Handling: Errors during backup and restore operations are logged, and appropriate actions (continuing to the next config snippet or exiting) are taken as per the function's logic.
-
-# Configuration Files
-
-## conf/backup_script.conf
-
-
+```ini
 [DEFAULT]
 LOGFILE_LOCATION=/tmp/backup_script.log
-BACKUP_DIR=/path/to/backup
-TEST_RESTORE_DIR=/path/to/restore-test
+BACKUP_DIR=/tmp
+TEST_RESTORE_DIR=/tmp/restore-test
+BACKUP.D=/path/to/backup/configs
 
-## .darrc
+    LOGFILE_LOCATION: The location of the log file.
+    BACKUP_DIR: The directory where backup archives will be stored.
+    TEST_RESTORE_DIR: The directory where test restores will be performed.
+    BACKUP.D: The directory containing the configuration snippets.
 
-# Default configuration file for dar
-# Place this file in the user's home directory as .darrc or specify it with the -B option
+## Usage
 
-extract:
-  --comparison-field=ignore-owner
+The script can be run from the command line with various options to perform different tasks. Below are the available options and their descriptions.
 
-compress-exclusion:
-    *.gz
-    *.bz2
-    *.xz
-    *.zip
-    *.rar
-    *.7z
-    *.tar
-    *.tgz
-    *.tbz2
-    *.txz
-    *.jpg
-    *.jpeg
-    *.png
-    *.gif
-    *.bmp
-    *.tiff
-    *.svg
-    *.mp4
-    *.avi
-    *.mkv
-    *.mov
-    *.wmv
-    *.flv
-    *.mpeg
-    *.mpg
+### Options
+-d, --backup-definition
+Specifies the config snippet to use. The script will look for this config snippet in the directory specified by BACKUP.D in the configuration file.
 
+--list
+Lists available backups. By default, it lists both full and differential backups.
+
+--restore <backup_file>
+Restores a specific backup file. You can also specify the directory to restore files to using --restore-dir.
+
+--restore-dir <restore_directory>
+Specifies the directory to restore files to. If not provided, the directory specified by TEST_RESTORE_DIR in the configuration file will be used.
+
+--selection <selection_criteria>
+Specifies selection criteria for restoring specific files.
+
+
+--list-contents <backup_file>
+Lists the contents of a specific backup file.
+
+--differential-backup
+Performs a differential backup. If -d is specified, it performs a differential backup for that specific config snippet. Otherwise, it performs differential backups for all config snippets in the BACKUP.D directory.
+
+# Examples
+## List Available Backups
+
+./backup_script.py --list
+
+## Perform a Full Backup
+
+./backup_script.py -d example_config_snippet
+
+## Perform a Differential Backup
+
+./backup_script.py --differential-backup -d example_config_snippet
+
+## Restore a Specific Backup
+
+./backup_script.py --restore example_FULL_2023-06-23 --restore-dir /path/to/restore/dir
+
+## List Contents of a Specific Backup
+
+./backup_script.py --list-contents example_FULL_2023-06-23
+
+##How Options Interact
+
+Full Backup: If you specify a backup definition with -d without the --differential-backup option, the script performs a full backup using the specified config snippet.
+Differential 
+
+Backup: If you specify the --differential-backup option with -d, the script performs a differential backup based on the latest full backup for the specified config snippet. If no full backup is found, it logs an error and skips the differential backup.
+
+List Backups: The --list option lists all available backups, both full and differential. If combined with -d, it lists backups only for the specified config snippet.
+
+Restore Backup: The --restore option restores a specified backup. If combined with --restore-dir, it restores the backup to the specified directory.
+
+List Contents: The --list-contents option lists the contents of a specified backup file. It can be combined with --selection to list specific contents based on selection criteria.
+
+This script is designed to provide a flexible and powerful way to manage your backups using dar. By understanding how these options interact, you can tailor the script to meet your specific backup and restore needs.
