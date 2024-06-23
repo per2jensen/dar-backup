@@ -3,5 +3,6 @@
 -R /
 -s 10G
 -z6
+-am
 -g home/pj/tmp
 -P home/pj/tmp/NEF
