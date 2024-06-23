@@ -26,16 +26,28 @@ def run_command(command):
         logging.error(f"Error running command: {e}")
         raise
 
+def read_darrc():
+    config = {}
+    try:
+        with open('../.darrc', 'r') as file:
+            for line in file:
+                key, value = line.strip().split('=')
+                config[key] = value
+    except Exception as e:
+        logging.error(f"Error reading .darrc file: {e}")
+        sys.exit(1)
+    return config
+
 def backup(backup_file, log_file, config_file):
-    command = ['dar', '-c', backup_file, '-B', config_file]
+    command = ['dar', '-c', backup_file, '-B', config_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
 
 def find_files_under_10MB(root_dir, relative_dirs):
     files_under_10MB = []
-    root_dir = root_dir.strip()  # Strip any trailing whitespace
+    root_dir = root_dir.strip()
     for relative_dir in relative_dirs:
-        directory = os.path.join(root_dir, relative_dir.strip())  # Strip any trailing whitespace from relative_dirs
+        directory = os.path.join(root_dir, relative_dir.strip())
         logging.info(f"Searching in directory: {directory}")
         for root, _, files in os.walk(directory):
             for file in files:
@@ -71,8 +83,7 @@ def verify(backup_file, config_file):
             restored_file_path = os.path.join(tmpdirname, relative_path)
             os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
             
-            # Create command without adding -B to avoid using config snippet during restore
-            command = ['dar', '-x', backup_file, '-g', relative_path, '-R', tmpdirname]
+            command = ['dar', '-x', backup_file, '-g', relative_path, '-R', tmpdirname, '-O', '-Q']
             logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             run_command(command)
 
@@ -81,16 +92,43 @@ def verify(backup_file, config_file):
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
+def list_backups(backup_dir):
+    try:
+        backups = [f for f in os.listdir(backup_dir) if f.endswith('.dar')]
+        if not backups:
+            print("No backups available.")
+        else:
+            for backup in backups:
+                print(backup)
+    except Exception as e:
+        logging.error(f"Error listing backups: {e}")
+        sys.exit(1)
+
+def restore_backup(backup_file, log_file):
+    command = ['dar', '-x', backup_file, '-O', '-Q']
+    logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    run_command(command)
+
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
     parser.add_argument('--backup-dir', required=True, help="Directory to save the backup file.")
     parser.add_argument('--log-file', required=True, help="Log file to capture dar output.")
     parser.add_argument('--config-dir', help="Directory containing config snippets.")
     parser.add_argument('--config-file', help="Specific config snippet file to use.")
-    
+    parser.add_argument('--list', action='store_true', help="List available backups.")
+    parser.add_argument('--restore', help="Restore a specific backup file.")
+
     args = parser.parse_args()
 
     setup_logging(args.log_file)
+
+    if args.list:
+        list_backups(args.backup_dir)
+        sys.exit(0)
+
+    if args.restore:
+        restore_backup(args.restore, args.log_file)
+        sys.exit(0)
 
     config_files = []
 
