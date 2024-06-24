@@ -4,8 +4,10 @@ import os
 import subprocess
 import logging
 import argparse
+import sys
 
 UNIT_TEST_DIR = '/tmp/unit-test/'
+VERSION = "0.1"
 
 def setup_logging(debug=False):
     log_file = os.path.join(UNIT_TEST_DIR, 'test_runner.log')
@@ -41,10 +43,22 @@ def run_tests(debug=False):
         else:
             logging.info(f"Test {test_file} passed successfully")
 
+def show_version():
+    script_name = os.path.basename(sys.argv[0])
+    print(f"{script_name} {VERSION}")
+    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.''')
+
 def main():
     parser = argparse.ArgumentParser(description="Run unit tests with optional debug output.")
     parser.add_argument('--debug', action='store_true', help="Show detailed debug output.")
+    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
+
+    if args.version:
+        show_version()
+        sys.exit(0)
 
     os.makedirs(UNIT_TEST_DIR, exist_ok=True)
     setup_logging(debug=args.debug)
@@ -52,3 +66,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

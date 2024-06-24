@@ -4,8 +4,11 @@ import os
 import shutil
 import logging
 import glob
+import argparse
+import sys
 
 UNIT_TEST_DIR = '/tmp/unit-test/'
+VERSION = "0.1"
 
 def setup_logging():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -62,9 +65,23 @@ def setup_test_env(test_name):
 
     return test_dir, config_snippet_path, config_file_path
 
-if __name__ == "__main__":
+def show_version():
+    script_name = os.path.basename(sys.argv[0])
+    print(f"{script_name} {VERSION}")
+    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.''')
+
+def main():
+    parser = argparse.ArgumentParser(description="Setup and clean test environment.")
+    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+    args = parser.parse_args()
+
+    if args.version:
+        show_version()
+        sys.exit(0)
+
     setup_logging()
     os.makedirs(UNIT_TEST_DIR, exist_ok=True)
     cleanup_test_env()
-    cleanup_dar_files()
-    setup_test_env('example_test')
+    cleanup_dar

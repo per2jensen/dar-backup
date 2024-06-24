@@ -22,12 +22,20 @@ def run_command(command):
 def create_test_files(test_dir):
     logging.info("Creating test files...")
     os.makedirs(os.path.join(test_dir, 'data'), exist_ok=True)
-    with open(os.path.join(test_dir, 'data', 'file1.txt'), 'w') as f:
-        f.write('This is file 1.')
-    with open(os.path.join(test_dir, 'data', 'file2.txt'), 'w') as f:
-        f.write('This is file 2.')
-    with open(os.path.join(test_dir, 'data', 'file3.txt'), 'w') as f:
-        f.write('This is file 3.')
+    test_files = {
+        'file1.txt': 'This is file 1.',
+        'file2.txt': 'This is file 2.',
+        'file3.txt': 'This is file 3.',
+        'file with spaces.txt': 'This is file with spaces.',
+        'file_with_danish_chars_æøå.txt': 'This is file with danish chars æøå.',
+        'file_with_DANISH_CHARS_ÆØÅ.txt': 'This is file with DANISH CHARS ÆØÅ.',
+        'file_with_colon:.txt': 'This is file with colon :.',
+        'file_with_hash#.txt': 'This is file with hash #.',
+        'file_with_currency¤.txt': 'This is file with currency ¤.'
+    }
+    for filename, content in test_files.items():
+        with open(os.path.join(test_dir, 'data', filename), 'w') as f:
+            f.write(content)
 
 def verify_backup_contents(backup_file_base, expected_files, check_saved=False):
     command = ['dar', '-l', backup_file_base, '-Q']
@@ -37,14 +45,15 @@ def verify_backup_contents(backup_file_base, expected_files, check_saved=False):
         logging.error(result.stderr)
         return False
 
+    backup_contents = result.stdout
     for expected_file in expected_files:
         if check_saved:
             pattern = re.compile(rf'\[Saved\].*{re.escape(expected_file)}')
-            if not pattern.search(result.stdout):
+            if not pattern.search(backup_contents):
                 logging.error(f"Expected file {expected_file} not found with [Saved] marker in backup {backup_file_base}")
                 return False
         else:
-            if expected_file not in result.stdout:
+            if expected_file not in backup_contents:
                 logging.error(f"Expected file {expected_file} not found in backup {backup_file_base}")
                 return False
 
@@ -69,7 +78,12 @@ def main():
         return
 
     # Verify FULL backup contents
-    expected_files = ['data/file1.txt', 'data/file2.txt', 'data/file3.txt']
+    expected_files = [
+        'data/file1.txt', 'data/file2.txt', 'data/file3.txt',
+        'data/file with spaces.txt', 'data/file_with_danish_chars_æøå.txt',
+        'data/file_with_DANISH_CHARS_ÆØÅ.txt', 'data/file_with_colon:.txt',
+        'data/file_with_hash#.txt', 'data/file_with_currency¤.txt'
+    ]
     if not verify_backup_contents(full_backup_file_base, expected_files):
         logging.error("Full backup verification failed")
         return

@@ -11,6 +11,8 @@ import shlex
 import configparser
 from datetime import datetime
 
+VERSION = "0.1"
+
 def setup_logging(log_file):
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
                         format='%(asctime)s - %(levelname)s - %(message)s')
@@ -254,6 +256,13 @@ def perform_differential_backup(args, backup_d, backup_dir):
         logging.error(f"Error during differential backup process: {e}")
         sys.exit(1)
 
+def show_version():
+    script_name = os.path.basename(sys.argv[0])
+    print(f"{script_name} {VERSION}")
+    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.''')
+
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
     parser.add_argument('-d', '--backup-definition', help="Specific config snippet file to use.")
@@ -263,8 +272,12 @@ def main():
     parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
-
+    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
+
+    if args.version:
+        show_version()
+        sys.exit(0)
 
     logfile_location, backup_dir, test_restore_dir, backup_d = read_config()
     setup_logging(logfile_location)
