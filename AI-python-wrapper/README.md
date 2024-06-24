@@ -36,7 +36,7 @@ gives
 
 ## select a directory
 ```
-dar -l /tmp/example  -g home/pj/tmp/LUT-play
+dar -l /tmp/example_FULL_2024-06-23  -g home/pj/tmp/LUT-play
 ```
 gives
 ```
@@ -71,7 +71,7 @@ gives
 
 ## select file dates in the directory:
 ```
-dar -l /tmp/example  -I '*2024-06-16*' -g home/pj/tmp/LUT-play
+dar -l /tmp/example_FULL_2024-06-23  -I '*2024-06-16*' -g home/pj/tmp/LUT-play
 ```
 gives
 ```
@@ -105,7 +105,7 @@ gives
 
 ## exclude .xmp files from that date
 ```
-dar -l /tmp/example -X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play
+dar -l /tmp/example_FULL_2024-06-23 -X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play
 ```
 gives
 ```
@@ -126,11 +126,11 @@ Nice :-)
 
 ## a single file
 
-python3 backup_script.py --restore backup_name --selection "-g relative/path/to/file"
+python3 backup_script.py --restore <archive_name> --selection "-g relative/path/to/file"
 
 ## .NEF from a specific date
 
-python3 src/backup_script.py --restore example  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+python3 src/backup_script.py --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 
 
 
