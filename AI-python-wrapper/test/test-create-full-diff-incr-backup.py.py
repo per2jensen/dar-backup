@@ -63,7 +63,7 @@ def main():
     setup_logging()
     prereq.cleanup_test_env()  # Clean up any existing test environments
     prereq.cleanup_dar_files()  # Clean up any existing .dar files
-    test_dir, config_snippet_path, config_file_path = prereq.setup_test_env('test_create_full_and_diff_backup')
+    test_dir, config_snippet_path, config_file_path = prereq.setup_test_env('test_create_full_diff_incr_backup')
 
     # Setup test environment
     create_test_files(test_dir)
@@ -106,10 +106,32 @@ def main():
     # Verify DIFF backup contents
     if not verify_backup_contents(diff_backup_file_base, ['data/file2.txt'], check_saved=True):
         logging.error("Differential backup verification failed")
+        return
     else:
         logging.info("Differential backup verification succeeded")
 
-    logging.info("Test create full and diff backup passed successfully")
+    # Modify another file for incremental backup
+    with open(os.path.join(test_dir, 'data', 'file3.txt'), 'a') as f:
+        f.write(' This is an additional line for incremental backup.')
+
+    # Create INCR backup
+    incr_backup_file_base = os.path.join(test_dir, 'backups', 'example_config_snippet_INCR_2024-06-24')
+    logging.info("Creating INCR backup...")
+    incr_backup_command = ['dar', '-c', incr_backup_file_base, '-B', config_snippet_path, '-A', diff_backup_file_base, '-Q']
+    logging.info(f"Running command: {' '.join(incr_backup_command)}")
+    if run_command(incr_backup_command) != 0:
+        logging.error("Failed to create incremental backup")
+        return
+
+    # Verify INCR backup contents
+    if not verify_backup_contents(incr_backup_file_base, ['data/file3.txt'], check_saved=True):
+        logging.error("Incremental backup verification failed")
+    else:
+        logging.info("Incremental backup verification succeeded")
+
+    logging.info("Test create full, diff, and incr backup passed successfully")
 
 if __name__ == "__main__":
     main()
+
+
