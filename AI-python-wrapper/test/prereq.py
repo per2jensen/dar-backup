@@ -84,4 +84,8 @@ def main():
     setup_logging()
     os.makedirs(UNIT_TEST_DIR, exist_ok=True)
     cleanup_test_env()
-    cleanup_dar
+    cleanup_dar_files()
+    setup_test_env('example_test')
+
+if __name__ == "__main__":
+    main()
