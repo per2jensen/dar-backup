@@ -92,7 +92,6 @@ def find_files_under_10MB(root_dir, relative_dirs):
     return files_under_10MB
 
 def verify(backup_file, config_file, test_restore_dir):
-    # Test the archive integrity first
     test_command = ['dar', '-t', backup_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
     try:
@@ -196,6 +195,65 @@ def list_contents(backup_name, backup_dir, selection=None):
         print(f"Error listing contents of the archive: {e}")
         sys.exit(1)
 
+def perform_backup(args, backup_d, backup_dir, test_restore_dir):
+    config_files = []
+
+    if args.backup_definition:
+        config_files.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
+    else:
+        for root, _, files in os.walk(backup_d):
+            for file in files:
+                config_files.append((file.split('.')[0], os.path.join(root, file)))
+
+    try:
+        for snippet_name, config_file in config_files:
+            timestamp = datetime.now().strftime('%Y-%m-%d')
+            backup_file = os.path.join(backup_dir, f"{snippet_name}_FULL_{timestamp}")
+
+            if os.path.exists(backup_file + '.1.dar'):
+                logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+                continue
+
+            logging.info(f"Starting backup with config file {config_file}...")
+            backup(backup_file, config_file)
+
+            logging.info("Starting verification...")
+            verify(backup_file, config_file, test_restore_dir)
+            logging.info("Verification completed successfully.")
+    except Exception as e:
+        logging.error(f"Error during backup process: {e}")
+        sys.exit(1)
+
+def perform_differential_backup(args, backup_d, backup_dir):
+    config_files = []
+    if args.backup_definition:
+        config_files.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
+    else:
+        for root, _, files in os.walk(backup_d):
+            for file in files:
+                config_files.append((file.split('.')[0], os.path.join(root, file)))
+
+    try:
+        for snippet_name, config_file in config_files:
+            timestamp = datetime.now().strftime('%Y-%m-%d')
+            backup_file = os.path.join(backup_dir, f"{snippet_name}_DIFF_{timestamp}")
+
+            full_backups = sorted(
+                [f for f in os.listdir(backup_dir) if f.startswith(f"{snippet_name}_FULL_") and f.endswith('.1.dar')],
+                key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
+            )
+            if not full_backups:
+                logging.error(f"No FULL backup found for {snippet_name}. Skipping differential backup.")
+                continue
+
+            latest_full_backup_base = os.path.join(backup_dir, full_backups[-1].rsplit('.', 2)[0])
+            logging.info(f"Latest FULL backup for {snippet_name}: {latest_full_backup_base}")
+
+            differential_backup(backup_file, config_file, latest_full_backup_base)
+    except Exception as e:
+        logging.error(f"Error during differential backup process: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
     parser.add_argument('-d', '--backup-definition', help="Specific config snippet file to use.")
@@ -225,63 +283,9 @@ def main():
         sys.exit(0)
 
     if args.differential_backup:
-        config_files = []
-        if args.backup_definition:
-            config_files.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
-        else:
-            for root, _, files in os.walk(backup_d):
-                for file in files:
-                    config_files.append((file.split('.')[0], os.path.join(root, file)))
-
-        try:
-            for snippet_name, config_file in config_files:
-                timestamp = datetime.now().strftime('%Y-%m-%d')
-                backup_file = os.path.join(backup_dir, f"{snippet_name}_DIFF_{timestamp}")
-
-                # Find the latest FULL backup for the snippet
-                full_backups = sorted(
-                    [f for f in os.listdir(backup_dir) if f.startswith(f"{snippet_name}_FULL_") and f.endswith('.1.dar')],
-                    key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
-                )
-                if not full_backups:
-                    logging.error(f"No FULL backup found for {snippet_name}. Skipping differential backup.")
-                    continue
-
-                latest_full_backup_base = os.path.join(backup_dir, full_backups[-1].rsplit('.', 2)[0])
-                logging.info(f"Latest FULL backup for {snippet_name}: {latest_full_backup_base}")
-
-                differential_backup(backup_file, config_file, latest_full_backup_base)
-        except Exception as e:
-            logging.error(f"Error during differential backup process: {e}")
-            sys.exit(1)
+        perform_differential_backup(args, backup_d, backup_dir)
     else:
-        config_files = []
-
-        if args.backup_definition:
-            config_files.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
-        else:
-            for root, _, files in os.walk(backup_d):
-                for file in files:
-                    config_files.append((file.split('.')[0], os.path.join(root, file)))
-
-        try:
-            for snippet_name, config_file in config_files:
-                timestamp = datetime.now().strftime('%Y-%m-%d')
-                backup_file = os.path.join(backup_dir, f"{snippet_name}_FULL_{timestamp}")
-
-                if os.path.exists(backup_file + '.1.dar'):
-                    logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
-                    continue
-
-                logging.info(f"Starting backup with config file {config_file}...")
-                backup(backup_file, config_file)
-
-                logging.info("Starting verification...")
-                verify(backup_file, config_file, test_restore_dir)
-                logging.info("Verification completed successfully.")
-        except Exception as e:
-            logging.error(f"Error during backup process: {e}")
-            sys.exit(1)
+        perform_backup(args, backup_d, backup_dir, test_restore_dir)
 
 if __name__ == "__main__":
     main()
