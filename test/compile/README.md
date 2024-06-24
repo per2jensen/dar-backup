@@ -47,7 +47,7 @@ sudo apt install \
 ## Compile
 
 ```
-DAR_VERSION=2.7.13
+DAR_VERSION=2.7.14
 if [[ -d /.local/dar-${DAR_VERSION} ]]; then
   mv /.local/dar-${DAR_VERSION}  /.local/dar-${DAR_VERSION}.old
 fi
@@ -57,18 +57,29 @@ if [[ -d /tmp/dar-${DAR_VERSION} ]]; then
   rm -fr /tmp/dar-${DAR_VERSION}  || exit 2
 fi
 
-tar xvf src/dar-${DAR_VERSION}.tar.gz --directory /tmp
+tar xvf $HOME/git/dar-backup/test/compile/src/dar-${DAR_VERSION}.tar.gz --directory /tmp
 
 cd /tmp/dar-${DAR_VERSION}
+
+CXXFLAGS=-O
+export CXXFLAGS
+make clean distclean
+
 ./configure \
    --prefix=/home/$USER/.local/dar-${DAR_VERSION}  \
    --disable-libcurl-linking 
 
+
 make
 make install-strip
 
-rm ~/.local/dar
-ln -s ~/.local/dar-${DAR_VERSION}  ~/.local/dar
+
+if [[ -L  ~/.local/dar ]]; then
+  rm ~/.local/dar
+  ln -s ~/.local/dar-${DAR_VERSION}  ~/.local/dar
+else 
+  echo "ERROR ~/.locar/dar is not a link"
+fi
 ```
 
 
