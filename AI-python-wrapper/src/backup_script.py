@@ -74,6 +74,20 @@ def differential_backup(backup_file, config_file, base_backup_file):
         logging.error(f"Error during differential backup with config file {config_file}: {e}. Continuing to next config snippet.")
         return
 
+def incremental_backup(backup_file, config_file, base_backup_file):
+    if os.path.exists(backup_file + '.1.dar'):
+        logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+        return
+
+    command = ['dar', '-c', backup_file, '-B', config_file, '-A', base_backup_file, '-Q']
+    logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    try:
+        run_command(command)
+        logging.info("Incremental backup completed successfully.")
+    except Exception as e:
+        logging.error(f"Error during incremental backup with config file {config_file}: {e}. Continuing to next config snippet.")
+        return
+
 def find_files_under_10MB(root_dir, relative_dirs):
     files_under_10MB = []
     root_dir = root_dir.strip()
@@ -256,6 +270,36 @@ def perform_differential_backup(args, backup_d, backup_dir):
         logging.error(f"Error during differential backup process: {e}")
         sys.exit(1)
 
+def perform_incremental_backup(args, backup_d, backup_dir):
+    config_files = []
+    if args.backup_definition:
+        config_files.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
+    else:
+        for root, _, files in os.walk(backup_d):
+            for file in files:
+                config_files.append((file.split('.')[0], os.path.join(root, file)))
+
+    try:
+        for snippet_name, config_file in config_files:
+            timestamp = datetime.now().strftime('%Y-%m-%d')
+            backup_file = os.path.join(backup_dir, f"{snippet_name}_INCR_{timestamp}")
+
+            diff_backups = sorted(
+                [f for f in os.listdir(backup_dir) if f.startswith(f"{snippet_name}_DIFF_") and f.endswith('.1.dar')],
+                key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
+            )
+            if not diff_backups:
+                logging.error(f"No DIFF backup found for {snippet_name}. Skipping incremental backup.")
+                continue
+
+            latest_diff_backup_base = os.path.join(backup_dir, diff_backups[-1].rsplit('.', 2)[0])
+            logging.info(f"Latest DIFF backup for {snippet_name}: {latest_diff_backup_base}")
+
+            incremental_backup(backup_file, config_file, latest_diff_backup_base)
+    except Exception as e:
+        logging.error(f"Error during incremental backup process: {e}")
+        sys.exit(1)
+
 def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {VERSION}")
@@ -272,6 +316,7 @@ def main():
     parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
+    parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
 
@@ -295,7 +340,9 @@ def main():
         list_contents(args.list_contents, backup_dir, args.selection)
         sys.exit(0)
 
-    if args.differential_backup:
+    if args.incremental_backup:
+        perform_incremental_backup(args, backup_d, backup_dir)
+    elif args.differential_backup:
         perform_differential_backup(args, backup_d, backup_dir)
     else:
         perform_backup(args, backup_d, backup_dir, test_restore_dir)
