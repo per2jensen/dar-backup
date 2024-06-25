@@ -32,9 +32,8 @@ def run_command(command):
         logging.error(f"Error running command {' '.join(map(shlex.quote, command))}: {e}")
         raise
 
-def read_config():
+def read_config(config_file):
     config = configparser.ConfigParser()
-    config_file = os.path.join(os.path.dirname(__file__), '../conf/backup_script.conf')
     try:
         config.read(config_file)
         logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
@@ -318,13 +317,14 @@ def main():
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+    parser.add_argument('--config-file', '-c', type=str, help="Path to the configuration file", default=os.path.join(os.path.dirname(__file__), '../conf/backup_script.conf'))
     args = parser.parse_args()
 
     if args.version:
         show_version()
         sys.exit(0)
 
-    logfile_location, backup_dir, test_restore_dir, backup_d = read_config()
+    logfile_location, backup_dir, test_restore_dir, backup_d = read_config(args.config_file)
     setup_logging(logfile_location)
 
     if args.list:
