@@ -1,0 +1,11 @@
+[DEFAULT]
+LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/backup_script.log
+
+[DIRECTORIES]
+BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/
+TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
+BACKUP.D_DIR = /tmp/unit-test/@@test-case-name@@/backup.d/
+
+[AGE]
+DIFF_AGE = 30
+INCR_AGE = 15
