@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import subprocess
 import sys
@@ -48,8 +46,13 @@ def read_config(config_file):
         backup_dir = config['DEFAULT']['BACKUP_DIR']
         test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
         backup_d = config['DEFAULT']['BACKUP.D']
+    except KeyError as e:
+        logging.error(f"Missing mandatory configuration field: {e}")
+        sys.stderr.write(f"Error: Missing mandatory configuration field: {e}\n")
+        sys.exit(1)
     except Exception as e:
         logging.exception(f"Error reading config file {config_file}: {e}")
+        sys.stderr.write(f"Error: Unable to read the config file: {e}\n")
         sys.exit(1)
     return logfile_location, backup_dir, test_restore_dir, backup_d
 
@@ -180,6 +183,7 @@ def list_backups(backup_dir, selection=None, backup_definition=None):
                 list_contents(backup, backup_dir, selection)
     except Exception as e:
         logging.exception(f"Error listing backups in directory {backup_dir}: {e}")
+        sys.stderr.write(f"Error: Unable to list backups in directory {backup_dir}: {e}\n")
         sys.exit(1)
 
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
@@ -191,6 +195,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
                 os.makedirs(restore_dir)
             except Exception as e:
                 logging.exception(f"Error creating restore directory {restore_dir}: {e}")
+                sys.stderr.write(f"Error: Unable to create restore directory {restore_dir}: {e}\n")
                 sys.exit(1)
         command.extend(['-R', restore_dir])
     if selection:
@@ -201,6 +206,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
         run_command(command)
     except Exception as e:
         logging.exception(f"Error during restore of {backup_name} to {restore_dir}: {e}. Exiting.")
+        sys.stderr.write(f"Error: Restore operation failed for {backup_name}: {e}\n")
         sys.exit(1)
 
 def list_contents(backup_name, backup_dir, selection=None):
@@ -245,7 +251,7 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir):
             logging.info("Verification completed successfully.")
     except Exception as e:
         logging.exception(f"Error during backup process: {e}")
-        sys.exit(1)
+        sys.stderr.write(f"Error: Backup process failed: {e}\n")
 
 def perform_differential_backup(args, backup_d, backup_dir):
     config_files = []
@@ -275,7 +281,7 @@ def perform_differential_backup(args, backup_d, backup_dir):
             differential_backup(backup_file, config_file, latest_full_backup_base)
     except Exception as e:
         logging.exception(f"Error during differential backup process: {e}")
-        sys.exit(1)
+        sys.stderr.write(f"Error: Differential backup process failed: {e}\n")
 
 def perform_incremental_backup(args, backup_d, backup_dir):
     config_files = []
@@ -305,7 +311,7 @@ def perform_incremental_backup(args, backup_d, backup_dir):
             incremental_backup(backup_file, config_file, latest_diff_backup_base)
     except Exception as e:
         logging.exception(f"Error during incremental backup process: {e}")
-        sys.exit(1)
+        sys.stderr.write(f"Error: Incremental backup process failed: {e}\n")
 
 def show_version():
     script_name = os.path.basename(sys.argv[0])
