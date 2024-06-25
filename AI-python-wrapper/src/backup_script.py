@@ -13,6 +13,14 @@ from datetime import datetime
 
 VERSION = "0.1"
 
+# Check Python version compatibility
+MIN_PYTHON_VERSION = (3, 7)
+if sys.version_info < MIN_PYTHON_VERSION:
+    sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
+    sys.exit(1)
+
+# Rest of the script follows...
+
 def setup_logging(log_file):
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
                         format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,7 +37,7 @@ def run_command(command):
             logging.info(stderr)
         return stdout
     except Exception as e:
-        logging.error(f"Error running command {' '.join(map(shlex.quote, command))}: {e}")
+        logging.exception(f"Error running command {' '.join(map(shlex.quote, command))}: {e}")
         raise
 
 def read_config(config_file):
@@ -41,7 +49,7 @@ def read_config(config_file):
         test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
         backup_d = config['DEFAULT']['BACKUP.D']
     except Exception as e:
-        logging.error(f"Error reading config file {config_file}: {e}")
+        logging.exception(f"Error reading config file {config_file}: {e}")
         sys.exit(1)
     return logfile_location, backup_dir, test_restore_dir, backup_d
 
@@ -56,7 +64,7 @@ def backup(backup_file, config_file):
         run_command(command)
         logging.info("Backup completed successfully.")
     except Exception as e:
-        logging.error(f"Error during backup with config file {config_file}: {e}. Continuing to next config snippet.")
+        logging.exception(f"Error during backup with config file {config_file}: {e}. Continuing to next config snippet.")
         return
 
 def differential_backup(backup_file, config_file, base_backup_file):
@@ -70,7 +78,7 @@ def differential_backup(backup_file, config_file, base_backup_file):
         run_command(command)
         logging.info("Differential backup completed successfully.")
     except Exception as e:
-        logging.error(f"Error during differential backup with config file {config_file}: {e}. Continuing to next config snippet.")
+        logging.exception(f"Error during differential backup with config file {config_file}: {e}. Continuing to next config snippet.")
         return
 
 def incremental_backup(backup_file, config_file, base_backup_file):
@@ -84,7 +92,7 @@ def incremental_backup(backup_file, config_file, base_backup_file):
         run_command(command)
         logging.info("Incremental backup completed successfully.")
     except Exception as e:
-        logging.error(f"Error during incremental backup with config file {config_file}: {e}. Continuing to next config snippet.")
+        logging.exception(f"Error during incremental backup with config file {config_file}: {e}. Continuing to next config snippet.")
         return
 
 def find_files_under_10MB(root_dir, relative_dirs):
@@ -103,7 +111,7 @@ def find_files_under_10MB(root_dir, relative_dirs):
                         logging.info(f"File under 10MB: {file_path}")
                         files_under_10MB.append(file_path)
                 except Exception as e:
-                    logging.error(f"Error accessing file {file_path}: {e}")
+                    logging.exception(f"Error accessing file {file_path}: {e}")
     return files_under_10MB
 
 def verify(backup_file, config_file, test_restore_dir):
@@ -113,7 +121,7 @@ def verify(backup_file, config_file, test_restore_dir):
         run_command(test_command)
         logging.info("Archive integrity test passed.")
     except Exception as e:
-        logging.error(f"Archive integrity test failed for {backup_file}: {e}")
+        logging.exception(f"Archive integrity test failed for {backup_file}: {e}")
         return
 
     with open(config_file, 'r') as f:
@@ -138,7 +146,7 @@ def verify(backup_file, config_file, test_restore_dir):
         try:
             os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
         except Exception as e:
-            logging.error(f"Error creating directory for {restored_file_path}: {e}")
+            logging.exception(f"Error creating directory for {restored_file_path}: {e}")
             continue
         
         command = ['dar', '-x', backup_file, '-g', relative_path, '-R', test_restore_dir, '-O', '-Q']
@@ -146,7 +154,7 @@ def verify(backup_file, config_file, test_restore_dir):
         try:
             run_command(command)
         except Exception as e:
-            logging.error(f"Error restoring file {relative_path} from backup {backup_file}: {e}")
+            logging.exception(f"Error restoring file {relative_path} from backup {backup_file}: {e}")
             continue
 
         if not filecmp.cmp(file, restored_file_path, shallow=False):
@@ -171,7 +179,7 @@ def list_backups(backup_dir, selection=None, backup_definition=None):
             if selection:
                 list_contents(backup, backup_dir, selection)
     except Exception as e:
-        logging.error(f"Error listing backups in directory {backup_dir}: {e}")
+        logging.exception(f"Error listing backups in directory {backup_dir}: {e}")
         sys.exit(1)
 
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
@@ -182,7 +190,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
             try:
                 os.makedirs(restore_dir)
             except Exception as e:
-                logging.error(f"Error creating restore directory {restore_dir}: {e}")
+                logging.exception(f"Error creating restore directory {restore_dir}: {e}")
                 sys.exit(1)
         command.extend(['-R', restore_dir])
     if selection:
@@ -192,7 +200,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     try:
         run_command(command)
     except Exception as e:
-        logging.error(f"Error during restore of {backup_name} to {restore_dir}: {e}. Exiting.")
+        logging.exception(f"Error during restore of {backup_name} to {restore_dir}: {e}. Exiting.")
         sys.exit(1)
 
 def list_contents(backup_name, backup_dir, selection=None):
@@ -206,7 +214,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         output = run_command(command)
         print(output)
     except Exception as e:
-        logging.error(f"Error listing contents of archive {backup_name}: {e}")
+        logging.exception(f"Error listing contents of archive {backup_name}: {e}")
         print(f"Error listing contents of the archive: {e}")
         sys.exit(1)
 
@@ -236,7 +244,7 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir):
             verify(backup_file, config_file, test_restore_dir)
             logging.info("Verification completed successfully.")
     except Exception as e:
-        logging.error(f"Error during backup process: {e}")
+        logging.exception(f"Error during backup process: {e}")
         sys.exit(1)
 
 def perform_differential_backup(args, backup_d, backup_dir):
@@ -266,7 +274,7 @@ def perform_differential_backup(args, backup_d, backup_dir):
 
             differential_backup(backup_file, config_file, latest_full_backup_base)
     except Exception as e:
-        logging.error(f"Error during differential backup process: {e}")
+        logging.exception(f"Error during differential backup process: {e}")
         sys.exit(1)
 
 def perform_incremental_backup(args, backup_d, backup_dir):
@@ -296,7 +304,7 @@ def perform_incremental_backup(args, backup_d, backup_dir):
 
             incremental_backup(backup_file, config_file, latest_diff_backup_base)
     except Exception as e:
-        logging.error(f"Error during incremental backup process: {e}")
+        logging.exception(f"Error during incremental backup process: {e}")
         sys.exit(1)
 
 def show_version():
