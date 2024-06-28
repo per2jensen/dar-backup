@@ -43,9 +43,9 @@ def read_config(config_file):
     try:
         config.read(config_file)
         logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
-        backup_dir = config['DEFAULT']['BACKUP_DIR']
-        test_restore_dir = config['DEFAULT']['TEST_RESTORE_DIR']
-        backup_d = config['DEFAULT']['BACKUP.D']
+        backup_dir = config['DIRECTORIES']['BACKUP_DIR']
+        test_restore_dir = config['DIRECTORIES']['TEST_RESTORE_DIR']
+        backup_d = config['DIRECTORIES']['BACKUP.D_DIR']
     except KeyError as e:
         logging.error(f"Missing mandatory configuration field: {e}")
         sys.stderr.write(f"Error: Missing mandatory configuration field: {e}\n")

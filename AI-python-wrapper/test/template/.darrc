@@ -1,0 +1,45 @@
+# Default configuration file for dar
+# Place this file in the user's home directory as .darrc or specify it with the -B option
+
+extract:
+  # don't restore File Specific Attributes
+  #--fsa-scope none
+
+  # ignore owner, useful when used by a non-privileged user
+  --comparison-field=ignore-owner
+
+
+# Exclude specific file types from compression
+compress-exclusion:
+    *.gz
+    *.bz2
+    *.xz
+    *.zip
+    *.rar
+    *.7z
+    *.tar
+    *.tgz
+    *.tbz2
+    *.txz
+
+# Exclude common image file types from compression
+compress-exclusion:
+    *.jpg
+    *.jpeg
+    *.png
+    *.gif
+    *.bmp
+    *.tiff
+    *.svg
+
+# Exclude common movie file types from compression
+compress-exclusion:
+    *.mp4
+    *.avi
+    *.mkv
+    *.mov
+    *.wmv
+    *.flv
+    *.mpeg
+    *.mpg
+

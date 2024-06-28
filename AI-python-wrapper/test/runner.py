@@ -25,7 +25,7 @@ def setup_logging(debug=False):
 
 def run_tests(debug=False):
     test_dir = os.path.dirname(__file__)
-    test_files = [f for f in os.listdir(test_dir) if f.startswith('test-') and f.endswith('.py')]
+    test_files = [f for f in os.listdir(os.path.join(test_dir, "src")) if f.startswith('test-') and f.endswith('.py')]
 
     for test_file in test_files:
         test_path = os.path.join(test_dir, test_file)

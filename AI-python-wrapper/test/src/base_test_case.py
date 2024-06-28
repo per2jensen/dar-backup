@@ -15,6 +15,9 @@ class BaseTestCase(unittest.TestCase):
         cls.test_dir = f"/tmp/unit-test/{cls.test_case_name.lower()}"
         cls.template_config_file = "../template/backup_script.conf.template"
         cls.config_file = os.path.join(cls.test_dir, "backup_script.conf")
+        cls.template_dar_rc = "../template/.darrc"
+        cls.dar_rc = os.path.join(cls.test_dir, ".darrc")
+        cls.bin_dir = "../../src"
         cls.log_file = os.path.join(cls.test_dir, "test_log.log")
 
         # Create the unit test directory
@@ -31,6 +34,15 @@ class BaseTestCase(unittest.TestCase):
             cls.logger.exception("Failed to create directories from template")
             raise
 
+        # Put .darrc in test directory
+        try:
+            cls.copy_dar_rc()
+        except Exception as e:
+            cls.logger.exception("Failed to copy .darrc to test directory")
+            raise
+        
+        cls.copy_scripts()
+        
         # Print variables to console
         cls.print_variables()
 
@@ -52,6 +64,16 @@ class BaseTestCase(unittest.TestCase):
         cls.logger = logging.getLogger(cls.__name__)
         cls.logger.info("Logger initialized for test case: %s", cls.test_case_name)
 
+    @classmethod
+    def copy_dar_rc(cls):
+        shutil.copy(cls.template_dar_rc, os.path.join(cls.test_dir, cls.dar_rc))
+ 
+    @classmethod
+    def copy_scripts(cls):
+        for script in os.listdir(cls.bin_dir):
+            if os.path.isfile(os.path.join(cls.bin_dir, script)):
+                shutil.copy(os.path.join(cls.bin_dir, script), os.path.join(cls.test_dir, "bin"))
+    
     @classmethod
     def create_directories_from_template(cls):
         try:
@@ -89,21 +111,25 @@ class BaseTestCase(unittest.TestCase):
         print(f"Template config file: {cls.template_config_file}")
         print(f"Config file: {cls.config_file}")
         print(f"Log file: {cls.log_file}")
-
+        print(f".darrc file: {cls.dar_rc}")
+ 
         cls.logger.info(f"Test case name: {cls.test_case_name}")
         cls.logger.info(f"Test directory: {cls.test_dir}")
         cls.logger.info(f"Template config file: {cls.template_config_file}")
         cls.logger.info(f"Config file: {cls.config_file}")
         cls.logger.info(f"Log file: {cls.log_file}")
+        cls.logger.info(f".darrc file: {cls.dar_rc}")
 
     def test_setup(self):
         try:
             # Test to ensure the setup is correct
             self.assertTrue(os.path.exists(self.test_dir))
+            self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'bin')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backups')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'restore')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backup.d')))
             self.assertTrue(os.path.exists(self.config_file))
+            self.assertTrue(os.path.exists(self.dar_rc))
         except AssertionError as e:
             self.logger.exception("Setup test failed")
             raise
