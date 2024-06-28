@@ -3,9 +3,10 @@ LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/test_log.log
 
 [DIRECTORIES]
 BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/
-TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
 BACKUP.D_DIR = /tmp/unit-test/@@test-case-name@@/backup.d/
-BIN_DIR =  /tmp/unit-test/@@test-case-name@@/bin/
+BIN_DIR = /tmp/unit-test/@@test-case-name@@/bin/
+DATA_DIR = /tmp/unit-test/@@test-case-name@@/data/
+TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
 
 [AGE]
 DIFF_AGE = 30

@@ -1,7 +1,9 @@
 import os
+from datetime import datetime
 import shutil
 import unittest
 import logging
+import sys
 from configparser import ConfigParser, NoSectionError
 
 class BaseTestCase(unittest.TestCase):
@@ -19,6 +21,12 @@ class BaseTestCase(unittest.TestCase):
         cls.dar_rc = os.path.join(cls.test_dir, ".darrc")
         cls.bin_dir = "../../src"
         cls.log_file = os.path.join(cls.test_dir, "test_log.log")
+        cls.datestamp = datetime.now().strftime('%Y-%m-%d')
+
+        
+        if os.path.exists(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
+
 
         # Create the unit test directory
         if not os.path.exists(cls.test_dir):
@@ -46,10 +54,11 @@ class BaseTestCase(unittest.TestCase):
         # Print variables to console
         cls.print_variables()
 
+
     @classmethod
     def tearDownClass(cls):
         # Clean up after tests - Comment out this block to preserve directories
-        pass
+        cls.logger.info("No operations in tearDownClass")
         # Uncomment the following lines to enable cleanup
         # if os.path.exists(cls.test_dir):
         #     shutil.rmtree(cls.test_dir)
@@ -66,13 +75,22 @@ class BaseTestCase(unittest.TestCase):
 
     @classmethod
     def copy_dar_rc(cls):
-        shutil.copy(cls.template_dar_rc, os.path.join(cls.test_dir, cls.dar_rc))
+        try:
+            shutil.copy(cls.template_dar_rc, os.path.join(cls.test_dir, cls.dar_rc))
+        except:
+            cls.logger.exception("Failed to copy {cls.template_dar_rc} to " + os.path.join(cls.test_dir, cls.dar_rc))
+            raise
+
  
     @classmethod
     def copy_scripts(cls):
-        for script in os.listdir(cls.bin_dir):
-            if os.path.isfile(os.path.join(cls.bin_dir, script)):
-                shutil.copy(os.path.join(cls.bin_dir, script), os.path.join(cls.test_dir, "bin"))
+        try:
+            for script in os.listdir(cls.bin_dir):
+                if os.path.isfile(os.path.join(cls.bin_dir, script)):
+                    shutil.copy(os.path.join(cls.bin_dir, script), os.path.join(cls.test_dir, "bin"))
+        except:
+            cls.logger.exception("Failed to copy script to " + os.path.join(cls.test_dir, "bin"))
+            raise
     
     @classmethod
     def create_directories_from_template(cls):
@@ -124,12 +142,15 @@ class BaseTestCase(unittest.TestCase):
         try:
             # Test to ensure the setup is correct
             self.assertTrue(os.path.exists(self.test_dir))
-            self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'bin')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backups')))
+            self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'data')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'restore')))
+            self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'bin')))
             self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backup.d')))
             self.assertTrue(os.path.exists(self.config_file))
             self.assertTrue(os.path.exists(self.dar_rc))
         except AssertionError as e:
             self.logger.exception("Setup test failed")
             raise
+        
+        
