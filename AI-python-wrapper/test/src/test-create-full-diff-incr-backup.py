@@ -83,7 +83,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             with open(os.path.join(self.test_dir, 'data', 'file2.txt'), 'a') as f:
                 f.write('This is an additional line.')
 
-            if self.run_diff_backup_script() != 0:
+            if self.run_backup_script("--differential-backup") != 0:
                 logging.error("Failed to create DIFF backup")
                 raise ValueError("DIFF backup failed")
 
@@ -100,7 +100,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             with open(os.path.join(self.test_dir, 'data', 'file3.txt'), 'a') as f:
                 f.write('This is an additional line.')
 
-            if self.run_incr_backup_script() != 0:
+            if self.run_backup_script("--incremental-backup") != 0:
                 logging.error("Failed to create INCR backup")
                 raise ValueError("INCR backup failed")
 
@@ -116,36 +116,17 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             self.logger.exception("Backup functionality test failed")
             raise e
             
-
-
-    
-    def run_backup_script(self):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '-d', "example", '--config-file', self.config_file]
+    def run_backup_script(self, type=""):
+        if type == "":
+            command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '-d', "example", '--config-file', self.config_file]
+        else:
+            command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), type, '-d', "example", '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
         if result.returncode != 0:
             logging.error(result.stderr)
         return result.returncode
-
-    def run_diff_backup_script(self):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '--differential','-d', "example", '--config-file', self.config_file]
-        logging.info(command)
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-        if result.returncode != 0:
-            logging.error(result.stderr)
-        return result.returncode
-
-    def run_incr_backup_script(self):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '--incremental','-d', "example", '--config-file', self.config_file]
-        logging.info(command)
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-        if result.returncode != 0:
-            logging.error(result.stderr)
-        return result.returncode
-
 
     def verify_backup_contents(self, expected_files, archive, check_saved=False):
         command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '--list-contents', archive, '--config-file', self.config_file]
@@ -169,9 +150,6 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
 
         return True
 
-
-
-    
 if __name__ == "__main__":
     unittest.main()
     
