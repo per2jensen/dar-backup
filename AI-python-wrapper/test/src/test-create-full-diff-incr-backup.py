@@ -110,11 +110,9 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
                 raise ValueError("INCR verify failed")
             else:
                 logging.info("Incremental backup verification succeeded")
-
-
         except Exception as e:
             self.logger.exception("Backup functionality test failed")
-            raise e
+            raise 
             
     def run_backup_script(self, type=""):
         if type == "":
