@@ -11,15 +11,13 @@ import configparser
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-VERSION = "0.1"
+VERSION = "alpha-0.2"
 
 # Check Python version compatibility
 MIN_PYTHON_VERSION = (3, 7)
 if sys.version_info < MIN_PYTHON_VERSION:
     sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
     sys.exit(1)
-
-# Rest of the script follows...
 
 def setup_logging(log_file):
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
