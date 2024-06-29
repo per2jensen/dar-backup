@@ -8,6 +8,7 @@ import filecmp
 import logging
 import shlex
 import configparser
+import xml.etree.ElementTree as ET
 from datetime import datetime
 
 VERSION = "0.1"
@@ -99,26 +100,20 @@ def incremental_backup(backup_file, backup_definition, base_backup_file):
         logging.exception(f"Error during incremental backup with backup definition {backup_definition}: {e}. Continuing to next backup definition.")
         return
 
-def find_files_under_10MB(root_dir, relative_dirs):
+def find_files_under_10MB(backed_up_files):
     files_under_10MB = []
-    root_dir = root_dir.strip()
-    for relative_dir in relative_dirs:
-        directory = os.path.join(root_dir, relative_dir.strip())
-        logging.info(f"Searching in directory: {directory}")
-        for root, _, files in os.walk(directory):
-            for file in files:
-                file_path = os.path.join(root, file)
-                try:
-                    file_size = os.path.getsize(file_path)
-                    logging.debug(f"Found file: {file_path}, Size: {file_size} bytes")
-                    if file_size < 10 * 1024 * 1024:
-                        logging.info(f"File under 10MB: {file_path}")
-                        files_under_10MB.append(file_path)
-                except Exception as e:
-                    logging.exception(f"Error accessing file {file_path}: {e}")
+    for file_path in backed_up_files:
+        try:
+            file_size = os.path.getsize(file_path)
+            logging.debug(f"Found file: {file_path}, Size: {file_size} bytes")
+            if file_size < 10 * 1024 * 1024:
+                logging.info(f"File under 10MB: {file_path}")
+                files_under_10MB.append(file_path)
+        except Exception as e:
+            logging.exception(f"Error accessing file {file_path}: {e}")
     return files_under_10MB
 
-def verify(backup_file, backup_definition, test_restore_dir):
+def verify(backup_file, backup_definition, test_restore_dir, backup_dir):
     test_command = ['dar', '-t', backup_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
     try:
@@ -126,43 +121,47 @@ def verify(backup_file, backup_definition, test_restore_dir):
         logging.info("Archive integrity test passed.")
     except Exception as e:
         logging.exception(f"Archive integrity test failed for {backup_file}: {e}")
+        raise
+
+    backed_up_files = get_backed_up_files(backup_file, backup_dir) 
+
+    files_under_10MB = find_files_under_10MB(backed_up_files)
+    if len(files_under_10MB) < 3:
+        logging.info("Not enough files under 10MB for verification, skipping")
         return
 
     with open(backup_definition, 'r') as f:
-        config_snippet = f.readlines()
-
-    root_dir = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-R')][0].strip()
-    relative_dirs = [arg.split(' ')[1] for arg in config_snippet if arg.startswith('-g')]
-
-    if not relative_dirs:
-        logging.info("No include or specific files found in the config snippet.")
-        return
-    
-    files_under_10MB = find_files_under_10MB(root_dir, relative_dirs)
-    if len(files_under_10MB) < 3:
-        logging.info("Not enough files under 10MB for verification in directories: " + ', '.join(relative_dirs))
-        return
+        backup_definition_content = f.readlines()
+        logging.debug(f"Backup definition: '{backup_definition}', content:\n{backup_definition_content}")
+    # Initialize a variable to hold the path after "-R"
+    root_path = None
+    # Iterate over the lines
+    for line in backup_definition_content:
+        line = line.strip()
+        if line.startswith("-R"):
+            # Capture the path which is after the space following "-R"
+            root_path = line.split("-R", 1)[1].strip()
+            break
 
     random_files = random.sample(files_under_10MB, 3)
-    for file in random_files:
-        relative_path = os.path.relpath(file, root_dir)
-        restored_file_path = os.path.join(test_restore_dir, relative_path)
+    for restored_file_path in random_files:
         try:
             os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
         except Exception as e:
             logging.exception(f"Error creating directory for {restored_file_path}: {e}")
             continue
         
-        command = ['dar', '-x', backup_file, '-g', relative_path, '-R', test_restore_dir, '-O', '-Q']
+
+        command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', test_restore_dir, '-O', '-Q']
         logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
         try:
             run_command(command)
         except Exception as e:
-            logging.exception(f"Error restoring file {relative_path} from backup {backup_file}: {e}")
-            continue
+            logging.exception(f"Error restoring file '{restored_file_path}' from backup {backup_file}: {e}")
+            raise
 
-        if not filecmp.cmp(file, restored_file_path, shallow=False):
-            logging.error(f"File {relative_path} did not match the original after restoration.")
+        if not filecmp.cmp(os.path.join(root_path, restored_file_path), os.path.join(test_restore_dir, restored_file_path), shallow=False):
+            logging.error(f"File '{restored_file_path}' did not match the original after restoration.")
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
@@ -210,9 +209,45 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
         sys.stderr.write(f"Error: Restore operation failed for {backup_name}: {e}\n")
         sys.exit(1)
 
+
+# Function to recursively find <File> tags and build their full paths
+def find_files_with_paths(element, current_path=""):
+    files = []
+    if element.tag == "Directory":
+        current_path = f"{current_path}/{element.get('name')}"
+    for child in element:
+        if child.tag == "File":
+            file_path = f"{current_path}/{child.get('name')}"
+            files.append(file_path)
+        elif child.tag == "Directory":
+            files.extend(find_files_with_paths(child, current_path))
+    return files
+
+
+def get_backed_up_files(backup_name, backup_dir):
+    backup_path = os.path.join(backup_dir, backup_name)
+    command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
+    logging.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    try:
+        output = run_command(command)
+        # Parse the XML data
+        root = ET.fromstring(output)
+        output = None  # help gc
+        # Extract full paths for all <File> elements
+        file_paths = find_files_with_paths(root)
+        root = None # help gc
+        logging.debug(f"Backed up files in dar archive: '{backup_name}'")
+        logging.debug(file_paths)
+        return file_paths
+    except Exception as e:
+        logging.exception(f"Error listing contents of archive {backup_name}: {e}")
+        print(f"Error listing contents of the archive: {e}")
+        sys.exit(1)
+
+
 def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
-    command = ['dar', '-l', backup_path, '-am', '-Q']
+    command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
     if selection:
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
@@ -247,13 +282,13 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir):
             backup(backup_file, backup_definition_path)
 
             logging.info("Starting verification...")
-            verify(backup_file, backup_definition_path, test_restore_dir)
+            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
             logging.info("Verification completed successfully.")
     except Exception as e:
         logging.exception(f"Error during backup process: {e}")
         sys.stderr.write(f"Error: Backup process failed: {e}\n")
 
-def perform_differential_backup(args, backup_d, backup_dir):
+def perform_differential_backup(args, backup_d, backup_dir, test_restore_dir):
     backup_definitions = []
     if args.backup_definition:
         backup_definitions.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
@@ -279,11 +314,15 @@ def perform_differential_backup(args, backup_d, backup_dir):
             logging.info(f"Latest FULL backup for '{backup_definition}': {latest_full_backup_base}")
 
             differential_backup(backup_file, backup_definition_path, latest_full_backup_base)
+ 
+            logging.info("Starting verification...")
+            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
+            logging.info("Verification completed successfully.")
     except Exception as e:
         logging.exception(f"Error during differential backup process: {e}")
         sys.stderr.write(f"Error: Differential backup process failed: {e}\n")
 
-def perform_incremental_backup(args, backup_d, backup_dir):
+def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
     backup_definitions = []
     if args.backup_definition:
         backup_definitions.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
@@ -309,6 +348,9 @@ def perform_incremental_backup(args, backup_d, backup_dir):
             logging.info(f"Latest DIFF backup for '{backup_definition}': {latest_diff_backup_base}")
 
             incremental_backup(backup_file, backup_definition_path, latest_diff_backup_base)
+            logging.info("Starting verification...")
+            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
+            logging.info("Verification completed successfully.")
     except Exception as e:
         logging.exception(f"Error during incremental backup process: {e}")
         sys.stderr.write(f"Error: Incremental backup process failed: {e}\n")
@@ -355,9 +397,9 @@ def main():
         sys.exit(0)
 
     if args.incremental_backup:
-        perform_incremental_backup(args, backup_d, backup_dir)
+        perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir)
     elif args.differential_backup:
-        perform_differential_backup(args, backup_d, backup_dir)
+        perform_differential_backup(args, backup_d, backup_dir,  test_restore_dir)
     else:
         perform_backup(args, backup_d, backup_dir, test_restore_dir)
 
