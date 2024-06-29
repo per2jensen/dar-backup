@@ -20,7 +20,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
         cls.create_test_files()
 
         # setup backup definitions
-        cls.logger.info("generatge backup definition")
+        cls.logger.info("generate backup definition")
         cls.create_backup_definitions()
         cls.logger.info("backupdef created")
 
