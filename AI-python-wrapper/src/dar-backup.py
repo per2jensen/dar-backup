@@ -356,23 +356,27 @@ def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
 def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {VERSION}")
+    print(f"dar-backup.py source code is here: https://github.com/per2jensen/dar-backup")
     print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 def main():
-    parser = argparse.ArgumentParser(description="Backup and verify using dar with config snippets.")
-    parser.add_argument('-d', '--backup-definition', help="Specific config snippet file to use.")
+    parser = argparse.ArgumentParser(description="Backup and verify using dar backup definitions.")
+    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
     parser.add_argument('--list', action='store_true', help="List available backups.")
     parser.add_argument('--restore', help="Restore a specific backup file.")
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
-    parser.add_argument('--selection', help="Selection criteria for restoring specific files.")
+    parser.add_argument('--selection', help="dar file selection for listing/restoring specific files.")
+    parser.add_argument('--help-selection', help="dar file selection for listing/restoring specific files.")
     parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to the configuration file", default=os.path.join(os.path.dirname(__file__), '../conf/backup_script.conf'))
+    parser.add_argument('--config-file', '-c', type=str, help="Path to 'backup_script.conf'", default=os.path.join(os.path.dirname(__file__), '../conf/backup_script.conf'))
     args = parser.parse_args()
+
+
 
     if args.version:
         show_version()
