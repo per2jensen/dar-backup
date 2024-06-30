@@ -1,5 +1,5 @@
-[DEFAULT]
-LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/test_log.log
+[MISC]
+LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/dar-backup.log
 
 [DIRECTORIES]
 BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/

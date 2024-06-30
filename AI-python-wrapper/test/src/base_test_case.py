@@ -111,8 +111,8 @@ class BaseTestCase(unittest.TestCase):
         cls.logger.info(f"Configuration content:\n{config_content}")
 
         try:
-            for key, value in config.items('DIRECTORIES'):
-                dir_path = value
+            for key in config["DIRECTORIES"]:
+                dir_path = config["DIRECTORIES"][key]
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path, exist_ok=True)
                     cls.logger.info(f"Created directory: {dir_path}")

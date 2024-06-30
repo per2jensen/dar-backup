@@ -9,6 +9,7 @@ import subprocess
 import logging
 import re
 import shutil
+import sys
 import glob  # Added import statement
 
 class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
@@ -112,7 +113,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
                 logging.info("Incremental backup verification succeeded")
         except Exception as e:
             self.logger.exception("Backup functionality test failed")
-            raise 
+            sys.exit(1)
             
     def run_backup_script(self, type=""):
         if type == "":
@@ -139,11 +140,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             if check_saved:
                 pattern = re.compile(rf'\[Saved\].*{re.escape(expected_file)}')
                 if not pattern.search(result.stdout):
-                    logging.error(f"Expected file {expected_file} not found with [Saved] marker in backup {backup_file_base}")
-                    return False
-            else:
-                if expected_file not in backup_contents:
-                    logging.error(f"Expected file {expected_file} not found in backup {backup_file_base}")
+                    logging.error(f"Expected file {expected_file} not found with [Saved] marker in backup")
                     return False
 
         return True

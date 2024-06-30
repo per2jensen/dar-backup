@@ -13,6 +13,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 
 VERSION = "alpha-0.2"
+ERRORS_ENCOUNTERED=[]
+
 
 # Check Python version compatibility
 MIN_PYTHON_VERSION = (3, 7)
@@ -20,8 +22,8 @@ if sys.version_info < MIN_PYTHON_VERSION:
     sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
     sys.exit(1)
 
+
 def setup_logging(log_file):
-    print (log_file)
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
                         format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -33,12 +35,11 @@ def log_function_params(func):
         return func(*args, **kwargs)
     return wrapper
 
-@log_function_params
 def run_command(command):
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
-        logging.info(stdout)
+        logging.debug(stdout)
         if process.returncode != 0:
             logging.error(stderr)
             raise Exception(f"Command: '{" ".join(map(shlex.quote, command))}' failed with return code {process.returncode}: {stderr}")
@@ -49,12 +50,11 @@ def run_command(command):
         logging.exception(f"Error running command:  '{' '.join(map(shlex.quote, command))}': {e}")
         raise
 
-@log_function_params
 def read_config(config_file):
     config = configparser.ConfigParser()
     try:
         config.read(config_file)
-        logfile_location = config['DEFAULT']['LOGFILE_LOCATION']
+        logfile_location = config['MISC']['LOGFILE_LOCATION']
         backup_dir = config['DIRECTORIES']['BACKUP_DIR']
         test_restore_dir = config['DIRECTORIES']['TEST_RESTORE_DIR']
         backup_d = config['DIRECTORIES']['BACKUP.D_DIR']
@@ -68,10 +68,9 @@ def read_config(config_file):
         sys.exit(1)
     return logfile_location, backup_dir, test_restore_dir, backup_d
 
-@log_function_params
 def backup(backup_file, backup_definition):
     if os.path.exists(backup_file + '.1.dar'):
-        logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+        logging.info(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-Q']
@@ -81,13 +80,13 @@ def backup(backup_file, backup_definition):
         logging.info("Backup completed successfully.")
     except Exception as e:
         logging.exception(f"Error during backup with backup definition {backup_definition}: {e}. Continuing to next backup definition.")
+        ERRORS_ENCOUNTERED.append = "Error processing FULL backup definition '{backup_definition}'"
         return
 
 
-@log_function_params
 def differential_backup(backup_file, backup_definition, base_backup_file):
     if os.path.exists(backup_file + '.1.dar'):
-        logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+        logging.info(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
@@ -97,13 +96,13 @@ def differential_backup(backup_file, backup_definition, base_backup_file):
         logging.info("Differential backup completed successfully.")
     except Exception as e:
         logging.exception(f"Error during differential backup with backup definition {backup_definition}: {e}. Continuing to next backup definition.")
+        ERRORS_ENCOUNTERED.append = "Error processing DIFF backup definition '{backup_definition}'"
         return
     
 
-@log_function_params
 def incremental_backup(backup_file, backup_definition, base_backup_file):
     if os.path.exists(backup_file + '.1.dar'):
-        logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+        logging.info(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
@@ -113,24 +112,22 @@ def incremental_backup(backup_file, backup_definition, base_backup_file):
         logging.info("Incremental backup completed successfully.")
     except Exception as e:
         logging.exception(f"Error during incremental backup with backup definition {backup_definition}: {e}. Continuing to next backup definition.")
+        ERRORS_ENCOUNTERED.append = "Error processing INCR backup definition '{backup_definition}'"
         return
 
 
-@log_function_params
 def find_files_under_10MB(backed_up_files):
     files_under_10MB = []
     for file_path in backed_up_files:
         try:
             file_size = os.path.getsize(file_path)
-            logging.debug(f"Found file: {file_path}, Size: {file_size} bytes")
             if file_size < 10 * 1024 * 1024:
-                logging.info(f"File under 10MB: {file_path}")
+                logging.debug(f"File under 10MB: {file_path}")
                 files_under_10MB.append(file_path)
         except Exception as e:
             logging.exception(f"Error accessing file {file_path}: {e}")
     return files_under_10MB
 
-@log_function_params
 def verify(backup_file, backup_definition, test_restore_dir, backup_dir):
     test_command = ['dar', '-t', backup_file, '-Q']
     logging.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
@@ -139,6 +136,7 @@ def verify(backup_file, backup_definition, test_restore_dir, backup_dir):
         logging.info("Archive integrity test passed.")
     except Exception as e:
         logging.exception(f"Archive integrity test failed for {backup_file}: {e}")
+        ERRORS_ENCOUNTERED.append = f"Archive integrity test failed for {backup_file}"
         raise
 
     backed_up_files = get_backed_up_files(backup_file, backup_dir) 
@@ -178,12 +176,14 @@ def verify(backup_file, backup_definition, test_restore_dir, backup_dir):
             logging.exception(f"Error restoring file '{restored_file_path}' from backup {backup_file}: {e}")
             raise
 
-        if not filecmp.cmp(os.path.join(root_path, restored_file_path), os.path.join(test_restore_dir, restored_file_path), shallow=False):
-            logging.error(f"File '{restored_file_path}' did not match the original after restoration.")
+        logging.info("Comparing backed-up file: " + os.path.join(test_restore_dir, restored_file_path.lstrip("/")) + " with " + os.path.join(root_path, restored_file_path.lstrip("/")))
+        if not filecmp.cmp(                         os.path.join(test_restore_dir, restored_file_path.lstrip("/")),             os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
+           logging.error(f"File '{restored_file_path}' did not match the original after restoration.")
+           ERRORS_ENCOUNTERED.append = f"Restore compare failure of {os.path.join(test_restore_dir, restored_file_path.lstrip("/"))}"
+
     
     logging.info("Verification of 3 random files under 10MB completed successfully.")
 
-@log_function_params
 def list_backups(backup_dir, backup_definition=None):
     try:
         backups = set(f.rsplit('.', 2)[0] for f in os.listdir(backup_dir) if f.endswith('.dar'))
@@ -201,10 +201,8 @@ def list_backups(backup_dir, backup_definition=None):
     except Exception as e:
         logging.exception(f"Error listing backups in directory {backup_dir}: {e}")
         sys.stderr.write(f"Error: Unable to list backups in directory {backup_dir}: {e}\n")
-        sys.exit(1)
 
 
-@log_function_params
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     backup_file = os.path.join(backup_dir, backup_name)
     command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
@@ -230,7 +228,6 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
 
 
 # Function to recursively find <File> tags and build their full paths
-@log_function_params
 def find_files_with_paths(element, current_path=""):
     files = []
     if element.tag == "Directory":
@@ -244,7 +241,6 @@ def find_files_with_paths(element, current_path=""):
     return files
 
 
-@log_function_params
 def get_backed_up_files(backup_name, backup_dir):
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
@@ -262,11 +258,10 @@ def get_backed_up_files(backup_name, backup_dir):
         return file_paths
     except Exception as e:
         logging.exception(f"Error listing contents of archive {backup_name}: {e}")
-        print(f"Error listing contents of the archive: {e}")
-        sys.exit(1)
+        print(f"Error listing contents of the archive: {backup_name}")
+        ERRORS_ENCOUNTERED.append = f"Error listing contents of the archive: {backup_name}"
 
 
-@log_function_params
 def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
@@ -282,20 +277,19 @@ def list_contents(backup_name, backup_dir, selection=None):
         print(f"Error listing contents of the archive: {e}")
         sys.exit(1)
 
-@log_function_params
 def perform_backup(args, backup_d, backup_dir, test_restore_dir):
     logging.info("Starting FULL backup(s)")
     backup_definitions = []
 
-    if args.backup_definition:
-        backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
-    else:
-        for root, _, files in os.walk(backup_d):
-            for file in files:
-                backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
-
-    logging.debug(f"Using backup definitions: {backup_definitions}")
     try:
+        if args.backup_definition:
+            backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
+        else:
+            for root, _, files in os.walk(backup_d):
+                for file in files:
+                    backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
+
+        logging.debug(f"Using backup definitions: {backup_definitions}")
         for backup_definition, backup_definition_path in backup_definitions:
             timestamp = datetime.now().strftime('%Y-%m-%d')
             backup_file = os.path.join(backup_dir, f"{backup_definition}_FULL_{timestamp}")
@@ -313,7 +307,6 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir):
         logging.exception(f"Error during backup process: {e}")
         sys.stderr.write(f"Error: Backup process failed: {e}\n")
 
-@log_function_params
 def perform_differential_backup(args, backup_d, backup_dir, test_restore_dir):
     backup_definitions = []
     if args.backup_definition:
@@ -348,7 +341,6 @@ def perform_differential_backup(args, backup_d, backup_dir, test_restore_dir):
         logging.exception(f"Error during differential backup process: {e}")
         sys.stderr.write(f"Error: Differential backup process failed: {e}\n")
 
-@log_function_params
 def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
     backup_definitions = []
     if args.backup_definition:
@@ -382,7 +374,6 @@ def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
         logging.exception(f"Error during incremental backup process: {e}")
         sys.stderr.write(f"Error: Incremental backup process failed: {e}\n")
 
-@log_function_params
 def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {VERSION}")
@@ -425,7 +416,6 @@ See dar documentation on fileselection: http://dar.linux.free.fr/doc/man/dar.htm
 """
     print(examples)
 
-@log_function_params
 def main():
     parser = argparse.ArgumentParser(description="Backup and verify using dar backup definitions.")
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
@@ -438,8 +428,10 @@ def main():
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+    parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf'))
     args, unknown = parser.parse_known_args()
+    args.verbose and print("Current directory: " + os.path.normpath(os.path.dirname(__file__)))
 
     if args.version:
         show_version()
@@ -451,6 +443,13 @@ def main():
 
 
     logfile_location, backup_dir, test_restore_dir, backup_d = read_config(args.config_file)
+    args.verbose and  print(f"Logfile location: {logfile_location}")
+    if not backup_d.startswith("/"):
+        backup_d = os.path.normpath(os.path.join(os.path.dirname(__file__), backup_d))
+    #print(f"Backup.d: {backup_d}")
+    args.verbose and print(f"Test restore dir:: {test_restore_dir}")
+    #print(f"Backup dir: {backup_dir}")
+    
     setup_logging(logfile_location)
 
     if args.list:
@@ -472,6 +471,16 @@ def main():
         perform_differential_backup(args, backup_d, backup_dir,  test_restore_dir)
     else:
         perform_backup(args, backup_d, backup_dir, test_restore_dir)
+
+
+    if len(ERRORS_ENCOUNTERED) > 0:
+        args.verbose and print("Errors encountered:")
+        args.verbose and [print(error) for error in ERRORS_ENCOUNTERED]
+        sys.exit(1)
+    else:
+        args.verbose and print("No errors encountered")
+        sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

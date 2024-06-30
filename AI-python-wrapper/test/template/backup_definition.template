@@ -1,7 +1,0 @@
--Q 
--B @@test-case-dir@@/.darrc
--R /
--s 10G
--z6
--am
--g @@test-case-dir@@/data
