@@ -116,9 +116,9 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             
     def run_backup_script(self, type=""):
         if type == "":
-            command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '-d', "example", '--config-file', self.config_file]
+            command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '-d', "example", '--config-file', self.config_file]
         else:
-            command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), type, '-d', "example", '--config-file', self.config_file]
+            command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), type, '-d', "example", '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
@@ -127,7 +127,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
         return result.returncode
 
     def verify_backup_contents(self, expected_files, archive, check_saved=False):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "backup_script.py"), '--list-contents', archive, '--config-file', self.config_file]
+        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list-contents', archive, '--config-file', self.config_file]
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
         if result.returncode != 0:

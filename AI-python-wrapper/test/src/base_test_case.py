@@ -15,8 +15,8 @@ class BaseTestCase(unittest.TestCase):
         # Use the name of the inheriting class to determine the test case name, preserving underscores
         cls.test_case_name = cls.__name__
         cls.test_dir = f"/tmp/unit-test/{cls.test_case_name.lower()}"
-        cls.template_config_file = "../template/backup_script.conf.template"
-        cls.config_file = os.path.join(cls.test_dir, "backup_script.conf")
+        cls.template_config_file = "../template/dar-backup.conf.template"
+        cls.config_file = os.path.join(cls.test_dir, "dar-backup.conf")
         cls.template_dar_rc = "../template/.darrc"
         cls.dar_rc = os.path.join(cls.test_dir, ".darrc")
         cls.bin_dir = "../../src"
