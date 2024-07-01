@@ -303,6 +303,9 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir):
             logging.info("Starting verification...")
             verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
             logging.info("Verification completed successfully.")
+            logging.info("Generate par2 redundency files")
+            generate_par2_files(backup_file, backup_dir)
+            logging.info("par2 files completed successfully.")
     except Exception as e:
         logging.exception(f"Error during backup process: {e}")
         sys.stderr.write(f"Error: Backup process failed: {e}\n")
@@ -337,6 +340,9 @@ def perform_differential_backup(args, backup_d, backup_dir, test_restore_dir):
             logging.info("Starting verification...")
             verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
             logging.info("Verification completed successfully.")
+            logging.info("Generate par2 redundency files")
+            generate_par2_files(backup_file, backup_dir)
+            logging.info("par2 files completed successfully.")
     except Exception as e:
         logging.exception(f"Error during differential backup process: {e}")
         sys.stderr.write(f"Error: Differential backup process failed: {e}\n")
@@ -370,9 +376,33 @@ def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
             logging.info("Starting verification...")
             verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
             logging.info("Verification completed successfully.")
+            logging.info("Generate par2 redundency files")
+            generate_par2_files(backup_file, backup_dir)
+            logging.info("par2 files completed successfully.")
     except Exception as e:
         logging.exception(f"Error during incremental backup process: {e}")
         sys.stderr.write(f"Error: Incremental backup process failed: {e}\n")
+
+
+def generate_par2_files(backup_file, backup_dir):
+    try:
+        for filename in os.listdir(backup_dir):
+            if os.path.basename(backup_file) in filename:
+                # Construct the full path to the file
+                file_path = os.path.join(backup_dir, filename)
+                # Run the par2 command to generate redundancy files with 5% error correction
+                command = ['par2', 'create', '-r5', file_path]
+                subprocess.run(command, check=True)
+                logging.debug(f"par2 files generated for {file_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error generating par2 files for {file_path}: {e}")
+        ERRORS_ENCOUNTERED.append(f"Error generating par2 files for {file_path}")
+        raise
+    except Exception as e:
+        logging.exception("Unexpected error occurred when generating par2 files: {e}")
+        ERRORS_ENCOUNTERED.append(f"Error generating par2 files for {file_path}")
+        raise
+
 
 def show_version():
     script_name = os.path.basename(sys.argv[0])
