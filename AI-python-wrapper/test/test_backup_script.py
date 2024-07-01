@@ -15,7 +15,5 @@ class Test_Backup_Script(BaseTestCase):
 
 
 if __name__ == '__main__':
-    print("TEST")
-    
     unittest.main()
     

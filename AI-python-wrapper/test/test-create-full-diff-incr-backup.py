@@ -114,7 +114,8 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
         except Exception as e:
             self.logger.exception("Backup functionality test failed")
             sys.exit(1)
-            
+        self.logger.info("test_backup_functionality() finished successfully")
+
     def run_backup_script(self, type=""):
         if type == "":
             command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '-d', "example", '--config-file', self.config_file]
