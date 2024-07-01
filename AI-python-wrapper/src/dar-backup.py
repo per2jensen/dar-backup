@@ -277,111 +277,53 @@ def list_contents(backup_name, backup_dir, selection=None):
         print(f"Error listing contents of the archive: {e}")
         sys.exit(1)
 
-def perform_backup(args, backup_d, backup_dir, test_restore_dir):
-    logging.info("Starting FULL backup(s)")
+
+def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type):
     backup_definitions = []
 
-    try:
-        if args.backup_definition:
-            backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
-        else:
-            for root, _, files in os.walk(backup_d):
-                for file in files:
-                    backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
+    if args.backup_definition:
+        backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
+    else:
+        for root, _, files in os.walk(backup_d):
+            for file in files:
+                backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
 
-        logging.debug(f"Using backup definitions: {backup_definitions}")
+    try:
         for backup_definition, backup_definition_path in backup_definitions:
             timestamp = datetime.now().strftime('%Y-%m-%d')
-            backup_file = os.path.join(backup_dir, f"{backup_definition}_FULL_{timestamp}")
+            backup_file = os.path.join(backup_dir, f"{backup_definition}_{backup_type}_{timestamp}")
 
             if os.path.exists(backup_file + '.1.dar'):
                 logging.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
                 continue
 
-            backup(backup_file, backup_definition_path)
+            if backup_type == 'FULL':
+                backup(backup_file, backup_definition_path)
+            else:
+                base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
+                base_backups = sorted(
+                    [f for f in os.listdir(backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
+                    key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
+                )
+                if not base_backups:
+                    logging.error(f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup.")
+                    continue
+
+                latest_base_backup = os.path.join(backup_dir, base_backups[-1].rsplit('.', 2)[0])
+                if backup_type == 'DIFF':
+                    differential_backup(backup_file, backup_definition_path, latest_base_backup)
+                elif backup_type == 'INCR':
+                    incremental_backup(backup_file, backup_definition_path, latest_base_backup)
 
             logging.info("Starting verification...")
             verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
             logging.info("Verification completed successfully.")
-            logging.info("Generate par2 redundency files")
+            logging.info("Generate par2 redundancy files")
             generate_par2_files(backup_file, backup_dir)
             logging.info("par2 files completed successfully.")
     except Exception as e:
-        logging.exception(f"Error during backup process: {e}")
-        sys.stderr.write(f"Error: Backup process failed: {e}\n")
-
-def perform_differential_backup(args, backup_d, backup_dir, test_restore_dir):
-    backup_definitions = []
-    if args.backup_definition:
-        backup_definitions.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
-    else:
-        for root, _, files in os.walk(backup_d):
-            for file in files:
-                backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
-
-    try:
-        for backup_definition, backup_definition_path in backup_definitions:
-            timestamp = datetime.now().strftime('%Y-%m-%d')
-            backup_file = os.path.join(backup_dir, f"{backup_definition}_DIFF_{timestamp}")
-
-            full_backups = sorted(
-                [f for f in os.listdir(backup_dir) if f.startswith(f"{backup_definition}_FULL_") and f.endswith('.1.dar')],
-                key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
-            )
-            if not full_backups:
-                logging.error(f"No FULL backup found for {backup_definition}. Skipping differential backup.")
-                continue
-
-            latest_full_backup_base = os.path.join(backup_dir, full_backups[-1].rsplit('.', 2)[0])
-            logging.info(f"Latest FULL backup for '{backup_definition}': {latest_full_backup_base}")
-
-            differential_backup(backup_file, backup_definition_path, latest_full_backup_base)
- 
-            logging.info("Starting verification...")
-            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
-            logging.info("Verification completed successfully.")
-            logging.info("Generate par2 redundency files")
-            generate_par2_files(backup_file, backup_dir)
-            logging.info("par2 files completed successfully.")
-    except Exception as e:
-        logging.exception(f"Error during differential backup process: {e}")
-        sys.stderr.write(f"Error: Differential backup process failed: {e}\n")
-
-def perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir):
-    backup_definitions = []
-    if args.backup_definition:
-        backup_definitions.append((args.backup_definition, os.path.join(backup_d, args.backup_definition)))
-    else:
-        for root, _, files in os.walk(backup_d):
-            for file in files:
-                backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
-
-    try:
-        for backup_definition, backup_definition_path in backup_definitions:
-            timestamp = datetime.now().strftime('%Y-%m-%d')
-            backup_file = os.path.join(backup_dir, f"{backup_definition}_INCR_{timestamp}")
-
-            diff_backups = sorted(
-                [f for f in os.listdir(backup_dir) if f.startswith(f"{backup_definition}_DIFF_") and f.endswith('.1.dar')],
-                key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
-            )
-            if not diff_backups:
-                logging.error(f"No DIFF backup found for {backup_definition}. Skipping incremental backup.")
-                continue
-
-            latest_diff_backup_base = os.path.join(backup_dir, diff_backups[-1].rsplit('.', 2)[0])
-            logging.info(f"Latest DIFF backup for '{backup_definition}': {latest_diff_backup_base}")
-
-            incremental_backup(backup_file, backup_definition_path, latest_diff_backup_base)
-            logging.info("Starting verification...")
-            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir)
-            logging.info("Verification completed successfully.")
-            logging.info("Generate par2 redundency files")
-            generate_par2_files(backup_file, backup_dir)
-            logging.info("par2 files completed successfully.")
-    except Exception as e:
-        logging.exception(f"Error during incremental backup process: {e}")
-        sys.stderr.write(f"Error: Incremental backup process failed: {e}\n")
+        logging.exception(f"Error during {backup_type} backup process: {e}")
+        sys.stderr.write(f"Error: {backup_type} backup process failed: {e}\n")
 
 
 def generate_par2_files(backup_file, backup_dir):
@@ -496,11 +438,11 @@ def main():
         sys.exit(0)
 
     if args.incremental_backup:
-        perform_incremental_backup(args, backup_d, backup_dir, test_restore_dir)
+        perform_backup(args, backup_d, backup_dir, test_restore_dir, "INCR")
     elif args.differential_backup:
-        perform_differential_backup(args, backup_d, backup_dir,  test_restore_dir)
+        perform_backup(args, backup_d, backup_dir,  test_restore_dir, "DIFF")
     else:
-        perform_backup(args, backup_d, backup_dir, test_restore_dir)
+        perform_backup(args, backup_d, backup_dir, test_restore_dir, "FULL")
 
 
     if len(ERRORS_ENCOUNTERED) > 0:
