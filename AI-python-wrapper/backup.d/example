@@ -1,7 +1,29 @@
+# Always answer "no" if dar stop and asks a question.
+# It leads to dar stopping
 -Q 
--R /
--s 10G
--z6
+
+# Switch to ordered selection mode, which means that the following
+# options will be considered top to bottom
 -am
+
+# The Root dir
+-R /
+
+# Directories to backup below the Root dir
 -g home/pj/tmp
 -P home/pj/tmp/NEF
+
+# Directories to exclude below the Root dir, using the `-P` option
+-P home/pj/exclude_this_dir
+
+
+# Slice size
+-s 10G
+
+# Compression level
+-z6
+
+# bypass directores marked as cache directories
+# http://dar.linux.free.fr/doc/Features.html
+--cache-directory-tagging
+
