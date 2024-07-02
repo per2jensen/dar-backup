@@ -385,7 +385,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 def show_examples():
     examples = """
 FULL back of all backup definitions in backup.d:
-  'python3 dar-backup.py'
+  'python3 dar-backup.py  --full-backup'
 
 FULL back of a single backup definition in backup.d
   'python3 dar-backup.py -d <name of file in backup.d/>'
@@ -411,7 +411,7 @@ directory "path/to/a/dir" where the path is relative to root of the backup.
 
 python3 dar-backup.py --restore <name of dar archive>  --selection "-I '*2024-07-01*' -g path/to/a/dir"
 
-See dar documentation on fileselection: http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS
+See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS
 """
     print(examples)
 
@@ -423,10 +423,10 @@ def main():
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
     parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf'))
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
-    parser.add_argument('--list', action='store_true', help="List available backups.")
-    parser.add_argument('--list-contents', help="List the contents of a specific backup file.")
-    parser.add_argument('--selection', help="dar file selection for listing/restoring specific files.")
-    parser.add_argument('--restore', help="Restore files and/or directories.")
+    parser.add_argument('--list', action='store_true', help="List available archives.")
+    parser.add_argument('--list-contents', help="List the contents of the specified archive.")
+    parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
+    parser.add_argument('--restore', help="Restore specified archive.")
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`")
@@ -469,6 +469,8 @@ def main():
     elif args.restore:
         restore_dir = args.restore_dir if args.restore_dir else test_restore_dir
         restore_backup(args.restore, backup_dir, restore_dir, args.selection)
+    else:
+        parser.print_help()
 
 
     if len(ERRORS_ENCOUNTERED) > 0:
