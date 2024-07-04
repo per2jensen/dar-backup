@@ -1,6 +1,7 @@
 [MISC]
 LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20
+MIN_SIZE_VERIFICATION_MB = 0
 NO_FILES_VERIFICATION = 5
 
 [DIRECTORIES]
