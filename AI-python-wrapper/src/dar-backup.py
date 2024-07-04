@@ -149,11 +149,14 @@ def find_files_under_xxMB(backed_up_files, min_size_verification_mb, max_size_ve
     return files
 
 
-def verify(backup_file, backup_definition, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification):
+def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification):
     test_command = ['dar', '-t', backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
     run_command(test_command)
     logger.info("Archive integrity test passed.")
+
+    if args.do_not_compare:
+        return
 
     backed_up_files = get_backed_up_files(backup_file, backup_dir) 
 
@@ -300,7 +303,7 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
                     incremental_backup(backup_file, backup_definition_path, latest_base_backup)
 
             logger.info("Starting verification...")
-            verify(backup_file, backup_definition_path, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            verify(args, backup_file, backup_definition_path, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification)
             logger.info("Verification completed successfully.")
             logger.info("Generate par2 redundancy files")
             generate_par2_files(backup_file, backup_dir)
@@ -415,6 +418,7 @@ def main():
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`")
+    parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
     args.verbose and print("Current directory: " + os.path.normpath(os.path.dirname(__file__)))
@@ -444,6 +448,7 @@ def main():
         args.verbose and (print(f"Backup dir:        {backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {logfile_location}"))
+        args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
     
         if args.full_backup and not args.differential_backup and not args.incremental_backup:
             perform_backup(args, backup_d, backup_dir, test_restore_dir, "FULL", min_size_verification_mb, max_size_verification_mb, no_files_verification)
