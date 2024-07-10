@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import configparser
 import datetime
@@ -15,9 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from time import time
 
-VERSION = "alpha-0.2"
+VERSION = "alpha-0.3"
 logger=None
-
 
 def setup_logging(log_file, log_level):
     global logger
@@ -57,15 +58,42 @@ def setup_logging(log_file, log_level):
 
 
 def run_command(command):
+    """
+    Executes a given command via subprocess and captures its output.
+
+    Args:
+        command (list): The command to be executed, represented as a list of strings.
+
+    Returns:
+        str: The standard output of the command.
+
+    Raises:
+        Exception: If the command exits with a non-zero return code, an exception is raised
+                   with the error output and the failed command.
+    """
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout, stderr = process.communicate()
     logger.trace(stdout)
     if process.returncode != 0:
         logger.error(stderr)
-        raise Exception(f"Command: {" ".join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
+        raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
     return stdout
 
 def read_config(config_file):
+    """
+    Reads configuration settings from a specified file.
+
+    Args:
+        config_file (str): The path to the configuration file.
+
+    Returns:
+        dict: A dictionary containing the configuration settings, including log file location,
+              maximum and minimum size verification thresholds, number of files verification,
+              and backup directory path.
+
+    Raises:
+        KeyError: If required configuration sections or keys are missing in the configuration file.
+    """
     config = configparser.ConfigParser()
     try:
         config.read(config_file)
@@ -91,6 +119,24 @@ def read_config(config_file):
     return logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification
 
 def backup(backup_file, backup_definition):
+    """
+    Performs a full backup using the 'dar' command.
+
+    This function initiates a full backup operation by constructing and executing a command
+    with the 'dar' utility. It checks if the backup file already exists to avoid overwriting
+    previous backups. If the backup file does not exist, it proceeds with the backup operation.
+
+    Args:
+        backup_file (str): The base name of the backup file. The actual backup will be saved
+                           as '{backup_file}.1.dar'.
+        backup_definition (str): The path to the backup definition file. This file contains
+                                 specific instructions for the 'dar' utility, such as which
+                                 directories to include or exclude.
+
+    Note:
+        This function logs an error and returns early if the backup file already exists.
+        It logs the command being executed and reports upon successful completion of the backup.
+    """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
@@ -102,6 +148,26 @@ def backup(backup_file, backup_definition):
 
 
 def differential_backup(backup_file, backup_definition, base_backup_file):
+    """
+    Creates a differential backup based on a specified base backup.
+
+    This function performs a differential backup by comparing the current state of the data
+    against a specified base backup file. It captures only the changes made since that base
+    backup, resulting in a smaller and faster backup process compared to a full backup.
+
+    Args:
+        backup_file (str): The base name for the differential backup file. The actual backup
+                           will be saved as '{backup_file}.1.dar'.
+        backup_definition (str): The path to the backup definition file. This file contains
+                                 specific instructions for the 'dar' utility, such as which
+                                 directories to include or exclude.
+        base_backup_file (str): The base name of the full backup file that serves as the
+                                reference point for the differential backup.
+
+    Note:
+        This function logs an error and returns early if the differential backup file already exists.
+        It logs the command being executed and reports upon successful completion of the differential backup.
+    """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
@@ -111,20 +177,81 @@ def differential_backup(backup_file, backup_definition, base_backup_file):
     logger.info("Differential backup completed successfully.")
 
 
-def incremental_backup(backup_file, backup_definition, base_backup_file):
+def incremental_backup(backup_file, backup_definition, last_backup_file):
+    """
+    Creates an incremental backup based on the last backup file.
+
+    This function performs an incremental backup by comparing the current state of the data
+    against the last backup file, whether it's a full backup or the most recent incremental backup.
+    It captures only the changes made since that last backup, making it efficient for frequent
+    backups with minimal data changes.
+
+    Args:
+        backup_file (str): The base name for the incremental backup file. The actual backup
+                           will be saved with a unique identifier to distinguish it from other backups.
+        backup_definition (str): The path to the backup definition file. This file contains
+                                 specific instructions for the 'dar' utility, such as which
+                                 directories to include or exclude.
+        last_backup_file (str): The base name of the last backup file (full or incremental) that
+                                serves as the reference point for the incremental backup.
+
+    Note:
+        This function checks if the incremental backup file already exists to prevent overwriting
+        previous backups. It logs the command being executed and reports upon successful completion
+        of the incremental backup.
+    """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
-    command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
+    command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', last_backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     run_command(command)
     logger.info("Incremental backup completed successfully.")
 
 
+# Function to recursively find <File> tags and build their full paths
+def find_files_with_paths(element, current_path=""):
+    """
+    Recursively finds files within a directory element and returns a list of file paths with their sizes.
 
-def find_files_under_xxMB(backed_up_files, min_size_verification_mb, max_size_verification_mb):
-    """Convert dar file size from the xml to a number and compare..."""
+    Args:
+        element (Element): The directory element to search within.
+        current_path (str, optional): The current path of the directory element. Defaults to "".
+
+    Returns:
+        list: A list of tuples containing file paths and their sizes.
+    """
+    files = []
+    if element.tag == "Directory":
+        current_path = f"{current_path}/{element.get('name')}"
+    for child in element:
+        if child.tag == "File":
+            file_path = (f"{current_path}/{child.get('name')}", child.get('size'))  # tuple (filepath, size)
+            files.append(file_path)
+        elif child.tag == "Directory":
+            files.extend(find_files_with_paths(child, current_path))
+    return files
+
+
+
+def find_files_between_min_and_max_size(backed_up_files, min_size_verification_mb, max_size_verification_mb):
+    """Find files within a specified size range.
+
+    This function takes a list of backed up files, a minimum size in megabytes, and a maximum size in megabytes.
+    It iterates through the list of files, converts the file size from the XML to a number, and compares it to the
+    specified size range. If a file's size falls within the range, it is added to the result list.
+
+    Args:
+        backed_up_files (list): A list of tuples representing backed up files. Each tuple should contain at least
+            two elements, where the first element is the file name and the second element is the file size in the
+            format "<number> <unit>". For example, ("file.txt", "10 Mio").
+        min_size_verification_mb (int): The minimum file size in megabytes.
+        max_size_verification_mb (int): The maximum file size in megabytes.
+
+    Returns:
+        list: A list of file names that fall within the specified size range.
+    """
     files = []
     max_size = max_size_verification_mb
     min_size = min_size_verification_mb
@@ -137,19 +264,42 @@ def find_files_under_xxMB(backed_up_files, min_size_verification_mb, max_size_ve
      }
     pattern = r'(\d+)\s*(\w+)'
     for tuple in backed_up_files:
-        print(f"tuple: {tuple}")
-        match = re.match(pattern, tuple[1])
-        if match:
-            number = int(match.group(1))
-            unit = match.group(2).strip()
-            file_size = dar_sizes[unit] * number
-        if (min_size_verification_mb  * 1024 * 1024) < file_size <= (max_size * 1024 * 1024):
-            logger.trace(f"File found between min and max sizes: {tuple}")
-            files.append(tuple[0])
+        if tuple is not None and len(tuple) >= 2  and tuple[0] is not None and tuple[1] is not None:
+            logger.trace("tuple from dar xml list: {tuple}")
+            match = re.match(pattern, tuple[1])
+            if match:
+                number = int(match.group(1))
+                unit = match.group(2).strip()
+                file_size = dar_sizes[unit] * number
+            if (min_size_verification_mb  * 1024 * 1024) < file_size <= (max_size * 1024 * 1024):
+                logger.trace(f"File found between min and max sizes: {tuple}")
+                files.append(tuple[0])
     return files
 
 
 def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification):
+    """
+    Verify the integrity of a DAR backup by performing the following steps:
+    1. Run an archive integrity test on the backup file.
+    2. Retrieve the list of backed up files.
+    3. Find files within the specified size range for verification.
+    4. Read the backup definition file and extract the root path.
+    5. Select a random subset of files for restoration.
+    6. Restore each file and compare it with the original file.
+
+    Args:
+        args (object): Command-line arguments.
+        backup_file (str): Path to the DAR backup file.
+        backup_definition (str): Path to the backup definition file.
+        test_restore_dir (str): Path to the directory for test restoration.
+        backup_dir (str): Path to the backup directory.
+        min_size_verification_mb (int): Minimum size (in MB) for file verification.
+        max_size_verification_mb (int): Maximum size (in MB) for file verification.
+        no_files_verification (int): Number of files to verify.
+
+    Returns:
+        None
+    """
     test_command = ['dar', '-t', backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
     run_command(test_command)
@@ -160,7 +310,7 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
 
     backed_up_files = get_backed_up_files(backup_file, backup_dir) 
 
-    files = find_files_under_xxMB(backed_up_files, min_size_verification_mb, max_size_verification_mb)
+    files = find_files_between_min_and_max_size(backed_up_files, min_size_verification_mb, max_size_verification_mb)
     if len(files) == 0:
         logger.info(f"No files under {max_size_verification_mb}MB for verification, skipping")
         return
@@ -194,7 +344,23 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
 
 
 
+import os
+from datetime import datetime
+
 def list_backups(backup_dir, backup_definition=None):
+    """
+    List the available backups in the specified directory.
+
+    Args:
+        backup_dir (str): The directory where the backups are stored.
+        backup_definition (str, optional): A backup definition to filter the backups. 
+            Only backups that start with the specified definition will be listed. 
+            Defaults to None.
+
+    Returns:
+        None
+
+    """
     backups = set(f.rsplit('.', 2)[0] for f in os.listdir(backup_dir) if f.endswith('.dar'))
     if not backups:
         print("No backups available.")
@@ -210,6 +376,15 @@ def list_backups(backup_dir, backup_definition=None):
 
 
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
+    """
+    Restores a backup file to a specified directory.
+
+    Args:
+        backup_name (str): The name of the backup file.
+        backup_dir (str): The directory where the backup file is located.
+        restore_dir (str): The directory where the backup should be restored to.
+        selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
+    """
     backup_file = os.path.join(backup_dir, backup_name)
     command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
     if restore_dir:
@@ -223,21 +398,18 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
     run_command(command)
 
 
-# Function to recursively find <File> tags and build their full paths
-def find_files_with_paths(element, current_path=""):
-    files = []
-    if element.tag == "Directory":
-        current_path = f"{current_path}/{element.get('name')}"
-    for child in element:
-        if child.tag == "File":
-            file_path = (f"{current_path}/{child.get('name')}", child.get('size'))  # tuple (filepath, size)
-            files.append(file_path)
-        elif child.tag == "Directory":
-            files.extend(find_files_with_paths(child, current_path))
-    return files
-
 
 def get_backed_up_files(backup_name, backup_dir):
+    """
+    Retrieves the list of backed up files from a DAR archive.
+
+    Args:
+        backup_name (str): The name of the DAR archive.
+        backup_dir (str): The directory where the DAR archive is located.
+
+    Returns:
+        list: A list of file paths for all backed up files in the DAR archive.
+    """
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
@@ -245,7 +417,7 @@ def get_backed_up_files(backup_name, backup_dir):
     # Parse the XML data
     root = ET.fromstring(output)
     output = None  # help gc
-    # Extract full paths for all <File> elements
+    # Extract full paths and file size for all <File> elements
     file_paths = find_files_with_paths(root)
     root = None # help gc
     logger.trace(f"Backed up files in dar archive: '{backup_name}'")
@@ -254,6 +426,17 @@ def get_backed_up_files(backup_name, backup_dir):
 
 
 def list_contents(backup_name, backup_dir, selection=None):
+    """
+    Lists the contents of a backup.
+
+    Args:
+        backup_name (str): The name of the backup.
+        backup_dir (str): The directory where the backup is located.
+        selection (str, optional): The selection criteria for listing specific contents. Defaults to None.
+
+    Returns:
+        None
+    """
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
     if selection:
@@ -265,6 +448,22 @@ def list_contents(backup_name, backup_dir, selection=None):
 
 
 def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, min_size_verification_mb, max_size_verification_mb, no_files_verification):
+    """
+    Perform backup operation.
+
+    Args:
+        args: Command-line arguments.
+        backup_d: Directory containing backup definitions.
+        backup_dir: Directory to store backup files.
+        test_restore_dir: Directory to test restore backup files.
+        backup_type: Type of backup (FULL, DIFF, INCR).
+        min_size_verification_mb: Minimum size for verification in MB.
+        max_size_verification_mb: Maximum size for verification in MB.
+        no_files_verification: Flag indicating whether to skip file verification.
+
+    Returns:
+        None
+    """
     logger.debug(f"perform_backup({backup_type}) started")
     backup_definitions = []
 
@@ -314,6 +513,19 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
 
 
 def generate_par2_files(backup_file, backup_dir):
+    """
+    Generate PAR2 files for a given backup file in the specified backup directory.
+
+    Args:
+        backup_file (str): The name of the backup file.
+        backup_dir (str): The path to the backup directory.
+
+    Raises:
+        subprocess.CalledProcessError: If the par2 command fails to execute.
+
+    Returns:
+        None
+    """
     for filename in os.listdir(backup_dir):
         if os.path.basename(backup_file) in filename:
             # Construct the full path to the file
@@ -324,7 +536,23 @@ def generate_par2_files(backup_file, backup_dir):
             logger.debug(f"par2 files generated for {file_path}")
 
 
+
+
 def extract_error_lines(log_file_path, start_time, end_time):
+    """
+    Extracts error lines from a log file within a specific time range.
+
+    Args:
+        log_file_path (str): The path to the log file.
+        start_time (str): The start time of the desired time range (unixtime).
+        end_time (str): The end time of the desired time range (unixtime).
+
+    Returns:
+        list: A list of error lines within the specified time range.
+
+    Raises:
+        ValueError: If the start or end markers are not found in the log file.
+    """
     with open(log_file_path, 'r') as log_file:
         lines = log_file.readlines()
 
@@ -332,7 +560,7 @@ def extract_error_lines(log_file_path, start_time, end_time):
     end_index = None
 
     start_marker = f"START TIME: {start_time}"
-    end_marker   = f"END TIME: {end_time}"
+    end_marker = f"END TIME: {end_time}"
     error_pattern = re.compile(r'ERROR')
 
     # Find the start and end index for the specific run
@@ -347,7 +575,7 @@ def extract_error_lines(log_file_path, start_time, end_time):
         raise ValueError("Could not find start or end markers in the log file")
 
     error_lines = [line.rstrip("\n") for line in lines[start_index:end_index + 1] if error_pattern.search(line)]
-    
+
     return error_lines
 
 
@@ -421,7 +649,6 @@ def main():
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
-    args.verbose and print("Current directory: " + os.path.normpath(os.path.dirname(__file__)))
 
     if args.version:
         show_version()
@@ -444,6 +671,9 @@ def main():
             backup_d = os.path.normpath(os.path.join(os.path.dirname(__file__), backup_d))
         current_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Current directory: {current_dir}"))
+        args.verbose and args.full_backup and (print(f"Full backup:       {args.full_backup}"))
+        args.verbose and args.differential_backup and (print(f"Differential backup: {args.differential_backup}"))
+        args.verbose and args.incremental_backup and (print(f"Incremental backup: {args.incremental_backup}"))
         args.verbose and (print(f"Backup.d:          {backup_d}"))
         args.verbose and (print(f"Backup dir:        {backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {test_restore_dir}"))
