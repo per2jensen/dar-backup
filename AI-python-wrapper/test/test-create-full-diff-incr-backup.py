@@ -12,6 +12,8 @@ import shutil
 import sys
 import glob  # Added import statement
 
+from pathlib import Path
+
 class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
     @classmethod
     def setUpClass(cls):
@@ -79,6 +81,11 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             else:
                 logging.info("FULL backup verification succeeded")
 
+
+            # cleanup restore directory
+            shutil.rmtree(os.path.join(self.test_dir, 'restore'))
+            Path(os.path.join(self.test_dir, 'restore')).mkdir(parents=True, exist_ok=True)
+
             # Differential backup
             # Modify one file for differential backup
             with open(os.path.join(self.test_dir, 'data', 'file2.txt'), 'a') as f:
@@ -95,6 +102,10 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             else:
                 logging.info("Differential backup verification succeeded")
 
+
+            # cleanup restore directory
+            shutil.rmtree(os.path.join(self.test_dir, 'restore'))
+            Path(os.path.join(self.test_dir, 'restore')).mkdir(parents=True, exist_ok=True)
 
             # Incremental backup
             # Modify one file for incremental backup
