@@ -2,3 +2,4 @@ AI-python.wrapper/test/test_template.py
 AI-python-wrapper/backup.d/pj-homedir
 AI-python-wrapper/test/__pycache__/prereq.cpython-312.pyc
 *.pyc
+AI-python-wrapper/test/test_template.py
