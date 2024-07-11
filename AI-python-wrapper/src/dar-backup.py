@@ -222,6 +222,7 @@ def find_files_with_paths(element, current_path=""):
     Returns:
         list: A list of tuples containing file paths and their sizes.
     """
+    logger.debug(f"Recursively generate list of tuples with file paths and sizes for File elements in dar xml output")
     files = []
     if element.tag == "Directory":
         current_path = f"{current_path}/{element.get('name')}"
@@ -252,6 +253,7 @@ def find_files_between_min_and_max_size(backed_up_files, min_size_verification_m
     Returns:
         list: A list of file names that fall within the specified size range.
     """
+    logger.debug(f"Finding files in archive between min and max sizes: {min_size_verification_mb}MB and {max_size_verification_mb}MB")
     files = []
     max_size = max_size_verification_mb
     min_size = min_size_verification_mb
@@ -320,32 +322,33 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
         logger.debug(f"Backup definition: '{backup_definition}', content:\n{backup_definition_content}")
     # Initialize a variable to hold the path after "-R"
     root_path = None
-    # Iterate over the lines
     for line in backup_definition_content:
         line = line.strip()
         if line.startswith("-R"):
-            # Capture the path which is after the space following "-R"
             root_path = line.split("-R", 1)[1].strip()
             break
+    if root_path is None:
+        logger.warning("No Root (-R) path specified in the backup definition file.")
 
     if len(files) < no_files_verification:
         no_files_verification = len(files)
     random_files = random.sample(files, no_files_verification)
-    for restored_file_path in random_files:
-        os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+    try:
+        for restored_file_path in random_files:
+        # this does not make sense        os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+            logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{test_restore_dir}' for file comparing")
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', test_restore_dir, '-O', '-Q']
+            logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+            run_command(command)
+            if filecmp.cmp(os.path.join(test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
+                logger.info(f"Success: file '{restored_file_path}' matches the original")   
+            else:
+                logger.error(f"Failure: file '{restored_file_path}' did not match the original")
+    except PermissionError:
+        logger.exception(f"Permission error while comparing files, continuing....")
 
-        command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', test_restore_dir, '-O', '-Q']
-        logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-        run_command(command)
-        if filecmp.cmp(os.path.join(test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
-           logger.info(f"File '{restored_file_path}' matches the original")   
-        else:
-           logger.error(f"File '{restored_file_path}' did not match the original")
 
 
-
-import os
-from datetime import datetime
 
 def list_backups(backup_dir, backup_definition=None):
     """
@@ -410,6 +413,7 @@ def get_backed_up_files(backup_name, backup_dir):
     Returns:
         list: A list of file paths for all backed up files in the DAR archive.
     """
+    logger.debug(f"Getting backed up files from DAR archive in xml: '{backup_name}'")
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
@@ -476,8 +480,8 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
 
     for backup_definition, backup_definition_path in backup_definitions:
         try:
-            timestamp = datetime.now().strftime('%Y-%m-%d')
-            backup_file = os.path.join(backup_dir, f"{backup_definition}_{backup_type}_{timestamp}")
+            date = datetime.now().strftime('%Y-%m-%d')
+            backup_file = os.path.join(backup_dir, f"{backup_definition}_{backup_type}_{date}")
 
             if os.path.exists(backup_file + '.1.dar'):
                 logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
@@ -507,7 +511,7 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
             logger.info("Generate par2 redundancy files")
             generate_par2_files(backup_file, backup_dir)
             logger.info("par2 files completed successfully.")
-        # we want to continue with other backup definitions, there only logging an error
+        # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
             logger.exception(f"Error during {backup_type} backup process: {e}")
 
