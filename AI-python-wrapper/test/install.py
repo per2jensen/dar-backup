@@ -13,6 +13,8 @@ BIN_DIR = os.path.join(INSTALL_DIR, 'bin')
 CONF_DIR = os.path.join(INSTALL_DIR, 'conf')
 BACKUP_D_DIR = os.path.join(INSTALL_DIR, 'backup.d')
 
+print(f"BIN_DIR: {BIN_DIR}")
+
 
 def create_directories():
     os.makedirs(INSTALL_DIR, exist_ok=True)
@@ -22,8 +24,10 @@ def create_directories():
     os.makedirs(CONF_DIR, exist_ok=True)
 
 def copy_bin_files():
-    shutil.copy(os.path.join(os.path.dirname(__file__), '../src/dar-backup.py'), BIN_DIR)
-    shutil.copy(os.path.join(os.path.dirname(__file__), '../src/cleanup.py'), BIN_DIR)
+    src_dir = os.path.join(os.path.dirname(__file__), '../src')
+    for file in os.listdir(src_dir):
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), '../src', file)):
+            shutil.copy(os.path.join(os.path.dirname(__file__), '../src', file), BIN_DIR)
 
 
 if __name__ == "__main__":

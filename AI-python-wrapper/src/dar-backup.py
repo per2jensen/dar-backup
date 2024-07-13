@@ -4,7 +4,7 @@ import argparse
 import configparser
 import datetime
 import filecmp
-import logging
+
 import os
 import random
 import re
@@ -17,67 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from time import time
 
+from util import list_backups
+from util import run_command
+from util import setup_logging
+
 VERSION = "alpha-0.3"
-logger=None
 
-def setup_logging(log_file, log_level):
-    global logger
-
-    try:
-        TRACE_LEVEL_NUM = 5
-        logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
-
-        def trace(self, message, *args, **kws):
-            if self.isEnabledFor(TRACE_LEVEL_NUM):
-                self._log(TRACE_LEVEL_NUM, message, args, **kws)
-
-        logging.Logger.trace = trace
-
-        # Create a custom logger
-        logger = logging.getLogger(__name__)
-
-        level_used = logging.INFO
-        logger.setLevel(logging.INFO)
-        if log_level == "debug":
-            level_used = logging.DEBUG
-            logger.setLevel(logging.DEBUG)
-        elif log_level == "trace":
-            level_used = TRACE_LEVEL_NUM
-            logger.setLevel(TRACE_LEVEL_NUM)
-
-        logging.basicConfig(filename=log_file, level=level_used,
-                            format='%(asctime)s - %(levelname)s - %(message)s')
-
-        logger.info("=======================")
-        logger.info("`dar-backup.py` started")
-    except Exception:
-        print("dar-backup logging not initialized, exiting.")
-        sys.exit(1)
-
-
-
-
-def run_command(command):
-    """
-    Executes a given command via subprocess and captures its output.
-
-    Args:
-        command (list): The command to be executed, represented as a list of strings.
-
-    Returns:
-        str: The standard output of the command.
-
-    Raises:
-        Exception: If the command exits with a non-zero return code, an exception is raised
-                   with the error output and the failed command.
-    """
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate()
-    logger.trace(stdout)
-    if process.returncode != 0:
-        logger.error(stderr)
-        raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
-    return stdout
+logger = None
 
 def read_config(config_file):
     """
@@ -300,22 +246,23 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
         no_files_verification (int): Number of files to verify.
 
     Returns:
-        None
+        True if the verification process completes successfully, False otherwise.
     """
+    result = True
     test_command = ['dar', '-t', backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
     run_command(test_command)
     logger.info("Archive integrity test passed.")
 
     if args.do_not_compare:
-        return
+        return result
 
     backed_up_files = get_backed_up_files(backup_file, backup_dir) 
 
     files = find_files_between_min_and_max_size(backed_up_files, min_size_verification_mb, max_size_verification_mb)
     if len(files) == 0:
         logger.info(f"No files under {max_size_verification_mb}MB for verification, skipping")
-        return
+        return result
 
     with open(backup_definition, 'r') as f:
         backup_definition_content = f.readlines()
@@ -333,49 +280,23 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
     if len(files) < no_files_verification:
         no_files_verification = len(files)
     random_files = random.sample(files, no_files_verification)
-    try:
-        for restored_file_path in random_files:
-        # this does not make sense        os.makedirs(os.path.dirname(restored_file_path), exist_ok=True)
+    for restored_file_path in random_files:
+        try:
             logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', test_restore_dir, '-O', '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             run_command(command)
             if filecmp.cmp(os.path.join(test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
-                logger.info(f"Success: file '{restored_file_path}' matches the original")   
+                logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
-    except PermissionError:
-        logger.exception(f"Permission error while comparing files, continuing....")
+                result = False
+        except PermissionError:
+            result = False
+            logger.exception(f"Permission error while comparing files, continuing....")
 
+    return result
 
-
-
-def list_backups(backup_dir, backup_definition=None):
-    """
-    List the available backups in the specified directory.
-
-    Args:
-        backup_dir (str): The directory where the backups are stored.
-        backup_definition (str, optional): A backup definition to filter the backups. 
-            Only backups that start with the specified definition will be listed. 
-            Defaults to None.
-
-    Returns:
-        None
-
-    """
-    backups = set(f.rsplit('.', 2)[0] for f in os.listdir(backup_dir) if f.endswith('.dar'))
-    if not backups:
-        print("No backups available.")
-        return
-
-    if backup_definition:
-        backups = [b for b in backups if b.startswith(backup_definition)]
-    
-    backups = sorted(backups, key=lambda x: datetime.strptime(x.split('_')[-1], '%Y-%m-%d'))
-
-    for backup in backups:
-        print(backup)
 
 
 def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
@@ -506,8 +427,11 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
                     incremental_backup(backup_file, backup_definition_path, latest_base_backup)
 
             logger.info("Starting verification...")
-            verify(args, backup_file, backup_definition_path, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification)
-            logger.info("Verification completed successfully.")
+            result = verify(args, backup_file, backup_definition_path, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            if result:
+                logger.info("Verification completed successfully.")
+            else:
+                logger.error("Verification failed.")
             logger.info("Generate par2 redundancy files")
             generate_par2_files(backup_file, backup_dir)
             logger.info("par2 files completed successfully.")
@@ -536,7 +460,8 @@ def generate_par2_files(backup_file, backup_dir):
             file_path = os.path.join(backup_dir, filename)
             # Run the par2 command to generate redundancy files with 5% error correction
             command = ['par2', 'create', '-r5', '-q', '-q', file_path]
-            subprocess.run(command, check=True)
+            run_command(command)
+            #subprocess.run(command, check=True)
             logger.debug(f"par2 files generated for {file_path}")
 
 
@@ -598,7 +523,7 @@ FULL back of all backup definitions in backup.d:
   'python3 dar-backup.py  --full-backup'
 
 FULL back of a single backup definition in backup.d
-  'python3 dar-backup.py -d <name of file in backup.d/>'
+  'python3 dar-backup.py --full-backup -d <name of file in backup.d/>'
 
 DIFF backup (differences to the latest FULL) of all backup definitions:
   'python3 dar-backup.py --differential-backup'
@@ -631,6 +556,8 @@ See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.ht
     print(examples)
 
 def main():
+    global logger 
+
     MIN_PYTHON_VERSION = (3, 7)
     if sys.version_info < MIN_PYTHON_VERSION:
         sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
@@ -664,10 +591,11 @@ def main():
 
     logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config(args.config_file)
 
-    setup_logging(logfile_location, args.log_level)
-
+    logger = setup_logging(logfile_location, args.log_level)
     try:
         start_time=int(time())
+        logger.info(f"=====================================")
+        logger.info(f"dar-backup.py started, version: {VERSION}")
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"`args`:\n{args}")
 
@@ -675,9 +603,9 @@ def main():
             backup_d = os.path.normpath(os.path.join(os.path.dirname(__file__), backup_d))
         current_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Current directory: {current_dir}"))
-        args.verbose and args.full_backup and (print(f"Full backup:       {args.full_backup}"))
-        args.verbose and args.differential_backup and (print(f"Differential backup: {args.differential_backup}"))
-        args.verbose and args.incremental_backup and (print(f"Incremental backup: {args.incremental_backup}"))
+        args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
+        args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
+        args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
         args.verbose and (print(f"Backup.d:          {backup_d}"))
         args.verbose and (print(f"Backup dir:        {backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {test_restore_dir}"))
@@ -699,8 +627,9 @@ def main():
             restore_backup(args.restore, backup_dir, restore_dir, args.selection)
         else:
             parser.print_help()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("An error occurred during the backup process.", e)
+        sys.exit(1)
 
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
