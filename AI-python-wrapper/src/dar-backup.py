@@ -369,7 +369,9 @@ def list_contents(backup_name, backup_dir, selection=None):
         command.extend(selection_criteria)
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     output = run_command(command)
-    print(output)
+    for line in output.splitlines():
+        if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
+            print(line)
 
 
 def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, min_size_verification_mb, max_size_verification_mb, no_files_verification):
