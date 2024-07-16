@@ -54,13 +54,21 @@ def read_config(config_file):
         Path(test_restore_dir).mkdir(parents=True, exist_ok=True)
         backup_d = config['DIRECTORIES']['BACKUP.D_DIR']
         Path(backup_d).mkdir(parents=True, exist_ok=True)
+    except FileNotFoundError as e: 
+        logger.error(f"Configuration file not found: {config_file}")
+        sys.stderr.write(f"Error: Configuration file not found: {config_file}\n")
+        sys.exit
+    except PermissionError as e:
+        logger.error(f"Permission error while reading config file {config_file}: {e}")
+        sys.stderr.write(f"Error: Permission error while reading config file {config_file}: {e}\n")
+        sys.exit(1)     
     except KeyError as e:
         logger.error(f"Missing mandatory configuration key: {e}")
         sys.stderr.write(f"Error: Missing mandatory configuration key: {e}\n")
         sys.exit(1)
     except Exception as e:
-        logger.exception(f"Error reading config file {config_file}: {e}")
-        sys.stderr.write(f"Error: Unable to read the config file {config_file}: {e}\n")
+        logger.exception(f"Error: config file {config_file}: {e}")
+        sys.stderr.write(f"Error: config file {config_file}: {e}\n")
         sys.exit(1)
     return logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification
 
@@ -439,7 +447,7 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
             logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
-            logger.exception(f"Error during {backup_type} backup process: {e}")
+            logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition: {e}")
 
 
 def generate_par2_files(backup_file, backup_dir):
