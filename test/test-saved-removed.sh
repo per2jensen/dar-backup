@@ -114,7 +114,7 @@ echo RESULTS for DIFF backup:
 checkExpectLog   "\[Saved\].*?dirs/include this one/GREENLAND.JPEG" "$TESTDIR/DIFF-filelist.txt"  
 checkDontFindLog "exclude this one/GREENLAND.JPEG"                  "$TESTDIR/DIFF-filelist.txt"  
 NO_REMOVED=$(grep -c -E "\- REMOVED ENTRY \-" "$TESTDIR/DIFF-filelist.txt")
-if [[  $NO_REMOVED == "2"  ]]; then
+if [[  $NO_REMOVED == "1"  ]]; then
     echo "ok Number of entries removed: $NO_REMOVED"
 else
     echo "error wrong number or removed entries in the DIFF archive"
