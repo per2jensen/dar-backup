@@ -13,6 +13,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+from config_settings import ConfigSettings, read_config
+
 from datetime import datetime
 from pathlib import Path
 from time import time
@@ -30,52 +32,6 @@ VERSION = "alpha-0.3"
 
 logger = None
 
-def read_config(config_file):
-    """
-    Reads configuration settings from a specified file.
-
-    Args:
-        config_file (str): The path to the configuration file.
-
-    Returns:
-        dict: A dictionary containing the configuration settings, including log file location,
-              maximum and minimum size verification thresholds, number of files verification,
-              and backup directory path.
-
-    Raises:
-        KeyError: If required configuration sections or keys are missing in the configuration file.
-    """
-    config = configparser.ConfigParser()
-    try:
-        config.read(config_file)
-        logfile_location = config['MISC']['LOGFILE_LOCATION']
-        max_size_verification_mb = int(config['MISC']['MAX_SIZE_VERIFICATION_MB'])
-        min_size_verification_mb = int(config['MISC']['MIN_SIZE_VERIFICATION_MB'])
-        no_files_verification = int(config['MISC']['NO_FILES_VERIFICATION'])
-
-        backup_dir = config['DIRECTORIES']['BACKUP_DIR']
-        Path(backup_dir).mkdir(parents=True, exist_ok=True)
-        test_restore_dir = config['DIRECTORIES']['TEST_RESTORE_DIR']
-        Path(test_restore_dir).mkdir(parents=True, exist_ok=True)
-        backup_d = config['DIRECTORIES']['BACKUP.D_DIR']
-        Path(backup_d).mkdir(parents=True, exist_ok=True)
-    except FileNotFoundError as e: 
-        logger.error(f"Configuration file not found: {config_file}")
-        sys.stderr.write(f"Error: Configuration file not found: {config_file}\n")
-        sys.exit
-    except PermissionError as e:
-        logger.error(f"Permission error while reading config file {config_file}: {e}")
-        sys.stderr.write(f"Error: Permission error while reading config file {config_file}: {e}\n")
-        sys.exit(1)     
-    except KeyError as e:
-        logger.error(f"Missing mandatory configuration key: {e}")
-        sys.stderr.write(f"Error: Missing mandatory configuration key: {e}\n")
-        sys.exit(1)
-    except Exception as e:
-        logger.exception(f"Error: config file {config_file}: {e}")
-        sys.stderr.write(f"Error: config file {config_file}: {e}\n")
-        sys.exit(1)
-    return logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification
 
 def backup(backup_file, backup_definition):
     """
@@ -272,25 +228,18 @@ def find_files_between_min_and_max_size(backed_up_files, min_size_verification_m
     return files
 
 
-def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification):
+def verify(args, backup_file, backup_definition, config_settings):
     """
     Verify the integrity of a DAR backup by performing the following steps:
     1. Run an archive integrity test on the backup file.
     2. Retrieve the list of backed up files.
-    3. Find files within the specified size range for verification.
-    4. Read the backup definition file and extract the root path.
-    5. Select a random subset of files for restoration.
-    6. Restore each file and compare it with the original file.
+    3. Find files within def perform_backup(args, ConfigSettings config_settings, backup_d, backup_dir, test_restore_dir, backup_type, min_size_verification_mb, max_size_verification_mb, no_files_verification):file and compare it with the original file.
 
     Args:
         args (object): Command-line arguments.
         backup_file (str): Path to the DAR backup file.
         backup_definition (str): Path to the backup definition file.
-        test_restore_dir (str): Path to the directory for test restoration.
-        backup_dir (str): Path to the backup directory.
-        min_size_verification_mb (int): Minimum size (in MB) for file verification.
-        max_size_verification_mb (int): Maximum size (in MB) for file verification.
-        no_files_verification (int): Number of files to verify.
+        ConfigSettings (object): An instance of the ConfigSettings class.
 
     Returns:
         True if the verification process completes successfully, False otherwise.
@@ -305,14 +254,16 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
     run_command(test_command)
     logger.info("Archive integrity test passed.")
 
+
+
     if args.do_not_compare:
         return result
 
-    backed_up_files = get_backed_up_files(backup_file, backup_dir) 
+    backed_up_files = get_backed_up_files(backup_file, config_settings.backup_dir) 
 
-    files = find_files_between_min_and_max_size(backed_up_files, min_size_verification_mb, max_size_verification_mb)
+    files = find_files_between_min_and_max_size(backed_up_files, config_settings.min_size_verification_mb, config_settings.max_size_verification_mb)
     if len(files) == 0:
-        logger.info(f"No files under {max_size_verification_mb}MB for verification, skipping")
+        logger.info(f"No files between {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB for verification, skipping")
         return result
 
     with open(backup_definition, 'r') as f:
@@ -328,16 +279,17 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
     if root_path is None:
         logger.warning("No Root (-R) path specified in the backup definition file.")
 
-    if len(files) < no_files_verification:
+    no_files_verification = config_settings.no_files_verification
+    if len(files) < config_settings.no_files_verification:
         no_files_verification = len(files)
     random_files = random.sample(files, no_files_verification)
     for restored_file_path in random_files:
         try:
-            logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{test_restore_dir}' for file comparing")
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', test_restore_dir, '-O', '-Q']
+            logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-O', '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             run_command(command)
-            if filecmp.cmp(os.path.join(test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
+            if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
                 logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
@@ -432,12 +384,13 @@ def list_contents(backup_name, backup_dir, selection=None):
             print(line)
 
 
-def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, min_size_verification_mb, max_size_verification_mb, no_files_verification):
+def perform_backup(args, config_settings: ConfigSettings, backup_type):
     """
     Perform backup operation.
 
     Args:
         args: Command-line arguments.
+        config_settings: An instance of the ConfigSettings class.
         backup_d: Directory containing backup definitions.
         backup_dir: Directory to store backup files.
         test_restore_dir: Directory to test restore backup files.
@@ -465,16 +418,16 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
     backup_definitions = []
 
     if args.backup_definition:
-        backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(backup_d, args.backup_definition)))
+        backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(config_settings.backup_d_dir, args.backup_definition)))
     else:
-        for root, _, files in os.walk(backup_d):
+        for root, _, files in os.walk(config_settings.backup_d_dir):
             for file in files:
                 backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
 
     for backup_definition, backup_definition_path in backup_definitions:
         try:
             date = datetime.now().strftime('%Y-%m-%d')
-            backup_file = os.path.join(backup_dir, f"{backup_definition}_{backup_type}_{date}")
+            backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
 
             if os.path.exists(backup_file + '.1.dar'):
                 logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
@@ -485,27 +438,27 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
             else:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
                 base_backups = sorted(
-                    [f for f in os.listdir(backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
+                    [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
                     key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
                 )
                 if not base_backups:
                     logger.error(f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup.")
                     continue
 
-                latest_base_backup = os.path.join(backup_dir, base_backups[-1].rsplit('.', 2)[0])
+                latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
                 if backup_type == 'DIFF':
                     differential_backup(backup_file, backup_definition_path, latest_base_backup)
                 elif backup_type == 'INCR':
                     incremental_backup(backup_file, backup_definition_path, latest_base_backup)
 
             logger.info("Starting verification...")
-            result = verify(args, backup_file, backup_definition_path, test_restore_dir, backup_dir, min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            result = verify(args, backup_file, backup_definition_path, config_settings)
             if result:
                 logger.info("Verification completed successfully.")
             else:
                 logger.error("Verification failed.")
             logger.info("Generate par2 redundancy files")
-            generate_par2_files(backup_file, backup_dir)
+            generate_par2_files(backup_file, config_settings.backup_dir)
             logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
@@ -661,42 +614,44 @@ def main():
         show_examples()
         sys.exit(0)
 
-    logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config(args.config_file)
+    #logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config_old(args.config_file)
+    config_settings = read_config(args.config_file)
 
-    logger = setup_logging(logfile_location, args.log_level)
+    logger = setup_logging(config_settings.logfile_location, args.log_level)
     try:
         start_time=int(time())
         logger.info(f"=====================================")
         logger.info(f"dar-backup.py started, version: {VERSION}")
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"`args`:\n{args}")
+        logger.debug(f"`config_settings`:\n{config_settings}")
 
-        if not backup_d.startswith("/"):
+        if not config_settings.backup_d_dir.startswith("/"):
             backup_d = os.path.normpath(os.path.join(os.path.dirname(__file__), backup_d))
         current_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Current directory: {current_dir}"))
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
         args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
-        args.verbose and (print(f"Backup.d:          {backup_d}"))
-        args.verbose and (print(f"Backup dir:        {backup_dir}"))
-        args.verbose and (print(f"Test restore dir:  {test_restore_dir}"))
-        args.verbose and (print(f"Logfile location:  {logfile_location}"))
+        args.verbose and (print(f"Backup.d:          {config_settings.backup_d_dir}"))
+        args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
+        args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
+        args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
     
         if args.full_backup and not args.differential_backup and not args.incremental_backup:
-            perform_backup(args, backup_d, backup_dir, test_restore_dir, "FULL", min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            perform_backup(args, config_settings, "FULL")
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
-            perform_backup(args, backup_d, backup_dir,  test_restore_dir, "DIFF", min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            perform_backup(args, config_settings, "DIFF")
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
-            perform_backup(args, backup_d, backup_dir, test_restore_dir, "INCR", min_size_verification_mb, max_size_verification_mb, no_files_verification)
+            perform_backup(args, config_settings, "INCR")
         elif args.list:
-            list_backups(backup_dir, args.backup_definition)
+            list_backups(config_settings.backup_dir, args.backup_definition)
         elif args.list_contents:
-            list_contents(args.list_contents, backup_dir, args.selection)
+            list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
-            restore_dir = args.restore_dir if args.restore_dir else test_restore_dir
-            restore_backup(args.restore, backup_dir, restore_dir, args.selection)
+            restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
+            restore_backup(args.restore, config_settings.backup_dir, restore_dir, args.selection)
         else:
             parser.print_help()
     except Exception as e:
@@ -706,7 +661,7 @@ def main():
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
 
-    error_lines = extract_error_lines(logfile_location, start_time, end_time)
+    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
     if len(error_lines) > 0:
         args.verbose and print("Errors encountered")
         for line in error_lines:
