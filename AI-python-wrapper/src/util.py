@@ -18,6 +18,24 @@ from datetime import datetime
 
 logger=None
 
+class BackupError(Exception):
+    """Exception raised for errors in the backup process."""
+    pass
+
+class DifferentialBackupError(BackupError):
+    """Exception raised for errors in the differential backup process."""
+    pass
+
+class IncrementalBackupError(BackupError):
+    """Exception raised for errors in the incremental backup process."""
+    pass
+
+class RestoreError(Exception):
+    """Exception raised for errors in the restore process."""
+    pass
+
+
+
 def setup_logging(log_file, log_level):
     global logger
     try:

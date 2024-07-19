@@ -152,13 +152,10 @@ def main():
 
 
     logfile_location, backup_dir, backup_d, diff_age, incr_age = read_config(args.config_file)
-    logger = setup_logging(logfile_location)
+    logger = setup_logging(logfile_location, logging.INFO)
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {VERSION}")
-    logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
-
-
 
     if args.alternate_archive_dir:
         backup_dir = args.alternate_archive_dir

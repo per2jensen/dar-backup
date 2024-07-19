@@ -20,6 +20,11 @@ from time import time
 from util import list_backups
 from util import run_command
 from util import setup_logging
+from util import BackupError
+from util import DifferentialBackupError
+from util import IncrementalBackupError
+from util import RestoreError
+
 
 VERSION = "alpha-0.3"
 
@@ -90,6 +95,9 @@ def backup(backup_file, backup_definition):
     Note:
         This function logs an error and returns early if the backup file already exists.
         It logs the command being executed and reports upon successful completion of the backup.
+
+    Raises:
+        BackupError: If an error occurs during the backup process.
     """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
@@ -97,8 +105,18 @@ def backup(backup_file, backup_definition):
 
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
-    logger.info("Backup completed successfully.")
+    try:
+        run_command(command)
+        logger.info("Backup completed successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Backup command failed: {e}")
+        raise BackupError(f"Backup command failed: {e}") from e
+    except Exception as e:
+        logger.exception(f"Unexpected error during backup: {e}")
+        raise BackupError(f"Unexpected error during backup: {e}") from e
+ 
+ 
+
 
 
 def differential_backup(backup_file, backup_definition, base_backup_file):
@@ -121,14 +139,25 @@ def differential_backup(backup_file, backup_definition, base_backup_file):
     Note:
         This function logs an error and returns early if the differential backup file already exists.
         It logs the command being executed and reports upon successful completion of the differential backup.
+
+    Raises:
+        DifferentialBackupError: If the differential backup command fails or encounters an unexpected error.
     """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
+
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
-    logger.info("Differential backup completed successfully.")
+    try:
+        run_command(command)
+        logger.info("Differential backup completed successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Differential backup command failed: {e}")
+        raise DifferentialBackupError(f"Differential backup command failed: {e}") from e
+    except Exception as e:
+        logger.exception(f"Unexpected error during differential backup: {e}")
+        raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
 
 
 def incremental_backup(backup_file, backup_definition, last_backup_file):
@@ -153,6 +182,9 @@ def incremental_backup(backup_file, backup_definition, last_backup_file):
         This function checks if the incremental backup file already exists to prevent overwriting
         previous backups. It logs the command being executed and reports upon successful completion
         of the incremental backup.
+    
+    Raises:
+        IncrementalBackupError: If the incremental backup command fails or an unexpected error occurs.
     """
     if os.path.exists(backup_file + '.1.dar'):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
@@ -160,8 +192,15 @@ def incremental_backup(backup_file, backup_definition, last_backup_file):
 
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', last_backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
-    logger.info("Incremental backup completed successfully.")
+    try:
+        run_command(command)
+        logger.info("Incremental backup completed successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Incremental backup command failed: {e}")
+        raise IncrementalBackupError(f"Incremental backup command failed: {e}") from e
+    except Exception as e:
+        logger.exception(f"Unexpected error during incremental backup: {e}")
+        raise IncrementalBackupError(f"Unexpected error during incremental backup: {e}") from e
 
 
 # Function to recursively find <File> tags and build their full paths
@@ -255,6 +294,10 @@ def verify(args, backup_file, backup_definition, test_restore_dir, backup_dir, m
 
     Returns:
         True if the verification process completes successfully, False otherwise.
+
+    Raises:
+        Exception: If an error occurs during the verification process.
+        PermissionError: If a permission error occurs while comparing files.
     """
     result = True
     test_command = ['dar', '-t', backup_file, '-Q']
@@ -327,7 +370,14 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    run_command(command)
+    try:
+        run_command(command)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Restore command failed: {e}")
+        raise RestoreError(f"Restore command failed: {e}") from e
+    except Exception as e:
+        logger.exception(f"Unexpected error during restore: {e}")
+        raise RestoreError(f"Unexpected error during restore: {e}") from e
 
 
 
@@ -398,6 +448,18 @@ def perform_backup(args, backup_d, backup_dir, test_restore_dir, backup_type, mi
 
     Returns:
         None
+
+    Raises:
+        FileNotFoundError: If `backup_d` does not exist or a specified backup definition file does not exist.
+        PermissionError: If there is insufficient permission to access directories or files specified.
+        OSError: For various system-related errors, such as exhaustion of file descriptors.
+        ValueError: If there is an issue with the format string in `datetime.now().strftime`.
+        subprocess.CalledProcessError: If a subprocess invoked during the backup process exits with a non-zero status.
+        Exception: Catches any unexpected exceptions that may occur during the backup process.
+
+    Note: 
+      This function assumes that any exceptions raised by the `backup` function or related subprocesses are handled
+      within those functions or propagated up to be handled by the caller of `perform_backup`.
     """
     logger.debug(f"perform_backup({backup_type}) started")
     backup_definitions = []
