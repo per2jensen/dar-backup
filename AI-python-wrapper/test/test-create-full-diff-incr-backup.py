@@ -128,7 +128,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
         self.logger.info("test_backup_functionality() finished successfully")
 
     def run_backup_script(self, type=""):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), type, '-d', "example", '--config-file', self.config_file]
+        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
