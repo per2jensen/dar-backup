@@ -1,83 +1,60 @@
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import configparser
 from pathlib import Path
 import sys
 import logging
 
-# Define a dataclass for configuration settings
 @dataclass
 class ConfigSettings:
     """
-    A dataclass for holding configuration settings.
+    A dataclass for holding configuration settings, initialized from a configuration file.
 
     Attributes:
-        logfile_location (str): The file path for logging output.
-        max_size_verification_mb (int): The maximum file size in MB for verification purposes.
-        min_size_verification_mb (int): The minimum file size in MB for verification purposes.
-        no_files_verification (int): Flag indicating whether file verification should be skipped (1) or not (0).
-        backup_dir (str): The directory where backup files will be stored.
-        test_restore_dir (str): The directory to use for testing restoration of backup files.
-        backup_d_dir (str): The directory containing backup definitions.
+        logfile_location (str): The location of the log file.
+        max_size_verification_mb (int): The maximum size for verification in megabytes.
+        min_size_verification_mb (int): The minimum size for verification in megabytes.
+        no_files_verification (int): The number of files for verification.
+        backup_dir (str): The directory for backups.
+        test_restore_dir (str): The directory for test restores.
+        backup_d_dir (str): The directory for backup.d.
+        diff_age (int): The age for differential backups before deletion.
+        incr_age (int): The age for incremental backups before deletion.
     """
-    logfile_location: str
-    max_size_verification_mb: int
-    min_size_verification_mb: int
-    no_files_verification: int
-    backup_dir: str
-    test_restore_dir: str
-    backup_d_dir: str
-    diff_age: int
-    incr_age: int
 
-def read_config(config_file: str) -> ConfigSettings:
-    """
-    Reads configuration settings from a specified file and initializes a ConfigSettings dataclass instance with these values.
-    Args:
-        config_file (str): The path to the configuration file.
-    Returns:
-        ConfigSettings: An instance of ConfigSettings dataclass containing the configuration settings.
-    Raises:
-        FileNotFoundError: If the configuration file does not exist.
-        PermissionError: If there is a permission error while reading the configuration file.
-        KeyError: If required configuration sections or keys are missing in the configuration file.
-        Exception: For any other exceptions that occur.
-    """
-    config = configparser.ConfigParser()
-    try:
-        config.read(config_file)
-        settings = ConfigSettings(
-            logfile_location=config['MISC']['LOGFILE_LOCATION'],
-            max_size_verification_mb=int(config['MISC']['MAX_SIZE_VERIFICATION_MB']),
-            min_size_verification_mb=int(config['MISC']['MIN_SIZE_VERIFICATION_MB']),
-            no_files_verification=int(config['MISC']['NO_FILES_VERIFICATION']),
-            backup_dir=config['DIRECTORIES']['BACKUP_DIR'],
-            test_restore_dir=config['DIRECTORIES']['TEST_RESTORE_DIR'],
-            backup_d_dir=config['DIRECTORIES']['BACKUP.D_DIR'],
-            diff_age=int(config['AGE']['DIFF_AGE']),
-            incr_age=int(config['AGE']['INCR_AGE'])
-        )
+    def __init__(self, config_file: str):
+        """
+        Initializes the ConfigSettings instance by reading the specified configuration file.
+        
+        Args:
+            config_file (str): The path to the configuration file.
+        """
+        config = configparser.ConfigParser()
+        try:
+            config.read(config_file)
+            self.logfile_location = config['MISC']['LOGFILE_LOCATION']
+            self.max_size_verification_mb = int(config['MISC']['MAX_SIZE_VERIFICATION_MB'])
+            self.min_size_verification_mb = int(config['MISC']['MIN_SIZE_VERIFICATION_MB'])
+            self.no_files_verification = int(config['MISC']['NO_FILES_VERIFICATION'])
+            self.backup_dir = config['DIRECTORIES']['BACKUP_DIR']
+            self.test_restore_dir = config['DIRECTORIES']['TEST_RESTORE_DIR']
+            self.backup_d_dir = config['DIRECTORIES']['BACKUP.D_DIR']
+            self.diff_age = int(config['AGE']['DIFF_AGE'])
+            self.incr_age = int(config['AGE']['INCR_AGE'])
 
-        # Ensure the directories exist
-        Path(settings.backup_dir).mkdir(parents=True, exist_ok=True)
-        Path(settings.test_restore_dir).mkdir(parents=True, exist_ok=True)
-        Path(settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+            # Ensure the directories exist
+            Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
+            Path(self.test_restore_dir).mkdir(parents=True, exist_ok=True)
+            Path(self.backup_d_dir).mkdir(parents=True, exist_ok=True)
 
-        return settings
-
-    except FileNotFoundError as e:
-        logging.error(f"Configuration file not found: {config_file}")
-        sys.stderr.write(f"Error: Configuration file not found: {config_file}\n")
-        sys.exit(1)
-    except PermissionError as e:
-        logging.error(f"Permission error while reading config file {config_file}: {e}")
-        sys.stderr.write(f"Error: Permission error while reading config file {config_file}: {e}\n")
-        sys.exit(1)
-    except KeyError as e:
-        logging.error(f"Missing mandatory configuration key: {e}")
-        sys.stderr.write(f"Error: Missing mandatory configuration key: {e}\n")
-        sys.exit(1)
-    except Exception as e:
-        logging.exception(f"Error: config file {config_file}: {e}")
-        sys.stderr.write(f"Error: config file {config_file}: {e}\n")
-        sys.exit(1)
+        except FileNotFoundError:
+            logging.error(f"Configuration file not found: {config_file}")
+            sys.exit("Error: Configuration file not found.")
+        except PermissionError:
+            logging.error(f"Permission error while reading config file {config_file}")
+            sys.exit("Error: Permission error while reading config file.")
+        except KeyError as e:
+            logging.error(f"Missing mandatory configuration key: {e}")
+            sys.exit(f"Error: Missing mandatory configuration key: {e}.")
+        except Exception as e:
+            logging.exception(f"Unexpected error reading config file {config_file}: {e}")
+            sys.exit(f"Unexpected error reading config file: {e}.")

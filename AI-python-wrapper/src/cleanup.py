@@ -22,7 +22,7 @@ import os
 import re
 import sys
 
-from config_settings import ConfigSettings, read_config
+from config_settings import ConfigSettings
 from datetime import datetime, timedelta
 from util import list_backups
 from util import setup_logging
@@ -152,8 +152,7 @@ def main():
         sys.exit(0)
 
 
-    #logfile_location, backup_dir, backup_d, diff_age, incr_age = read_config(args.config_file)
-    config_settings = read_config(args.config_file)
+    config_settings = ConfigSettings(args.config_file)
     logger = setup_logging(config_settings.logfile_location, logging.INFO)
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {VERSION}")

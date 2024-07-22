@@ -13,7 +13,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-from config_settings import ConfigSettings, read_config
+from config_settings import ConfigSettings
 
 from datetime import datetime
 from pathlib import Path
@@ -615,7 +615,7 @@ def main():
         sys.exit(0)
 
     #logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config_old(args.config_file)
-    config_settings = read_config(args.config_file)
+    config_settings = ConfigSettings(args.config_file)
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
     try:
