@@ -28,7 +28,7 @@ from util import IncrementalBackupError
 from util import RestoreError
 
 
-VERSION = "alpha-0.3"
+VERSION = "alpha-0.4"
 
 logger = None
 
@@ -59,6 +59,7 @@ def backup(backup_file, backup_definition):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
+    logger.info(f"===> Starting FULL backup for {backup_definition}")
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
@@ -103,6 +104,7 @@ def differential_backup(backup_file, backup_definition, base_backup_file):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
+    logger.info(f"===> Starting DIFF backup for {backup_definition}")
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
@@ -146,6 +148,7 @@ def incremental_backup(backup_file, backup_definition, last_backup_file):
         logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
         return
 
+    logger.info(f"===> Starting INCR backup for {backup_definition}")
     command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', last_backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:

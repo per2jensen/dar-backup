@@ -9,10 +9,8 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
-Script that removes old DIFF and INCR archives according to the [AGE] settings in the configuration file.
-
-
-
+This script removes old DIFF and INCR archives + accompanying .par2 files according to the
+[AGE] settings in the configuration file.
 """
 
 import argparse
@@ -27,26 +25,9 @@ from datetime import datetime, timedelta
 from util import list_backups
 from util import setup_logging
 
-VERSION = "aplha-0.3"
+VERSION = "aplha-0.4"
 
 logger = None 
-
-def read_config_old(config_file):
-    config = configparser.ConfigParser()
-    if not config_file:   
-        config_file = os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf')
-    try:
-        config.read(config_file)
-        logfile_location = config['MISC']['LOGFILE_LOCATION']
-        backup_dir = config['DIRECTORIES']['BACKUP_DIR']
-        backup_d = config['DIRECTORIES']['BACKUP.D_DIR']
-        diff_age = int(config['AGE']['DIFF_AGE'])
-        incr_age = int(config['AGE']['INCR_AGE'])
-    except Exception as e:
-        logger.exception(f"Error reading config file {config_file}: {e}")
-        sys.exit(1)
-    return logfile_location, backup_dir, backup_d, diff_age, incr_age
-
 
 def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
     """
