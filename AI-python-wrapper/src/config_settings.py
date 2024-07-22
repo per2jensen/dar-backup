@@ -27,6 +27,8 @@ class ConfigSettings:
     backup_dir: str
     test_restore_dir: str
     backup_d_dir: str
+    diff_age: int
+    incr_age: int
 
 def read_config(config_file: str) -> ConfigSettings:
     """
@@ -51,7 +53,9 @@ def read_config(config_file: str) -> ConfigSettings:
             no_files_verification=int(config['MISC']['NO_FILES_VERIFICATION']),
             backup_dir=config['DIRECTORIES']['BACKUP_DIR'],
             test_restore_dir=config['DIRECTORIES']['TEST_RESTORE_DIR'],
-            backup_d_dir=config['DIRECTORIES']['BACKUP.D_DIR']
+            backup_d_dir=config['DIRECTORIES']['BACKUP.D_DIR'],
+            diff_age=int(config['AGE']['DIFF_AGE']),
+            incr_age=int(config['AGE']['INCR_AGE'])
         )
 
         # Ensure the directories exist

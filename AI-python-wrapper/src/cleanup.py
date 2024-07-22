@@ -22,6 +22,7 @@ import os
 import re
 import sys
 
+from config_settings import ConfigSettings, read_config
 from datetime import datetime, timedelta
 from util import list_backups
 from util import setup_logging
@@ -30,7 +31,7 @@ VERSION = "aplha-0.3"
 
 logger = None 
 
-def read_config(config_file):
+def read_config_old(config_file):
     config = configparser.ConfigParser()
     if not config_file:   
         config_file = os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf')
@@ -151,8 +152,9 @@ def main():
         sys.exit(0)
 
 
-    logfile_location, backup_dir, backup_d, diff_age, incr_age = read_config(args.config_file)
-    logger = setup_logging(logfile_location, logging.INFO)
+    #logfile_location, backup_dir, backup_d, diff_age, incr_age = read_config(args.config_file)
+    config_settings = read_config(args.config_file)
+    logger = setup_logging(config_settings.logfile_location, logging.INFO)
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {VERSION}")
     logger.debug(f"`args`:\n{args}")
@@ -161,22 +163,22 @@ def main():
         backup_dir = args.alternate_archive_dir
 
     if args.cleanup_specific_archive:
-        delete_archives(backup_dir, args.cleanup_specific_archive)
+        delete_archives(config_settings.backup_dir, args.cleanup_specific_archive)
         sys.exit(0)
     elif args.list:
-        list_backups(backup_dir, args.backup_definition)
+        list_backups(config_settings.backup_dir, args.backup_definition)
     else:
         backup_definitions = []
         if args.backup_definition:
             backup_definitions.append(args.backup_definition)
         else:
-            for root, _, files in os.walk(backup_d):
+            for root, _, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
                     backup_definitions.append(file.split('.')[0])
 
         for definition in backup_definitions:
-            delete_old_backups(backup_dir, diff_age, 'DIFF', definition)
-            delete_old_backups(backup_dir, incr_age, 'INCR', definition)
+            delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', definition)
+            delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', definition)
 
 if __name__ == "__main__":
     main()
