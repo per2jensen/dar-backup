@@ -83,6 +83,9 @@ class Test_Cleanup_Script(BaseTestCase):
 
 
     def test_cleanup_functionality(self):
+        logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
+        self.cleanup_before_test()
+        self.create_test_files()
         try:
             self.run_cleanup_script()
 
@@ -107,6 +110,8 @@ class Test_Cleanup_Script(BaseTestCase):
 
 
     def test_cleanup_specific_archive(self):
+        logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
+        self.cleanup_before_test()
         logging.info("Creating specific dummy archive files...")
         test_files = {
             f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
@@ -132,7 +137,45 @@ class Test_Cleanup_Script(BaseTestCase):
         self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2')))
         self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2')))
 
+        self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar')))
+        self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2')))
+        self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2')))
 
+
+    def test_cleanup_alternate_dir(self):
+        logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
+        self.cleanup_before_test()
+        
+
+        alternate_dir = os.path.join(self.test_dir, 'backups-alternate')
+        if not alternate_dir.startswith('/tmp/unit-test'):
+            raise RuntimeError("Alternate directory is not a temporary directory")
+
+        self.cleanup_before_test([alternate_dir])
+        os.makedirs(alternate_dir, exist_ok=True)
+
+        for filename, content in self.test_files.items():
+            with open(os.path.join(self.test_dir, 'backups', filename), 'w') as f:
+                f.write(content)
+
+        for filename, content in self.test_files.items():
+            with open(os.path.join(alternate_dir, filename), 'w') as f:
+                f.write(content)
+
+
+        command = ['python3',  os.path.join(self.test_dir, "bin", "cleanup.py"), '--alternate-archive-dir', alternate_dir, '--config-file', self.config_file]
+        logging.info(command)
+        result = subprocess.run(command, capture_output=True, text=True)
+        logging.info(result.stdout)
+        if result.returncode != 0:
+            logging.error(result.stderr)
+            raise RuntimeError(f"Cleanup script failed with return code {result.returncode}")
+
+        self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'alternate_dir', f'example_DIFF_{date_20_days_ago}.1.dar')))
+        self.assertTrue(not os.path.exists(os.path.join(self.test_dir, 'alternate_dir', f'example_INCR_{date_10_days_ago}.1.dar')))
+
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backups', f'example_DIFF_{date_20_days_ago}.1.dar')))
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar')))
 
 
 if __name__ == '__main__':

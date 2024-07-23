@@ -34,6 +34,8 @@ def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
     Delete backups older than the specified age in days.
     Only .dar and .par2 files are considered for deletion.
     """
+    logger.info(f"Deleting {backup_type} backups older than {age} days in {backup_dir} for backup definition: {backup_definition}")
+
     if backup_type not in ['DIFF', 'INCR']:
         logger.error(f"Invalid backup type: {backup_type}")
         return
@@ -44,10 +46,8 @@ def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
     for filename in sorted(os.listdir(backup_dir)):
         if not (filename.endswith('.dar') or filename.endswith('.par2')):
             continue
-
         if backup_definition and not filename.startswith(backup_definition):
             continue
-
         if backup_type in filename:
             try:
                 date_str = filename.split(f"_{backup_type}_")[1].split('.')[0]
@@ -132,15 +132,15 @@ def main():
         show_version()
         sys.exit(0)
 
-
     config_settings = ConfigSettings(args.config_file)
+
     logger = setup_logging(config_settings.logfile_location, logging.INFO)
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {VERSION}")
-    logger.debug(f"`args`:\n{args}")
+    logger.info(f"`args`:\n{args}")
 
     if args.alternate_archive_dir:
-        backup_dir = args.alternate_archive_dir
+        config_settings.backup_dir = args.alternate_archive_dir
 
     if args.cleanup_specific_archive:
         delete_archives(config_settings.backup_dir, args.cleanup_specific_archive)

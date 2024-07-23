@@ -153,4 +153,27 @@ class BaseTestCase(unittest.TestCase):
             self.logger.exception("Setup test failed")
             raise
         
-        
+    
+    def cleanup_before_test(self, directory_path: list[str] = None):
+        if not directory_path:
+            directory_path = [os.path.join(self.test_dir,   "backups"),
+                                os.path.join(self.test_dir, "data"),
+                                os.path.join(self.test_dir, "restore"),
+                              ]
+        for dir in directory_path:
+            if not dir.startswith("/tmp/unit-test"):
+                logging.error(f"Only files/directories in /tmp/unit-test can be cleaned up: {dir}")
+                raise ValueError(f"Only files/directories in /tmp/unit-test can be cleaned up: {dir}")
+            if not os.path.exists(dir):
+                return
+            for filename in os.listdir(dir):
+                file_path = os.path.join(dir, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    logging.error(f'Failed to delete {file_path}. Reason: {e}')
+                    raise e
+                
