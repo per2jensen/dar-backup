@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import configparser
 import datetime
 import filecmp
 
@@ -13,8 +12,9 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-from config_settings import ConfigSettings
 
+from argparse import ArgumentParser
+from config_settings import ConfigSettings
 from datetime import datetime
 from pathlib import Path
 from time import time
@@ -33,7 +33,7 @@ VERSION = "alpha-0.4"
 logger = None
 
 
-def backup(backup_file, backup_definition):
+def backup(backup_file: str, backup_definition: str):
     """
     Performs a full backup using the 'dar' command.
 
@@ -76,7 +76,7 @@ def backup(backup_file, backup_definition):
 
 
 
-def differential_backup(backup_file, backup_definition, base_backup_file):
+def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str):
     """
     Creates a differential backup based on a specified base backup.
 
@@ -118,7 +118,7 @@ def differential_backup(backup_file, backup_definition, base_backup_file):
         raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
 
 
-def incremental_backup(backup_file, backup_definition, last_backup_file):
+def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str):
     """
     Creates an incremental backup based on the last backup file.
 
@@ -163,7 +163,7 @@ def incremental_backup(backup_file, backup_definition, last_backup_file):
 
 
 # Function to recursively find <File> tags and build their full paths
-def find_files_with_paths(element, current_path=""):
+def find_files_with_paths(element: ET, current_path=""):
     """
     Recursively finds files within a directory element and returns a list of file paths with their sizes.
 
@@ -188,7 +188,7 @@ def find_files_with_paths(element, current_path=""):
 
 
 
-def find_files_between_min_and_max_size(backed_up_files, min_size_verification_mb, max_size_verification_mb):
+def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], config_settings: ConfigSettings):
     """Find files within a specified size range.
 
     This function takes a list of backed up files, a minimum size in megabytes, and a maximum size in megabytes.
@@ -205,10 +205,10 @@ def find_files_between_min_and_max_size(backed_up_files, min_size_verification_m
     Returns:
         list: A list of file names that fall within the specified size range.
     """
-    logger.debug(f"Finding files in archive between min and max sizes: {min_size_verification_mb}MB and {max_size_verification_mb}MB")
+    logger.debug(f"Finding files in archive between min and max sizes: {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB")
     files = []
-    max_size = max_size_verification_mb
-    min_size = min_size_verification_mb
+    max_size = config_settings.max_size_verification_mb
+    min_size = config_settings.min_size_verification_mb
     dar_sizes = {
         "o"   : 1,
         "kio" : 1024,
@@ -225,13 +225,13 @@ def find_files_between_min_and_max_size(backed_up_files, min_size_verification_m
                 number = int(match.group(1))
                 unit = match.group(2).strip()
                 file_size = dar_sizes[unit] * number
-            if (min_size_verification_mb  * 1024 * 1024) < file_size <= (max_size * 1024 * 1024):
+            if (min_size * 1024 * 1024) < file_size <= (max_size * 1024 * 1024):
                 logger.trace(f"File found between min and max sizes: {tuple}")
                 files.append(tuple[0])
     return files
 
 
-def verify(args, backup_file, backup_definition, config_settings):
+def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, config_settings: ConfigSettings):
     """
     Verify the integrity of a DAR backup by performing the following steps:
     1. Run an archive integrity test on the backup file.
@@ -257,14 +257,12 @@ def verify(args, backup_file, backup_definition, config_settings):
     run_command(test_command)
     logger.info("Archive integrity test passed.")
 
-
-
     if args.do_not_compare:
         return result
 
     backed_up_files = get_backed_up_files(backup_file, config_settings.backup_dir) 
 
-    files = find_files_between_min_and_max_size(backed_up_files, config_settings.min_size_verification_mb, config_settings.max_size_verification_mb)
+    files = find_files_between_min_and_max_size(backed_up_files, config_settings)
     if len(files) == 0:
         logger.info(f"No files between {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB for verification, skipping")
         return result
@@ -305,7 +303,7 @@ def verify(args, backup_file, backup_definition, config_settings):
 
 
 
-def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
+def restore_backup(backup_name: str, backup_dir: str, restore_dir: str, selection: str =None):
     """
     Restores a backup file to a specified directory.
 
@@ -336,7 +334,7 @@ def restore_backup(backup_name, backup_dir, restore_dir, selection=None):
 
 
 
-def get_backed_up_files(backup_name, backup_dir):
+def get_backed_up_files(backup_name: str, backup_dir: str):
     """
     Retrieves the list of backed up files from a DAR archive.
 
@@ -387,7 +385,7 @@ def list_contents(backup_name, backup_dir, selection=None):
             print(line)
 
 
-def perform_backup(args, config_settings: ConfigSettings, backup_type):
+def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str):
     """
     Perform backup operation.
 
@@ -461,14 +459,14 @@ def perform_backup(args, config_settings: ConfigSettings, backup_type):
             else:
                 logger.error("Verification failed.")
             logger.info("Generate par2 redundancy files")
-            generate_par2_files(backup_file, config_settings.backup_dir)
+            generate_par2_files(backup_file, config_settings)
             logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
             logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition: {e}")
 
 
-def generate_par2_files(backup_file, backup_dir):
+def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
     """
     Generate PAR2 files for a given backup file in the specified backup directory.
 
@@ -482,12 +480,12 @@ def generate_par2_files(backup_file, backup_dir):
     Returns:
         None
     """
-    for filename in os.listdir(backup_dir):
+    for filename in os.listdir(configSettings.backup_dir):
         if os.path.basename(backup_file) in filename:
             # Construct the full path to the file
-            file_path = os.path.join(backup_dir, filename)
-            # Run the par2 command to generate redundancy files with 5% error correction
-            command = ['par2', 'create', '-r5', '-q', '-q', file_path]
+            file_path = os.path.join(configSettings.backup_dir, filename)
+            # Run the par2 command to generate redundancy files with error correction
+            command = ['par2', 'create', f'-r{configSettings.error_correction_percent}', '-q', '-q', file_path]
             run_command(command)
             #subprocess.run(command, check=True)
             logger.debug(f"par2 files generated for {file_path}")
@@ -495,7 +493,7 @@ def generate_par2_files(backup_file, backup_dir):
 
 
 
-def extract_error_lines(log_file_path, start_time, end_time):
+def extract_error_lines(log_file_path: str, start_time: str, end_time: str):
     """
     Extracts error lines from a log file within a specific time range.
 
@@ -586,7 +584,7 @@ See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.ht
 def main():
     global logger 
 
-    MIN_PYTHON_VERSION = (3, 7)
+    MIN_PYTHON_VERSION = (3, 9)
     if sys.version_info < MIN_PYTHON_VERSION:
         sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
         sys.exit(1)

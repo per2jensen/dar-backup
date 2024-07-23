@@ -20,13 +20,11 @@ class BaseTestCase(unittest.TestCase):
         cls.template_dar_rc = "template/.darrc"
         cls.dar_rc = os.path.join(cls.test_dir, ".darrc")
         cls.bin_dir = "../src"
-        cls.log_file = os.path.join(cls.test_dir, "test_log.log")
+        cls.log_file = "/tmp/unit-test/test_log.log"
         cls.datestamp = datetime.now().strftime('%Y-%m-%d')
 
-        
         if os.path.exists(cls.test_dir):
             shutil.rmtree(cls.test_dir)
-
 
         # Create the unit test directory
         if not os.path.exists(cls.test_dir):
@@ -58,10 +56,10 @@ class BaseTestCase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         # Clean up after tests - Comment out this block to preserve directories
-        cls.logger.info("No operations in tearDownClass")
+        #cls.logger.info("No operations in tearDownClass")
         # Uncomment the following lines to enable cleanup
-        # if os.path.exists(cls.test_dir):
-        #     shutil.rmtree(cls.test_dir)
+        if os.path.exists(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
 
     @classmethod
     def setup_logging(cls):

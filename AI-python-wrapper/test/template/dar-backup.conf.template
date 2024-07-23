@@ -1,5 +1,5 @@
 [MISC]
-LOGFILE_LOCATION = /tmp/unit-test/@@test-case-name@@/dar-backup.log
+LOGFILE_LOCATION = /tmp/unit-test/dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 0
 NO_FILES_VERIFICATION = 5
@@ -14,3 +14,6 @@ TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
 [AGE]
 DIFF_AGE = 30
 INCR_AGE = 15
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5

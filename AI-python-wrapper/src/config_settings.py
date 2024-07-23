@@ -40,6 +40,7 @@ class ConfigSettings:
             self.backup_d_dir = config['DIRECTORIES']['BACKUP.D_DIR']
             self.diff_age = int(config['AGE']['DIFF_AGE'])
             self.incr_age = int(config['AGE']['INCR_AGE'])
+            self.error_correction_percent = int(config['PAR2']['ERROR_CORRECTION_PERCENT'])
 
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)

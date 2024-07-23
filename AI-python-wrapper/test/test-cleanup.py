@@ -80,11 +80,9 @@ class Test_Cleanup_Script(BaseTestCase):
             raise RuntimeError(f"Cleanup script failed with return code {result.returncode}")
         return result.returncode
 
-
-
     def test_cleanup_functionality(self):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        self.cleanup_before_test()
+        
         self.create_test_files()
         try:
             self.run_cleanup_script()
@@ -111,7 +109,6 @@ class Test_Cleanup_Script(BaseTestCase):
 
     def test_cleanup_specific_archive(self):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        self.cleanup_before_test()
         logging.info("Creating specific dummy archive files...")
         test_files = {
             f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
@@ -144,8 +141,6 @@ class Test_Cleanup_Script(BaseTestCase):
 
     def test_cleanup_alternate_dir(self):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        self.cleanup_before_test()
-        
 
         alternate_dir = os.path.join(self.test_dir, 'backups-alternate')
         if not alternate_dir.startswith('/tmp/unit-test'):
