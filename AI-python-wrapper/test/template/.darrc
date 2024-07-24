@@ -2,11 +2,11 @@
 # Place this file in the user's home directory as .darrc or specify it with the -B option
 
 extract:
-  # don't restore File Specific Attributes
-  #--fsa-scope none
+# don't restore File Specific Attributes
+#--fsa-scope none
 
-  # ignore owner, useful when used by a non-privileged user
-  --comparison-field=ignore-owner
+# ignore owner, useful when used by a non-privileged user
+--comparison-field=ignore-owner
 
 
 # Exclude specific file types from compression
@@ -21,9 +21,7 @@ compress-exclusion:
     *.tgz
     *.tbz2
     *.txz
-
 # Exclude common image file types from compression
-compress-exclusion:
     *.jpg
     *.jpeg
     *.png
@@ -31,9 +29,7 @@ compress-exclusion:
     *.bmp
     *.tiff
     *.svg
-
 # Exclude common movie file types from compression
-compress-exclusion:
     *.mp4
     *.avi
     *.mkv
