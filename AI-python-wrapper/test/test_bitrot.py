@@ -48,8 +48,8 @@ class Test_BitRot(BaseTestCase):
 
 
     @classmethod
-    def simulate_bitrot(cls):
-        """Simulate bitrot in dar archive by replacing 5% with random data"""
+    def simulate_bitrot(cls, bitrot: int = 5):
+        """Simulate bitrot in dar archive by replacing <bitrot> % with random data"""
         date = datetime.now().strftime('%Y-%m-%d')
         archive = f'example_FULL_{date}.1.dar'
         archive_path = os.path.join(cls.test_dir, "backups", archive)
@@ -59,16 +59,18 @@ class Test_BitRot(BaseTestCase):
             archive_size = os.path.getsize(archive_path)
             logging.info(f"Size of archive: {archive_path} is {archive_size} bytes")
             # Generate 5% random bytes
-            random_bytes = bytearray(random.getrandbits(8) for _ in range(int(archive_size*0.049)))  # 4,9% bitrot
+            random_bytes = bytearray(random.getrandbits(8) for _ in range(int(archive_size*(bitrot/100)*0.98))) 
             # Open the file in write mode
             with open(archive_path, "r+b") as file:
-                # Seek to position 40% into the file
-                file.seek(int(archive_size*0.4))
+                # Seek to random position between 0 - 80% of file size
+                random_position = random.randint(0, int(archive_size * 0.8))
+                file.seek(random_position)
                 # Write the random bytes
                 file.write(random_bytes)
             cls.logger.info(f"5% bitrot created in {archive_path}")
         else:
             cls.logger.error(f"File {archive_path} does not exist.")
+            sys.exit(1)
 
 
     @classmethod
@@ -128,6 +130,7 @@ class Test_BitRot(BaseTestCase):
         try:
             command = ['dar', '-t', basename_path]
             self.run_command(command)
+            logging.info(f"Archive: {archive_path}  successfully repaired")
         except RuntimeError as e:
             logging.exception(f"Expected no errors after parchive repair")
             sys.exit(1)
