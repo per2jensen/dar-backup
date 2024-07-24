@@ -69,7 +69,8 @@ def backup(backup_file: str, backup_definition: str):
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during backup: {e}")
+        logger.exception(f"Unexpected error during backup")
+        logger.error("Exception details:", exc_info=True)
         raise BackupError(f"Unexpected error during backup: {e}") from e
  
  
@@ -114,7 +115,8 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         logger.error(f"Differential backup command failed: {e}")
         raise DifferentialBackupError(f"Differential backup command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during differential backup: {e}")
+        logger.exception(f"Unexpected error during differential backup")
+        logger.error("Exception details:", exc_info=True)
         raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
 
 
@@ -158,7 +160,8 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
         logger.error(f"Incremental backup command failed: {e}")
         raise IncrementalBackupError(f"Incremental backup command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during incremental backup: {e}")
+        logger.exception(f"Unexpected error during incremental backup")
+        logger.error("Exception details:", exc_info=True)
         raise IncrementalBackupError(f"Unexpected error during incremental backup: {e}") from e
 
 
@@ -298,7 +301,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         except PermissionError:
             result = False
             logger.exception(f"Permission error while comparing files, continuing....")
-
+            logger.error("Exception details:", exc_info=True)
     return result
 
 
@@ -326,10 +329,11 @@ def restore_backup(backup_name: str, backup_dir: str, restore_dir: str, selectio
     try:
         run_command(command)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Restore command failed: {e}")
+        logger.error("Exception details:", exc_info=True)
         raise RestoreError(f"Restore command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during restore: {e}")
+        logger.exception(f"Unexpected error during restore")
+        logger.error("Exception details:", exc_info=True)
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
 
@@ -463,8 +467,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
-            logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition: {e}")
-
+            logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition")
+            logger.error("Exception details:", exc_info=True)
 
 def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
     """
@@ -607,16 +611,18 @@ def main():
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
 
+    #logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config_old(args.config_file)
+    config_settings = ConfigSettings(args.config_file)
+
     if args.version:
         show_version()
         sys.exit(0)
-
-    if args.examples:
+    elif args.examples:
         show_examples()
         sys.exit(0)
-
-    #logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config_old(args.config_file)
-    config_settings = ConfigSettings(args.config_file)
+    elif args.list:
+        list_backups(config_settings.backup_dir, args.backup_definition)
+        sys.exit(0)
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
     try:
@@ -646,8 +652,6 @@ def main():
             perform_backup(args, config_settings, "DIFF")
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
             perform_backup(args, config_settings, "INCR")
-        elif args.list:
-            list_backups(config_settings.backup_dir, args.backup_definition)
         elif args.list_contents:
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
@@ -656,20 +660,20 @@ def main():
         else:
             parser.print_help()
     except Exception as e:
-        logger.exception("An error occurred during the backup process.", e)
-        sys.exit(1)
+        logger.exception("An error occurred")
+        logger.error("Exception details:", exc_info=True)
 
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
 
     error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
     if len(error_lines) > 0:
-        args.verbose and print("Errors encountered")
+        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
         for line in error_lines:
             print(line)
         sys.exit(1)
     else:
-        args.verbose and print("No errors encountered")
+        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
         sys.exit(0)
 
 
