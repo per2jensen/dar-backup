@@ -60,7 +60,7 @@ def backup(backup_file: str, backup_definition: str):
         return
 
     logger.info(f"===> Starting FULL backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, '-B', backup_definition, '-Q']
+    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -105,7 +105,7 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         return
 
     logger.info(f"===> Starting DIFF backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', base_backup_file, '-Q']
+    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-A', base_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -149,7 +149,7 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
         return
 
     logger.info(f"===> Starting INCR backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, '-B', backup_definition, '-A', last_backup_file, '-Q']
+    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
