@@ -1,5 +1,4 @@
 name: dar-backup.py
-
 on:
   push:
     branches: [ main ]
