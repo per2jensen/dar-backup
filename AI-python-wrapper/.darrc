@@ -12,41 +12,35 @@ extract:
 -an
 -ag
 
-
 # Exclude specific file types from compression
 compress-exclusion:
-    *.gz
-    *.bz2
-    *.xz
-    *.zip
-    *.rar
-    *.7z
-    *.tar
-    *.tgz
-    *.tbz2
-    *.txz
-
+-Z  *.gz
+-Z  *.bz2
+-Z    *.xz
+-Z    *.zip
+-Z    *.rar
+-Z  *.7z
+-Z    *.tar
+-Z    *.tgz
+-Z    *.tbz2
+-Z    *.txz
 # Exclude common image file types from compression
-compress-exclusion:
-    *.jpg
-    *.jpeg
-    *.png
-    *.gif
-    *.bmp
-    *.tiff
-    *.svg
-
+-Z    *.jpg
+-Z    *.jpeg
+-Z    *.png
+-Z    *.gif
+-Z    *.bmp
+-Z    *.tiff
+-Z    *.svg
 # Exclude common movie file types from compression
-compress-exclusion:
-    *.mp4
-    *.avi
-    *.mkv
-    *.mov
-    *.wmv
-    *.flv
-    *.mpeg
-    *.mpg
-
+-Z    *.mp4
+-Z    *.avi
+-Z    *.mkv
+-Z    *.mov
+-Z    *.wmv
+-Z    *.flv
+-Z    *.mpeg
+-Z    *.mpg
 
 # These are zip files. Not all are compressed, but considering that they can
 # get quite large it is probably more prudent to leave this uncommented.
