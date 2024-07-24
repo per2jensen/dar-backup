@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  install-procedure:
+  python3-unit-tests:
     runs-on: ubuntu-latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -26,8 +26,8 @@ jobs:
       - name: Install required packages
         run:  sudo apt install -y dar dar-static par2 git python3
 
-      - name: Run python3 unittests
+      - name: Run python3 unit tests
         run: |
-          cd git/dar-backup/AI-python-wrapper/test
+          cd $GITHUB_WORKSPACE/dar-backup/AI-python-wrapper/test
           python3 runner.py
 
