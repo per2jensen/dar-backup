@@ -14,6 +14,7 @@ import os
 import subprocess
 import shlex
 import sys
+import traceback
 from datetime import datetime
 
 logger=None
@@ -63,8 +64,9 @@ def setup_logging(log_file, log_level):
         logging.basicConfig(filename=log_file, level=level_used,
                             format='%(asctime)s - %(levelname)s - %(message)s')
 
-    except Exception:
+    except Exception as e:
         print("logging not initialized, exiting.")
+        traceback.print_exc()
         sys.exit(1)
 
     return logger
