@@ -136,6 +136,11 @@ class BaseTestCase(unittest.TestCase):
         cls.logger.info(f"Log file: {cls.log_file}")
         cls.logger.info(f".darrc file: {cls.dar_rc}")
 
+    def tearDown(self):
+        # Clean up state that was set up for each test
+        self.cleanup_before_test()
+        self.logger.info("tearDown(): cleaned up before test")
+    
     def test_setup(self):
         try:
             # Test to ensure the setup is correct
