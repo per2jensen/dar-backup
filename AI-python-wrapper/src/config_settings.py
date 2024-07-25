@@ -47,15 +47,19 @@ class ConfigSettings:
             Path(self.test_restore_dir).mkdir(parents=True, exist_ok=True)
             Path(self.backup_d_dir).mkdir(parents=True, exist_ok=True)
 
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             logging.error(f"Configuration file not found: {config_file}")
+            logging.error(f"Error details: {e}")
             sys.exit("Error: Configuration file not found.")
-        except PermissionError:
+        except PermissionError as e:
             logging.error(f"Permission error while reading config file {config_file}")
+            logging.error(f"Error details: {e}")
             sys.exit("Error: Permission error while reading config file.")
         except KeyError as e:
             logging.error(f"Missing mandatory configuration key: {e}")
+            logging.error(f"Error details: {e}")
             sys.exit(f"Error: Missing mandatory configuration key: {e}.")
         except Exception as e:
             logging.exception(f"Unexpected error reading config file {config_file}: {e}")
+            logging.error(f"Error details: {e}")
             sys.exit(f"Unexpected error reading config file: {e}.")
