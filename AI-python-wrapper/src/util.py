@@ -11,6 +11,7 @@ See section 15 and section 16 in the supplied "LICENSE" file
 import locale
 import logging
 import os
+import re
 import subprocess
 import shlex
 import sys
@@ -114,7 +115,11 @@ def list_backups(backup_dir, backup_definition=None):
     
     # Create a dictionary to hold backup names and their total sizes
     backup_sizes = {}
-    
+
+   # Define the date pattern
+    date_pattern = re.compile(r'_\d{4}-\d{2}-\d{2}')
+  
+
     # List all files and filter .dar files
     for f in os.listdir(backup_dir):
         if f.endswith('.dar'):
@@ -122,7 +127,17 @@ def list_backups(backup_dir, backup_definition=None):
             base_name = f.rsplit('.', 2)[0]
             if backup_definition and not base_name.startswith(backup_definition):
                 continue
-            
+
+            # Check if the base name contains any of the substrings
+            substrings = ["_FULL_", "_DIFF_", "_INCR_"]
+            if not any(substring in base_name for substring in substrings):
+                continue
+
+            # Check if the base name contains a date in the form "-YYYY-MM-DD"
+            if not date_pattern.search(base_name):
+                continue
+
+
             # Calculate the file size in megabytes
             file_path = os.path.join(backup_dir, f)
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
