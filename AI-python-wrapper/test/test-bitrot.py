@@ -226,6 +226,7 @@ class Test_BitRot(BaseTestCase):
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
+        self.modify_par2_redundancy(5)
         command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--full-backup' ,'-d', "example", '--config-file', self.config_file]
         self.run_command(command)
         self.simulate_bitrot(5)
