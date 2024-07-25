@@ -611,7 +611,7 @@ def main():
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
 
-    #logfile_location, backup_dir, test_restore_dir, backup_d, min_size_verification_mb, max_size_verification_mb, no_files_verification = read_config_old(args.config_file)
+    args.config_file = os.path.abspath(args.config_file)
     config_settings = ConfigSettings(args.config_file)
 
     if args.version:

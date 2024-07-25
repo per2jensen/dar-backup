@@ -24,6 +24,7 @@ xml_data="""<?xml version="1.0" ?>
 
 
 
+
 # Function to recursively find <File> tags and build their full paths
 def find_files_with_paths(element, current_path=""):
     files = []
@@ -43,6 +44,13 @@ root = ET.fromstring(xml_data)
 # Extract full paths for all <File> elements
 file_paths = find_files_with_paths(root)
 
+
+def success():
+	print("\033[1m\033[32mSUCCESS\033[0m")
+	print("\033[1m\033[31mErrors\033[0m encountered")
 # Print the full paths
-for path in file_paths:
-    print(path)
+#for path in file_paths:
+#    print(path)
+
+
+success()
