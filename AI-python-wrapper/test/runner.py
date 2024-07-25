@@ -5,6 +5,7 @@ import subprocess
 import logging
 import argparse
 import sys
+import traceback
 
 UNIT_TEST_DIR = '/tmp/unit-test/'
 VERSION = "0.1"
@@ -50,19 +51,24 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 def main():
-    parser = argparse.ArgumentParser(description="Run unit tests with optional debug output.")
-    parser.add_argument('--debug', action='store_true', help="Show detailed debug output.")
-    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="Run unit tests with optional debug output.")
+        parser.add_argument('--debug', action='store_true', help="Show detailed debug output.")
+        parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+        args = parser.parse_args()
 
-    if args.version:
-        show_version()
-        sys.exit(0)
+        if args.version:
+            show_version()
+            sys.exit(0)
 
-    os.makedirs(UNIT_TEST_DIR, exist_ok=True)
-    setup_logging(debug=args.debug)
-    run_tests(debug=args.debug)
-
+        os.makedirs(UNIT_TEST_DIR, exist_ok=True)
+        setup_logging(debug=args.debug)
+        run_tests(debug=args.debug)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        traceback.print_exception(type(e), e, e.__traceback__)
+        sys.exit(1)
+        
 if __name__ == "__main__":
     main()
 
