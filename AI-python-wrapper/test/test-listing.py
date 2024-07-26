@@ -84,11 +84,25 @@ class Test_Listing(BaseTestCase):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list', '--config-file', self.config_file]
         result = self.run_command(command)
-        self.assertIn('example_FULL_2024-07-25', result.stdout)
-        self.assertIn('example_DIFF_2024-07-25', result.stdout)
-        self.assertIn('example_INCR_2024-07-25', result.stdout)
-        self.assertNotIn('example_DIFF_199_01-01', result.stdout) 
-        self.assertNotIn('example.txt', result.stdout)
+
+        # Check for all expected files using regex
+        expected_patterns = [
+            r'example_FULL_\d{4}-\d{2}-\d{2}',
+            r'example_DIFF_\d{4}-\d{2}-\d{2}',
+            r'example_INCR_\d{4}-\d{2}-\d{2}']
+
+        for pattern in expected_patterns:
+            self.assertRegex(result.stdout, pattern)
+
+        # Ensure specific files are not listed
+        unexpected_patterns = [
+            r'example(?!_FULL_\d{4}-\d{2}-\d{2})(?!_DIFF_\d{4}-\d{2}-\d{2})(?!_INCR_\d{4}-\d{2}-\d{2})',
+            r'example_DIFF_199_01-01',
+            r'example.txt']
+
+        for pattern in unexpected_patterns:
+            self.assertNotRegex(result.stdout, pattern)
+
         logging.info(f"<-- Finished running test: {sys._getframe().f_code.co_name}")
 
 if __name__ == '__main__':
