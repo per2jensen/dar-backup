@@ -27,6 +27,6 @@ jobs:
 
       - name: Run python3 unit tests
         run: |
-          cd $GITHUB_WORKSPACE/AI-python-wrapper/test
+          cd $GITHUB_WORKSPACE/v2/test
           python3 runner.py
 
