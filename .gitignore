@@ -1,7 +1,6 @@
-AI-python-wrapper/backup.d/pj-homedir
-AI-python-wrapper/test/__pycache__/prereq.cpython-312.pyc
+v2/backup.d/pj-homedir
+v2/test/__pycache__/prereq.cpython-312.pyc
 *.pyc
-AI-python-wrapper/test/test_template.py
-AI-python-wrapper/venv
-
-AI-python-wrapper/src/mount-microserver.sh
+v2/test/test_template.py
+v2/venv
+v2/src/mount-microserver.sh
