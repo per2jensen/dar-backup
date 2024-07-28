@@ -29,5 +29,5 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/v2
           export PYTHONPATH=$GITHUB_WORKSPACE/v2 
-          /usr/bin/pytest test
+          /usr/bin/pytest-3 test
 
