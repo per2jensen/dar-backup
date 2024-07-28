@@ -13,17 +13,18 @@ This script removes old DIFF and INCR archives + accompanying .par2 files accord
 [AGE] settings in the configuration file.
 """
 
+
 import argparse
-import configparser
 import logging
 import os
 import re
 import sys
 
-from config_settings import ConfigSettings
 from datetime import datetime, timedelta
-from util import list_backups
-from util import setup_logging
+
+from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import list_backups
+from dar_backup.util import setup_logging
 
 VERSION = "aplha-0.4"
 
@@ -115,6 +116,8 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 def main():
+
+    
     global logger
 
     parser = argparse.ArgumentParser(description="Cleanup old backup files.")

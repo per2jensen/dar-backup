@@ -1,5 +1,4 @@
 import unittest
-from base_test_case import BaseTestCase
 
 #import datetime
 import os
@@ -10,10 +9,15 @@ import shutil
 import sys
 import glob  # Added import statement
 
-
+from base_test_case import BaseTestCase
 from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
+
+from dar_backup.util import run_command
+from dar_backup.util import run_command_package_path
+
+
 
 today = datetime.now().strftime('%Y-%m-%d')
 date_10_days_ago = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
@@ -71,10 +75,21 @@ class Test_Cleanup_Script(BaseTestCase):
                 f.write(content)
 
     def run_cleanup_script(self):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "cleanup.py"), '-d', "example", '--config-file', self.config_file]
+
+        current_pythonpath = os.environ.get('PYTHONPATH', '')
+        new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
+
+        print(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
+        logging.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
+
+        command = ['python3', "-m",  "dar_backup.cleanup", '-d', "example", '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
+
+        os.environ['PYTHONPATH'] = current_pythonpath   
+
         if result.returncode != 0:
             logging.error(result.stderr)
             raise RuntimeError(f"Cleanup script failed with return code {result.returncode}")
@@ -122,7 +137,7 @@ class Test_Cleanup_Script(BaseTestCase):
             with open(os.path.join(self.test_dir, 'backups', filename), 'w') as f:
                 f.write(content)
 
-        command = ['python3',  os.path.join(self.test_dir, "bin", "cleanup.py"), '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago}'  , '--config-file', self.config_file]
+        command = ['python3', "-m",  "dar_backup.cleanup", '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago}'  , '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
@@ -158,7 +173,7 @@ class Test_Cleanup_Script(BaseTestCase):
                 f.write(content)
 
 
-        command = ['python3',  os.path.join(self.test_dir, "bin", "cleanup.py"), '--alternate-archive-dir', alternate_dir, '--config-file', self.config_file]
+        command = ['python3',"-m",  "dar_backup.cleanup", '--alternate-archive-dir', alternate_dir, '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)

@@ -14,6 +14,10 @@ import glob  # Added import statement
 
 from pathlib import Path
 
+from dar_backup.util import run_command
+from dar_backup.util import run_command_package_path
+
+
 class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
     @classmethod
     def setUpClass(cls):
@@ -69,18 +73,12 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
     def test_backup_functionality(self):
         try:
             # full backup
-            if self.run_backup_script("--full-backup") != 0:
-                logging.error("Failed to create FULL backup")
-                raise ValueError("FULL backup failed")
+            self.run_backup_script("--full-backup")
 
             # Verify FULL backup contents
             check_saved=True
-            if not self.verify_backup_contents(self.test_files, f"example_FULL_{self.datestamp}", check_saved):
-                logging.error("Full backup verification failed")
-                raise RuntimeError("FULL backup verification failed")
-            else:
-                logging.info("FULL backup verification succeeded")
-
+            self.verify_backup_contents(self.test_files, f"example_FULL_{self.datestamp}", check_saved)
+            logging.info("FULL backup verification succeeded")
 
             # cleanup restore directory
             shutil.rmtree(os.path.join(self.test_dir, 'restore'))
@@ -91,17 +89,11 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             with open(os.path.join(self.test_dir, 'data', 'file2.txt'), 'a') as f:
                 f.write('This is an additional line.')
 
-            if self.run_backup_script("--differential-backup") != 0:
-                logging.error("Failed to create DIFF backup")
-                raise ValueError("DIFF backup failed")
+            self.run_backup_script("--differential-backup")
 
             # Verify DIFF backup contents
-            if not self.verify_backup_contents(['data/file2.txt'], f"example_DIFF_{self.datestamp}", check_saved=True):
-                logging.error("Differential backup verification failed")
-                raise ValueError("DIFF verify failed")
-            else:
-                logging.info("Differential backup verification succeeded")
-
+            self.verify_backup_contents(['data/file2.txt'], f"example_DIFF_{self.datestamp}", check_saved=True)
+            logging.info("Differential backup verification succeeded")
 
             # cleanup restore directory
             shutil.rmtree(os.path.join(self.test_dir, 'restore'))
@@ -112,47 +104,37 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
             with open(os.path.join(self.test_dir, 'data', 'file3.txt'), 'a') as f:
                 f.write('This is an additional line.')
 
-            if self.run_backup_script("--incremental-backup") != 0:
-                logging.error("Failed to create INCR backup")
-                raise ValueError("INCR backup failed")
-
+            self.run_backup_script("--incremental-backup")
             # Verify INCR backup contents
-            if not self.verify_backup_contents(['data/file3.txt'], f"example_INCR_{self.datestamp}", check_saved=True):
-                logging.error("Incremental backup verification failed")
-                raise ValueError("INCR verify failed")
-            else:
-                logging.info("Incremental backup verification succeeded")
+            self.verify_backup_contents(['data/file3.txt'], f"example_INCR_{self.datestamp}", check_saved=True)
+            logging.info("Incremental backup verification succeeded")
         except Exception as e:
             self.logger.exception("Backup functionality test failed")
             sys.exit(1)
         self.logger.info("test_backup_functionality() finished successfully")
 
+
+
     def run_backup_script(self, type=""):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', self.config_file]
-        logging.info(command)
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-        if result.returncode != 0:
-            logging.error(result.stderr)
-        return result.returncode
+        command = ['python3',"-m", "dar_backup.dar_backup", type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', self.config_file]
+        stdout = run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        logging.info(stdout)
+        return True
 
     def verify_backup_contents(self, expected_files, archive, check_saved=False):
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list-contents', archive, '--config-file', self.config_file]
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-        if result.returncode != 0:
-            logging.error(result.stderr)
-            return False
+        command = ['python3', "-m", "dar_backup.dar_backup", '--list-contents', archive, '--config-file', self.config_file]
+        logging.info(command)
+        stdout = run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        logging.info(stdout)
 
-        backup_contents = result.stdout
         for expected_file in expected_files:
             if check_saved:
                 pattern = re.compile(rf'\[Saved\].*{re.escape(expected_file)}')
-                if not pattern.search(result.stdout):
+                if not pattern.search(stdout):
                     logging.error(f"Expected file {expected_file} not found with [Saved] marker in backup")
-                    return False
+                    raise Exception(f"Expected file {expected_file} not found with [Saved] marker in backup")
+                
 
-        return True
 
 if __name__ == "__main__":
     unittest.main()

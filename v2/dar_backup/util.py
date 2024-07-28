@@ -75,7 +75,7 @@ def setup_logging(log_file, log_level):
 
 
 
-def run_command(command):
+def run_command(command: list[str]) -> subprocess.CompletedProcess:
     """
     Executes a given command via subprocess and captures its output.
 
@@ -89,14 +89,52 @@ def run_command(command):
         Exception: If the command exits with a non-zero return code, an exception is raised
                    with the error output and the failed command.
     """
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        logger.trace(stdout)
+        if process.returncode != 0:
+            logger.error(stderr)
+            raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
+    except Exception as e:
+        logger.error(f"Error running command: {command}")
+        raise
+
+    return process
+
+
+def run_command_package_path(command: list[str], package_path: str)  -> str:
+    """
+    Executes a given command via subprocess and captures its output.
+
+    Args:
+        command (list): The command to be executed, represented as a list of strings.
+
+    Returns:
+        str: The standard output of the command if no errors 
+
+    Raises:
+        Exception: If the command exits with a non-zero return code, an exception is raised
+                   with the error output and the failed command.
+    """
+    logger.info(f"package_path: {package_path}")
+    current_pythonpath = os.environ.get('PYTHONPATH', '')
+    os.environ['PYTHONPATH'] = f"{package_path}:{current_pythonpath}"
+    logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
+    logger.info(f"Running command: {command}")
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout, stderr = process.communicate()
+    logger.info(f"stdout:  {stdout}")
+    logger.error(f"stderr: {stderr}")   
     logger.trace(stdout)
+
+    os.environ['PYTHONPATH'] = current_pythonpath
+
+    logger.info(f"Now checking return code: {process.returncode}")
     if process.returncode != 0:
         logger.error(stderr)
         raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
     return stdout
-
 
 
 

@@ -14,18 +14,18 @@ import xml.etree.ElementTree as ET
 
 
 from argparse import ArgumentParser
-from config_settings import ConfigSettings
 from datetime import datetime
 from pathlib import Path
 from time import time
 
-from util import list_backups
-from util import run_command
-from util import setup_logging
-from util import BackupError
-from util import DifferentialBackupError
-from util import IncrementalBackupError
-from util import RestoreError
+from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import list_backups
+from dar_backup.util import run_command
+from dar_backup.util import setup_logging
+from dar_backup.util import BackupError
+from dar_backup.util import DifferentialBackupError
+from dar_backup.util import IncrementalBackupError
+from dar_backup.util import RestoreError
 
 
 VERSION = "alpha-0.4"
@@ -353,9 +353,10 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     backup_path = os.path.join(backup_dir, backup_name)
     command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    output = run_command(command)
+    process = run_command(command)
+    stdout, stderr = process.communicate()
     # Parse the XML data
-    root = ET.fromstring(output)
+    root = ET.fromstring(stdout)
     output = None  # help gc
     # Extract full paths and file size for all <File> elements
     file_paths = find_files_with_paths(root)
@@ -383,8 +384,9 @@ def list_contents(backup_name, backup_dir, selection=None):
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    output = run_command(command)
-    for line in output.splitlines():
+    process = run_command(command)
+    stdout, stderr = process.communicate()
+    for line in stdout.splitlines():
         if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
             print(line)
 

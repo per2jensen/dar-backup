@@ -7,6 +7,9 @@ import shutil
 import sys
 import os
 
+from dar_backup.util import run_command
+from dar_backup.util import run_command_package_path
+
 from base_test_case import BaseTestCase
 from datetime import datetime
 
@@ -162,28 +165,6 @@ class Test_BitRot(BaseTestCase):
     def tearDown(self) -> None:
         return super().cleanup_before_test()
     
-    
-
-    def run_command(self, command: list[str]) -> int:
-        """
-        Run a command and return the exit code.
-
-        Args:
-            command (list): The command to be executed.
-
-        Returns:
-            int: The exit code of the command.
-
-        Raises:
-            RuntimeError: If the command fails.
-        """
-        logging.info(command)
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-        if result.returncode != 0:
-            logging.error(result.stderr)
-            raise RuntimeError(f"Command failed with return code {result.returncode}")
-        return result.returncode
 
     def check_bitrot_recovery(self):
         """
@@ -200,22 +181,22 @@ class Test_BitRot(BaseTestCase):
         archive_path = os.path.join(self.test_dir, "backups", f"example_FULL_{date}.1.dar")
         try:
             command = ['dar', '-t', basename_path]
-            self.run_command(command)
+            run_command(command)
             logging.error(f"dar does not detect a bad archive: {basename_path} ")
             sys.exit(1)
-        except RuntimeError as e:
+        except Exception as e:
             logging.info(f"Expected exception due to bitrot")
         
-        # fix bitrot with parchive2
-        command = ["par2", "repair", "-q", archive_path]
-        self.run_command(command)
-
-        # test archive once more
         try:
+            # fix bitrot with parchive2
+            command = ["par2", "repair", "-q", archive_path]
+            run_command(command)
+
+            # test archive once more
             command = ['dar', '-t', basename_path]
-            self.run_command(command)
+            run_command(command)
             logging.info(f"Archive: {archive_path}  successfully repaired")
-        except RuntimeError as e:
+        except Exception as e:
             logging.exception(f"Expected no errors after parchive repair")
             sys.exit(1)
 
@@ -227,8 +208,8 @@ class Test_BitRot(BaseTestCase):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
         self.modify_par2_redundancy(5)
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--full-backup' ,'-d', "example", '--config-file', self.config_file]
-        self.run_command(command)
+        command = ['python3', "-m",  "dar_backup.dar_backup", '--full-backup' ,'-d', "example", '--config-file', self.config_file]
+        run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
         self.simulate_bitrot(5)
         self.check_bitrot_recovery()
 
@@ -240,8 +221,8 @@ class Test_BitRot(BaseTestCase):
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
         self.modify_par2_redundancy(25)
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--full-backup' ,'-d', "example", '--config-file', self.config_file]
-        self.run_command(command)
+        command = ['python3', "-m",  "dar_backup.dar_backup", '--full-backup' ,'-d', "example", '--config-file', self.config_file]
+        run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
         self.simulate_bitrot(25)
         self.check_bitrot_recovery()
 

@@ -70,8 +70,16 @@ class Test_Listing(BaseTestCase):
             RuntimeError: If the command fails.
         """
         logging.info(command)
+
+        current_pythonpath = os.environ.get('PYTHONPATH', '')
+        new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
+
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
+
+        os.environ['PYTHONPATH'] = current_pythonpath
+        
         if result.returncode != 0:
             logging.error(result.stderr)
             raise RuntimeError(f"Command failed with return code {result.returncode}")
@@ -82,7 +90,8 @@ class Test_Listing(BaseTestCase):
         """
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list', '--config-file', self.config_file]
+        #command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list', '--config-file', self.config_file]
+        command = ['python3', "-m", "dar_backup.dar_backup", '--list', '--config-file', self.config_file]
         result = self.run_command(command)
 
         # Check for all expected files using regex
