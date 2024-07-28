@@ -10,6 +10,9 @@ import os
 from base_test_case import BaseTestCase
 from datetime import datetime
 
+from dar_backup.util import run_command
+from dar_backup.util import run_command_package_path
+
 class Test_Space_In_Definition(BaseTestCase):
     """
     A test case class for testing backup definitions with spaces in their names.
@@ -99,37 +102,6 @@ class Test_Space_In_Definition(BaseTestCase):
         return super().tearDown()
         
 
-    def run_command(self, command: list[str]) -> int:
-        """
-        Run a command and return the exit code.
-
-        Args:
-            command (list): The command to be executed.
-
-        Returns:
-            int: The exit code of the command.
-
-        Raises:
-            RuntimeError: If the command fails.
-        """
-        logging.info(command)
- 
-        current_pythonpath = os.environ.get('PYTHONPATH', '')
-        new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
-
-
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-
-        os.environ['PYTHONPATH'] = current_pythonpath
-
-        if result.returncode != 0:
-            logging.error(result.stderr)
-            raise RuntimeError(f"Command failed with return code {result.returncode}")
-        return result.returncode
-
-
     def test_backup_definition_with_space(self):
         """
         Verify that the backups are correct when a backup
@@ -137,11 +109,8 @@ class Test_Space_In_Definition(BaseTestCase):
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
-        #command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--full-backup' ,'-d', "example 2", '--config-file', self.config_file]
         command = ['python3', "-m", "dar_backup.dar_backup", '--full-backup' ,'-d', "example 2", '--config-file', self.config_file]
-
-        self.run_command(command)
-
+        stdout = run_command_package_path(command,  os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,6 +11,10 @@ from base_test_case import BaseTestCase
 from datetime import datetime
 from subprocess import CompletedProcess
 
+from dar_backup.util import run_command
+from dar_backup.util import run_command_package_path
+
+
 class Test_Listing(BaseTestCase):
     """
     A test case class for the --list option.
@@ -47,52 +51,18 @@ class Test_Listing(BaseTestCase):
             with open(os.path.join(cls.test_dir, 'backups', filename), 'w') as f:
                 f.write(content)
 
-
-   
     def tearDown(self) -> None:
         """
         Clean up after each test method is executed.
         """
         return super().tearDown()
         
-
-    def run_command(self, command: list[str]) -> CompletedProcess:
-        """
-        Run a command and return the exit code.
-
-        Args:
-            command (list): The command to be executed.
-
-        Returns:
-            int: The exit code of the command.
-
-        Raises:
-            RuntimeError: If the command fails.
-        """
-        logging.info(command)
-
-        current_pythonpath = os.environ.get('PYTHONPATH', '')
-        new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
-
-        result = subprocess.run(command, capture_output=True, text=True)
-        logging.info(result.stdout)
-
-        os.environ['PYTHONPATH'] = current_pythonpath
-        
-        if result.returncode != 0:
-            logging.error(result.stderr)
-            raise RuntimeError(f"Command failed with return code {result.returncode}")
-        return result
-
-
     def test_list_dar_archives(self):
         """
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        #command = ['python3',  os.path.join(self.test_dir, "bin", "dar-backup.py"), '--list', '--config-file', self.config_file]
         command = ['python3', "-m", "dar_backup.dar_backup", '--list', '--config-file', self.config_file]
-        result = self.run_command(command)
+        stdout = run_command_package_path(command,  os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
         # Check for all expected files using regex
         expected_patterns = [
@@ -101,7 +71,7 @@ class Test_Listing(BaseTestCase):
             r'example_INCR_\d{4}-\d{2}-\d{2}']
 
         for pattern in expected_patterns:
-            self.assertRegex(result.stdout, pattern)
+            self.assertRegex(stdout, pattern)
 
         # Ensure specific files are not listed
         unexpected_patterns = [
@@ -110,7 +80,7 @@ class Test_Listing(BaseTestCase):
             r'example.txt']
 
         for pattern in unexpected_patterns:
-            self.assertNotRegex(result.stdout, pattern)
+            self.assertNotRegex(stdout, pattern)
 
         logging.info(f"<-- Finished running test: {sys._getframe().f_code.co_name}")
 
