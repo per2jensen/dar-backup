@@ -28,5 +28,6 @@ jobs:
       - name: Run python3 unit tests
         run: |
           cd $GITHUB_WORKSPACE/v2
+          export PYTHONPATH=$GITHUB_WORKSPACE/v2 
           pytest test
-          
+
