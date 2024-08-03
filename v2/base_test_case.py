@@ -23,7 +23,7 @@ class BaseTestCase(unittest.TestCase):
         cls.config_file = os.path.join(cls.test_dir, "dar-backup.conf")
         cls.template_dar_rc = "template/.darrc"
         cls.dar_rc = os.path.join(cls.test_dir, ".darrc")
-        cls.bin_dir = "dar_backup"
+        #cls.bin_dir = "dar_backup"
         cls.log_file = "/tmp/unit-test/test.log"
         cls.datestamp = datetime.now().strftime('%Y-%m-%d')
 
@@ -52,7 +52,7 @@ class BaseTestCase(unittest.TestCase):
             cls.logger.exception("Failed to copy .darrc to test directory")
             raise
         
-        cls.copy_scripts()
+        #cls.copy_scripts()
         
         # Print variables to console
         cls.print_variables()
@@ -75,15 +75,15 @@ class BaseTestCase(unittest.TestCase):
             raise
 
  
-    @classmethod
-    def copy_scripts(cls):
-        try:
-            for script in os.listdir(cls.bin_dir):
-                if os.path.isfile(os.path.join(cls.bin_dir, script)):
-                    shutil.copy(os.path.join(cls.bin_dir, script), os.path.join(cls.test_dir, "bin"))
-        except:
-            cls.logger.exception("Failed to copy script to " + os.path.join(cls.test_dir, "bin"))
-            raise
+    # @classmethod
+    # def copy_scripts(cls):
+    #     try:
+    #         for script in os.listdir(cls.bin_dir):
+    #             if os.path.isfile(os.path.join(cls.bin_dir, script)):
+    #                 shutil.copy(os.path.join(cls.bin_dir, script), os.path.join(cls.test_dir, "bin"))
+    #     except:
+    #         cls.logger.exception("Failed to copy script to " + os.path.join(cls.test_dir, "bin"))
+    #         raise
     
     @classmethod
     def create_directories_from_template(cls):

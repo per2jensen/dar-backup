@@ -103,40 +103,45 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
     return process
 
 
-def run_command_package_path2(command: list[str], package_path: str)  -> str:
+def extract_error_lines(log_file_path: str, start_time: str, end_time: str):
     """
-    Executes a given command via subprocess and captures its output.
+    Extracts error lines from a log file within a specific time range.
 
     Args:
-        command (list): The command to be executed, represented as a list of strings.
+        log_file_path (str): The path to the log file.
+        start_time (str): The start time of the desired time range (unixtime).
+        end_time (str): The end time of the desired time range (unixtime).
 
     Returns:
-        str: The standard output of the command if no errors 
+        list: A list of error lines within the specified time range.
 
     Raises:
-        Exception: If the command exits with a non-zero return code, an exception is raised
-                   with the error output and the failed command.
+        ValueError: If the start or end markers are not found in the log file.
     """
-    logger.info(f"package_path: {package_path}")
-    current_pythonpath = os.environ.get('PYTHONPATH', '')
-    os.environ['PYTHONPATH'] = f"{package_path}:{current_pythonpath}"
-    logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
-    logger.info(f"Running command: {command}")
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate()
-    logger.info(f"stdout:  {stdout}")
-    logger.error(f"stderr: {stderr}")   
-    logger.trace(stdout)
+    with open(log_file_path, 'r') as log_file:
+        lines = log_file.readlines()
 
-    os.environ['PYTHONPATH'] = current_pythonpath
+    start_index = None
+    end_index = None
 
-    logger.info(f"Now checking return code: {process.returncode}")
-    if process.returncode != 0:
-        logger.error(stderr)
-        raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
-    return stdout
+    start_marker = f"START TIME: {start_time}"
+    end_marker = f"END TIME: {end_time}"
+    error_pattern = re.compile(r'ERROR')
 
+    # Find the start and end index for the specific run
+    for i, line in enumerate(lines):
+        if start_marker in line:
+            start_index = i
+        elif end_marker in line and start_index is not None:
+            end_index = i
+            break
 
+    if start_index is None or end_index is None:
+        raise ValueError("Could not find start or end markers in the log file")
+
+    error_lines = [line.rstrip("\n") for line in lines[start_index:end_index + 1] if error_pattern.search(line)]
+
+    return error_lines
 
 
 def list_backups(backup_dir, backup_definition=None):

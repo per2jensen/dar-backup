@@ -21,8 +21,10 @@ import re
 import sys
 
 from datetime import datetime, timedelta
+from time import time
 
 from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import extract_error_lines
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 
@@ -122,14 +124,16 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cleanup old backup files.")
     parser.add_argument('--backup-definition', '-d', help="Specific backup definition to clean.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf'))
+    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
     parser.add_argument('--cleanup-specific-archive', type=str, help="Force delete all .dar and .par2 files in the backup directory for given archive name")
     parser.add_argument('--list', action='store_true', help="List available archives.")
-
-
+    parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     args = parser.parse_args()
+
+    args.config_file = os.path.expanduser(args.config_file)
+    
 
     if args.version:
         show_version()
@@ -137,10 +141,22 @@ def main():
 
     config_settings = ConfigSettings(args.config_file)
 
+    start_time=int(time())
     logger = setup_logging(config_settings.logfile_location, logging.INFO)
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {VERSION}")
-    logger.info(f"`args`:\n{args}")
+    logger.info(f"START TIME: {start_time}")
+    logger.debug(f"`args`:\n{args}")
+    logger.debug(f"`config_settings`:\n{config_settings}")
+
+    current_dir =  os.path.normpath(os.path.dirname(__file__))
+    args.verbose and (print(f"Current directory: {current_dir}"))
+    args.verbose and (print(f"Config file:       {args.config_file}"))
+    args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
+    args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
+    args.verbose and (print(f"--alternate-archive-dir:  {args.alternate_archive_dir}"))
+    args.verbose and (print(f"--cleanup-specific-archive:  {args.cleanup_specific_archive}"))
+
 
     if args.alternate_archive_dir:
         config_settings.backup_dir = args.alternate_archive_dir
@@ -162,6 +178,20 @@ def main():
         for definition in backup_definitions:
             delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', definition)
             delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', definition)
+
+
+    end_time=int(time())
+    logger.info(f"END TIME: {end_time}")
+
+    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
+    if len(error_lines) > 0:
+        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
+        for line in error_lines:
+            print(line)
+        sys.exit(1)
+    else:
+        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

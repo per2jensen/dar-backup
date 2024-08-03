@@ -22,6 +22,7 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import run_command
 from dar_backup.util import setup_logging
+from dar_backup.util import extract_error_lines
 from dar_backup.util import BackupError
 from dar_backup.util import DifferentialBackupError
 from dar_backup.util import IncrementalBackupError
@@ -499,46 +500,6 @@ def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
 
 
 
-def extract_error_lines(log_file_path: str, start_time: str, end_time: str):
-    """
-    Extracts error lines from a log file within a specific time range.
-
-    Args:
-        log_file_path (str): The path to the log file.
-        start_time (str): The start time of the desired time range (unixtime).
-        end_time (str): The end time of the desired time range (unixtime).
-
-    Returns:
-        list: A list of error lines within the specified time range.
-
-    Raises:
-        ValueError: If the start or end markers are not found in the log file.
-    """
-    with open(log_file_path, 'r') as log_file:
-        lines = log_file.readlines()
-
-    start_index = None
-    end_index = None
-
-    start_marker = f"START TIME: {start_time}"
-    end_marker = f"END TIME: {end_time}"
-    error_pattern = re.compile(r'ERROR')
-
-    # Find the start and end index for the specific run
-    for i, line in enumerate(lines):
-        if start_marker in line:
-            start_index = i
-        elif end_marker in line and start_index is not None:
-            end_index = i
-            break
-
-    if start_index is None or end_index is None:
-        raise ValueError("Could not find start or end markers in the log file")
-
-    error_lines = [line.rstrip("\n") for line in lines[start_index:end_index + 1] if error_pattern.search(line)]
-
-    return error_lines
-
 
 def show_version():
     script_name = os.path.basename(sys.argv[0])
@@ -616,14 +577,6 @@ def main():
     args.config_file = os.path.expanduser(args.config_file)
     config_settings = ConfigSettings(args.config_file)
 
-    # if not config_settings.backup_d_dir.startswith("/"):    
-    #         config_settings.backup_d_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_d_dir))
-    # if not config_settings.backup_dir.startswith("/"):    
-    #         config_settings.backup_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_dir))
-    # if not config_settings.test_restore_dir.startswith("/"):    
-    #         config_settings.test_restore_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.test_restore_dir))
-
-
     if args.version:
         show_version()
         sys.exit(0)
@@ -632,20 +585,6 @@ def main():
         sys.exit(0)
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
-
-    # from here the configs are needed
-    if 'PREREQ' in config_settings.config:
-        for key in sorted(config_settings.config['PREREQ'].keys()):
-            script = config_settings.config['PREREQ'][key]
-            try:
-                result = subprocess.run(script, shell=True, check=True)
-                logger.info(f"PREREQ \'{script}\' run with return code: {result.returncode}")
-                logger.info(f"PREREQ stdout:\n{result.stdout}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Error executing {script}: {e}")
-                logger.error(f"PREREQ stderr:\n{result.stderr}")
-                print(f"Error executing {script}: {e}") 
-                sys.exit(1)
 
     try:
         start_time=int(time())
@@ -667,11 +606,24 @@ def main():
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
 
+        # from here the configs are needed
+        if 'PREREQ' in config_settings.config:
+            for key in sorted(config_settings.config['PREREQ'].keys()):
+                script = config_settings.config['PREREQ'][key]
+                try:
+                    result = subprocess.run(script, shell=True, check=True)
+                    logger.info(f"PREREQ {key}: '{script}' run, return code: {result.returncode}")
+                    logger.info(f"PREREQ stdout:\n{result.stdout}")
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"Error executing {key}: '{script}': {e}")
+                    logger.error(f"PREREQ stderr:\n{result.stderr}")
+                    print(f"Error executing {script}: {e}") 
+                    sys.exit(1)
+
+
         if args.list:
             list_backups(config_settings.backup_dir, args.backup_definition)
-            sys.exit(0)
-
-        if args.full_backup and not args.differential_backup and not args.incremental_backup:
+        elif args.full_backup and not args.differential_backup and not args.incremental_backup:
             perform_backup(args, config_settings, "FULL")
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
             perform_backup(args, config_settings, "DIFF")

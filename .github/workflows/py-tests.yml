@@ -43,5 +43,5 @@ jobs:
           if [[ -z "$VIRTUAL_ENV" ]]; then
             . venv/bin/activate
           fi
-          /usr/bin/pytest-3 test
+          /usr/bin/pytest-3 -q test 2>/dev/null
 
