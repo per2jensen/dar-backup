@@ -1,19 +1,107 @@
-
-# .conf file
+# config file
 
 The default configuration is located here: ~/.config/dar-backup/dar-backup.conf
 
 # How to run 
 
-Installation is in a venv. These commands are installed in the venv:
+1.
+Config file default location is $HOME/.config/dar-backup/dar-backup.conf
+Example:
+````
+[MISC]
+LOGFILE_LOCATION=/home/user/dar-backup.log
+MAX_SIZE_VERIFICATION_MB = 20
+MIN_SIZE_VERIFICATION_MB = 1
+NO_FILES_VERIFICATION = 5
+
+[DIRECTORIES]
+BACKUP_DIR = /home/user/mnt/dir/
+BACKUP.D_DIR = /home/user/.config/dar-backup/backup.d/
+TEST_RESTORE_DIR = /tmp/dar-backup/restore/
+
+[AGE]
+# age settings are in days
+DIFF_AGE = 100
+INCR_AGE = 40
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+
+[PREREQ]
+SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-microserver.sh
+# SCRIPT_2 = <something>
+# more here if necessary
+````    
+
+2.
+Installation is currently in a venv. These commands are installed in the venv:
 - dar-back
 - cleanup
 
+I have an alias in ~/.bashrc
+````    
+alias db=". ~/programmer/dar-backup.py/venv/bin/activate; dar-backup -v"
+````    
 
-./backup_script.py --config-dir /path/to/configs
+Typing `db` at the command line gives this
+````    
+(venv) user@machine:~$ db
+dar-backup alpha-0.4
+dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
+Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.
+````
 
-With a single config snippet
-python3 src/backup_script.py  --config-file backup.d/example
+`dar-backup -h` gives the usage output:
+````
+(venv) user@machine:~$ dar-backup -h
+usage: dar-backup [-h] [--full-backup] [--differential-backup] [--incremental-backup] [-d BACKUP_DEFINITION]
+                  [--config-file CONFIG_FILE] [--examples] [--list] [--list-contents LIST_CONTENTS]
+                  [--selection SELECTION] [--restore RESTORE] [--restore-dir RESTORE_DIR] [--verbose]
+                  [--log-level LOG_LEVEL] [--do-not-compare] [--version]
+
+Backup and verify using dar backup definitions.
+
+options:
+  -h, --help            show this help message and exit
+  --full-backup         Perform a full backup.
+  --differential-backup
+                        Perform differential backup.
+  --incremental-backup  Perform incremental backup.
+  -d BACKUP_DEFINITION, --backup-definition BACKUP_DEFINITION
+                        Specific 'recipe' to select directories and files.
+  --config-file CONFIG_FILE, -c CONFIG_FILE
+                        Path to 'dar-backup.conf'
+  --examples            Examples of using dar-backup.py.
+  --list                List available archives.
+  --list-contents LIST_CONTENTS
+                        List the contents of the specified archive.
+  --selection SELECTION
+                        dar file selection for listing/restoring specific files/directories.
+  --restore RESTORE     Restore specified archive.
+  --restore-dir RESTORE_DIR
+                        Directory to restore files to.
+  --verbose             Print various status messages to screen
+  --log-level LOG_LEVEL
+                        `debug` or `trace`
+  --do-not-compare      do not compare restores to file system
+  --version, -v         Show version information.
+````    
+
+3.
+You are ready to do backups of all your backup definitions, if your backup definitions are 
+in place in BACKUP.D_DIR (see config file)
+````    
+dar-backup --full-backup 
+````    
+
+or a backup of a single definition
+````    
+dar-backup --full-backup -d <your backup definition>
+````    
+
+
 
 
 # list contents of an archive
@@ -130,7 +218,7 @@ Nice :-)
 
 ## a single file
 ```
-. <the virtual evn>/bin/activate
+. <the virtual env>/bin/activate
 # the path/to/file is relative to the Root when the backup was taken
 dar-backup --restore <archive_name> --selection "-g path/to/file"
 deactivate
@@ -138,7 +226,7 @@ deactivate
 
 ## .NEF from a specific date
 ```
-. <the virtual evn>/bin/activate
+. <the virtual env>/bin/activate
 # the path/to/file is relative to the Root when the backup was taken
 dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
