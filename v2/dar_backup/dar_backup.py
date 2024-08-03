@@ -600,7 +600,7 @@ def main():
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '../conf/dar-backup.conf'))
+    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '/tmp/dar-backup/dar-backup.conf'))
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument('--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
@@ -615,6 +615,13 @@ def main():
 
     args.config_file = os.path.abspath(args.config_file)
     config_settings = ConfigSettings(args.config_file)
+    if not config_settings.backup_d_dir.startswith("/"):    
+            config_settings.backup_d_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_d_dir))
+    if not config_settings.backup_dir.startswith("/"):    
+            config_settings.backup_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_dir))
+    if not config_settings.test_restore_dir.startswith("/"):    
+            config_settings.test_restore_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.test_restore_dir))
+
 
     if args.version:
         show_version()
@@ -625,6 +632,10 @@ def main():
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)
         sys.exit(0)
+    elif not args.full_backup and not args.differential_backup and not args.incremental_backup and not args.restore:
+            parser.print_help()
+            sys.exit(1)
+
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
     try:
@@ -635,14 +646,13 @@ def main():
         logger.debug(f"`args`:\n{args}")
         logger.debug(f"`config_settings`:\n{config_settings}")
 
-        if not config_settings.backup_d_dir.startswith("/"):
-            backup_d = os.path.normpath(os.path.join(os.path.dirname(__file__), backup_d))
+        
         current_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Current directory: {current_dir}"))
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
         args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
-        args.verbose and (print(f"Backup.d:          {config_settings.backup_d_dir}"))
+        args.verbose and (print(f"Backup.d dir:      {config_settings.backup_d_dir}"))
         args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))

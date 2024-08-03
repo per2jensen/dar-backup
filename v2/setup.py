@@ -12,7 +12,8 @@ setup(
     #],
     entry_points={
         'console_scripts': [
-            'dar-backup = dar_backup.dar_backup:main'
+            'dar-backup = dar_backup.dar_backup:main',
+            'cleanup = dar_backup.cleanup:main'
         ],
     },
 )
