@@ -28,19 +28,19 @@ class ConfigSettings:
         Args:
             config_file (str): The path to the configuration file.
         """
-        config = configparser.ConfigParser()
+        self.config = configparser.ConfigParser()
         try:
-            config.read(config_file)
-            self.logfile_location = config['MISC']['LOGFILE_LOCATION']
-            self.max_size_verification_mb = int(config['MISC']['MAX_SIZE_VERIFICATION_MB'])
-            self.min_size_verification_mb = int(config['MISC']['MIN_SIZE_VERIFICATION_MB'])
-            self.no_files_verification = int(config['MISC']['NO_FILES_VERIFICATION'])
-            self.backup_dir = config['DIRECTORIES']['BACKUP_DIR']
-            self.test_restore_dir = config['DIRECTORIES']['TEST_RESTORE_DIR']
-            self.backup_d_dir = config['DIRECTORIES']['BACKUP.D_DIR']
-            self.diff_age = int(config['AGE']['DIFF_AGE'])
-            self.incr_age = int(config['AGE']['INCR_AGE'])
-            self.error_correction_percent = int(config['PAR2']['ERROR_CORRECTION_PERCENT'])
+            self.config.read(config_file)
+            self.logfile_location = self.config['MISC']['LOGFILE_LOCATION']
+            self.max_size_verification_mb = int(self.config['MISC']['MAX_SIZE_VERIFICATION_MB'])
+            self.min_size_verification_mb = int(self.config['MISC']['MIN_SIZE_VERIFICATION_MB'])
+            self.no_files_verification = int(self.config['MISC']['NO_FILES_VERIFICATION'])
+            self.backup_dir = self.config['DIRECTORIES']['BACKUP_DIR']
+            self.test_restore_dir = self.config['DIRECTORIES']['TEST_RESTORE_DIR']
+            self.backup_d_dir = self.config['DIRECTORIES']['BACKUP.D_DIR']
+            self.diff_age = int(self.config['AGE']['DIFF_AGE'])
+            self.incr_age = int(self.config['AGE']['INCR_AGE'])
+            self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
 
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)

@@ -1,12 +1,14 @@
-# Fun with Chat GPT  Code CoPilot
-
-Trying to make a python wrapper to dar, using an AI to generate the code.
 
 # .conf file
 
-Some configuration is put in "../conf/backup_script.conf" relative the to location of the script.
+The default configuration is located here: ~/.config/dar-backup/dar-backup.conf
 
 # How to run 
+
+Installation is in a venv. These commands are installed in the venv:
+- dar-back
+- cleanup
+
 
 ./backup_script.py --config-dir /path/to/configs
 
@@ -16,7 +18,9 @@ python3 src/backup_script.py  --config-file backup.d/example
 
 # list contents of an archive
 ```
-python3 src/backup_script.py --list-contents example  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+. <the virtual evn>/bin/activate
+dar-backup --list-contents example --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+deactivate
 ```
 gives
 ```
@@ -125,12 +129,20 @@ Nice :-)
 # Restoring
 
 ## a single file
-
-python3 backup_script.py --restore <archive_name> --selection "-g relative/path/to/file"
+```
+. <the virtual evn>/bin/activate
+# the path/to/file is relative to the Root when the backup was taken
+dar-backup --restore <archive_name> --selection "-g path/to/file"
+deactivate
+```
 
 ## .NEF from a specific date
-
-python3 src/backup_script.py --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+```
+. <the virtual evn>/bin/activate
+# the path/to/file is relative to the Root when the backup was taken
+dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+deactivate
+```
 
 
 

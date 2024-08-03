@@ -600,7 +600,7 @@ def main():
     parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=os.path.join(os.path.dirname(__file__), '/tmp/dar-backup/dar-backup.conf'))
+    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument('--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
@@ -613,7 +613,7 @@ def main():
     parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
     args = parser.parse_args()
 
-    args.config_file = os.path.abspath(args.config_file)
+    args.config_file = os.path.expanduser(args.config_file)
     config_settings = ConfigSettings(args.config_file)
 
     # if not config_settings.backup_d_dir.startswith("/"):    
@@ -630,11 +630,23 @@ def main():
     elif args.examples:
         show_examples()
         sys.exit(0)
-    elif args.list:
-        list_backups(config_settings.backup_dir, args.backup_definition)
-        sys.exit(0)
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
+
+    # from here the configs are needed
+    if 'PREREQ' in config_settings.config:
+        for key in sorted(config_settings.config['PREREQ'].keys()):
+            script = config_settings.config['PREREQ'][key]
+            try:
+                result = subprocess.run(script, shell=True, check=True)
+                logger.info(f"PREREQ \'{script}\' run with return code: {result.returncode}")
+                logger.info(f"PREREQ stdout:\n{result.stdout}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error executing {script}: {e}")
+                logger.error(f"PREREQ stderr:\n{result.stderr}")
+                print(f"Error executing {script}: {e}") 
+                sys.exit(1)
+
     try:
         start_time=int(time())
         logger.info(f"=====================================")
@@ -643,9 +655,9 @@ def main():
         logger.debug(f"`args`:\n{args}")
         logger.debug(f"`config_settings`:\n{config_settings}")
 
-        
         current_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Current directory: {current_dir}"))
+        args.verbose and (print(f"Config file:       {args.config_file}"))
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
         args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
@@ -654,6 +666,10 @@ def main():
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
+
+        if args.list:
+            list_backups(config_settings.backup_dir, args.backup_definition)
+            sys.exit(0)
 
         if args.full_backup and not args.differential_backup and not args.incremental_backup:
             perform_backup(args, config_settings, "FULL")
