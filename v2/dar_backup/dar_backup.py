@@ -616,7 +616,8 @@ def main():
                     logger.info(f"PREREQ stdout:\n{result.stdout}")
                 except subprocess.CalledProcessError as e:
                     logger.error(f"Error executing {key}: '{script}': {e}")
-                    logger.error(f"PREREQ stderr:\n{result.stderr}")
+                    if result:
+                        logger.error(f"PREREQ stderr:\n{result.stderr}")
                     print(f"Error executing {script}: {e}") 
                     sys.exit(1)
 
