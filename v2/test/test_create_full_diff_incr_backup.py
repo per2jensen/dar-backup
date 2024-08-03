@@ -15,8 +15,6 @@ import glob  # Added import statement
 from pathlib import Path
 
 from dar_backup.util import run_command
-from dar_backup.util import run_command_package_path
-
 
 class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
     @classmethod
@@ -30,6 +28,7 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
         cls.logger.info("generate backup definition")
         cls.create_backup_definitions()
         cls.logger.info("backupdef created")
+
 
     @classmethod
     def create_test_files(cls):
@@ -116,16 +115,27 @@ class Test_Create_Full_Diff_Incr_Backup(BaseTestCase):
 
 
     def run_backup_script(self, type=""):
-        command = ['python3',"-m", "dar_backup.dar_backup", type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', self.config_file]
-        stdout = run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        """
+        Expects to run in a virtual environment with dar-backup installed
+        """
+        command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', self.config_file]
+        process = run_command(command)
+        stdout,stderr = process.communicate()
         logging.info(stdout)
         return True
 
+    
     def verify_backup_contents(self, expected_files, archive, check_saved=False):
-        command = ['python3', "-m", "dar_backup.dar_backup", '--list-contents', archive, '--config-file', self.config_file]
+        """
+        Expects to run in a virtual environment with dar-backup installed
+        """
+        command = ['dar-backup', '--list-contents', archive, '--config-file', self.config_file]
         logging.info(command)
-        stdout = run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        
+        process = run_command(command)
+        stdout,stderr = process.communicate()
         logging.info(stdout)
+
 
         for expected_file in expected_files:
             if check_saved:

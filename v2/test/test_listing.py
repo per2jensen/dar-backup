@@ -12,8 +12,6 @@ from datetime import datetime
 from subprocess import CompletedProcess
 
 from dar_backup.util import run_command
-from dar_backup.util import run_command_package_path
-
 
 class Test_Listing(BaseTestCase):
     """
@@ -59,10 +57,12 @@ class Test_Listing(BaseTestCase):
         
     def test_list_dar_archives(self):
         """
+        Expects to be run in a virtal environment with dar-backup installed.
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
-        command = ['python3', "-m", "dar_backup.dar_backup", '--list', '--config-file', self.config_file]
-        stdout = run_command_package_path(command,  os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        command = ['dar-backup', '--list', '--config-file', self.config_file]
+        process = run_command(command)
+        stdout, stderr = process.communicate()
 
         # Check for all expected files using regex
         expected_patterns = [

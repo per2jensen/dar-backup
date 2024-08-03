@@ -8,7 +8,6 @@ import sys
 import os
 
 from dar_backup.util import run_command
-from dar_backup.util import run_command_package_path
 
 from base_test_case import BaseTestCase
 from datetime import datetime
@@ -204,12 +203,13 @@ class Test_BitRot(BaseTestCase):
     def test_5percent_bitrot_recovery(self):
         """
         Verify the bitrot recovery process with 5% bitrot.
+        Expects to run in a virtual environment with dar-backup installed
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
         self.modify_par2_redundancy(5)
-        command = ['python3', "-m",  "dar_backup.dar_backup", '--full-backup' ,'-d', "example", '--config-file', self.config_file]
-        run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', self.config_file]
+        run_command(command)
         self.simulate_bitrot(5)
         self.check_bitrot_recovery()
 
@@ -217,12 +217,13 @@ class Test_BitRot(BaseTestCase):
     def test_25percent_bitrot_recovery(self):
         """
         Verify the bitrot recovery process with 25% bitrot.
+        Expects to run in a virtual environment with dar-backup installed
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
         self.modify_par2_redundancy(25)
-        command = ['python3', "-m",  "dar_backup.dar_backup", '--full-backup' ,'-d', "example", '--config-file', self.config_file]
-        run_command_package_path(command, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', self.config_file]
+        run_command(command)
         self.simulate_bitrot(25)
         self.check_bitrot_recovery()
 

@@ -11,7 +11,6 @@ from base_test_case import BaseTestCase
 from datetime import datetime
 
 from dar_backup.util import run_command
-from dar_backup.util import run_command_package_path
 
 class Test_Space_In_Definition(BaseTestCase):
     """
@@ -106,11 +105,13 @@ class Test_Space_In_Definition(BaseTestCase):
         """
         Verify that the backups are correct when a backup
         definition name contains space(s)
+
+        Expects to be run in a virtal environment with dar-backup installed.
         """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         self.generate_datafiles()
-        command = ['python3', "-m", "dar_backup.dar_backup", '--full-backup' ,'-d', "example 2", '--config-file', self.config_file]
-        stdout = run_command_package_path(command,  os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        command = ['dar-backup', '--full-backup' ,'-d', "example 2", '--config-file', self.config_file]
+        process = run_command(command)
 
 if __name__ == '__main__':
     unittest.main()

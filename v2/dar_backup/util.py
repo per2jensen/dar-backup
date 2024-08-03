@@ -103,7 +103,7 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
     return process
 
 
-def run_command_package_path(command: list[str], package_path: str)  -> str:
+def run_command_package_path2(command: list[str], package_path: str)  -> str:
     """
     Executes a given command via subprocess and captures its output.
 

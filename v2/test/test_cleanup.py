@@ -15,9 +15,6 @@ from datetime import timedelta
 from datetime import datetime
 
 from dar_backup.util import run_command
-from dar_backup.util import run_command_package_path
-
-
 
 today = datetime.now().strftime('%Y-%m-%d')
 date_10_days_ago = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
@@ -123,6 +120,9 @@ class Test_Cleanup_Script(BaseTestCase):
 
 
     def test_cleanup_specific_archive(self):
+        """
+        Expects to run in a virtual environment with dar-backup installed
+        """    
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
         logging.info("Creating specific dummy archive files...")
         test_files = {
@@ -137,7 +137,7 @@ class Test_Cleanup_Script(BaseTestCase):
             with open(os.path.join(self.test_dir, 'backups', filename), 'w') as f:
                 f.write(content)
 
-        command = ['python3', "-m",  "dar_backup.cleanup", '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago}'  , '--config-file', self.config_file]
+        command = ['cleanup', '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago}'  , '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)
@@ -155,6 +155,9 @@ class Test_Cleanup_Script(BaseTestCase):
 
 
     def test_cleanup_alternate_dir(self):
+        """
+        Expects to run in a virtual environment with dar-backup installed
+        """
         logging.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
 
         alternate_dir = os.path.join(self.test_dir, 'backups-alternate')
@@ -173,7 +176,7 @@ class Test_Cleanup_Script(BaseTestCase):
                 f.write(content)
 
 
-        command = ['python3',"-m",  "dar_backup.cleanup", '--alternate-archive-dir', alternate_dir, '--config-file', self.config_file]
+        command = ['cleanup', '--alternate-archive-dir', alternate_dir, '--config-file', self.config_file]
         logging.info(command)
         result = subprocess.run(command, capture_output=True, text=True)
         logging.info(result.stdout)

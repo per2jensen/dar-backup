@@ -615,12 +615,13 @@ def main():
 
     args.config_file = os.path.abspath(args.config_file)
     config_settings = ConfigSettings(args.config_file)
-    if not config_settings.backup_d_dir.startswith("/"):    
-            config_settings.backup_d_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_d_dir))
-    if not config_settings.backup_dir.startswith("/"):    
-            config_settings.backup_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_dir))
-    if not config_settings.test_restore_dir.startswith("/"):    
-            config_settings.test_restore_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.test_restore_dir))
+
+    # if not config_settings.backup_d_dir.startswith("/"):    
+    #         config_settings.backup_d_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_d_dir))
+    # if not config_settings.backup_dir.startswith("/"):    
+    #         config_settings.backup_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.backup_dir))
+    # if not config_settings.test_restore_dir.startswith("/"):    
+    #         config_settings.test_restore_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), config_settings.test_restore_dir))
 
 
     if args.version:
@@ -632,10 +633,6 @@ def main():
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)
         sys.exit(0)
-    elif not args.full_backup and not args.differential_backup and not args.incremental_backup and not args.restore:
-            parser.print_help()
-            sys.exit(1)
-
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
     try:
@@ -657,7 +654,7 @@ def main():
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
-    
+
         if args.full_backup and not args.differential_backup and not args.incremental_backup:
             perform_backup(args, config_settings, "FULL")
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
@@ -665,6 +662,7 @@ def main():
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
             perform_backup(args, config_settings, "INCR")
         elif args.list_contents:
+            print(f"Listing contents of {args.list_contents}")
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
             restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
