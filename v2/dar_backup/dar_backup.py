@@ -34,7 +34,7 @@ VERSION = "alpha-0.5"
 logger = None
 
 
-def backup(backup_file: str, backup_definition: str):
+def backup(backup_file: str, backup_definition: str, darrc: str):
     """
     Performs a full backup using the 'dar' command.
 
@@ -61,7 +61,7 @@ def backup(backup_file: str, backup_definition: str):
         return
 
     logger.info(f"===> Starting FULL backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
+    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -78,7 +78,7 @@ def backup(backup_file: str, backup_definition: str):
 
 
 
-def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str):
+def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str, darrc: str):
     """
     Creates a differential backup based on a specified base backup.
 
@@ -107,7 +107,7 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         return
 
     logger.info(f"===> Starting DIFF backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-A', base_backup_file, '-Q', "compress-exclusion",  "verbose"]
+    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', base_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -121,7 +121,7 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
 
 
-def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str):
+def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str, darrc: str):
     """
     Creates an incremental backup based on the last backup file.
 
@@ -152,7 +152,7 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
         return
 
     logger.info(f"===> Starting INCR backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
+    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         run_command(command)
@@ -442,7 +442,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 continue
 
             if backup_type == 'FULL':
-                backup(backup_file, backup_definition_path)
+                backup(backup_file, backup_definition_path, args.darrc)
             else:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
                 base_backups = sorted(
@@ -455,9 +455,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
                 latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
                 if backup_type == 'DIFF':
-                    differential_backup(backup_file, backup_definition_path, latest_base_backup)
+                    differential_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc)
                 elif backup_type == 'INCR':
-                    incremental_backup(backup_file, backup_definition_path, latest_base_backup)
+                    incremental_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc) 
 
             logger.info("Starting verification...")
             result = verify(args, backup_file, backup_definition_path, config_settings)
@@ -562,6 +562,7 @@ def main():
     parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
     parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument('--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
@@ -620,6 +621,16 @@ def main():
                         logger.error(f"PREREQ stderr:\n{result.stderr}")
                     print(f"Error executing {script}: {e}") 
                     sys.exit(1)
+
+
+        
+        args.darrc = os.path.join(current_dir, ".darrc")
+        if args.darrc:
+            if os.path.exists(args.darrc) and os.path.isfile(args.darrc):
+                logger.info(f"Using .darrc: {args.darrc}")                
+            else:
+                logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, using default .darrc")
+
 
 
         if args.list:

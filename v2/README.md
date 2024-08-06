@@ -1,11 +1,49 @@
-# config file
+# <a id="full-diff-inc"> Full, differential or incremental backups using 'dar' 
+
+  The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for 
+  the heavy lifting, together with the par2 suite in these scripts.
+
+
+# <a id="my-use-case"> My use case
+
+ I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
+ - a non-privileged user (me :-)) can perform a mount
+ - a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
+
+ I needed the following:
+ - Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
+ - Backup primarily photos, video and different types of documents
+ - Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
+ - During backup archives must be tested and a restore test (however small) performed
+ - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
+ - Easy to verify archive's integrity, after being moved around.
+
+ I do not need the encryption features of dar, as all storage is already encrypted.
+ 
+
+# <a id="license"> License
+
+  These scripts are licensed under the GPLv3 license.
+  Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+
+# Homepage - Github
+This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
+
+This python version is v2 of dar-backup, the first is made in bash.
+
+# Config file
 
 The default configuration is located here: ~/.config/dar-backup/dar-backup.conf
 
 # How to run 
 
-1.
+## 1
 Config file default location is $HOME/.config/dar-backup/dar-backup.conf
+
+The name of the file is the `backup definition` name.
+
+Make as many backup definitions as you need. Run them all in one go, or run one at a time using the `-d` option.
+
 Example:
 ````
 [MISC]
@@ -33,10 +71,69 @@ SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-microserver.sh
 # more here if necessary
 ````    
 
-2.
+## 2 
+Put your backup definitions in the directory $BACKUP.D_DIR (defined in the config file)
+
+The `dar` [documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS) has good information on file selection.
+
+Example of backup definition for a home directory
+````    
+
+# Switch to ordered selection mode, which means that the following
+# options will be considered top to bottom
+ -am
+
+
+# Backup Root dir
+ -R /home/user
+
+# Directories to backup below the Root dir
+# if you only want to take a backup of /home/user/Documents
+#  -g Documents 
+
+# Directories to exclude below the Root dir
+ -P mnt
+ -P tmp
+ -P .cache
+ -P .config/Code/CachedData
+ -P .config/Code/Cache
+ -P ".config/Code/Service Worker"
+ -P .config/Code/logs
+ -P snap/firefox/common/.cache
+ -P git/darktable
+ 
+# compression level
+ -z5
+
+ # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+ -n
+ 
+ # size of each slice in the archive
+ --slice 10G
+
+# see https://github.com/per2jensen/dar-backup?tab=readme-ov-file#restore-test-exit-code-4
+--comparison-field=ignore-owner
+
+# bypass directores marked as cache directories
+# http://dar.linux.free.fr/doc/Features.html
+--cache-directory-tagging
+````    
+
+
+## 3
 Installation is currently in a venv. These commands are installed in the venv:
 - dar-back
 - cleanup
+
+To install, create a venc and run pip:
+````    
+mkdir $HOME/tmp
+cd $HOME/tmp
+python3 -m venv venv    # create the virtual environment 
+. venv/bin/activate     # activate the virtual env
+pip install dar-backup  # run pip to install `dar-backup`
+````    
+
 
 I have an alias in ~/.bashrc
 ````    
@@ -89,7 +186,7 @@ options:
   --version, -v         Show version information.
 ````    
 
-3.
+## 4
 You are ready to do backups of all your backup definitions, if your backup definitions are 
 in place in BACKUP.D_DIR (see config file)
 ````    
@@ -99,7 +196,15 @@ dar-backup --full-backup
 or a backup of a single definition
 ````    
 dar-backup --full-backup -d <your backup definition>
-````    
+````
+
+## 5 
+
+Deactivate the virtual environment
+````
+deactivate
+````
+
 
 
 
