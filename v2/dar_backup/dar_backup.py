@@ -29,7 +29,7 @@ from dar_backup.util import IncrementalBackupError
 from dar_backup.util import RestoreError
 
 
-VERSION = "alpha-0.5"
+VERSION = "alpha-0.5.7"
 
 logger = None
 
@@ -229,9 +229,9 @@ def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], confi
                 number = int(match.group(1))
                 unit = match.group(2).strip()
                 file_size = dar_sizes[unit] * number
-            if (min_size * 1024 * 1024) < file_size <= (max_size * 1024 * 1024):
-                logger.trace(f"File found between min and max sizes: {tuple}")
-                files.append(tuple[0])
+                if (min_size * 1024 * 1024) <= file_size <= (max_size * 1024 * 1024):
+                    logger.trace(f"File found between min and max sizes: {tuple}")
+                    files.append(tuple[0])
     return files
 
 
