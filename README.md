@@ -5,6 +5,7 @@
 - [Full, differential or incremental backups using 'dar'](#full-diff-inc)
 - [License](#license) 
 - [My use case](#my-use-case) 
+- [Dar-backup on PyPI](#pypi)
 - [Inspiration](#inspiration) 
 - [How to install](#how-to-install) 
 - [Script features](#script-features) 
@@ -76,6 +77,11 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
  I do not need the encryption features of dar, as all storage is already encrypted.
  
+# <a id="pypi"> Dar-backup v2 on PyPI
+
+Dar-backup v2 is now usable for the brave (still an alpha version) to use for backups and cleanup.
+
+If you are interested, head over to [dar-backup on PyPI](https://pypi.org/project/dar-backup/)
 
 # <a id="inspiration"> Inspiration
 
