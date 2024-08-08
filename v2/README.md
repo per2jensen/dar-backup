@@ -1,10 +1,10 @@
-# <a id="full-diff-inc"> Full, differential or incremental backups using 'dar' 
+# Full, differential or incremental backups using 'dar' 
 
   The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for 
   the heavy lifting, together with the par2 suite in these scripts.
 
 
-# <a id="my-use-case"> My use case
+#  My use case
 
  I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
  - a non-privileged user (me :-)) can perform a mount
@@ -21,28 +21,38 @@
  I do not need the encryption features of dar, as all storage is already encrypted.
  
 
-# <a id="license"> License
+# License
 
   These scripts are licensed under the GPLv3 license.
   Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+
+# Status
+As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine
+
+
 
 # Homepage - Github
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
 This python version is v2 of dar-backup, the first is made in bash.
 
+# Requirements
+  - dar
+  - par2
+
+On Ubuntu, install the requirements this way:
+  ````
+    sudo apt install dar par2
+  ````
+
 # Config file
 
-The default configuration is located here: ~/.config/dar-backup/dar-backup.conf
+The default configuration is expected here: ~/.config/dar-backup/dar-backup.conf
 
 # How to run 
 
 ## 1
 Config file default location is $HOME/.config/dar-backup/dar-backup.conf
-
-The name of the file is the `backup definition` name.
-
-Make as many backup definitions as you need. Run them all in one go, or run one at a time using the `-d` option.
 
 Example:
 ````
@@ -66,13 +76,17 @@ INCR_AGE = 40
 ERROR_CORRECTION_PERCENT = 5
 
 [PREREQ]
-SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-microserver.sh
+# SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-microserver.sh
 # SCRIPT_2 = <something>
-# more here if necessary
+# ...
 ````    
 
 ## 2 
 Put your backup definitions in the directory $BACKUP.D_DIR (defined in the config file)
+
+The name of the file is the `backup definition` name.
+
+Make as many backup definitions as you need. Run them all in one go, or run one at a time using the `-d` option.
 
 The `dar` [documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS) has good information on file selection.
 
@@ -88,10 +102,10 @@ Example of backup definition for a home directory
  -R /home/user
 
 # Directories to backup below the Root dir
-# if you only want to take a backup of /home/user/Documents
+# if you want to take a backup of /home/user/Documents only, uncomment next line
 #  -g Documents 
 
-# Directories to exclude below the Root dir
+# Some directories to exclude below the Root dir
  -P mnt
  -P tmp
  -P .cache
@@ -100,12 +114,11 @@ Example of backup definition for a home directory
  -P ".config/Code/Service Worker"
  -P .config/Code/logs
  -P snap/firefox/common/.cache
- -P git/darktable
  
 # compression level
  -z5
 
- # no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+ # no overwrite, if you rerun a backup, 'dar' halts and asks what to do (and Quits due to the "-Q" given by dar-backup)
  -n
  
  # size of each slice in the archive
@@ -135,7 +148,7 @@ pip install dar-backup  # run pip to install `dar-backup`
 ````    
 
 
-I have an alias in ~/.bashrc
+I have an alias in ~/.bashrc pointing to my venv:
 ````    
 alias db=". ~/programmer/dar-backup.py/venv/bin/activate; dar-backup -v"
 ````    
@@ -206,8 +219,118 @@ deactivate
 ````
 
 
+# .darrc
+The package includes a default `.darrc` file which configures `dar`.
+
+You can override the default `.darrc` using the `--darrc` option.
+
+The default `.darrc` contents are as follows:
+````
+# Default configuration file for dar
+
+extract:
+# don't restore File Specific Attributes
+#--fsa-scope none
+
+# ignore owner, useful when used by a non-privileged user
+--comparison-field=ignore-owner
+
+# First setting case insensitive mode on:
+-an
+-ag
+
+# Exclude specific file types from compression
+compress-exclusion:
+-Z  *.gz
+-Z  *.bz2
+-Z    *.xz
+-Z    *.zip
+-Z    *.rar
+-Z  *.7z
+-Z    *.tar
+-Z    *.tgz
+-Z    *.tbz2
+-Z    *.txz
+# Exclude common image file types from compression
+-Z    *.jpg
+-Z    *.jpeg
+-Z    *.png
+-Z    *.gif
+-Z    *.bmp
+-Z    *.tiff
+-Z    *.svg
+# Exclude common movie file types from compression
+-Z    *.mp4
+-Z    *.avi
+-Z    *.mkv
+-Z    *.mov
+-Z    *.wmv
+-Z    *.flv
+-Z    *.mpeg
+-Z    *.mpg
+
+# These are zip files. Not all are compressed, but considering that they can
+# get quite large it is probably more prudent to leave this uncommented.
+-Z "*.pk3"
+-Z "*.zip"
+# You can get better compression on these files, but then you should be
+# de/recompressing with an actual program, not dar.
+-Z "*.lz4"
+-Z "*.zoo"
+
+# Other, in alphabetical order.
+-Z "*.Po"
+-Z "*.aar"
+-Z "*.bx"
+-Z "*.chm"
+-Z "*.doc"
+-Z "*.epub"
+-Z "*.f3d"
+-Z "*.gpg"
+-Z "*.htmlz"
+-Z "*.iix"
+-Z "*.iso"
+-Z "*.jin"
+-Z "*.ods"
+-Z "*.odt"
+-Z "*.ser"
+-Z "*.svgz"
+-Z "*.swx"
+-Z "*.sxi"
+-Z "*.whl"
+-Z "*.wings"
 
 
+# Dar archives (may be compressed).
+-Z "*.dar"
+
+# Now we swap back to case sensitive mode for masks which is the default
+# mode:
+-acase
+
+##############################################################
+#  target: verbose
+#  remove comments belov for dar being more verbose
+verbose:
+
+# -vt shows files treated due to filtering inclusion or no filtering at all
+#  -vt
+
+# -vs shows skipped files du to exclusion
+#  -vs
+
+# -vd shows diretory currently being processed
+#  -vd 
+
+# -vm shows detailed messages, not related to files and directories
+#  -vm
+
+# -vf shows summary of each treated directory, including average compression
+#  -vf
+
+# -va equivalent to "-vm -vs -vt"
+#  -va
+````
 
 # list contents of an archive
 ```

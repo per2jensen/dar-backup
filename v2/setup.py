@@ -6,7 +6,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='dar-backup',
-    version='0.5.9',
+    version='0.5.10',
     author='Per Jensen',
     author_email='per2jensen@gmail.com',
     description="""A script to do full, differential and incremental backups using `dar`. Some files are restored from the backups during verification, after which par2 redundancy files are created. The script also has a cleanup feature to remove old backups and par2 files.""",
