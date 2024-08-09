@@ -332,6 +332,57 @@ verbose:
 #  -va
 ````
 
+# Systemctl examples
+I have dar-backup scheduled to run via systemd --user settings.
+
+The files are located in: ~/.config/systemd/user
+
+Once the .service and .timer files are in place, timers must be enabled and started.
+
+````
+systemctl --user enable dar-inc-backup.timer
+systemctl --user start  dar-inc-backup.timer
+systemctl --user daemon-reload
+````
+
+Verify your timers are set up as you want:
+
+````
+systemctl --user list-timers
+````
+
+
+## Service: dar-back --incremental-backup
+
+File:  dar-inc-backup.service
+````
+[Unit]
+Description=dar-backup INC
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+TimeoutSec=infinity
+RemainAfterExit=no
+ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate && dar-backup --incremental-backup --verbose'
+````
+
+## Timer: dar-back --incremental-backup
+
+File:  dar-inc-backup.timer
+````
+[Unit]
+Description=dar-backup INC timer
+
+[Timer]
+OnCalendar=*-*-04/3 19:03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+````
+
+
 # list contents of an archive
 ```
 . <the virtual evn>/bin/activate

@@ -660,7 +660,7 @@ def main():
     if len(error_lines) > 0:
         args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
         for line in error_lines:
-            print(line)
+            args.verbose and print(line)
         sys.exit(1)
     else:
         args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")

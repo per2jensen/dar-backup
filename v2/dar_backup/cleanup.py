@@ -18,6 +18,7 @@ import argparse
 import logging
 import os
 import re
+import subprocess
 import sys
 
 from datetime import datetime, timedelta
@@ -158,6 +159,22 @@ def main():
     args.verbose and (print(f"--cleanup-specific-archive:  {args.cleanup_specific_archive}"))
 
 
+    # run PREREQ scripts
+    if 'PREREQ' in config_settings.config:
+        for key in sorted(config_settings.config['PREREQ'].keys()):
+            script = config_settings.config['PREREQ'][key]
+            try:
+                result = subprocess.run(script, shell=True, check=True)
+                logger.info(f"PREREQ {key}: '{script}' run, return code: {result.returncode}")
+                logger.info(f"PREREQ stdout:\n{result.stdout}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error executing {key}: '{script}': {e}")
+                if result:
+                    logger.error(f"PREREQ stderr:\n{result.stderr}")
+                print(f"Error executing {script}: {e}") 
+                sys.exit(1)
+
+
     if args.alternate_archive_dir:
         config_settings.backup_dir = args.alternate_archive_dir
 
@@ -187,7 +204,7 @@ def main():
     if len(error_lines) > 0:
         args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
         for line in error_lines:
-            print(line)
+            args.verbose and print(line)
         sys.exit(1)
     else:
         args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
