@@ -29,7 +29,7 @@ from dar_backup.util import extract_error_lines
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 
-VERSION = "aplha-0.5"
+VERSION = "aplha-0.5.11"
 
 logger = None 
 

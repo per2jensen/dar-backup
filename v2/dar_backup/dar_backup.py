@@ -29,7 +29,7 @@ from dar_backup.util import IncrementalBackupError
 from dar_backup.util import RestoreError
 
 
-VERSION = "alpha-0.5.10"
+VERSION = "alpha-0.5.11"
 
 logger = None
 
