@@ -426,10 +426,16 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
     backup_definitions = []
 
     if args.backup_definition:
+        if '_' in args.backup_definition:
+            logger.error(f"Skipping backup definition: '{args.backup_definition}' due to '_' in name")
+            return
         backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(config_settings.backup_d_dir, args.backup_definition)))
     else:
         for root, _, files in os.walk(config_settings.backup_d_dir):
             for file in files:
+                if '_' in file:
+                    logger.error(f"Skipping backup definition: '{file}' due to '_' in name")
+                    continue
                 backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
 
     for backup_definition, backup_definition_path in backup_definitions:
@@ -464,9 +470,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if result:
                 logger.info("Verification completed successfully.")
             else:
-                logger.error("Verification failed.")
-            logger.info("Generate par2 redundancy files")
-            generate_par2_files(backup_file, config_settings)
+                logger.error("Verification failed.") 
+            logger.info("Generate par2 redundancy files") 
+            generate_par2_files(backup_file, config_settings)  # do this even if verification failed, because verification could fail on an open file.
             logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:

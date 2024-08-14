@@ -16,7 +16,7 @@ setup(
     url='https://github.com/per2jensen/dar-backup',
     include_package_data=True,  # Ensure package data is included
     package_data={
-        '': ['.darrc']},
+        '': ['.darrc', "../LICENSE", "README.md"],},
     license='General Public License version 3 or later',
     classifiers= [
         'Development Status :: 3 - Alpha',
