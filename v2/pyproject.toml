@@ -12,13 +12,13 @@ addopts = [
 include = [
   "/src/dar_backup", "/tests"
 ]
-exclude = [
-  "*.json",
-]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dar_backup"]
 sources = ["src"]
+
+[tool.hatch.version]
+path = "src/dar_backup/__about__.py"
 
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"
@@ -26,7 +26,9 @@ cleanup = "dar_backup.cleanup:main"
 
 [project]
 name = "dar-backup"
-version = "0.5.11"
+dynamic = [
+  "version",
+]
 authors = [
   { name="dar-backup", email="per2jensen@gmail.com" },
 ]
@@ -34,6 +36,7 @@ description = """A script to do full, differential and incremental backups using
     Some files are restored from the backups during verification, after which par2 redundancy files are created.
     The script also has a cleanup feature to remove old backups and par2 files."""
 readme = "README.md"
+readme-content-type = "text/markdown"
 requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 3 - Alpha",

@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from time import time
 
+from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import run_command
@@ -28,8 +29,6 @@ from dar_backup.util import DifferentialBackupError
 from dar_backup.util import IncrementalBackupError
 from dar_backup.util import RestoreError
 
-
-VERSION = "alpha-0.5.11"
 
 logger = None
 
@@ -509,7 +508,7 @@ def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
 
 def show_version():
     script_name = os.path.basename(sys.argv[0])
-    print(f"{script_name} {VERSION}")
+    print(f"{script_name} {about.__version__}") 
     print(f"dar-backup.py source code is here: https://github.com/per2jensen/dar-backup")
     print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -606,7 +605,7 @@ def main():
     try:
         start_time=int(time())
         logger.info(f"=====================================")
-        logger.info(f"dar-backup.py started, version: {VERSION}")
+        logger.info(f"dar-backup.py started, version: {about.__version__}")
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"`args`:\n{args}")
         logger.debug(f"`config_settings`:\n{config_settings}")
