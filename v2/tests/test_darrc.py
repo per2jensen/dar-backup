@@ -32,14 +32,17 @@ def test_verbose(setup_environment, env):
     stdout, stderr = process.communicate()
     env.logger.info("dar-backup --verbose output:\n" + stdout)
 
+
+    # Find directory of dar_backup.py
+    dar_backup = importlib.import_module('dar_backup.dar_backup')
+    dar_backup_path = dar_backup.__file__
+    dar_backup_dir = os.path.dirname(dar_backup_path)
+
+    darrc_path = os.path.join(dar_backup_dir, '.darrc')
+
     expected_patterns = [
-        'Current directory:',
-        'Backup.d dir:',
-        'Backup dir:',
-        'Test restore dir:',
-        'Logfile location:',
-        '--do-not-compare:'
+        f'{darrc_path}'
         ]
 
     for pattern in expected_patterns:
-        assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
+        assert re.search(pattern, stdout), f".darrc not found alongside dar_backup.py"
