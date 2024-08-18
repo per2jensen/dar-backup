@@ -563,22 +563,22 @@ def main():
         sys.exit(1)
 
     parser = argparse.ArgumentParser(description="Backup and verify using dar backup definitions.")
-    parser.add_argument('--full-backup', action='store_true', help="Perform a full backup.")
-    parser.add_argument('--differential-backup', action='store_true', help="Perform differential backup.")
-    parser.add_argument('--incremental-backup', action='store_true', help="Perform incremental backup.")
+    parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
+    parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
+    parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
-    parser.add_argument('--list', action='store_true', help="List available archives.")
+    parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
     parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
-    parser.add_argument('--restore', help="Restore specified archive.")
+    parser.add_argument('-r', '--restore', help="Restore specified archive.")
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`")
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
-    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+    parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     args = parser.parse_args()
 
     args.config_file = os.path.expanduser(args.config_file)
@@ -592,6 +592,16 @@ def main():
         sys.exit(0)
 
     logger = setup_logging(config_settings.logfile_location, args.log_level)
+
+    if not args.darrc:
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        args.darrc = os.path.join(current_script_dir, ".darrc")
+
+    if os.path.exists(args.darrc) and os.path.isfile(args.darrc):
+        logger.info(f"Using .darrc: {args.darrc}")                
+    else:
+        logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file")
+
 
     try:
         start_time=int(time())
@@ -611,6 +621,7 @@ def main():
         args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
+        args.verbose and (print(f".darrc location:   {args.darrc}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
 
         # from here the configs are needed
@@ -630,14 +641,6 @@ def main():
 
 
         
-        args.darrc = os.path.join(current_dir, ".darrc")
-        if args.darrc:
-            if os.path.exists(args.darrc) and os.path.isfile(args.darrc):
-                logger.info(f"Using .darrc: {args.darrc}")                
-            else:
-                logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, using default .darrc")
-
-
 
         if args.list:
             list_backups(config_settings.backup_dir, args.backup_definition)

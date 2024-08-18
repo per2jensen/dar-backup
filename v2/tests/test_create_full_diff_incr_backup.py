@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from dar_backup.util import run_command
-from v2.test.envdata import EnvData
+from tests.envdata import EnvData
 
 test_files = {
         'file1.txt': 'This is file 1.',
@@ -71,6 +71,54 @@ def test_backup_functionality(setup_environment, env):
             f.write('This is an additional line.')
 
         run_backup_script("--incremental-backup", env)
+        # Verify INCR backup contents
+        
+        verify_backup_contents(['data/file3.txt'], f"example_INCR_{env.datestamp}", check_saved, env)
+        env.logger.info("Incremental backup verification succeeded")
+    except Exception as e:
+        env.logger.exception("Backup functionality test failed")
+        sys.exit(1)
+    env.logger.info("test_backup_functionality() finished successfully")
+
+
+def test_backup_functionality_short_options(setup_environment, env):
+    check_saved=True
+    try:
+        create_test_files(env)
+
+        # full backup
+        run_backup_script("-F", env)
+
+        # Verify FULL backup contents
+        check_saved=True
+        verify_backup_contents(test_files, f"example_FULL_{env.datestamp}", check_saved, env)
+        env.logger.info("FULL backup verification succeeded")
+
+        # cleanup restore directory
+        shutil.rmtree(os.path.join(env.test_dir, 'restore'))
+        Path(os.path.join(env.test_dir, 'restore')).mkdir(parents=True, exist_ok=True)
+
+        # Differential backup
+        # Modify one file for differential backup
+        with open(os.path.join(env.test_dir, 'data', 'file2.txt'), 'a') as f:
+            f.write('This is an additional line.')
+
+        run_backup_script("-D", env)
+
+        # Verify DIFF backup contents
+        verify_backup_contents(['data/file2.txt'], f"example_DIFF_{env.datestamp}", check_saved, env)
+        env.logger.info("Differential backup verification succeeded")
+
+        # cleanup restore directory
+        shutil.rmtree(os.path.join(env.test_dir, 'restore'))
+        Path(os.path.join(env.test_dir, 'restore')).mkdir(parents=True, exist_ok=True)
+
+        # Incremental backup
+        # Modify one file for incremental backup
+        with open(os.path.join(env.test_dir, 'data', 'file3.txt'), 'a') as f:
+            f.write('This is an additional line.')
+
+        run_backup_script("-I", env)
         # Verify INCR backup contents
         
         verify_backup_contents(['data/file3.txt'], f"example_INCR_{env.datestamp}", check_saved, env)

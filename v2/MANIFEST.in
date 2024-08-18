@@ -1,2 +1,5 @@
+exclude venv/*
 include README.md
 include .darrc
+include LICENSE
+

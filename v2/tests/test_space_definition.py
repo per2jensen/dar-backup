@@ -4,8 +4,8 @@ import sys
 import os
 
 # Ensure the test directory is in the Python path
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-from v2.test.envdata import EnvData
+#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+from tests.envdata import EnvData
 from datetime import datetime
 from dar_backup.util import run_command
 

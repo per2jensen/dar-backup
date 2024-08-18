@@ -30,7 +30,6 @@
 As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine
 
 
-
 # Homepage - Github
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
@@ -138,7 +137,7 @@ Installation is currently in a venv. These commands are installed in the venv:
 - dar-back
 - cleanup
 
-To install, create a venc and run pip:
+To install, create a venv and run pip:
 ````    
 mkdir $HOME/tmp
 cd $HOME/tmp
@@ -150,13 +149,13 @@ pip install dar-backup  # run pip to install `dar-backup`
 
 I have an alias in ~/.bashrc pointing to my venv:
 ````    
-alias db=". ~/programmer/dar-backup.py/venv/bin/activate; dar-backup -v"
+alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 ````    
 
 Typing `db` at the command line gives this
 ````    
 (venv) user@machine:~$ db
-dar-backup alpha-0.4
+dar-backup alpha-0.5.11
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -226,7 +225,33 @@ You can override the default `.darrc` using the `--darrc` option.
 
 The default `.darrc` contents are as follows:
 ````
-# Default configuration file for dar
+#  .darrc configuration file for `dar` as used by the `dar-backup` script.
+#  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
+
+
+##############################################################
+#  target: verbose
+#  remove comments belov for dar being more verbose
+verbose:
+
+# shows files teated due to filtering inclusion or no filtering at all
+# -vt
+
+# shows skipped files du to exclusion
+# -vs
+
+# shows diretory currently being processed
+# -vd 
+
+# shows detailed messages, not related to files and directories
+# -vm
+
+# shows summary of each treated directory, including average compression
+# -vf
+
+# equivalent to "-vm -vs -vt"
+# -va
+
 
 extract:
 # don't restore File Specific Attributes
@@ -241,95 +266,74 @@ extract:
 
 # Exclude specific file types from compression
 compress-exclusion:
--Z  *.gz
--Z  *.bz2
--Z    *.xz
--Z    *.zip
--Z    *.rar
--Z  *.7z
--Z    *.tar
--Z    *.tgz
--Z    *.tbz2
--Z    *.txz
+-Z    "*.gz"
+-Z    "*.bz2"
+-Z    "*.xz"
+-Z    "*.zip"
+-Z    "*.rar"
+-Z    "*.7z"
+-Z    "*.tar"
+-Z    "*.tgz"
+-Z    "*.tbz2"
+-Z    "*.txz"
 # Exclude common image file types from compression
--Z    *.jpg
--Z    *.jpeg
--Z    *.png
--Z    *.gif
--Z    *.bmp
--Z    *.tiff
--Z    *.svg
+-Z    "*.jpg"
+-Z    "*.jpeg"
+-Z    "*.png"
+-Z    "*.gif"
+-Z    "*.bmp"
+-Z    "*.tiff"
+-Z    "*.svg"
+-Z    "*.ico"
+-Z    "*.webp"
+# The author uses Nikon compressed NEFs raw files
+-Z    "*.NEF"
 # Exclude common movie file types from compression
--Z    *.mp4
--Z    *.avi
--Z    *.mkv
--Z    *.mov
--Z    *.wmv
--Z    *.flv
--Z    *.mpeg
--Z    *.mpg
+-Z    "*.mp4"
+-Z    "*.avi"
+-Z    "*.mkv"
+-Z    "*.mov"
+-Z    "*.wmv"
+-Z    "*.flv"
+-Z    "*.mpeg"
+-Z    "*.mpg"
 
 # These are zip files. Not all are compressed, but considering that they can
 # get quite large it is probably more prudent to leave this uncommented.
--Z "*.pk3"
--Z "*.zip"
-# You can get better compression on these files, but then you should be
-# de/recompressing with an actual program, not dar.
--Z "*.lz4"
--Z "*.zoo"
+-Z    "*.pk3"
+-Z    "*.zip"
 
-# Other, in alphabetical order.
--Z "*.Po"
--Z "*.aar"
--Z "*.bx"
--Z "*.chm"
--Z "*.doc"
--Z "*.epub"
--Z "*.f3d"
--Z "*.gpg"
--Z "*.htmlz"
--Z "*.iix"
--Z "*.iso"
--Z "*.jin"
--Z "*.ods"
--Z "*.odt"
--Z "*.ser"
--Z "*.svgz"
--Z "*.swx"
--Z "*.sxi"
--Z "*.whl"
--Z "*.wings"
+-Z    "*.lz4"
+-Z    "*.zoo"
+
+-Z    "*.Po"
+-Z    "*.aar"
+-Z    "*.bx"
+-Z    "*.chm"
+-Z    "*.doc"
+-Z    "*.epub"
+-Z    "*.f3d"
+-Z    "*.gpg"
+-Z    "*.htmlz"
+-Z    "*.iix"
+-Z    "*.iso"
+-Z    "*.jin"
+-Z    "*.ods"
+-Z    "*.odt"
+-Z    "*.ser"
+-Z    "*.svgz"
+-Z    "*.swx"
+-Z    "*.sxi"
+-Z    "*.whl"
+-Z    "*.wings"
 
 
 # Dar archives (may be compressed).
--Z "*.dar"
+-Z    "*.dar"
 
 # Now we swap back to case sensitive mode for masks which is the default
 # mode:
 -acase
-
-##############################################################
-#  target: verbose
-#  remove comments belov for dar being more verbose
-verbose:
-
-# -vt shows files treated due to filtering inclusion or no filtering at all
-#  -vt
-
-# -vs shows skipped files du to exclusion
-#  -vs
-
-# -vd shows diretory currently being processed
-#  -vd 
-
-# -vm shows detailed messages, not related to files and directories
-#  -vm
-
-# -vf shows summary of each treated directory, including average compression
-#  -vf
-
-# -va equivalent to "-vm -vs -vt"
-#  -va
 ````
 
 # Systemctl examples

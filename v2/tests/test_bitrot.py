@@ -5,7 +5,7 @@ import os
 
 from dar_backup.util import run_command
 from datetime import datetime
-from v2.test.envdata import EnvData
+from tests.envdata import EnvData
 
 """
 This module contains unit tests for detecting bitrot and fixing it in dar archives.

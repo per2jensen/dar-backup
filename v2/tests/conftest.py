@@ -11,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from configparser import ConfigParser, NoSectionError
 from dar_backup.util import setup_logging
 from datetime import datetime
-from v2.test.envdata import EnvData
+from tests.envdata import EnvData
 
 
 @pytest.fixture(scope='function')

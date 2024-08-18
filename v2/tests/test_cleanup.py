@@ -10,8 +10,8 @@ from datetime import datetime
 from dar_backup.util import run_command
 
 # Ensure the test directory is in the Python path
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-from v2.test.envdata import EnvData
+#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+from tests.envdata import EnvData
 
 today = datetime.now().strftime('%Y-%m-%d')
 date_10_days_ago = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')

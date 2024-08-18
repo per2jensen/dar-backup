@@ -1,0 +1,110 @@
+#  .darrc configuration file for `dar` as used by the `dar-backup` script.
+#  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
+
+
+##############################################################
+#  target: verbose
+#  remove comments belov for dar being more verbose
+verbose:
+
+# shows files teated due to filtering inclusion or no filtering at all
+# -vt
+
+# shows skipped files du to exclusion
+# -vs
+
+# shows diretory currently being processed
+# -vd 
+
+# shows detailed messages, not related to files and directories
+# -vm
+
+# shows summary of each treated directory, including average compression
+# -vf
+
+# equivalent to "-vm -vs -vt"
+# -va
+
+
+extract:
+# don't restore File Specific Attributes
+#--fsa-scope none
+
+# ignore owner, useful when used by a non-privileged user
+--comparison-field=ignore-owner
+
+# First setting case insensitive mode on:
+-an
+-ag
+
+# Exclude specific file types from compression
+compress-exclusion:
+-Z    "*.gz"
+-Z    "*.bz2"
+-Z    "*.xz"
+-Z    "*.zip"
+-Z    "*.rar"
+-Z    "*.7z"
+-Z    "*.tar"
+-Z    "*.tgz"
+-Z    "*.tbz2"
+-Z    "*.txz"
+# Exclude common image file types from compression
+-Z    "*.jpg"
+-Z    "*.jpeg"
+-Z    "*.png"
+-Z    "*.gif"
+-Z    "*.bmp"
+-Z    "*.tiff"
+-Z    "*.svg"
+-Z    "*.ico"
+-Z    "*.webp"
+# The author uses Nikon compressed NEFs raw files
+-Z    "*.NEF"
+# Exclude common movie file types from compression
+-Z    "*.mp4"
+-Z    "*.avi"
+-Z    "*.mkv"
+-Z    "*.mov"
+-Z    "*.wmv"
+-Z    "*.flv"
+-Z    "*.mpeg"
+-Z    "*.mpg"
+
+# These are zip files. Not all are compressed, but considering that they can
+# get quite large it is probably more prudent to leave this uncommented.
+-Z    "*.pk3"
+-Z    "*.zip"
+
+-Z    "*.lz4"
+-Z    "*.zoo"
+
+-Z    "*.Po"
+-Z    "*.aar"
+-Z    "*.bx"
+-Z    "*.chm"
+-Z    "*.doc"
+-Z    "*.epub"
+-Z    "*.f3d"
+-Z    "*.gpg"
+-Z    "*.htmlz"
+-Z    "*.iix"
+-Z    "*.iso"
+-Z    "*.jin"
+-Z    "*.ods"
+-Z    "*.odt"
+-Z    "*.ser"
+-Z    "*.svgz"
+-Z    "*.swx"
+-Z    "*.sxi"
+-Z    "*.whl"
+-Z    "*.wings"
+
+
+# Dar archives (may be compressed).
+-Z    "*.dar"
+
+# Now we swap back to case sensitive mode for masks which is the default
+# mode:
+-acase
+

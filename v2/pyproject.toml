@@ -1,0 +1,49 @@
+[build-system]
+requires = ['hatchling']
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+addopts = [
+    "--import-mode=importlib",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/dar_backup", "/tests"
+]
+exclude = [
+  "*.json",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dar_backup"]
+sources = ["src"]
+
+[project.scripts]
+dar-backup = "dar_backup.dar_backup:main"
+cleanup = "dar_backup.cleanup:main"
+
+[project]
+name = "dar-backup"
+version = "0.5.11"
+authors = [
+  { name="dar-backup", email="per2jensen@gmail.com" },
+]
+description = """A script to do full, differential and incremental backups using dar.
+    Some files are restored from the backups during verification, after which par2 redundancy files are created.
+    The script also has a cleanup feature to remove old backups and par2 files."""
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    'Programming Language :: Python :: 3.9',
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Archiving :: Backup",
+]
+
+[project.urls]
+Homepage = "https://github.com/per2jensen/dar-backup"
+Issues = "https://github.com/per2jensen/dar-backup/issues"
