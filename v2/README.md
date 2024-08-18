@@ -38,10 +38,11 @@ This python version is v2 of dar-backup, the first is made in bash.
 # Requirements
   - dar
   - par2
+  - python3 :-)
 
 On Ubuntu, install the requirements this way:
   ````
-    sudo apt install dar par2
+    sudo apt install dar par2 python3
   ````
 
 # Config file
@@ -155,7 +156,7 @@ alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 Typing `db` at the command line gives this
 ````    
 (venv) user@machine:~$ db
-dar-backup alpha-0.5.11
+dar-backup alpha-0.5.12
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -165,37 +166,39 @@ See section 15 and section 16 in the supplied "LICENSE" file.
 `dar-backup -h` gives the usage output:
 ````
 (venv) user@machine:~$ dar-backup -h
-usage: dar-backup [-h] [--full-backup] [--differential-backup] [--incremental-backup] [-d BACKUP_DEFINITION]
-                  [--config-file CONFIG_FILE] [--examples] [--list] [--list-contents LIST_CONTENTS]
-                  [--selection SELECTION] [--restore RESTORE] [--restore-dir RESTORE_DIR] [--verbose]
-                  [--log-level LOG_LEVEL] [--do-not-compare] [--version]
+    
+usage: dar-backup [-h] [-F] [-D] [-I] [-d BACKUP_DEFINITION] [-c CONFIG_FILE] [--darrc DARRC] [--examples] [-l] [--list-contents LIST_CONTENTS]
+                  [--selection SELECTION] [-r RESTORE] [--restore-dir RESTORE_DIR] [--verbose] [--log-level LOG_LEVEL] [--do-not-compare] [-v]
 
 Backup and verify using dar backup definitions.
 
 options:
   -h, --help            show this help message and exit
-  --full-backup         Perform a full backup.
-  --differential-backup
+  -F, --full-backup     Perform a full backup.
+  -D, --differential-backup
                         Perform differential backup.
-  --incremental-backup  Perform incremental backup.
+  -I, --incremental-backup
+                        Perform incremental backup.
   -d BACKUP_DEFINITION, --backup-definition BACKUP_DEFINITION
                         Specific 'recipe' to select directories and files.
-  --config-file CONFIG_FILE, -c CONFIG_FILE
+  -c CONFIG_FILE, --config-file CONFIG_FILE
                         Path to 'dar-backup.conf'
+  --darrc DARRC         Optional path to .darrc
   --examples            Examples of using dar-backup.py.
-  --list                List available archives.
+  -l, --list            List available archives.
   --list-contents LIST_CONTENTS
                         List the contents of the specified archive.
   --selection SELECTION
                         dar file selection for listing/restoring specific files/directories.
-  --restore RESTORE     Restore specified archive.
+  -r RESTORE, --restore RESTORE
+                        Restore specified archive.
   --restore-dir RESTORE_DIR
                         Directory to restore files to.
   --verbose             Print various status messages to screen
   --log-level LOG_LEVEL
                         `debug` or `trace`
   --do-not-compare      do not compare restores to file system
-  --version, -v         Show version information.
+  -v, --version         Show version information.
 ````    
 
 ## 4
@@ -224,20 +227,26 @@ The package includes a default `.darrc` file which configures `dar`.
 You can override the default `.darrc` using the `--darrc` option.
 
 The default `.darrc` contents are as follows:
+
 ````
 #  .darrc configuration file for `dar` as used by the `dar-backup` script.
 #  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
 
 
 ##############################################################
+
 #  target: verbose
+
 #  remove comments belov for dar being more verbose
+
 verbose:
 
 # shows files teated due to filtering inclusion or no filtering at all
+
 # -vt
 
 # shows skipped files du to exclusion
+
 # -vs
 
 # shows diretory currently being processed
@@ -332,7 +341,7 @@ compress-exclusion:
 -Z    "*.dar"
 
 # Now we swap back to case sensitive mode for masks which is the default
-# mode:
+#mode:
 -acase
 ````
 
