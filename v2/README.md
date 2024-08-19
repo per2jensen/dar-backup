@@ -74,11 +74,19 @@ INCR_AGE = 40
 
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
+# False means "do not generate par2 redundancy files"
+ENABLED = True  
 
 [PREREQ]
-# SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-microserver.sh
+# SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-server.sh
 # SCRIPT_2 = <something>
 # ...
+
+[POSTREQ]
+# SCRIPT_1 = /home/user/programmer/dar-backup/postreq/umount-server.sh
+# SCRIPT_2 = <something>
+# ...
+
 ````    
 
 ## 2 

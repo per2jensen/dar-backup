@@ -470,9 +470,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.info("Verification completed successfully.")
             else:
                 logger.error("Verification failed.") 
-            logger.info("Generate par2 redundancy files") 
-            generate_par2_files(backup_file, config_settings)  # do this even if verification failed, because verification could fail on an open file.
-            logger.info("par2 files completed successfully.")
+            if config_settings.par2_enabled:
+                logger.info("Generate par2 redundancy files") 
+                generate_par2_files(backup_file, config_settings)  # do this even if verification failed, because verification could fail on an open file.
+                logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
             logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition")
@@ -553,6 +554,39 @@ See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.ht
 """
     print(examples)
 
+
+
+def requirements(type: str, config_setting: ConfigSettings):
+    """
+    Perform PREREQ or POSTREQ requisites.
+
+    Args:
+        type (str): The type of prereq (PREREQ, POSTREQ).
+        config_settings (ConfigSettings): An instance of the ConfigSettings class.
+
+    Raises:
+        RuntimeError: If a subprocess invoked during the backup process exits with a non-zero status.
+    """
+    if str is None or config_setting is None:
+        logger.error(f"requirements: {type} or config_setting is None, existing")
+        raise RuntimeError(f"requirements: {type} or config_setting is None, existing")
+
+
+    logger.info(f"Performing  {type}")
+    if type in config_setting.config:
+        for key in sorted(config_setting.config[type].keys()):
+            script = config_setting.config[type][key]
+            try:
+                result = subprocess.run(script, shell=True, check=True)
+                logger.info(f"{type} {key}: '{script}' run, return code: {result.returncode}")
+                logger.info(f"{type} stdout:\n{result.stdout}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error executing {key}: '{script}': {e}")
+                if result:
+                    logger.error(f"{type} stderr:\n{result.stderr}")
+                    raise e
+
+
 def main():
     global logger 
 
@@ -597,7 +631,7 @@ def main():
         args.darrc = os.path.join(current_script_dir, ".darrc")
 
     if os.path.exists(args.darrc) and os.path.isfile(args.darrc):
-        logger.info(f"Using .darrc: {args.darrc}")                
+        logger.debug(f"Using .darrc: {args.darrc}")                
     else:
         logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file")
 
@@ -621,25 +655,10 @@ def main():
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f".darrc location:   {args.darrc}"))
+        args.verbose and (print(f"PAR2 enabled:      {config_settings.par2_enabled}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
 
-        # from here the configs are needed
-        if 'PREREQ' in config_settings.config:
-            for key in sorted(config_settings.config['PREREQ'].keys()):
-                script = config_settings.config['PREREQ'][key]
-                try:
-                    result = subprocess.run(script, shell=True, check=True)
-                    logger.info(f"PREREQ {key}: '{script}' run, return code: {result.returncode}")
-                    logger.info(f"PREREQ stdout:\n{result.stdout}")
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"Error executing {key}: '{script}': {e}")
-                    if result:
-                        logger.error(f"PREREQ stderr:\n{result.stderr}")
-                    print(f"Error executing {script}: {e}") 
-                    sys.exit(1)
-
-
-        
+        requirements('PREREQ', config_settings)
 
         if args.list:
             list_backups(config_settings.backup_dir, args.backup_definition)
@@ -657,6 +676,10 @@ def main():
             restore_backup(args.restore, config_settings.backup_dir, restore_dir, args.selection)
         else:
             parser.print_help()
+
+        requirements('POSTREQ', config_settings)
+
+
     except Exception as e:
         logger.exception("An error occurred")
         logger.error("Exception details:", exc_info=True)

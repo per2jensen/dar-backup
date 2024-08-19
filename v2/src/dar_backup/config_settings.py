@@ -41,7 +41,7 @@ class ConfigSettings:
             self.diff_age = int(self.config['AGE']['DIFF_AGE'])
             self.incr_age = int(self.config['AGE']['INCR_AGE'])
             self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
-
+            self.par2_enabled = bool(self.config['PAR2']['ENABLED'])
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
             Path(self.test_restore_dir).mkdir(parents=True, exist_ok=True)

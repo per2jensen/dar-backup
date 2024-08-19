@@ -1,17 +1,17 @@
-import re
+
 from dar_backup.util import run_command
 
 
-def test_prereq(setup_environment, env):
+def test_postreq(setup_environment, env):
     """
-    Test the prereq command in the config file.
+    Test the postreq command in the config file.
     dar-backup must fail when a prereq command fails.
     """
 
     # Patch config file with a successful command
     with open(env.config_file, 'a') as f:
-        f.write('\n[PREREQ]\n')
-        f.write('PREREQ_01 = ls /tmp\n')
+        f.write('\n[POSTREQ]\n')
+        f.write('POSTREQ_01 = df -h\n')
 
 
     # Run the command
