@@ -80,7 +80,66 @@ def test_cleanup_functionality(setup_environment, env):
     assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar')} does not exist"
 
 
-def test_cleanup_specific_archive(setup_environment, env):
+def test_cleanup_specific_archives(setup_environment, env):
+    """
+    Verify that the cleanup script can delete multiple specific archives
+    """
+    test_files = {
+        f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
+        f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
+        f'specific_FULL_{date_100_days_ago}.1.dar.par2': 'dummy',
+        f'specific_FULL_{date_100_days_ago}.2.dar': 'dummy',
+        f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2': 'dummy',
+        f'specific_FULL_{date_100_days_ago}.2.dar.par2': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.1.dar': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.1.dar.vol001.par2': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.1.dar.par2': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.2.dar': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.2.dar.vol666.par2': 'dummy',
+        f'specific_FULL_{date_40_days_ago}.2.dar.par2': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.1.dar': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.1.dar.vol001.par2': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.1.dar.par2': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.2.dar': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.2.dar.vol666.par2': 'dummy',
+        f'specific_FULL_{date_20_days_ago}.2.dar.par2': 'dummy',
+    }
+    for filename, content in test_files.items():
+        with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
+            f.write(content)
+
+    command = ['cleanup', '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose']
+    env.logger.info(command)
+    result = subprocess.run(command, capture_output=True, text=True)
+    env.logger.info(result.stdout)
+    if result.returncode != 0:
+        env.logger.error(result.stderr)
+        raise RuntimeError(f"Cleanup script failed with return code {result.returncode}")
+
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2')} still exists"
+
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar.vol001.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar.vol001.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.1.dar.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar.vol666.par2')} still exists"
+    assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_20_days_ago}.2.dar.par2')} still exists"
+
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar')} still exists"
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar.vol001.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar.vol001.par2')} still exists"
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.1.dar.par2')} still exists"
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar')} still exists"
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar.vol666.par2')} still exists"
+    assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_40_days_ago}.2.dar.par2')} still exists"
+
+
+
+def test_cleanup_multiple_specific_archive(setup_environment, env):
     test_files = {
         f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
         f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
@@ -108,6 +167,9 @@ def test_cleanup_specific_archive(setup_environment, env):
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2')} still exists"
+
+
+
 
 
 def test_cleanup_alternate_dir(setup_environment, env):

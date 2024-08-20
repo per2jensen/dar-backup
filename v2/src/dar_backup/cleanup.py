@@ -68,7 +68,7 @@ def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
                     logger.error(f"Error deleting file {file_path}: {e}")
 
 
-def delete_archives(backup_dir, archive_name):
+def delete_archive(backup_dir, archive_name):
     """
     Delete all .dar and .par2 files in the backup directory for the given archive name.
 
@@ -122,13 +122,13 @@ def main():
     
     global logger
 
-    parser = argparse.ArgumentParser(description="Cleanup old backup files.")
-    parser.add_argument('--backup-definition', '-d', help="Specific backup definition to clean.")
-    parser.add_argument('--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
-    parser.add_argument('--version', '-v', action='store_true', help="Show version information.")
+    parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
+    parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.")
+    parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
-    parser.add_argument('--cleanup-specific-archive', type=str, help="Force delete all .dar and .par2 files in the backup directory for given archive name")
-    parser.add_argument('--list', action='store_true', help="List available archives.")
+    parser.add_argument('--cleanup-specific-archive', type=str, help="List of archives to cleanup") 
+    parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     args = parser.parse_args()
 
@@ -151,13 +151,12 @@ def main():
     logger.debug(f"`config_settings`:\n{config_settings}")
 
     current_dir =  os.path.normpath(os.path.dirname(__file__))
-    args.verbose and (print(f"Current directory: {current_dir}"))
-    args.verbose and (print(f"Config file:       {args.config_file}"))
-    args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
-    args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
-    args.verbose and (print(f"--alternate-archive-dir:  {args.alternate_archive_dir}"))
-    args.verbose and (print(f"--cleanup-specific-archive:  {args.cleanup_specific_archive}"))
-
+    args.verbose and (print(f"Script directory:           {current_dir}"))
+    args.verbose and (print(f"Config file:                {args.config_file}"))
+    args.verbose and (print(f"Backup dir:                 {config_settings.backup_dir}"))
+    args.verbose and (print(f"Logfile location:           {config_settings.logfile_location}"))
+    args.verbose and (print(f"--alternate-archive-dir:    {args.alternate_archive_dir}"))
+    args.verbose and (print(f"--cleanup-specific-archive: {args.cleanup_specific_archive}")) 
 
     # run PREREQ scripts
     if 'PREREQ' in config_settings.config:
@@ -178,9 +177,13 @@ def main():
     if args.alternate_archive_dir:
         config_settings.backup_dir = args.alternate_archive_dir
 
+
     if args.cleanup_specific_archive:
-        delete_archives(config_settings.backup_dir, args.cleanup_specific_archive)
-        sys.exit(0)
+        print(f"Cleaning up specific archives: {args.cleanup_specific_archive}")
+        archive_names = args.cleanup_specific_archive.split(',')
+        for archive_name in archive_names:
+            print(f"Deleting archive: {archive_name}")
+            delete_archive(config_settings.backup_dir, archive_name.strip())
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)
     else:
