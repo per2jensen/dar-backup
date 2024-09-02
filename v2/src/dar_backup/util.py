@@ -95,12 +95,13 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
-        logger.trace(stdout)
+        #logger.trace(stdout)
+        logger.info(stdout)
         if process.returncode != 0:
             logger.error(stderr)
             raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
     except Exception as e:
-        logger.error(f"Error running command: {command}")
+        logger.error(f"Error running command: {command}", exc_info=True)
         raise
 
     return process

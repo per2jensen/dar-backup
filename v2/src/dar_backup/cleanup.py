@@ -150,8 +150,8 @@ def main():
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
 
-    current_dir =  os.path.normpath(os.path.dirname(__file__))
-    args.verbose and (print(f"Script directory:           {current_dir}"))
+    file_dir =  os.path.normpath(os.path.dirname(__file__))
+    args.verbose and (print(f"Script directory:           {file_dir}"))
     args.verbose and (print(f"Config file:                {args.config_file}"))
     args.verbose and (print(f"Backup dir:                 {config_settings.backup_dir}"))
     args.verbose and (print(f"Logfile location:           {config_settings.logfile_location}"))

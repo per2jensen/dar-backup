@@ -644,8 +644,8 @@ def main():
         logger.debug(f"`args`:\n{args}")
         logger.debug(f"`config_settings`:\n{config_settings}")
 
-        current_dir =  os.path.normpath(os.path.dirname(__file__))
-        args.verbose and (print(f"Current directory: {current_dir}"))
+        file_dir =  os.path.normpath(os.path.dirname(__file__))
+        args.verbose and (print(f"Script directory:  {file_dir}"))
         args.verbose and (print(f"Config file:       {args.config_file}"))
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))

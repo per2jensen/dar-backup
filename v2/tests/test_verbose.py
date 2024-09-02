@@ -4,9 +4,6 @@ import re
 import sys
 import os
 
-# Ensure the test directory is in the Python path
-#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
 from tests.envdata import EnvData
 
 
@@ -26,14 +23,13 @@ def create_test_files(env: EnvData) -> dict:
 def test_verbose(setup_environment, env):
     test_files = create_test_files(env)   
 
-    env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     command = ['dar-backup', '--list', '--config-file', env.config_file, '--verbose']
     process = run_command(command)
     stdout, stderr = process.communicate()
     env.logger.info("dar-backup --verbose output:\n" + stdout)
 
     expected_patterns = [
-        'Current directory:',
+        'Script directory:',
         'Backup.d dir:',
         'Backup dir:',
         'Test restore dir:',
@@ -43,3 +39,26 @@ def test_verbose(setup_environment, env):
 
     for pattern in expected_patterns:
         assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
+
+
+def test_verbose_cleanup(setup_environment, env):
+    test_files = create_test_files(env)   
+
+    command = ['cleanup', '--list', '--config-file', env.config_file, '--verbose']
+    process = run_command(command)
+    stdout, stderr = process.communicate()
+    env.logger.info("cleanup --verbose output:\n" + stdout)
+
+    expected_patterns = [
+        'Script directory:',
+        'Config file:',
+        'Backup dir:',
+        'Logfile location:',
+        '--cleanup-specific-archive',
+        '--alternate-archive-dir:'
+        ]
+
+    for pattern in expected_patterns:
+        assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
+
+        

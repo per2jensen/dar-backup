@@ -28,6 +28,9 @@ class ConfigSettings:
         Args:
             config_file (str): The path to the configuration file.
         """
+        if config_file is None:
+            raise ValueError("`config_file` must be specified.")
+        
         self.config = configparser.ConfigParser()
         try:
             self.config.read(config_file)

@@ -26,7 +26,8 @@ def test_prereq(setup_environment, env):
     try:
         command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
         process = run_command(command)
-        assert False, "dar-backup should fail when a prereq command fails"    
+        if process.returncode == 0:
+            assert False, "dar-backup should fail when a prereq command fails"
     except Exception as e:
         env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")
         assert True
