@@ -138,6 +138,9 @@ def run_backup_script(type, env: EnvData):
     process = run_command(command)
     stdout,stderr = process.communicate()
     env.logger.info(stdout)
+    if process.returncode != 0:
+        env.logger.error(f"Error running backup command: {command}")
+        raise Exception(f"Error running backup command: {command}")
     return True
 
 
@@ -151,6 +154,9 @@ def verify_backup_contents(expected_files, archive, check_saved, env: EnvData):
     process = run_command(command)
     stdout,stderr = process.communicate()
     env.logger.info(stdout)
+    if process.returncode != 0:
+        env.logger.error(f"command failed: {stderr}")
+        raise Exception(f"Error running command: {command}, stderr: {stderr}")
 
 
     for expected_file in expected_files:

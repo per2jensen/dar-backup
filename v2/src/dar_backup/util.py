@@ -86,20 +86,14 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
         command (list): The command to be executed, represented as a list of strings.
 
     Returns:
-        str: The standard output of the command.
-
+        subprocess.CompletedProcess
+    
     Raises:
-        Exception: If the command exits with a non-zero return code, an exception is raised
-                   with the error output and the failed command.
+        Exception: raise exceptions during command runs.
     """
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
-        #logger.trace(stdout)
-        logger.info(stdout)
-        if process.returncode != 0:
-            logger.error(stderr)
-            raise Exception(f"Command: {' '.join(map(shlex.quote, command))} failed with return code {process.returncode}: {stderr}")
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise

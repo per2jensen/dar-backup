@@ -36,6 +36,11 @@ def test_list_dar_archives(setup_environment, env):
     command = ['dar-backup', '--list', '--config-file', env.config_file]
     process = run_command(command)
     stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        env.logger.error(f"Command failed: {command}")
+        env.logger.error(f"stderr: {stderr}")
+        raise Exception(f"Command failed: {command}")   
+    stdout, stderr = process.communicate()
     env.logger.debug("dar-backup --list output:\n" + stdout)
 
     # Check for all expected files using regex
@@ -63,6 +68,11 @@ def test_list_dar_archives_short_options(setup_environment, env):
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     command = ['dar-backup', '-l', '-c', env.config_file]
     process = run_command(command)
+    stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        env.logger.error(f"Command failed: {command}")
+        env.logger.error(f"stderr: {stderr}")
+        raise Exception(f"Command failed: {command}")   
     stdout, stderr = process.communicate()
     env.logger.debug("dar-backup -l output:\n" + stdout)
 

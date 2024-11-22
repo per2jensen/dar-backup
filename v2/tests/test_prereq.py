@@ -17,7 +17,9 @@ def test_prereq(setup_environment, env):
     # Run the command
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
     process = run_command(command)
-
+    if process.returncode != 0:
+        raise Exception(f"Command failed {command}")
+    
     # Patch the config file with a failing command
     with open(env.config_file, 'a') as f:
         f.write('PREREQ_02 = command-does-not-exist /tmp\n')

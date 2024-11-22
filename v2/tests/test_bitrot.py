@@ -9,16 +9,10 @@ from tests.envdata import EnvData
 
 """
 This module contains unit tests for detecting bitrot and fixing it in dar archives.
-
-
-Attributes:
-
-Methods:
-
 """
 
 
-def create_random_data_file(env, name, size):
+def create_random_data_file(env: EnvData, name, size):
     """
     Create a file with random data of a specific size.
 
@@ -49,7 +43,7 @@ def generate_datafiles(env: EnvData, file_sizes: dict) -> None:
 
 
 
-def simulate_bitrot(env, bitrot: int = 5):
+def simulate_bitrot(env: EnvData, bitrot: int = 5):
     """
     Simulate bitrot in a dar archive by replacing a percentage of the file with random data.
 
@@ -79,7 +73,7 @@ def simulate_bitrot(env, bitrot: int = 5):
         sys.exit(1)
 
 
-def modify_par2_redundancy(env, redundancy: int) -> None:
+def modify_par2_redundancy(env: EnvData, redundancy: int) -> None:
     """
     Modify the redundancy level of the par2 files by patching the dar-backup.conf file
 
@@ -115,37 +109,44 @@ def check_bitrot_recovery(env: EnvData):
     archive_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}.1.dar")
     try:
         command = ['dar', '-t', basename_path]
-        run_command(command)
-        logging.error(f"dar does not detect a bad archive: {basename_path} ")
-        sys.exit(1)
+        process = run_command(command)
+        if process.returncode != 0:
+            raise RuntimeError(f"dar detected a bad archive: {basename_path}")
+        else:
+            logging.error(f"dar does not detect a bad archive: {basename_path} ")
+            sys.exit(1)
     except Exception as e:
         logging.info(f"Expected exception due to bitrot")
     
     try:
         # fix bitrot with parchive2
         command = ["par2", "repair", "-q", archive_path]
-        run_command(command)
-
+        process = run_command(command)
+        if process.returncode != 0:
+            raise RuntimeError(f"parchive2 failed to repair the archive: {archive_path}")
+        
         # test archive once more
         command = ['dar', '-t', basename_path]
-        run_command(command)
+        process = run_command(command)
+        if process.returncode != 0:
+            raise RuntimeError(f"dar archive test failed: {basename_path}")
+        
         logging.info(f"Archive: {archive_path}  successfully repaired")
     except Exception as e:
         logging.exception(f"Expected no errors after parchive repair")
         sys.exit(1)
 
 
-def test_5_bitrot_recovery(setup_environment, env):
+def test_5_bitrot_recovery(setup_environment, env: EnvData):
     """
     Verify the bitrot recovery process with 5% bitrot.
     Expects to run in a virtual environment with dar-backup installed
     """
-
     redundancy = 5  # redundancy in percent
     run_bitrot_recovery(env, redundancy)
 
 
-def test_25_bitrot_recovery(setup_environment, env):
+def test_25_bitrot_recovery(setup_environment, env: EnvData):
     """
     Verify the bitrot recovery process with 5% bitrot.
     Expects to run in a virtual environment with dar-backup installed
@@ -170,7 +171,12 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     modify_par2_redundancy(env, redundancy_percentage)
     print(f"env: {env}")
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
-    run_command(command)
+    process = run_command(command)
+    stdout,stderr = process.communicate()
+    if process.returncode != 0:
+        logging.error(f"dar stdout: {stdout}")
+        logging.error(f"dar stderr: {stderr}")
+        raise RuntimeError(f"dar-backup failed to create a full backup")
     simulate_bitrot(env, redundancy_percentage)
     check_bitrot_recovery(env)
 

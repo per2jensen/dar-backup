@@ -25,6 +25,8 @@ def test_verbose(setup_environment, env):
 
     command = ['dar-backup', '--list', '--config-file', env.config_file, '--verbose']
     process = run_command(command)
+    if process.returncode != 0:
+        raise Exception(f"Command failed {command}")
     stdout, stderr = process.communicate()
     env.logger.info("dar-backup --verbose output:\n" + stdout)
 
@@ -46,6 +48,8 @@ def test_verbose_cleanup(setup_environment, env):
 
     command = ['cleanup', '--list', '--config-file', env.config_file, '--verbose']
     process = run_command(command)
+    if process.returncode != 0:
+        raise Exception(f"Command failed {command}")
     stdout, stderr = process.communicate()
     env.logger.info("cleanup --verbose output:\n" + stdout)
 

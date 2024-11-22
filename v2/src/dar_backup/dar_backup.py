@@ -63,8 +63,14 @@ def backup(backup_file: str, backup_definition: str, darrc: str):
     command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        run_command(command)
-        logger.info("Backup completed successfully.")
+        process = run_command(command)
+        stdout, stderr = process.communicate()
+        if process.returncode == 0:
+            logger.info("FULL backup completed successfully.")
+        elif process.returncode == 5:
+            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
+        else:
+            raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
@@ -109,8 +115,14 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
     command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', base_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        run_command(command)
-        logger.info("Differential backup completed successfully.")
+        process = run_command(command)
+        stdout, stderr = process.communicate()
+        if process.returncode == 0:
+            logger.info("DIFF backup completed successfully.")
+        elif process.returncode == 5:
+            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
+        else:
+            raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Differential backup command failed: {e}")
         raise DifferentialBackupError(f"Differential backup command failed: {e}") from e
@@ -154,8 +166,14 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
     command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        run_command(command)
-        logger.info("Incremental backup completed successfully.")
+        process = run_command(command)
+        stdout, stderr = process.communicate()
+        if process.returncode == 0:
+            logger.info("INCR backup completed successfully.")
+        elif process.returncode == 5:
+            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
+        else:
+            raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Incremental backup command failed: {e}")
         raise IncrementalBackupError(f"Incremental backup command failed: {e}") from e
@@ -255,10 +273,14 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         PermissionError: If a permission error occurs while comparing files.
     """
     result = True
-    test_command = ['dar', '-t', backup_file, '-Q']
-    logger.info(f"Running command: {' '.join(map(shlex.quote, test_command))}")
-    run_command(test_command)
-    logger.info("Archive integrity test passed.")
+    command = ['dar', '-t', backup_file, '-Q']
+    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    process = run_command(command)
+    stdout, stderr = process.communicate()
+    if process.returncode == 0:
+        logger.info("Archive integrity test passed.")
+    else:
+        raise Exception(stderr)
 
     if args.do_not_compare:
         return result
@@ -292,7 +314,12 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-O', '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            run_command(command)
+            process = run_command(command)
+            stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                logger.error(f"Restore failed, dar return code: {process.returncode}.")
+                raise Exception(stderr)
+
             if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
                 logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
@@ -499,8 +526,10 @@ def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
             file_path = os.path.join(configSettings.backup_dir, filename)
             # Run the par2 command to generate redundancy files with error correction
             command = ['par2', 'create', f'-r{configSettings.error_correction_percent}', '-q', '-q', file_path]
-            run_command(command)
-            #subprocess.run(command, check=True)
+            process = run_command(command)
+            if process.returncode != 0:
+                logger.error(f"Error generating par2 files for {file_path}")
+                raise subprocess.CalledProcessError(process.returncode, command)
             logger.debug(f"par2 files generated for {file_path}")
 
 

@@ -46,7 +46,7 @@ def setup_environment(request):
     print("Env object: " + str(env))
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
-    if os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
+    if env.test_dir.startswith("/tmp") and os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
         shutil.rmtree(env.test_dir)
 
     # Create the unit test directory

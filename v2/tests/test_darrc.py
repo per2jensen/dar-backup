@@ -30,6 +30,11 @@ def test_verbose(setup_environment, env):
     command = ['dar-backup', '--list', '--config-file', env.config_file, '--verbose']
     process = run_command(command)
     stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        env.logger.error(f"Command failed: {command}")
+        env.logger.error(f"stderr: {stderr}")
+        raise Exception(f"Command failed: {command}")
+
     env.logger.info("dar-backup --verbose output:\n" + stdout)
 
 
