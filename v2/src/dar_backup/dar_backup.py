@@ -477,15 +477,23 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 backup(backup_file, backup_definition_path, args.darrc)
             else:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
-                base_backups = sorted(
-                    [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
-                    key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
-                )
-                if not base_backups:
-                    logger.error(f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup.")
-                    continue
+                
+                if args.alternate_reference_archive:
+                    latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)  # expects alternerate reference archive to be without slice number
+                    logger.info(f"Using alternate reference archive: {latest_base_backup}")
+                    if not os.path.exists(latest_base_backup + '.1.dar'):
+                        logger.error(f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exciting.")
+                        sys.exit(1)
+                else:
+                    base_backups = sorted(
+                        [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
+                        key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
+                    )
+                    if not base_backups:
+                        logger.warning(f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup.")
+                        continue
+                    latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
 
-                latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
                 if backup_type == 'DIFF':
                     differential_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc)
                 elif backup_type == 'INCR':
@@ -565,21 +573,25 @@ INCR backup (differences to the latest DIFF) of all backup definitions:
 INCR back of a single backup definition in backup.d
   'python3 dar-backup.py --incremental-backup -d <name of file in backup.d/>'
   
+--alternate-reference-archive (useful if the calculated archive is broken)
+    Use this to specify a different reference archive for DIFF or INCR backups.
+    The specified archive can be any regardsless of type,  name does not include the slice number.
+    Example: 'python3 dar-backup.py --differential-backup --alternate-reference-archive <name of dar archive>'
 
 --log-level
     "trace" logs output from programs (typically dar and par2) run in a subprocess
     "debug" logs various statuses and notices to better understand how to script works
 
 
-File selection in `--selection`
---selection takes dar selection parameters between a pair of `"`. 
+--selection
+    --selection takes dar selection parameters between a pair of `"`. 
 
-Example: select file names with this date in file names "2024-07-01" in the
-directory "path/to/a/dir" where the path is relative to root of the backup.
+    Example: select file names with this date in file names "2024-07-01" in the
+    directory "path/to/a/dir" where the path is relative to root of the backup.
 
-python3 dar-backup.py --restore <name of dar archive>  --selection "-I '*2024-07-01*' -g path/to/a/dir"
+    python3 dar-backup.py --restore <name of dar archive>  --selection "-I '*2024-07-01*' -g path/to/a/dir"
 
-See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS
+    See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS
 """
     print(examples)
 
@@ -629,6 +641,7 @@ def main():
     parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
+    parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.")
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
@@ -679,6 +692,8 @@ def main():
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
         args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
+        if args.alternate_reference_archive:
+            args.verbose and (print(f"Alternate ref archive: {args.alternate_reference_archive}"))
         args.verbose and (print(f"Backup.d dir:      {config_settings.backup_d_dir}"))
         args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
         args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
