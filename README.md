@@ -81,7 +81,10 @@ This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
 Dar-backup v2 is now usable for the brave (still an alpha version) to use for backups and cleanup.
 
-If you are interested, head over to [dar-backup on PyPI](https://pypi.org/project/dar-backup/)
+If you are interested, follow these links:
+
+- [dar-backup v2 in this repo](https://github.com/per2jensen/dar-backup/tree/main/v2)
+- [dar-backup on PyPI](https://pypi.org/project/dar-backup/)
 
 # <a id="inspiration"> Inspiration
 
