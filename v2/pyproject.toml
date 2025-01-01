@@ -24,6 +24,7 @@ path = "src/dar_backup/__about__.py"
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"
 cleanup = "dar_backup.cleanup:main"
+manager = "dar_backup.manager:main"
 
 [project]
 name = "dar-backup"

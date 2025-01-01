@@ -651,7 +651,7 @@ def main():
     parser.add_argument('-r', '--restore', help="Restore specified archive.")
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
-    parser.add_argument('--log-level', type=str, help="`debug` or `trace`")
+    parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     args = parser.parse_args()

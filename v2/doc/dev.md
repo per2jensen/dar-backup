@@ -9,6 +9,8 @@ cd <path/to/dar-backup/v2>
 
 # build, deploy to dev venv
 
+Update __about__.py first
+
 ````
 python3 -m build
 

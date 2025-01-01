@@ -92,8 +92,9 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
         Exception: raise exceptions during command runs.
     """
     try:
+        logger.trace(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
+        process.wait()
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
