@@ -81,7 +81,7 @@ def setup_environment(request):
     # in the code below.
     # Tear down the environment after the test case
     try:
-        #teardown_environment(env)
+        teardown_environment(env)
         pass
     except Exception as e:
         env.logger.exception("Failed to tear down environment")

@@ -94,7 +94,7 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
     try:
         logger.trace(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        process.wait()
+        process.wait() # Popen() and wait() used, for potential future use of stdout and stderr while a subprocess is running.
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
