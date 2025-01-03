@@ -115,7 +115,7 @@ def test_manager_add_specific_archive(setup_environment, env):
         raise Exception(f"Command failed: {command}")
   
     # add archive to catalog
-    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace"]
+    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
     process = run_command(command)
     if process.returncode != 0:
         stdout, stderr = process.communicate()
@@ -138,4 +138,3 @@ def test_manager_add_specific_archive(setup_environment, env):
         raise Exception(f"Catalog not found for backup definition f'example_FULL_{today_date}'")
 
     print(f"Catalog for example_FULL_{today_date}.1.dar found in example.db")  
-

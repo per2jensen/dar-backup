@@ -145,6 +145,7 @@ def main():
     parser.add_argument('--list-db', action='store_true', help='List catalogs in databases')
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
+    parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--more-help', action='store_true', help='Show extended help message')
     parser.add_argument('--version', action='store_true', help='Show version & license')
 
@@ -168,7 +169,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")
         sys.exit(1) 
-    logger = setup_logging(config_settings.logfile_location, args.log_level)
+    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
 
     start_time=int(time())
     logger.info(f"=====================================")

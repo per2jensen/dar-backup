@@ -37,8 +37,7 @@ class RestoreError(Exception):
     pass
 
 
-
-def setup_logging(log_file: str, log_level: str) -> logging.Logger:
+def setup_logging(log_file: str, log_level: str, log_to_stdout=False) -> logging.Logger:
     """
     log_level can be set to "debug" or "trace" for more verbose logging.
     """    
@@ -64,6 +63,14 @@ def setup_logging(log_file: str, log_level: str) -> logging.Logger:
         elif log_level == "trace":
             level_used = TRACE_LEVEL_NUM
             logger.setLevel(TRACE_LEVEL_NUM)
+
+        if log_to_stdout:
+            # Create a handler for the console
+            stdout_handler = logging.StreamHandler(sys.stdout)
+            stdout_handler.setLevel(level_used)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
+            stdout_handler.setFormatter(formatter)
+            logger.addHandler(stdout_handler)
 
         logging.basicConfig(filename=log_file, level=level_used,
                             format='%(asctime)s - %(levelname)s - %(message)s')

@@ -652,6 +652,7 @@ def main():
     parser.add_argument('--restore-dir', help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
+    parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     args = parser.parse_args()
@@ -666,7 +667,7 @@ def main():
         show_examples()
         sys.exit(0)
 
-    logger = setup_logging(config_settings.logfile_location, args.log_level)
+    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
 
     if not args.darrc:
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -692,6 +693,7 @@ def main():
         args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
         args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
         args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
+        args.verbose and args.backup_definition   and (print(f"Backup definition: '{args.backup_definition}'"))
         if args.alternate_reference_archive:
             args.verbose and (print(f"Alternate ref archive: {args.alternate_reference_archive}"))
         args.verbose and (print(f"Backup.d dir:      {config_settings.backup_d_dir}"))
@@ -701,6 +703,16 @@ def main():
         args.verbose and (print(f".darrc location:   {args.darrc}"))
         args.verbose and (print(f"PAR2 enabled:      {config_settings.par2_enabled}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
+
+
+        # sanity check
+        if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):
+            logger.error(f"Backup definition: '{args.backup_definition}' does not exist, exiting")
+            sys.exit(1)
+        if args.backup_definition and '_' in args.backup_definition:
+            logger.error(f"Backup definition: '{args.backup_definition}' contains '_', exiting")
+            sys.exit(1)
+
 
         requirements('PREREQ', config_settings)
 
