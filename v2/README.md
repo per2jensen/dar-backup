@@ -164,7 +164,7 @@ alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 Typing `db` at the command line gives this
 ````    
 (venv) user@machine:~$ db
-dar-backup alpha-0.5.12
+dar-backup 0.5.17
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -173,10 +173,11 @@ See section 15 and section 16 in the supplied "LICENSE" file.
 
 `dar-backup -h` gives the usage output:
 ````
-(venv) user@machine:~$ dar-backup -h
-    
-usage: dar-backup [-h] [-F] [-D] [-I] [-d BACKUP_DEFINITION] [-c CONFIG_FILE] [--darrc DARRC] [--examples] [-l] [--list-contents LIST_CONTENTS]
-                  [--selection SELECTION] [-r RESTORE] [--restore-dir RESTORE_DIR] [--verbose] [--log-level LOG_LEVEL] [--do-not-compare] [-v]
+usage: dar-backup [-h] [-F] [-D] [-I] [-d BACKUP_DEFINITION]
+                  [--alternate-reference-archive ALTERNATE_REFERENCE_ARCHIVE] [-c CONFIG_FILE] [--darrc DARRC]
+                  [--examples] [-l] [--list-contents LIST_CONTENTS] [--selection SELECTION] [-r RESTORE]
+                  [--restore-dir RESTORE_DIR] [--verbose] [--log-level LOG_LEVEL] [--log-stdout]
+                  [--do-not-compare] [-v]
 
 Backup and verify using dar backup definitions.
 
@@ -189,6 +190,8 @@ options:
                         Perform incremental backup.
   -d BACKUP_DEFINITION, --backup-definition BACKUP_DEFINITION
                         Specific 'recipe' to select directories and files.
+  --alternate-reference-archive ALTERNATE_REFERENCE_ARCHIVE
+                        DIFF or INCR compared to specified archive.
   -c CONFIG_FILE, --config-file CONFIG_FILE
                         Path to 'dar-backup.conf'
   --darrc DARRC         Optional path to .darrc
@@ -205,8 +208,10 @@ options:
   --verbose             Print various status messages to screen
   --log-level LOG_LEVEL
                         `debug` or `trace`
+  --log-stdout          also print log messages to stdout
   --do-not-compare      do not compare restores to file system
-  -v, --version         Show version information.
+  -v, --version         Show version and license information.
+
 ````    
 
 ## 4
@@ -407,7 +412,7 @@ WantedBy=timers.target
 # list contents of an archive
 ```
 . <the virtual evn>/bin/activate
-dar-backup --list-contents example --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+dar-backup --list-contents example_FULL_2024-06-23 --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
 ```
 gives
@@ -516,18 +521,43 @@ Nice :-)
 
 # Restoring
 
+## default location for restores
+dar-backup will use the TEST_RESTORE_DIR location as the Root for restores, if the --restore-dir option has not been supplied.
+
+See example below to see where files are restored to.
+
+## --restore-dir option
+When the --restore-dir option is used for restoring, a directory must be supplied.
+
+The directory supplied functions as the Root of the restore operation.
+
+**Example**:
+
+A backup has been taken using this backup definition:
+```
+-R /
+-g home/user/Documents
+```
+
+When restoring and using `/tmp` for --restore-dir, the restored files can be found in `/tmp/home/user/Documents`
+
 ## a single file
 ```
 . <the virtual env>/bin/activate
-# the path/to/file is relative to the Root when the backup was taken
 dar-backup --restore <archive_name> --selection "-g path/to/file"
 deactivate
 ```
+## a directory
+```
+. <the virtual env>/bin/activate
+dar-backup --restore <archive_name> --selection "-g path/to/directory"
+deactivate
+```
+
 
 ## .NEF from a specific date
 ```
 . <the virtual env>/bin/activate
-# the path/to/file is relative to the Root when the backup was taken
 dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
 ```
