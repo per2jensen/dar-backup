@@ -70,13 +70,17 @@ def backup(backup_file: str, backup_definition: str, darrc: str):
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
+            logger.error("dar return code: ", process.returncode)
+            logger.error("stdout: ", stdout)
+            logger.error("stderr: ", stderr)
             raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
         logger.exception(f"Unexpected error during backup")
-        logger.error("Exception details:", exc_info=True)
+        logger.error("stderr:", stderr)
+        logger.error("stdout: ", stdout)
         raise BackupError(f"Unexpected error during backup: {e}") from e
  
  
@@ -122,6 +126,9 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
+            logger.error("dar return code: ", process.returncode)
+            logger.error("stdout: ", stdout)
+            logger.error("stderr: ", stderr)
             raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Differential backup command failed: {e}")
@@ -173,6 +180,9 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
+            logger.error("dar return code: ", process.returncode)
+            logger.error("stdout: ", stdout)
+            logger.error("stderr: ", stderr)
             raise Exception(stderr)
     except subprocess.CalledProcessError as e:
         logger.error(f"Incremental backup command failed: {e}")
@@ -654,7 +664,7 @@ def main():
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
-    parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
+    parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
     args = parser.parse_args()
 
     args.config_file = os.path.expanduser(args.config_file)
