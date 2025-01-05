@@ -81,9 +81,6 @@ def setup_logging(log_file: str, log_level: str, log_to_stdout: bool=False, logg
             stdout_handler.setFormatter(formatter)
             logger.addHandler(stdout_handler)
 
-#        logging.basicConfig(filename=log_file, level=level_used,
-#                            format='%(asctime)s - %(levelname)s - %(message)s')
-
     except Exception as e:
         print("logging not initialized, exiting.")
         traceback.print_exc()
@@ -133,9 +130,7 @@ def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
     try:
         logger.debug(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate(timeout)
-        logger.debug(f"stdout: {stdout}")
-        logger.debug(f"stderr: {stderr}")   
+        logger.debug(str(process)) 
     except subprocess.TimeoutExpired:
         process.terminate()
         logger.error(f"Command: '{command}' timed out and was terminated.")
