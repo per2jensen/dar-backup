@@ -637,6 +637,9 @@ def requirements(type: str, config_setting: ConfigSettings):
                 result = subprocess.run(script, shell=True, check=True)
                 logger.info(f"{type} {key}: '{script}' run, return code: {result.returncode}")
                 logger.info(f"{type} stdout:\n{result.stdout}")
+                if result.returncode != 0:
+                    logger.error(f"{type} stderr:\n{result.stderr}")
+                    raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")    
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error executing {key}: '{script}': {e}")
                 if result:
