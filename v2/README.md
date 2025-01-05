@@ -27,8 +27,11 @@
   Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
 # Status
-As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine
+As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
 
+**Breaking change in version 0.6.0**
+
+Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* in the config file.
 
 # Homepage - Github
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
@@ -61,6 +64,11 @@ LOGFILE_LOCATION=/home/user/dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 1
 NO_FILES_VERIFICATION = 5
+
+# timeout in seconds for backup, test, restore and par2 operations
+# The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
+# If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
+COMMAND_TIMEOUT_SECS = 86400
 
 [DIRECTORIES]
 BACKUP_DIR = /home/user/mnt/dir/
