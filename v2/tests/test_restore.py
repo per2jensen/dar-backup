@@ -11,7 +11,7 @@ def test_restoredir_requires_value(setup_environment, env):
     if process.returncode == 0:
         raise Exception(f'dar-backup must fail because a value to --restore-dir is not given')
     else:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         if not re.search('usage: dar-backup', stderr):
             raise Exception(f"Expected error message not found in stderr: {stderr}")
         env.logger.info(f"process.returncode={process.returncode} which is expected")

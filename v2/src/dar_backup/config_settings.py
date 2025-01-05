@@ -14,6 +14,7 @@ class ConfigSettings:
         max_size_verification_mb (int): The maximum size for verification in megabytes.
         min_size_verification_mb (int): The minimum size for verification in megabytes.
         no_files_verification (int): The number of files for verification.
+        command_timeout_secs (int): The timeout in seconds for commands.
         backup_dir (str): The directory for backups.
         test_restore_dir (str): The directory for test restores.
         backup_d_dir (str): The directory for backup.d.
@@ -38,6 +39,7 @@ class ConfigSettings:
             self.max_size_verification_mb = int(self.config['MISC']['MAX_SIZE_VERIFICATION_MB'])
             self.min_size_verification_mb = int(self.config['MISC']['MIN_SIZE_VERIFICATION_MB'])
             self.no_files_verification = int(self.config['MISC']['NO_FILES_VERIFICATION'])
+            self.command_timeout_secs = int(self.config['MISC']['COMMAND_TIMEOUT_SECS'])
             self.backup_dir = self.config['DIRECTORIES']['BACKUP_DIR']
             self.test_restore_dir = self.config['DIRECTORIES']['TEST_RESTORE_DIR']
             self.backup_d_dir = self.config['DIRECTORIES']['BACKUP.D_DIR']

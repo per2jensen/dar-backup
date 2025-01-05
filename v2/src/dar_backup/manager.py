@@ -66,7 +66,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
             logger.info(f'Database created: "{database_path}"')
         else:
             logger.error(f'Something went wrong creating the database: "{database_path}"')
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.stdout, process.stderr 
             logger.error(f"stderr: {stderr}")
             logger.error(f"stdout: {stdout}")
 
@@ -80,7 +80,7 @@ def list_db(backup_def: str, config_settings: ConfigSettings):
         return 1
     command = ['dar_manager', '--base', database_path, '--list']
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
         logger.error(f"stderr: {stderr}")  
@@ -111,7 +111,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings):
     
     command = ['dar_manager', '--base', database_path, "--add", archive_path, "-ai", "-Q"]
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr
 
     if process.returncode == 0:
         logger.info(f'"{archive_path}" added to it\'s catalog')

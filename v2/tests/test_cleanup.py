@@ -7,8 +7,6 @@ from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
 
-from dar_backup.util import run_command
-
 # Ensure the test directory is in the Python path
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from tests.envdata import EnvData

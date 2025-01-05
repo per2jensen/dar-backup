@@ -29,7 +29,7 @@ def test_verbose(setup_environment, env):
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     command = ['dar-backup', '--list', '--config-file', env.config_file, '--verbose']
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         env.logger.error(f"Command failed: {command}")
         env.logger.error(f"stderr: {stderr}")

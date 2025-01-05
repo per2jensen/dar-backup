@@ -27,8 +27,7 @@ def test_verbose(setup_environment, env):
     process = run_command(command)
     if process.returncode != 0:
         raise Exception(f"Command failed {command}")
-    stdout, stderr = process.communicate()
-    env.logger.info("dar-backup --verbose output:\n" + stdout)
+    env.logger.info("dar-backup --verbose output:\n" + process.stdout)
 
     expected_patterns = [
         'Script directory:',
@@ -40,7 +39,7 @@ def test_verbose(setup_environment, env):
         ]
 
     for pattern in expected_patterns:
-        assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
+        assert re.search(pattern, process.stdout), f"Pattern {pattern} not found in output"
 
 
 def test_verbose_cleanup(setup_environment, env):
@@ -50,7 +49,7 @@ def test_verbose_cleanup(setup_environment, env):
     process = run_command(command)
     if process.returncode != 0:
         raise Exception(f"Command failed {command}")
-    stdout, stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr
     env.logger.info("cleanup --verbose output:\n" + stdout)
 
     expected_patterns = [
@@ -65,4 +64,3 @@ def test_verbose_cleanup(setup_environment, env):
     for pattern in expected_patterns:
         assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
 
-        

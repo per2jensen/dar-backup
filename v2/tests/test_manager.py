@@ -49,7 +49,7 @@ def test_manager_create_dbs(setup_environment, env):
     command = ['manager', '--create-db' ,'--config-file', env.config_file]
     process = run_command(command)
     if process.returncode != 0:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
@@ -65,7 +65,7 @@ def test_manager_version(setup_environment, env):
     command = ['manager', '--version']
     process = run_command(command)
     if process.returncode != 0:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
@@ -75,7 +75,7 @@ def test_manager_help(setup_environment, env):
     command = ['manager', '--more-help']
     process = run_command(command)
     if process.returncode != 0:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
@@ -98,7 +98,7 @@ def test_manager_add_specific_archive(setup_environment, env):
     test_bitrot.generate_datafiles(env, file_sizes)
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
     process = run_command(command)
-    stdout,stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         print(f"dar stdout: {stdout}")
         print(f"dar stderr: {stderr}")
@@ -109,16 +109,17 @@ def test_manager_add_specific_archive(setup_environment, env):
     command = ['manager', '--create-db' ,'--config-file', env.config_file]
     process = run_command(command)
     if process.returncode != 0:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
+
   
     # add archive to catalog
     command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
     process = run_command(command)
     if process.returncode != 0:
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
@@ -126,7 +127,7 @@ def test_manager_add_specific_archive(setup_environment, env):
     # list catalogs
     command = ['manager', '--list-db' ,'--config-file', env.config_file]
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  

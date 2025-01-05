@@ -7,7 +7,7 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 """
-
+import typing
 import locale
 import logging
 import os
@@ -17,6 +17,8 @@ import shlex
 import sys
 import traceback
 from datetime import datetime
+
+from typing import NamedTuple
 
 logger=None
 
@@ -37,7 +39,9 @@ class RestoreError(Exception):
     pass
 
 
-def setup_logging(log_file: str, log_level: str, log_to_stdout=False) -> logging.Logger:
+
+
+def setup_logging(log_file: str, log_level: str, log_to_stdout: bool=False, logger_name: str=__name__) -> logging.Logger:
     """
     log_level can be set to "debug" or "trace" for more verbose logging.
     """    
@@ -64,16 +68,21 @@ def setup_logging(log_file: str, log_level: str, log_to_stdout=False) -> logging
             level_used = TRACE_LEVEL_NUM
             logger.setLevel(TRACE_LEVEL_NUM)
 
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
+
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(level_used)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
         if log_to_stdout:
-            # Create a handler for the console
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setLevel(level_used)
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
             stdout_handler.setFormatter(formatter)
             logger.addHandler(stdout_handler)
 
-        logging.basicConfig(filename=log_file, level=level_used,
-                            format='%(asctime)s - %(levelname)s - %(message)s')
+#        logging.basicConfig(filename=log_file, level=level_used,
+#                            format='%(asctime)s - %(levelname)s - %(message)s')
 
     except Exception as e:
         print("logging not initialized, exiting.")
@@ -83,30 +92,56 @@ def setup_logging(log_file: str, log_level: str, log_to_stdout=False) -> logging
     return logger
 
 
+class CommandResult(NamedTuple):
+    """
+    The reult of the run_command() function.
+    """
+    process: subprocess.CompletedProcess
+    stdout: str
+    stderr: str
+    returncode: int
+    timeout: int
+    command: list[str]
 
 
-def run_command(command: list[str]) -> subprocess.CompletedProcess:
+def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
     """
     Executes a given command via subprocess and captures its output.
 
     Args:
         command (list): The command to be executed, represented as a list of strings.
+        timeout (int): The maximum time in seconds to wait for the command to complete.Defaults to 30 seconds.
 
     Returns:
-        subprocess.CompletedProcess
+        a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
+        - process: of type subprocess.CompletedProcess: The result of the command execution.
+        - stdout: of type str: The standard output of the command.
+        - stderr: of type str: The standard error of the command.
+        - returncode: of type int: The return code of the command.
+        - timeout: of type int: The timeout value in seconds used to run the command.
+        - command: of type list[str): The command executed.
     
     Raises:
+        subprocess.TimeoutExpired: if the command execution times out (see `timeout` parameter).
         Exception: raise exceptions during command runs.
     """
+
     try:
-        logger.trace(f"Running command: {command}")
+        logger.info(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        process.wait() # Popen() and wait() used, for potential future use of stdout and stderr while a subprocess is running.
+        stdout, stderr = process.communicate(timeout=30)  # Wait with timeout
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        logger.error(f"Command: '{command}' timed out and was terminated.")
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
-
-    return process
+    finally:
+        if not stdout:
+            stdout = None
+        if not stderr:
+            stderr = None
+    return CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
 
 
 def extract_error_lines(log_file_path: str, start_time: str, end_time: str):

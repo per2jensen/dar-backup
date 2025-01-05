@@ -121,6 +121,7 @@ def test_backup_functionality_short_options(setup_environment, env):
         run_backup_script("-I", env)
         # Verify INCR backup contents
         
+        env.logger.debug("Incremental backup verification staring......")
         verify_backup_contents(['data/file3.txt'], f"example_INCR_{env.datestamp}", check_saved, env)
         env.logger.info("Incremental backup verification succeeded")
     except Exception as e:
@@ -130,16 +131,17 @@ def test_backup_functionality_short_options(setup_environment, env):
 
 
 
-def run_backup_script(type, env: EnvData):
+def run_backup_script(type: str, env: EnvData):
     """
     Expects to run in a virtual environment with dar-backup installed
     """
     command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug', '--config-file', env.config_file]
     process = run_command(command)
-    stdout,stderr = process.communicate()
+    stdout,stderr = process.stdout, process.stderr
     env.logger.info(stdout)
     if process.returncode != 0:
         env.logger.error(f"Error running backup command: {command}")
+        env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Error running backup command: {command}")
     return True
 
@@ -152,7 +154,7 @@ def verify_backup_contents(expected_files, archive, check_saved, env: EnvData):
     command = ['dar-backup', '--list-contents', archive, '--config-file', env.config_file]
     env.logger.info(command) 
     process = run_command(command)
-    stdout,stderr = process.communicate()
+    stdout,stderr = process.stdout, process.stderr
     env.logger.info(stdout)
     if process.returncode != 0:
         env.logger.error(f"command failed: {stderr}")

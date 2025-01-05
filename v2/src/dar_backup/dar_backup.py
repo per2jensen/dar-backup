@@ -33,7 +33,7 @@ from dar_backup.util import RestoreError
 logger = None
 
 
-def backup(backup_file: str, backup_definition: str, darrc: str):
+def backup(backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings):
     """
     Performs a full backup using the 'dar' command.
 
@@ -63,8 +63,8 @@ def backup(backup_file: str, backup_definition: str, darrc: str):
     command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        process = run_command(command)
-        stdout, stderr = process.communicate()
+        process = run_command(command, config_settings.command_timeout_secs)
+        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("FULL backup completed successfully.")
         elif process.returncode == 5:
@@ -87,7 +87,7 @@ def backup(backup_file: str, backup_definition: str, darrc: str):
 
 
 
-def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str, darrc: str):
+def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str, darrc: str, config_settings: ConfigSettings):
     """
     Creates a differential backup based on a specified base backup.
 
@@ -120,7 +120,7 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command)
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("DIFF backup completed successfully.")
         elif process.returncode == 5:
@@ -139,7 +139,7 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
         raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
 
 
-def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str, darrc: str):
+def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str, darrc: str, config_settings: ConfigSettings):
     """
     Creates an incremental backup based on the last backup file.
 
@@ -173,8 +173,8 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
     command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        process = run_command(command)
-        stdout, stderr = process.communicate()
+        process = run_command(command, config_settings.command_timeout_secs)
+        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("INCR backup completed successfully.")
         elif process.returncode == 5:
@@ -285,8 +285,8 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     result = True
     command = ['dar', '-t', backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    process = run_command(command)
-    stdout, stderr = process.communicate()
+    process = run_command(command, config_settings.command_timeout_secs)
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
     else:
@@ -324,8 +324,8 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-O', '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            process = run_command(command)
-            stdout, stderr = process.communicate()
+            process = run_command(command, config_settings.command_timeout_secs)    
+            stdout, stderr = process.stdout, process.stderr
             if process.returncode != 0:
                 logger.error(f"Restore failed, dar return code: {process.returncode}.")
                 raise Exception(stderr)
@@ -343,7 +343,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
 
 
 
-def restore_backup(backup_name: str, backup_dir: str, restore_dir: str, selection: str =None):
+def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, selection: str =None):
     """
     Restores a backup file to a specified directory.
 
@@ -353,7 +353,7 @@ def restore_backup(backup_name: str, backup_dir: str, restore_dir: str, selectio
         restore_dir (str): The directory where the backup should be restored to.
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
     """
-    backup_file = os.path.join(backup_dir, backup_name)
+    backup_file = os.path.join(config_settings.backup_dir, backup_name)
     command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
     if restore_dir:
         if not os.path.exists(restore_dir):
@@ -364,13 +364,18 @@ def restore_backup(backup_name: str, backup_dir: str, restore_dir: str, selectio
         command.extend(selection_criteria)
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
-        run_command(command)
+        process = run_command(command, config_settings.command_timeout_secs)
+        stdout, stderr = process.stdout, process.stderr
     except subprocess.CalledProcessError as e:
         logger.error("Exception details:", exc_info=True)
+        logger.error(f"stdout: {stdout}")
+        logger.error(f"stderr: {stderr}")
         raise RestoreError(f"Restore command failed: {e}") from e
     except Exception as e:
         logger.exception(f"Unexpected error during restore")
         logger.error("Exception details:", exc_info=True)
+        logger.error(f"stdout: {stdout}")
+        logger.error(f"stderr: {stderr}")
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
 
@@ -391,7 +396,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout,stderr = process.stdout, process.stderr
     # Parse the XML data
     root = ET.fromstring(stdout)
     output = None  # help gc
@@ -422,7 +427,8 @@ def list_contents(backup_name, backup_dir, selection=None):
         command.extend(selection_criteria)
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     process = run_command(command)
-    stdout, stderr = process.communicate()
+    stdout,stderr = process.stdout, process.stderr
+
     for line in stdout.splitlines():
         if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
             print(line)
@@ -484,7 +490,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 continue
 
             if backup_type == 'FULL':
-                backup(backup_file, backup_definition_path, args.darrc)
+                backup(backup_file, backup_definition_path, args.darrc, config_settings)
             else:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
                 
@@ -505,9 +511,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                     latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
 
                 if backup_type == 'DIFF':
-                    differential_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc)
+                    differential_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc, config_settings)
                 elif backup_type == 'INCR':
-                    incremental_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc) 
+                    incremental_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc, config_settings) 
 
             logger.info("Starting verification...")
             result = verify(args, backup_file, backup_definition_path, config_settings)
@@ -524,7 +530,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition")
             logger.error("Exception details:", exc_info=True)
 
-def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
+def generate_par2_files(backup_file: str, config_settings: ConfigSettings):
     """
     Generate PAR2 files for a given backup file in the specified backup directory.
 
@@ -538,13 +544,13 @@ def generate_par2_files(backup_file: str, configSettings: ConfigSettings):
     Returns:
         None
     """
-    for filename in os.listdir(configSettings.backup_dir):
+    for filename in os.listdir(config_settings.backup_dir):
         if os.path.basename(backup_file) in filename:
             # Construct the full path to the file
-            file_path = os.path.join(configSettings.backup_dir, filename)
+            file_path = os.path.join(config_settings.backup_dir, filename)
             # Run the par2 command to generate redundancy files with error correction
-            command = ['par2', 'create', f'-r{configSettings.error_correction_percent}', '-q', '-q', file_path]
-            process = run_command(command)
+            command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
+            process = run_command(command, config_settings.command_timeout_secs)
             if process.returncode != 0:
                 logger.error(f"Error generating par2 files for {file_path}")
                 raise subprocess.CalledProcessError(process.returncode, command)
@@ -739,7 +745,7 @@ def main():
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
             restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
-            restore_backup(args.restore, config_settings.backup_dir, restore_dir, args.selection)
+            restore_backup(args.restore, config_settings, restore_dir, args.selection)
         else:
             parser.print_help()
 

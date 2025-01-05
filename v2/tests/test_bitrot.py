@@ -172,7 +172,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     print(f"env: {env}")
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
     process = run_command(command)
-    stdout,stderr = process.communicate()
+    stdout,stderr = process.stdout, process.stderr
     if process.returncode != 0:
         logging.error(f"dar stdout: {stdout}")
         logging.error(f"dar stderr: {stderr}")
