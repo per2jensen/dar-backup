@@ -18,6 +18,7 @@ from dar_backup.util import setup_logging
 # Session-scoped fixture for the logger
 @pytest.fixture(scope='session')
 def logger():
+    os.path.exists("/tmp/unit-test") or os.makedirs("/tmp/unit-test")
     logger = setup_logging("/tmp/unit-test/test.log", "debug", False, "test_logger")
     return logger
 
