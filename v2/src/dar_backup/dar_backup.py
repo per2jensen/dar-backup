@@ -64,23 +64,17 @@ def backup(backup_file: str, backup_definition: str, darrc: str,  config_setting
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
-        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("FULL backup completed successfully.")
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
-            logger.error("dar return code: ", process.returncode)
-            logger.error("stdout: ", stdout)
-            logger.error("stderr: ", stderr)
-            raise Exception(stderr)
+            raise Exception(str(process))
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
         logger.exception(f"Unexpected error during backup")
-        logger.error("stderr:", stderr)
-        logger.error("stdout: ", stdout)
         raise BackupError(f"Unexpected error during backup: {e}") from e
  
  
@@ -120,16 +114,12 @@ def differential_backup(backup_file: str, backup_definition: str, base_backup_fi
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command)
-        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("DIFF backup completed successfully.")
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
-            logger.error("dar return code: ", process.returncode)
-            logger.error("stdout: ", stdout)
-            logger.error("stderr: ", stderr)
-            raise Exception(stderr)
+            raise Exception(str(process))
     except subprocess.CalledProcessError as e:
         logger.error(f"Differential backup command failed: {e}")
         raise DifferentialBackupError(f"Differential backup command failed: {e}") from e
@@ -174,22 +164,17 @@ def incremental_backup(backup_file: str, backup_definition: str, last_backup_fil
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
-        stdout, stderr = process.stdout, process.stderr
         if process.returncode == 0:
             logger.info("INCR backup completed successfully.")
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
-            logger.error("dar return code: ", process.returncode)
-            logger.error("stdout: ", stdout)
-            logger.error("stderr: ", stderr)
-            raise Exception(stderr)
+            raise Exception(str(process))
     except subprocess.CalledProcessError as e:
         logger.error(f"Incremental backup command failed: {e}")
         raise IncrementalBackupError(f"Incremental backup command failed: {e}") from e
     except Exception as e:
         logger.exception(f"Unexpected error during incremental backup")
-        logger.error("Exception details:", exc_info=True)
         raise IncrementalBackupError(f"Unexpected error during incremental backup: {e}") from e
 
 
@@ -286,11 +271,10 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     command = ['dar', '-t', backup_file, '-Q']
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     process = run_command(command, config_settings.command_timeout_secs)
-    stdout, stderr = process.stdout, process.stderr
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
     else:
-        raise Exception(stderr)
+        raise Exception(str(process))
 
     if args.do_not_compare:
         return result
@@ -325,10 +309,8 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-O', '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = run_command(command, config_settings.command_timeout_secs)    
-            stdout, stderr = process.stdout, process.stderr
             if process.returncode != 0:
-                logger.error(f"Restore failed, dar return code: {process.returncode}.")
-                raise Exception(stderr)
+                raise Exception(str(process))
 
             if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
                 logger.info(f"Success: file '{restored_file_path}' matches the original")
@@ -365,17 +347,13 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
-        stdout, stderr = process.stdout, process.stderr
+        if process.returncode == 0:
+            logger.info(f"Restore completed successfully to: '{restore_dir}'")
+        else:
+            raise Exception(str(process))
     except subprocess.CalledProcessError as e:
-        logger.error("Exception details:", exc_info=True)
-        logger.error(f"stdout: {stdout}")
-        logger.error(f"stderr: {stderr}")
         raise RestoreError(f"Restore command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during restore")
-        logger.error("Exception details:", exc_info=True)
-        logger.error(f"stdout: {stdout}")
-        logger.error(f"stderr: {stderr}")
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
 
@@ -393,19 +371,24 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     """
     logger.debug(f"Getting backed up files from DAR archive in xml: '{backup_name}'")
     backup_path = os.path.join(backup_dir, backup_name)
-    command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    process = run_command(command)
-    stdout,stderr = process.stdout, process.stderr
-    # Parse the XML data
-    root = ET.fromstring(stdout)
-    output = None  # help gc
-    # Extract full paths and file size for all <File> elements
-    file_paths = find_files_with_paths(root)
-    root = None # help gc
-    logger.trace(f"Backed up files in dar archive: '{backup_name}'")
-    logger.trace(file_paths)
-    return file_paths
+    try:
+        command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
+        logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+        process = run_command(command)
+        # Parse the XML data
+        root = ET.fromstring(process.stdout)
+        output = None  # help gc
+        # Extract full paths and file size for all <File> elements
+        file_paths = find_files_with_paths(root)
+        root = None # help gc
+        logger.trace(str(process))
+        logger.trace(file_paths)
+        return file_paths
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error listing backed up files from DAR archive: '{backup_name}'")
+        raise BackupError(f"Error listing backed up files from DAR archive: '{backup_name}'") from e
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error listing backed up files from DAR archive: '{backup_name}'") from e
 
 
 def list_contents(backup_name, backup_dir, selection=None):
@@ -421,17 +404,26 @@ def list_contents(backup_name, backup_dir, selection=None):
         None
     """
     backup_path = os.path.join(backup_dir, backup_name)
-    command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
-    if selection:
-        selection_criteria = shlex.split(selection)
-        command.extend(selection_criteria)
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    process = run_command(command)
-    stdout,stderr = process.stdout, process.stderr
+    try:
+        command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
+        if selection:
+            selection_criteria = shlex.split(selection)
+            command.extend(selection_criteria)
+        logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+        process = run_command(command)
+        stdout,stderr = process.stdout, process.stderr
+        if process.returncode != 0:
+            logger.error(f"Error listing contents of backup: '{backup_name}'")
+            raise subprocess.CalledProcessError(str(process))
+        for line in stdout.splitlines():
+            if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
+                print(line)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error listing contents of backup: '{backup_name}'")
+        raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e  
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e  
 
-    for line in stdout.splitlines():
-        if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
-            print(line)
 
 
 def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str):
@@ -644,7 +636,7 @@ def requirements(type: str, config_setting: ConfigSettings):
                 logger.error(f"Error executing {key}: '{script}': {e}")
                 if result:
                     logger.error(f"{type} stderr:\n{result.stderr}")
-                    raise e
+                raise e
 
 
 def main():

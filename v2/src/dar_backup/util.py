@@ -103,6 +103,9 @@ class CommandResult(NamedTuple):
     timeout: int
     command: list[str]
 
+    def __str__(self):
+        return f"CommandResult: [Return Code: '{self.returncode}', Stdout: '{self.stdout}', Stderr: '{self.stderr}', Timeout: '{self.timeout}', Command: '{self.command}']"
+
 
 def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
     """
@@ -125,22 +128,21 @@ def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
         subprocess.TimeoutExpired: if the command execution times out (see `timeout` parameter).
         Exception: raise exceptions during command runs.
     """
-
+    stdout = None
+    stderr = None
     try:
-        logger.info(f"Running command: {command}")
+        logger.debug(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate(timeout=30)  # Wait with timeout
+        stdout, stderr = process.communicate(timeout)
+        logger.debug(f"stdout: {stdout}")
+        logger.debug(f"stderr: {stderr}")   
     except subprocess.TimeoutExpired:
         process.terminate()
         logger.error(f"Command: '{command}' timed out and was terminated.")
+        raise
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
-    finally:
-        if not stdout:
-            stdout = None
-        if not stderr:
-            stderr = None
     return CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
 
 
