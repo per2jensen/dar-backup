@@ -12,16 +12,28 @@ from configparser import ConfigParser, NoSectionError
 from dar_backup.util import setup_logging
 from datetime import datetime
 from tests.envdata import EnvData
+from dar_backup.util import setup_logging
+
+
+# Session-scoped fixture for the logger
+@pytest.fixture(scope='session')
+def logger():
+    logger = setup_logging("/tmp/unit-test/test.log", "debug", False, "test_logger")
+    return logger
+
+
 
 
 @pytest.fixture(scope='function')
-def env(request):
+def env(request, logger):
     """
     Setup the EnvData dataclass for each test case before the "yield" statement.
     """
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../dar_backup')))
 
-    env = EnvData(request.node.name) # name of test case
+    print(f"Logger: {logger}")  
+
+    env = EnvData(request.node.name, logger) # name of test case
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     yield env
@@ -33,7 +45,7 @@ def env(request):
         
 
 @pytest.fixture(scope='function')
-def setup_environment(request):
+def setup_environment(request, logger):
     """
     Setup the environment for each test case before the "yield" statement.
     Tear down the environment after the "yield" statement.
@@ -42,8 +54,13 @@ def setup_environment(request):
     print("current os.path.dirname: " + os.path.join(os.path.dirname(__file__)))
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../dar_backup')))
 
-    env = EnvData(request.node.name) # name of test case
-    print("Env object: " + str(env))
+    env = EnvData(request.node.name, logger) # name of test case
+
+    env.logger.info("================================================================")
+    env.logger.info("               Configure test environment")
+    env.logger.info("================================================================")
+
+
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     if env.test_dir.startswith("/tmp") and os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
@@ -63,7 +80,6 @@ def setup_environment(request):
 
     create_backup_definitions(env)
 
-
     # Put .darrc in test directory
     try:
         copy_dar_rc(env)
@@ -73,6 +89,11 @@ def setup_environment(request):
     
     # Print variables to console
     print_variables(env)
+
+    env.logger.info("Environment setup completed")
+    env.logger.info("================================================================")
+    env.logger.info(f"===> Now running test case: {env.test_case_name}")
+    env.logger.info("================================================================")
 
 
     yield
