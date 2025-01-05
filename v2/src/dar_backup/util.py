@@ -130,7 +130,9 @@ def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
     try:
         logger.debug(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        logger.debug(str(process)) 
+        stdout, stderr = process.communicate(timeout)  # Wait with timeout
+        result = CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
+        logger.debug(f"Command result: {str(result)}")
     except subprocess.TimeoutExpired:
         process.terminate()
         logger.error(f"Command: '{command}' timed out and was terminated.")
@@ -138,7 +140,7 @@ def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
-    return CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
+    return result
 
 
 def extract_error_lines(log_file_path: str, start_time: str, end_time: str):

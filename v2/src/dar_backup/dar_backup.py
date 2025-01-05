@@ -64,6 +64,7 @@ def backup(backup_file: str, backup_definition: str, darrc: str,  config_setting
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
+        logger.info("Back from run_command")
         if process.returncode == 0:
             logger.info("FULL backup completed successfully.")
         elif process.returncode == 5:
@@ -626,7 +627,7 @@ def requirements(type: str, config_setting: ConfigSettings):
         for key in sorted(config_setting.config[type].keys()):
             script = config_setting.config[type][key]
             try:
-                result = subprocess.run(script, shell=True, check=True)
+                result = subprocess.run(script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
                 logger.info(f"{type} {key}: '{script}' run, return code: {result.returncode}")
                 logger.info(f"{type} stdout:\n{result.stdout}")
                 if result.returncode != 0:
@@ -634,8 +635,6 @@ def requirements(type: str, config_setting: ConfigSettings):
                     raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")    
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error executing {key}: '{script}': {e}")
-                if result:
-                    logger.error(f"{type} stderr:\n{result.stderr}")
                 raise e
 
 
@@ -746,23 +745,18 @@ def main():
 
         requirements('POSTREQ', config_settings)
 
-
+        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
+        sys.exit(0)
     except Exception as e:
         logger.exception("An error occurred")
         logger.error("Exception details:", exc_info=True)
-
-    end_time=int(time())
-    logger.info(f"END TIME: {end_time}")
-
-    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
-    if len(error_lines) > 0:
         args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-        for line in error_lines:
-            args.verbose and print(line)
-        sys.exit(1)
-    else:
-        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
-        sys.exit(0)
+        sys.exit(1) 
+    finally:
+        end_time=int(time())
+        logger.info(f"END TIME: {end_time}")
+
+#    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
 
 
 if __name__ == "__main__":
