@@ -320,6 +320,32 @@ def list_contents(backup_name, backup_dir, selection=None):
 
 
 
+
+def create_backup_command(backup_type: str, backup_file: str, darrc: str, backup_definition_path: str, latest_base_backup: str = None) -> List[str]:
+    """
+    Generate the backup command for the specified backup type.
+
+    Args:
+        backup_type (str): The type of backup (FULL, DIFF, INCR).
+        backup_file (str): The backup file path. Example: /path/to/example_2021-01-01_FULL
+        darrc (str): Path to the .darrc configuration file.
+        backup_definition_path (str): Path to the backup definition file.
+        latest_base_backup (str, optional): Path to the latest base backup for DIFF or INCR types.
+
+    Returns:
+        List[str]: The constructed backup command.
+    """
+    base_command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition_path, '-Q', "compress-exclusion", "verbose"]
+    
+    if backup_type in ['DIFF', 'INCR']:
+        if not latest_base_backup:
+            raise ValueError(f"Base backup is required for {backup_type} backups.")
+        base_command.extend(['-A', latest_base_backup])
+    
+    return base_command
+
+
+
 def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str):
     """
     Perform backup operation.
@@ -327,32 +353,12 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
     Args:
         args: Command-line arguments.
         config_settings: An instance of the ConfigSettings class.
-        backup_d: Directory containing backup definitions.
-        backup_dir: Directory to store backup files.
-        test_restore_dir: Directory to test restore backup files.
         backup_type: Type of backup (FULL, DIFF, INCR).
-        min_size_verification_mb: Minimum size for verification in MB.
-        max_size_verification_mb: Maximum size for verification in MB.
-        no_files_verification: Flag indicating whether to skip file verification.
-
-    Returns:
-        None
-
-    Raises:
-        FileNotFoundError: If `backup_d` does not exist or a specified backup definition file does not exist.
-        PermissionError: If there is insufficient permission to access directories or files specified.
-        OSError: For various system-related errors, such as exhaustion of file descriptors.
-        ValueError: If there is an issue with the format string in `datetime.now().strftime`.
-        subprocess.CalledProcessError: If a subprocess invoked during the backup process exits with a non-zero status.
-        Exception: Catches any unexpected exceptions that may occur during the backup process.
-
-    Note: 
-      This function assumes that any exceptions raised by the `backup` function or related subprocesses are handled
-      within those functions or propagated up to be handled by the caller of `perform_backup`.
     """
     logger.debug(f"perform_backup({backup_type}) started")
     backup_definitions = []
 
+    # Gather backup definitions
     if args.backup_definition:
         if '_' in args.backup_definition:
             logger.error(f"Skipping backup definition: '{args.backup_definition}' due to '_' in name")
@@ -375,18 +381,15 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
                 continue
 
-
-            if backup_type == 'FULL':
-                command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-Q', "compress-exclusion",  "verbose"]                
-                generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
-            else:
+            latest_base_backup = None
+            if backup_type in ['DIFF', 'INCR']:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
-                
+
                 if args.alternate_reference_archive:
-                    latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)  # expects alternerate reference archive to be without slice number
+                    latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)
                     logger.info(f"Using alternate reference archive: {latest_base_backup}")
                     if not os.path.exists(latest_base_backup + '.1.dar'):
-                        logger.error(f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exciting.")
+                        logger.error(f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exiting.")
                         sys.exit(1)
                 else:
                     base_backups = sorted(
@@ -398,27 +401,27 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                         continue
                     latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
 
-                if backup_type == 'DIFF':
-                    command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-A', latest_base_backup, '-Q', "compress-exclusion",  "verbose"]
-                    generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
-                elif backup_type == 'INCR':
-                    command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-A', latest_base_backup, '-Q', "compress-exclusion",  "verbose"]
-                    generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings) 
+            # Generate the backup command
+            command = create_backup_command(backup_type, backup_file, args.darrc, backup_definition_path, latest_base_backup)
+
+            # Perform backup
+            generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
 
             logger.info("Starting verification...")
             result = verify(args, backup_file, backup_definition_path, config_settings)
             if result:
                 logger.info("Verification completed successfully.")
             else:
-                logger.error("Verification failed.") 
+                logger.error("Verification failed.")
+
             if config_settings.par2_enabled:
-                logger.info("Generate par2 redundancy files") 
-                generate_par2_files(backup_file, config_settings, args)  # do this even if verification failed, because verification could fail on an open file.
+                logger.info("Generate par2 redundancy files.")
+                generate_par2_files(backup_file, config_settings, args)
                 logger.info("par2 files completed successfully.")
-        # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
-            logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition")
-            logger.error("Exception details:", exc_info=True)
+            logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
+
+
 
 def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args):
     """
