@@ -148,7 +148,7 @@ def test_5_bitrot_recovery(setup_environment, env: EnvData):
 
 def test_25_bitrot_recovery(setup_environment, env: EnvData):
     """
-    Verify the bitrot recovery process with 5% bitrot.
+    Verify the bitrot recovery process with 25% bitrot.
     Expects to run in a virtual environment with dar-backup installed
     """
 
@@ -159,7 +159,7 @@ def test_25_bitrot_recovery(setup_environment, env: EnvData):
 
 def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     """
-    Verify the bitrot recovery process with 25% bitrot.
+    Verify the bitrot recovery process with `redundancy_percentage` bitrot.
     Expects to run in a virtual environment with dar-backup installed
     """
     file_sizes = {
