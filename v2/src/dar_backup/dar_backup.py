@@ -17,6 +17,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 from time import time
+from typing import List
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -516,20 +517,21 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.error("Verification failed.") 
             if config_settings.par2_enabled:
                 logger.info("Generate par2 redundancy files") 
-                generate_par2_files(backup_file, config_settings)  # do this even if verification failed, because verification could fail on an open file.
+                generate_par2_files(backup_file, config_settings, args)  # do this even if verification failed, because verification could fail on an open file.
                 logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
             logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition")
             logger.error("Exception details:", exc_info=True)
 
-def generate_par2_files(backup_file: str, config_settings: ConfigSettings):
+def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args):
     """
     Generate PAR2 files for a given backup file in the specified backup directory.
 
     Args:
         backup_file (str): The name of the backup file.
-        backup_dir (str): The path to the backup directory.
+        config_settings: The configuration settings object.
+        args: The command-line arguments object.
 
     Raises:
         subprocess.CalledProcessError: If the par2 command fails to execute.
@@ -537,19 +539,39 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings):
     Returns:
         None
     """
+    # Regular expression to match DAR slice files
+    dar_slice_pattern = re.compile(rf"{re.escape(os.path.basename(backup_file))}\.([0-9]+)\.dar")
+
+    # List of DAR slice files to be processed
+    dar_slices: List[str] = []
+
     for filename in os.listdir(config_settings.backup_dir):
-        if os.path.basename(backup_file) in filename:
-            # Construct the full path to the file
-            file_path = os.path.join(config_settings.backup_dir, filename)
-            # Run the par2 command to generate redundancy files with error correction
-            command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
-            process = run_command(command, config_settings.command_timeout_secs)
-            if process.returncode != 0:
-                logger.error(f"Error generating par2 files for {file_path}")
-                raise subprocess.CalledProcessError(process.returncode, command)
-            logger.debug(f"par2 files generated for {file_path}")
+        match = dar_slice_pattern.match(filename)
+        if match:
+            dar_slices.append(filename)
 
+    # Sort the DAR slices based on the slice number
+    dar_slices.sort(key=lambda x: int(dar_slice_pattern.match(x).group(1)))
+    number_of_slices = len(dar_slices)
+    counter = 1
 
+    for slice_file in dar_slices:
+        file_path = os.path.join(config_settings.backup_dir, slice_file)
+    
+        if args.verbose or args.log_level == "debug" or args.log_level == "trace":
+            logger.info(f"{counter}/{number_of_slices}: Now generating par2 files for {file_path}")
+
+        # Run the par2 command to generate redundancy files with error correction
+        command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
+        process = run_command(command, config_settings.command_timeout_secs)
+
+        if process.returncode == 0:
+            if args.verbose or args.log_level == "debug" or args.log_level == "trace":
+                logger.info(f"{counter}/{number_of_slices}: Done")
+        else:
+            logger.error(f"Error generating par2 files for {file_path}")
+            raise subprocess.CalledProcessError(process.returncode, command)
+        counter += 1
 
 
 
