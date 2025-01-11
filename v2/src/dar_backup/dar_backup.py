@@ -24,50 +24,42 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import run_command
 from dar_backup.util import setup_logging
-from dar_backup.util import extract_error_lines
 from dar_backup.util import BackupError
-from dar_backup.util import DifferentialBackupError
-from dar_backup.util import IncrementalBackupError
 from dar_backup.util import RestoreError
 
 
 logger = None
 
-
-def backup(backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings):
+def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings):
     """
-    Performs a full backup using the 'dar' command.
+    Performs a backup using the 'dar' command.
 
     This function initiates a full backup operation by constructing and executing a command
     with the 'dar' utility. It checks if the backup file already exists to avoid overwriting
     previous backups. If the backup file does not exist, it proceeds with the backup operation.
 
     Args:
+        type (str): The type of backup (FULL, DIFF, INCR).
+        command (List[str]): The command to execute for the backup operation.
         backup_file (str): The base name of the backup file. The actual backup will be saved
                            as '{backup_file}.1.dar'.
         backup_definition (str): The path to the backup definition file. This file contains
                                  specific instructions for the 'dar' utility, such as which
                                  directories to include or exclude.
+        darrc (str): The path to the '.darrc' configuration file.
+        config_settings (ConfigSettings): An instance of the ConfigSettings class.
 
-    Note:
-        This function logs an error and returns early if the backup file already exists.
-        It logs the command being executed and reports upon successful completion of the backup.
+
 
     Raises:
         BackupError: If an error occurs during the backup process.
     """
-    if os.path.exists(backup_file + '.1.dar'):
-        logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
-        return
-
-    logger.info(f"===> Starting FULL backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-Q', "compress-exclusion",  "verbose"]
+    logger.info(f"===> Starting {type} backup for {backup_definition}")
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
-        logger.info("Back from run_command")
         if process.returncode == 0:
-            logger.info("FULL backup completed successfully.")
+            logger.info(f"{type} backup completed successfully.")
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
@@ -79,106 +71,6 @@ def backup(backup_file: str, backup_definition: str, darrc: str,  config_setting
         logger.exception(f"Unexpected error during backup")
         raise BackupError(f"Unexpected error during backup: {e}") from e
  
- 
-
-
-
-def differential_backup(backup_file: str, backup_definition: str, base_backup_file: str, darrc: str, config_settings: ConfigSettings):
-    """
-    Creates a differential backup based on a specified base backup.
-
-    This function performs a differential backup by comparing the current state of the data
-    against a specified base backup file. It captures only the changes made since that base
-    backup, resulting in a smaller and faster backup process compared to a full backup.
-
-    Args:
-        backup_file (str): The base name for the differential backup file. The actual backup
-                           will be saved as '{backup_file}.1.dar'.
-        backup_definition (str): The path to the backup definition file. This file contains
-                                 specific instructions for the 'dar' utility, such as which
-                                 directories to include or exclude.
-        base_backup_file (str): The base name of the full backup file that serves as the
-                                reference point for the differential backup.
-
-    Note:
-        This function logs an error and returns early if the differential backup file already exists.
-        It logs the command being executed and reports upon successful completion of the differential backup.
-
-    Raises:
-        DifferentialBackupError: If the differential backup command fails or encounters an unexpected error.
-    """
-    if os.path.exists(backup_file + '.1.dar'):
-        logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
-        return
-
-    logger.info(f"===> Starting DIFF backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', base_backup_file, '-Q', "compress-exclusion",  "verbose"]
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    try:
-        process = run_command(command)
-        if process.returncode == 0:
-            logger.info("DIFF backup completed successfully.")
-        elif process.returncode == 5:
-            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
-        else:
-            raise Exception(str(process))
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Differential backup command failed: {e}")
-        raise DifferentialBackupError(f"Differential backup command failed: {e}") from e
-    except Exception as e:
-        logger.exception(f"Unexpected error during differential backup")
-        logger.error("Exception details:", exc_info=True)
-        raise DifferentialBackupError(f"Unexpected error during differential backup: {e}") from e
-
-
-def incremental_backup(backup_file: str, backup_definition: str, last_backup_file: str, darrc: str, config_settings: ConfigSettings):
-    """
-    Creates an incremental backup based on the last backup file.
-
-    This function performs an incremental backup by comparing the current state of the data
-    against the last backup file, whether it's a full backup or the most recent incremental backup.
-    It captures only the changes made since that last backup, making it efficient for frequent
-    backups with minimal data changes.
-
-    Args:
-        backup_file (str): The base name for the incremental backup file. The actual backup
-                           will be saved with a unique identifier to distinguish it from other backups.
-        backup_definition (str): The path to the backup definition file. This file contains
-                                 specific instructions for the 'dar' utility, such as which
-                                 directories to include or exclude.
-        last_backup_file (str): The base name of the last backup file (full or incremental) that
-                                serves as the reference point for the incremental backup.
-
-    Note:
-        This function checks if the incremental backup file already exists to prevent overwriting
-        previous backups. It logs the command being executed and reports upon successful completion
-        of the incremental backup.
-    
-    Raises:
-        IncrementalBackupError: If the incremental backup command fails or an unexpected error occurs.
-    """
-    if os.path.exists(backup_file + '.1.dar'):
-        logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
-        return
-
-    logger.info(f"===> Starting INCR backup for {backup_definition}")
-    command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition, '-A', last_backup_file, '-Q', "compress-exclusion",  "verbose"]
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-    try:
-        process = run_command(command, config_settings.command_timeout_secs)
-        if process.returncode == 0:
-            logger.info("INCR backup completed successfully.")
-        elif process.returncode == 5:
-            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
-        else:
-            raise Exception(str(process))
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Incremental backup command failed: {e}")
-        raise IncrementalBackupError(f"Incremental backup command failed: {e}") from e
-    except Exception as e:
-        logger.exception(f"Unexpected error during incremental backup")
-        raise IncrementalBackupError(f"Unexpected error during incremental backup: {e}") from e
-
 
 # Function to recursively find <File> tags and build their full paths
 def find_files_with_paths(element: ET, current_path=""):
@@ -483,8 +375,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
                 continue
 
+
             if backup_type == 'FULL':
-                backup(backup_file, backup_definition_path, args.darrc, config_settings)
+                command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-Q', "compress-exclusion",  "verbose"]                
+                generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
             else:
                 base_backup_type = 'FULL' if backup_type == 'DIFF' else 'DIFF'
                 
@@ -505,9 +399,11 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                     latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
 
                 if backup_type == 'DIFF':
-                    differential_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc, config_settings)
+                    command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-A', latest_base_backup, '-Q', "compress-exclusion",  "verbose"]
+                    generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
                 elif backup_type == 'INCR':
-                    incremental_backup(backup_file, backup_definition_path, latest_base_backup, args.darrc, config_settings) 
+                    command = ['dar', '-c', backup_file, "-N", '-B', args.darrc, '-B', backup_definition_path, '-A', latest_base_backup, '-Q', "compress-exclusion",  "verbose"]
+                    generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings) 
 
             logger.info("Starting verification...")
             result = verify(args, backup_file, backup_definition_path, config_settings)
@@ -521,7 +417,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.info("par2 files completed successfully.")
         # we want to continue with other backup definitions, thus only logging an error
         except Exception as e:
-            logger.exception(f"Error during {backup_type} backup process, continuing on next backup definition")
+            logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition")
             logger.error("Exception details:", exc_info=True)
 
 def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args):
