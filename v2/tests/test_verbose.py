@@ -33,7 +33,7 @@ def test_verbose(setup_environment, env):
         'Script directory:',
         'Backup.d dir:',
         'Backup dir:',
-        'Test restore dir:',
+        'Restore dir:',
         'Logfile location:',
         '--do-not-compare:'
         ]

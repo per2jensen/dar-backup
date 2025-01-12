@@ -10,6 +10,8 @@ from dar_backup.util import setup_logging
 class EnvData():
     test_case_name: str
     test_dir: str
+    data_dir: str
+    restore_dir: str
     template_config_file: str
     config_file: str
     template_dar_rc: str
@@ -21,6 +23,8 @@ class EnvData():
     def __init__(self, test_case_name: str, logger: logging.Logger):
         self.test_case_name = test_case_name
         self.test_dir = f"/tmp/unit-test/{test_case_name.lower()}"
+        self.restore_dir = os.path.join(self.test_dir, "restore")
+        self.data_dir = os.path.join(self.test_dir, "data")
         self.template_config_file = os.path.abspath(os.path.join(os.path.dirname(__file__),"../template/dar-backup.conf.template"))
         self.config_file = os.path.join(self.test_dir, "dar-backup.conf")
         self.template_dar_rc = os.path.abspath(os.path.join(os.path.dirname(__file__), "../template/.darrc"))

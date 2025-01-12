@@ -224,7 +224,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     Restores a backup file to a specified directory.
 
     Args:
-        backup_name (str): The name of the backup file.
+        backup_name (str): The base name of the backup file, without the "slice number.dar"
         backup_dir (str): The directory where the backup file is located.
         restore_dir (str): The directory where the backup should be restored to.
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
@@ -235,16 +235,19 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         if not os.path.exists(restore_dir):
             os.makedirs(restore_dir)
         command.extend(['-R', restore_dir])
+    else:
+        raise RestoreError("Restore directory ('-R <dir>') not specified")
     if selection:
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
         if process.returncode == 0:
             logger.info(f"Restore completed successfully to: '{restore_dir}'")
         else:
-            raise Exception(str(process))
+            logger.error(f"Restore command failed: \n ==> stdout: {process.stdout}, \n ==> stderr: {process.stderr}")
+            raise RestoreError(str(process))
     except subprocess.CalledProcessError as e:
         raise RestoreError(f"Restore command failed: {e}") from e
     except Exception as e:
@@ -298,6 +301,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         None
     """
     backup_path = os.path.join(backup_dir, backup_name)
+
     try:
         command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
         if selection:
@@ -579,8 +583,9 @@ def main():
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
     parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
-    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
-    parser.add_argument('--restore-dir', nargs=1, type=str, help="Directory to restore files to.")
+#    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
+    parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.")
+    parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
@@ -629,7 +634,10 @@ def main():
             args.verbose and (print(f"Alternate ref archive: {args.alternate_reference_archive}"))
         args.verbose and (print(f"Backup.d dir:      {config_settings.backup_d_dir}"))
         args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
-        args.verbose and (print(f"Test restore dir:  {config_settings.test_restore_dir}"))
+
+        restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
+        args.verbose and (print(f"Restore dir:       {restore_dir}"))
+
         args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
         args.verbose and (print(f".darrc location:   {args.darrc}"))
         args.verbose and (print(f"PAR2 enabled:      {config_settings.par2_enabled}"))
@@ -656,10 +664,9 @@ def main():
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
             perform_backup(args, config_settings, "INCR")
         elif args.list_contents:
-            print(f"Listing contents of {args.list_contents}")
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
-            restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
+            logger.debug(f"Restoring {args.restore} to {restore_dir}")
             restore_backup(args.restore, config_settings, restore_dir, args.selection)
         else:
             parser.print_help()

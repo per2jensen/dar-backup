@@ -162,15 +162,52 @@ def create_directories_from_template(env : EnvData):
         raise RuntimeError(f"Section 'DIRECTORIES' not found in the config file {config_file}")
 
 
-
 def teardown_environment(env: EnvData):
+    """
+    Safely clean up the test environment directory.
+    
+    This function ensures that only safe directories are deleted by validating
+    `env.test_dir` against critical paths like `/` or `/home/<user>`.
+
+    Args:
+        env (EnvData): Environment data containing the `test_dir` to clean up.
+
+    Raises:
+        RuntimeError: If the directory is deemed unsafe for deletion.
+    """
     try:
-        if os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
-            shutil.rmtree(env.test_dir)
+        # Perform checks to prevent accidental deletion of critical directories
+        if not env.test_dir:
+            raise RuntimeError("Environment test directory is not defined!")
+
+        # Normalize the path for safety
+        normalized_path = os.path.normpath(env.test_dir)
+        
+        # List of critical paths that should never be deleted
+        try:
+            env_var = "HOME"
+            home = os.environ[env_var]  # Raises KeyError if the variable does not exist
+            env.logger.debug(f"${env_var}: {home}")
+        except KeyError:
+            home = "/tmp"
+
+        critical_paths = ["/", "/home", home, "/root", "/usr", "/var", "/etc"]
+        
+        # Check if the path is critical
+        if normalized_path in critical_paths or normalized_path in map(os.path.abspath, critical_paths):
+            raise RuntimeError(f"Attempt to delete a critical directory: {normalized_path}")
+
+        # Check for other unsafe paths (e.g., parent of the home directory)
+        if not normalized_path.startswith("/tmp/unit-test/"):
+            raise RuntimeError(f"Refusing to delete an unsafe directory: {normalized_path}")
+
+        # Only delete the directory if all checks are passed
+        if os.path.exists(normalized_path):
+            shutil.rmtree(normalized_path)
+
     except Exception as e:
         env.logger.exception("Failed to clean up environment")
         raise
-
 
 
 def copy_dar_rc(env : EnvData):

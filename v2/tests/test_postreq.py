@@ -11,7 +11,7 @@ def test_postreq(setup_environment, env):
     # Patch config file with a successful command
     with open(env.config_file, 'a') as f:
         f.write('\n[POSTREQ]\n')
-        f.write('POSTREQ_01 = df -h\n')
+        f.write('POSTREQ_01 = ls /\n')
 
 
     # Run the command
@@ -29,11 +29,10 @@ def test_postreq(setup_environment, env):
     try:
         command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
         process = run_command(command)
-        if process.returncode == 0:
-            assert False, "dar-backup should fail when a prereq command fails"    
+        assert process.returncode != 0, "dar-backup must fail when a prereq command fails"    
     except Exception as e:
         env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")
-        assert True
+        assert False, "dar-backup must fail when a prereq command fails"
         
 
 
