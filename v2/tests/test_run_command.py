@@ -6,7 +6,7 @@ from dar_backup.util import run_command
 
 def test_stdout_1MB(setup_environment, env):
     """
-    Test that a process writing 1MB to stdout works
+    Test that a process writing 1MB to stdout in run_command() does not fail
     """
     command = ['bash', '-c', 'base64 < /dev/random| head -c 1048576']
     process = run_command(command)

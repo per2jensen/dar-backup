@@ -30,5 +30,5 @@ def test_dar_backup_nonexistent_definition_(setup_environment, env):
     command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'nonexistent_definition']
     process = run_command(command)
     if process.returncode == 0:
-        raise Exception(f'dar-backup must fail if backup definition is not found')
+        raise Exception(f'dar-backup must fail if backup definition is not found, using -d option')
                         

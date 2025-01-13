@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dar_backup.util import run_command
 from tests.envdata import EnvData
-from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,test_files
+from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,test_files, run_backup_script
 
 
 def test_backup_functionality(setup_environment, env):
@@ -128,21 +128,5 @@ def test_backup_functionality_short_options(setup_environment, env):
         env.logger.exception("Backup functionality test failed")
         sys.exit(1)
     env.logger.info("test_backup_functionality() finished successfully")
-
-
-
-def run_backup_script(type: str, env: EnvData):
-    """
-    Expects to run in a virtual environment with dar-backup installed
-    """
-    command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug','--log-stdout' ,'--config-file', env.config_file]
-    process = run_command(command)
-    stdout,stderr = process.stdout, process.stderr
-    env.logger.info(stdout)
-    if process.returncode != 0:
-        env.logger.error(f"Error running backup command: {command}")
-        env.logger.error(f"stderr: {stderr}")
-        raise Exception(f"Error running backup command: {command}")
-    return True
 
 

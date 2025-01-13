@@ -35,6 +35,22 @@ def create_test_files(env):
 
 
 
+def run_backup_script(type: str, env: EnvData):
+    """
+    Expects to run in a virtual environment with dar-backup installed
+    """
+    command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug','--log-stdout' ,'--config-file', env.config_file]
+    process = run_command(command)
+    stdout,stderr = process.stdout, process.stderr
+    env.logger.info(stdout)
+    if process.returncode != 0:
+        env.logger.error(f"Error running backup command: {command}")
+        env.logger.error(f"stderr: {stderr}")
+        raise Exception(f"Error running backup command: {command}")
+    return True
+
+
+
 def verify_backup_contents(expected_files: Dict[str, str], archive: str, env: EnvData):
     """
     Loop through the expected files and verify they exist in the backup archive.
@@ -70,7 +86,7 @@ def verify_backup_contents(expected_files: Dict[str, str], archive: str, env: En
 
 
 
-def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: EnvData):
+def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: EnvData, restore_dir: str=None):
     """
     Loop through the list of files to verify they are restored and contains expected content.
 
@@ -78,6 +94,7 @@ def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: E
         expected_files (Dict[str, str]): Dict of <filename>:<file content> of expected files to verify.
         archive (str): The basenase of archive to verify.
         env (EnvData): The environment data object.
+        restore_dir (str): Optional directory to restore to. Default is env.restore_dir.
 
     raises:
         RuntimeError: If expected content is not found in expected restored files.
@@ -85,6 +102,10 @@ def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: E
     """
     env.logger.info(f"Restore and verify archive '{archive}', check for expected files and content")
     command = ['dar-backup', '--restore', archive, '--config-file', env.config_file, '--verbose', '--log-stdout', '--log-level', 'debug'] 
+    if restore_dir:
+        command.extend(['--restore-dir', restore_dir])
+    else:
+        restore_dir = env.restore_dir
     env.logger.info(command) 
     process = run_command(command)
     stdout,stderr = process.stdout, process.stderr
@@ -96,15 +117,14 @@ def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: E
     for expected_file in expected_files:
         # expected_file is located in the `data` directory of a unit test
         # after restore a file is located in the join of `restore dir` + `data dir`
-        env.logger.info(f"Checking for '{expected_file}' in backup '{archive}'")
-        expected_file_path = os.path.join(env.restore_dir, env.data_dir, expected_file)
-        env.logger.info(f"Checking for '{expected_file_path}' below restore dir")
+        expected_dir_path = os.path.join(restore_dir, env.data_dir[1:])
+        expected_file_path = os.path.join(restore_dir, env.data_dir[1:], expected_file)
         with open(expected_file_path, 'r') as f:
             content = f.read()
             if content == expected_files[expected_file]:
-                env.logger.info(f"Expected content in file '{expected_file}' found")
+                env.logger.info(f"OK: expected content found for file '{expected_file}' in dir: '{expected_dir_path}'")
             else:
-                env.logger.error(f"Expected content in file '{expected_file}' not found")
+                env.logger.error(f"Error: expected content in file '{expected_file}' not found")
                 raise RuntimeError(f"Expected content in file '{expected_file}' not found")
 
     env.logger.info(f"Restored files from archive '{archive}' contains expected content")        
