@@ -1,4 +1,5 @@
 import os
+import re
 
 from dar_backup.util import run_command
 from dar_backup.config_settings import ConfigSettings
@@ -39,6 +40,7 @@ def generate_datafiles(env: EnvData, file_sizes: dict) -> None:
     except Exception as e:
         env.logger.exception("data file generation failed")
         raise
+
 
 def modify_slice_size(env: EnvData, definition: str, slice_size: str) -> None:
     """
@@ -84,7 +86,18 @@ def test_ordered_by_slicenumber(setup_environment, env):
         env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Error running backup command: {command}")
 
+    # Extract slice numbers from stdout
 
-    assert True, "some tests to verify the order of the slices are processed in the correct order should be implemented here" 
+    slice_pattern = re.compile(r'Now generating par2 files for.*?(\d+)\.dar')
+    slice_numbers = [int(match.group(1)) for match in slice_pattern.finditer(stdout)]
+    assert slice_numbers, f"No slice numbers found in stdout: {stdout}"
+    assert len(slice_numbers) > 0, f"There must at least be 1 dar slice, got 0"
+
+    # Verify that slice numbers are in increasing order
+    assert slice_numbers == sorted(slice_numbers), f"Slices are not processed in order: {slice_numbers}"
+
+    env.logger.info(f"OK: slices processed in order: {slice_numbers}")
+
+    assert True, "OK: Slices are processed in the correct order" 
 
     
