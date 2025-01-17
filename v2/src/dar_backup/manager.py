@@ -21,8 +21,9 @@
 """
 
 
-import os
 import argparse
+import os
+import re
 import sys
 
 
@@ -30,6 +31,7 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import run_command
 from dar_backup.util import setup_logging
+from datetime import datetime
 from time import time
 
 # Constants
@@ -90,12 +92,16 @@ def list_db(backup_def: str, config_settings: ConfigSettings):
     sys.exit(process.returncode)
 
 
-def add_specific_archive(archive: str, config_settings: ConfigSettings):    
+def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None):    
     # sanity check - does dar backup exist?
+    if not directory:
+        directory = config_settings.backup_dir
     archive = os.path.basename(archive)  # remove path if it was given
-    archive_path = os.path.join(config_settings.backup_dir, f'{archive}.1.dar')
-    if not os.path.exists(archive_path):
-        logger.error(f'dar backup: "{archive_path}" not found, exiting')
+    archive_path = os.path.join(directory, f'{archive}')
+
+    archive_test_path =  os.path.join(directory, f'{archive}.1.dar')
+    if not os.path.exists(archive_test_path):
+        logger.error(f'dar backup: "{archive_test_path}" not found, exiting')
         sys.exit(1)
         
     # sanity check - does backup definition exist?
@@ -107,7 +113,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings):
     
     database = f"{backup_definition}{DB_SUFFIX}"
     database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
-    logger.info(f'Add "{archive_path}" to catalog "{database}"')
+    logger.info(f'Add "{archive_path}" to catalog: "{database}"')
     
     command = ['dar_manager', '--base', database_path, "--add", archive_path, "-ai", "-Q"]
     process = run_command(command)
@@ -123,6 +129,59 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings):
         logger.error(f"stdout: {stdout}")
      
     sys.exit(process.returncode)
+
+
+
+def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings) -> None:
+    """
+    Loop over the DAR archives in the given directory args.add_dir in increasing order by date and add them to their catalog database.
+
+    Args:
+        args (argparse.ArgumentParser): The command-line arguments object containing the add_dir attribute.
+        config_settings (ConfigSettings): The configuration settings object.
+
+    This function performs the following steps:
+    1. Checks if the specified directory exists. If not, raises a RuntimeError.
+    2. Uses a regular expression to match DAR archive files with base names in the format <string>_{FULL, DIFF, INCR}_YYYY-MM-DD.
+    3. Lists the DAR archives in the specified directory and extracts their base names and dates.
+    4. Sorts the DAR archives by date.
+    5. Loops over the sorted DAR archives and adds each archive to its catalog database using the add_specific_archive function.
+
+    Example:
+        args = argparse.ArgumentParser()
+        args.add_dir = '/path/to/dar/archives'
+        config_settings = ConfigSettings()
+        add_directory(args, config_settings)
+    """
+    if not os.path.exists(args.add_dir):
+        raise RuntimeError(f"Directory {args.add_dir} does not exist")
+
+    # Regular expression to match DAR archive files with base name and date in the format <string>_{FULL, DIFF, INCR}_YYYY-MM-DD
+    dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.\d+\.dar$')
+
+    # List of DAR archives with their dates and base names
+    dar_archives = []
+
+    for filename in os.listdir(args.add_dir):
+        logger.debug(f"check if '{filename}' is a dar archive ?")
+        match = dar_pattern.match(filename)
+        if match:
+            base_name = match.group(1)
+            date_str = match.group(3)
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            dar_archives.append((date_obj, base_name))
+            logger.debug(f" -> yes: base name: {base_name}, date: {date_str}")
+
+    if not dar_archives:
+        logger.error(f"No 'dar' archives found in directory {args.add_dir}")
+
+    # Sort the DAR archives by date
+    dar_archives.sort()
+
+    # Loop over the sorted DAR archives and process them
+    for date_obj, base_name in dar_archives:
+        logger.info(f"Adding dar archive : '{base_name}' to it's catalog database")
+        add_specific_archive(base_name, config_settings, args.add_dir)
 
 
 
@@ -196,6 +255,10 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         logger.error("you can't add and remove archives in the same operation, exiting")
         sys.exit(1)
 
+    if args.add_dir and args.add_specific_archive:
+        logger.error("you cannot add both a directory and an archive")
+        sys.exit(1)
+
     if args.backup_def:
         backup_def_path = os.path.join(config_settings.backup_d_dir, args.backup_def)
         if not os.path.exists(backup_def_path):
@@ -225,8 +288,8 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         add_specific_archive(args.add_specific_archive, config_settings)
 
     if args.add_dir:
-        # Implement add directory logic
-        pass
+        add_directory(args, config_settings)
+
 
     if args.remove_specific_archive:
         # Implement remove specific archive logic
