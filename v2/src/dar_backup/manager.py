@@ -72,6 +72,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
             logger.error(f"stderr: {stderr}")
             logger.error(f"stdout: {stdout}")
 
+    return process.returncode
 
 
 def list_db(backup_def: str, config_settings: ConfigSettings):
@@ -89,10 +90,10 @@ def list_db(backup_def: str, config_settings: ConfigSettings):
         logger.error(f"stdout: {stdout}")
     else:
         print(stdout)
-    sys.exit(process.returncode)
+    return process.returncode
 
 
-def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None):    
+def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
     # sanity check - does dar backup exist?
     if not directory:
         directory = config_settings.backup_dir
@@ -102,14 +103,14 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     archive_test_path =  os.path.join(directory, f'{archive}.1.dar')
     if not os.path.exists(archive_test_path):
         logger.error(f'dar backup: "{archive_test_path}" not found, exiting')
-        sys.exit(1)
+        return 1
         
     # sanity check - does backup definition exist?
     backup_definition = archive.split('_')[0]
     backup_def_path = os.path.join(config_settings.backup_d_dir, backup_definition)
     if not os.path.exists(backup_def_path):
         logger.error(f'backup definition "{backup_definition}" not found (--add-specific-archive option probably not correct), exiting')
-        sys.exit(1)
+        return 1
     
     database = f"{backup_definition}{DB_SUFFIX}"
     database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
@@ -128,7 +129,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
         logger.error(f"stderr: {stderr}")
         logger.error(f"stdout: {stdout}")
      
-    sys.exit(process.returncode)
+    return process.returncode
 
 
 
@@ -181,7 +182,11 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     # Loop over the sorted DAR archives and process them
     for date_obj, base_name in dar_archives:
         logger.info(f"Adding dar archive : '{base_name}' to it's catalog database")
-        add_specific_archive(base_name, config_settings, args.add_dir)
+        result = add_specific_archive(base_name, config_settings, args.add_dir)
+        if result != 0:
+            logger.error(f"Something went wrong added {base_name} to it's catalog, exiting")
+            break
+    return result
 
 
 
@@ -276,19 +281,21 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
     if args.create_db:
         if args.backup_def:
-            create_db(args.backup_def, config_settings)
+            sys.exit(create_db(args.backup_def, config_settings))
         else:
             for root, dirs, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
                     current_backupdef = os.path.basename(file)
-                    create_db(current_backupdef, config_settings)
-        sys.exit(0)
+                    logger.debug(f"Create catalog db for backup definition: '{current_backupdef}'")
+                    result = create_db(current_backupdef, config_settings)
+                    if result != 0:
+                        sys.exit(result)
 
     if args.add_specific_archive:
-        add_specific_archive(args.add_specific_archive, config_settings)
+        sys.exit(add_specific_archive(args.add_specific_archive, config_settings))
 
     if args.add_dir:
-        add_directory(args, config_settings)
+        sys.exit(add_directory(args, config_settings))
 
 
     if args.remove_specific_archive:
