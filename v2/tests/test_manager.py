@@ -131,6 +131,74 @@ def test_list_catalog_contents(setup_environment: None, env: EnvData):
 
 
 
+def test_find_file(setup_environment: None, env: EnvData):
+    """
+    Add a backup to it's catalog database, then find some files in the catalog
+    """
+    
+    ##
+    ### Positive test
+    ##
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
+
+    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file]
+    process = run_command(command)
+    if process.returncode != 0:
+        print(f"stdout: {stdout}")  
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+    command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file]
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info(f"stdout:\n{stdout}")
+    if process.returncode != 0:
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
+    
+    for file_name in files.keys():
+        file_name = f"random-{file_name}.dat"  # files are named like this in generate_test_data_and_full_backup(env)
+        file_path = os.path.join(env.data_dir, file_name)[1:]  # the leading / must be dropped
+        env.logger.info(f"Find file: '{file_path}' in catalog(s)")
+        command = ['manager', '--find-file' , file_path, '-d', 'example' ,'--config-file', env.config_file, '--log-stdout']
+        process = run_command(command)
+        if process.returncode != 0:
+            env.logger.error(f"stdout: {stdout}")  
+            env.logger.error(f"stderr: {stderr}")  
+            raise Exception(f"Command failed: {command}")
+
+        stdout = process.stdout
+        if not re.search(r"\s+(\d+).*?saved\s+", stdout):
+            raise Exception(f"File name {file_path}' not found in any catalog")
+
+    print("All files found in catalog(s)")
+
+
+    ##
+    ### Negative test
+    ##
+    non_existing_file = 'non-existing-file in catalogs'
+    command = ['manager', '--find-file' , non_existing_file, '-d', 'example' ,'--config-file', env.config_file, '--log-stdout']
+    process = run_command(command)
+    print(f"stdout:\n{stdout}")  
+    print(f"stderr:\n{stderr}")  
+
+    if process.returncode == 0:
+        raise Exception(f"A found file must not be ported: {command}")
+
+    if not process.returncode == 2:
+        raise Exception(f"Negative test failed, file name {non_existing_file}' is not in any catalog")
+
+
+
+
+
 def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
     """
     verify failing if params given to the list catalog contents operation

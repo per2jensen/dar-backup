@@ -115,6 +115,26 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
     return process.returncode
 
 
+def find_file(file, backup_def, config_settings):
+    """
+    Find a specific file
+    """
+    database = f"{backup_def}{DB_SUFFIX}"
+    database_path = os.path.join(config_settings.backup_dir, database)
+    if not os.path.exists(database_path):
+        logger.error(f'Database not found: "{database_path}"')
+        return 1
+    command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr 
+    if process.returncode != 0:
+        logger.error(f'Error finding file: {file} in: "{database_path}"')
+        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stdout: {stdout}")
+    else:
+        print(stdout)
+    return process.returncode
+
 
 def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
     # sanity check - does dar backup exist?
@@ -236,6 +256,7 @@ def main():
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database')
     parser.add_argument('--list-catalog', action='store_true', help='List catalogs in databases for all backup definitions')
     parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
+    parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
@@ -306,7 +327,12 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     if args.list_catalog_contents and not args.backup_def:
         logger.error(f"--list-catalog-contents requires the --backup-def, exiting")
         sys.exit(1)
+
+    if args.find_file and not args.backup_def:
+        logger.error(f"--find-file requires the --backup-def, exiting")
+        sys.exit(1)
     
+
 
     # Modify config settings based on the arguments
     if args.alternate_archive_dir:
@@ -353,7 +379,13 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         sys.exit(result)
 
     if args.list_catalog_contents:
-        list_catalog_contents(args.list_catalog_contents, args.backup_def, config_settings)
+        result = list_catalog_contents(args.list_catalog_contents, args.backup_def, config_settings)
+        sys.exit(result)
+
+    if args.find_file:
+        result = find_file(args.find_file, args.backup_def, config_settings)
+        sys.exit(result)
+
 
 if __name__ == "__main__":
     main()
