@@ -33,6 +33,7 @@ from dar_backup.util import run_command
 from dar_backup.util import setup_logging
 from datetime import datetime
 from time import time
+from typing import Dict, List
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -75,7 +76,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
     return process.returncode
 
 
-def list_db(backup_def: str, config_settings: ConfigSettings):
+def list_catalogs(backup_def: str, config_settings: ConfigSettings):
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
     if not os.path.exists(database_path):
@@ -91,6 +92,28 @@ def list_db(backup_def: str, config_settings: ConfigSettings):
     else:
         print(stdout)
     return process.returncode
+
+
+def list_catalog_contents(catalog_number: int, backup_def: str, config_settings: ConfigSettings):
+    """
+    List the contents of catalog # in catalog database for given backup definition
+    """
+    database = f"{backup_def}{DB_SUFFIX}"
+    database_path = os.path.join(config_settings.backup_dir, database)
+    if not os.path.exists(database_path):
+        logger.error(f'Database not found: "{database_path}"')
+        return 1
+    command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr 
+    if process.returncode != 0:
+        logger.error(f'Error listing catalogs for: "{database_path}"')
+        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stdout: {stdout}")
+    else:
+        print(stdout)
+    return process.returncode
+
 
 
 def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
@@ -158,13 +181,13 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
         raise RuntimeError(f"Directory {args.add_dir} does not exist")
 
     # Regular expression to match DAR archive files with base name and date in the format <string>_{FULL, DIFF, INCR}_YYYY-MM-DD
-    dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.\d+\.dar$')
-
+    #dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.\d+\.dar$')
+    dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1.dar$') # just read slice #1 of an archive
     # List of DAR archives with their dates and base names
     dar_archives = []
 
     for filename in os.listdir(args.add_dir):
-        logger.debug(f"check if '{filename}' is a dar archive ?")
+        logger.debug(f"check if '{filename}' is a dar archive slice #1?")
         match = dar_pattern.match(filename)
         if match:
             base_name = match.group(1)
@@ -173,20 +196,25 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
             dar_archives.append((date_obj, base_name))
             logger.debug(f" -> yes: base name: {base_name}, date: {date_str}")
 
-    if not dar_archives:
-        logger.error(f"No 'dar' archives found in directory {args.add_dir}")
+    if not dar_archives or len(dar_archives) == 0:
+        logger.info(f"No 'dar' archives found in directory {args.add_dir}")
+        return
 
     # Sort the DAR archives by date
     dar_archives.sort()
 
     # Loop over the sorted DAR archives and process them
+    result: List[Dict] = []
     for date_obj, base_name in dar_archives:
-        logger.info(f"Adding dar archive : '{base_name}' to it's catalog database")
-        result = add_specific_archive(base_name, config_settings, args.add_dir)
-        if result != 0:
-            logger.error(f"Something went wrong added {base_name} to it's catalog, exiting")
-            break
-    return result
+        logger.info(f"Adding dar archive: '{base_name}' to it's catalog database")
+        result_archive = add_specific_archive(base_name, config_settings, args.add_dir)
+        result.append({ f"{base_name}" : result_archive})
+        if result_archive != 0:
+            logger.error(f"Something went wrong added {base_name} to it's catalog")
+    
+    logger.debug(f"Results adding archives found in: '{args.add_dir}': result")
+
+    
 
 
 
@@ -206,7 +234,8 @@ def main():
     parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition')
     parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database')
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database')
-    parser.add_argument('--list-db', action='store_true', help='List catalogs in databases')
+    parser.add_argument('--list-catalog', action='store_true', help='List catalogs in databases for all backup definitions')
+    parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
@@ -264,12 +293,20 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         logger.error("you cannot add both a directory and an archive")
         sys.exit(1)
 
+    if args.backup_def and not args.backup_def.strip():
+        logger.error(f"No backup definition given to --backup-def")
+
     if args.backup_def:
         backup_def_path = os.path.join(config_settings.backup_d_dir, args.backup_def)
         if not os.path.exists(backup_def_path):
             logger.error(f"Backup definition {args.backup_def} does not exist, exiting")
             sys.exit(1)
 
+
+    if args.list_catalog_contents and not args.backup_def:
+        logger.error(f"--list-catalog-contents requires the --backup-def, exiting")
+        sys.exit(1)
+    
 
     # Modify config settings based on the arguments
     if args.alternate_archive_dir:
@@ -303,15 +340,20 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         pass
 
 
-    if args.list_db:
+    if args.list_catalog:
         if args.backup_def:
-            list_db(args.backup_def, config_settings)
+            result = list_catalogs(args.backup_def, config_settings)
         else:
             for root, dirs, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
                     current_backupdef = os.path.basename(file)
-                    list_db(current_backupdef, config_settings)
-        sys.exit(0)
+                    result = 0
+                    if list_catalogs(current_backupdef, config_settings) != 0:
+                        result = 1
+        sys.exit(result)
+
+    if args.list_catalog_contents:
+        list_catalog_contents(args.list_catalog_contents, args.backup_def, config_settings)
 
 if __name__ == "__main__":
     main()

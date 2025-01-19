@@ -97,41 +97,116 @@ def test_manager_help(setup_environment: None, env: envdata.EnvData):
         raise Exception(f"Command failed: {command}")
 
 
+def test_list_catalog_contents(setup_environment: None, env: EnvData):
+    """
+    Add a backup to it's catalog database, then list the contents
+    """
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
 
-def test_add_directory_to_catalog_db(setup_environment: None, env: envdata.EnvData):
+    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
+    process = run_command(command)
+    if process.returncode != 0:
+        print(f"stdout: {stdout}")  
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+    command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info(f"stdout:\n{stdout}")
+    if process.returncode != 0:
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
+    for file_name in files.keys():
+        if file_name not in stdout:
+            raise Exception(f"File name '{file_name}' not found in stdout")
+
+    print("All file names are present in stdout")
+
+
+
+def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
+    """
+    verify failing if params given to the list catalog contents operation
+    """
+    command = ['manager', '--list-catalog-contents', 'test', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    env.logger.info(f"Return code: {process.returncode}")
+    assert process.returncode == 2, "argument to --list-catalog-contents must be an integer"
+
+
+    command = ['manager', '--list-catalog-contents', '1', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    env.logger.info(f"Return code: {process.returncode}")
+    assert process.returncode == 1, "--list-catalog-contents requires --backup-def  option"
+
+    command = ['manager', '--list-catalog-contents', '1', '-d' , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    env.logger.info(f"Return code: {process.returncode}")
+    assert process.returncode == 2, "argument to --backup-def must be given"
+
+
+
+def test_add_directory_to_catalog_db(setup_environment: None, env: EnvData):
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     run_manager_adding(command, env)
 
 
 
-def test_add_archive_to_catalog_db(setup_environment: None, env: envdata.EnvData):
+def test_add_empty_directory_to_catalog_db(setup_environment: None, env: EnvData):
+    """
+    Verify no error if adding a directory with no dar archives
+    """
+    command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    generate_test_data_and_backup = False
+    run_manager_adding(command, env, generate_test_data_and_backup)
+
+
+
+def test_add_archive_to_catalog_db(setup_environment: None, env: EnvData):
     today_date = date.today().strftime("%Y-%m-%d")
     command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
     run_manager_adding(command, env)
 
 
-def run_manager_adding(command: List[str],  env: envdata.EnvData):
+def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
     """
     run the supplied command to add an archive or a directory to the example.db catalog database
+    list the catalog database to verify the backup was added
 
     Params:
       - command, a List containing the command to run
       - env, the EnvData 
+      - generate, defaults to True, if False do not generate test data and do not run backup
     """
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
-    generate_test_data_and_full_backup(env)
+    if generate:
+        generate_test_data_and_full_backup(env)
 
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
-        stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
         print(f"stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
 
+    if not generate:
+        if not re.search(f"No 'dar' archives found in directory", stdout):
+            raise Exception(f"A note on no dar archives found should have been produced")
+        env.logger.info(f"OK: Notice on no dar archives found was emitted")
+        return
+
+
     # list catalogs
-    command = ['manager', '--list-db' ,'--config-file', env.config_file]
+    command = ['manager', '--list-catalog' ,'--config-file', env.config_file]
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
@@ -141,8 +216,9 @@ def run_manager_adding(command: List[str],  env: envdata.EnvData):
 
     print(f"stdout: {stdout}")
 
-    if not re.search(f"example_FULL_{today_date}", stdout):
-        raise Exception(f"Catalog not found for backup definition f'example_FULL_{today_date}'")
+    if generate:
+        if not re.search(f"example_FULL_{today_date}", stdout):
+            raise Exception(f"Catalog not found for backup definition f'example_FULL_{today_date}'")
 
     #TODO:  list contents of archive from catalog in database and verify
 
@@ -161,7 +237,10 @@ def generate_catalog_db(env: envdata.EnvData):
         raise Exception(f"Command failed: {command}")
 
 
-def generate_test_data_and_full_backup(env: envdata.EnvData):
+def generate_test_data_and_full_backup(env: envdata.EnvData) -> Dict:
+    """
+    Returns the Dict with file names as keys
+    """
     file_sizes = {
         '1byte': 1,
         '10bytes': 10,
@@ -180,7 +259,7 @@ def generate_test_data_and_full_backup(env: envdata.EnvData):
         print(f"dar stdout: {stdout}")
         print(f"dar stderr: {stderr}")
         raise RuntimeError(f"dar-backup failed to create a full backup") 
-
+    return file_sizes
 
 
 def generate_backup_defs(env, config_settings) -> List[Dict]:
