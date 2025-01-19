@@ -33,7 +33,7 @@ from dar_backup.util import run_command
 from dar_backup.util import setup_logging
 from datetime import datetime
 from time import time
-from typing import Dict, List
+from typing import Dict, List, NamedTuple
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -76,7 +76,17 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
     return process.returncode
 
 
-def list_catalogs(backup_def: str, config_settings: ConfigSettings):
+def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTuple:
+    """
+    Returns:
+       a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
+        - process: of type subprocess.CompletedProcess: The result of the command execution.
+        - stdout: of type str: The standard output of the command.
+        - stderr: of type str: The standard error of the command.
+        - returncode: of type int: The return code of the command.
+        - timeout: of type int: The timeout value in seconds used to run the command.
+        - command: of type list[str): The command executed.
+    """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
     if not os.path.exists(database_path):
@@ -91,7 +101,35 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings):
         logger.error(f"stdout: {stdout}")
     else:
         print(stdout)
-    return process.returncode
+    return process
+
+
+def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
+    """
+    Find the catalog number for the given archive name
+
+    Returns:
+      - the found number, if the archive catalog is present in the database
+      - "-1" if the archive is not found
+    """
+    backup_def = backup_def_from_archive(archive)
+    process = list_catalogs(backup_def, config_settings)
+    if process.returncode != 0:
+        logger.error(f"Error listing catalogs for backup def: '{backup_def}'")
+        return -1
+    line_no = 1
+    for line in process.stdout.splitlines():
+        #print(f"{line_no}: {line}")
+        line_no += 1
+        search = re.search(f"\s+(\d+)\s+.*?({archive}).*", line)
+        if search:
+            #print("FOUND")
+            logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
+            return int(search.group(1))
+    return -1
+
+
+
 
 
 def list_catalog_contents(catalog_number: int, backup_def: str, config_settings: ConfigSettings):
@@ -234,7 +272,37 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     
     logger.debug(f"Results adding archives found in: '{args.add_dir}': result")
 
-    
+
+def backup_def_from_archive(archive: str) -> str:
+    """
+    return the backup definition from archive name
+    """
+    search = re.search("(.*?)_", archive)
+    backup_def = search.group(1)
+    logger.debug(f"backup definition: '{backup_def}' from given archive '{archive}'")
+    return backup_def
+
+
+
+def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> int:
+    backup_def = backup_def_from_archive(archive)
+    database_path = os.path.join(config_settings.backup_dir, f"{backup_def}{DB_SUFFIX}")
+    cat_no = cat_no_for_name(archive, config_settings)
+    if cat_no > 0:
+        command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
+        process = run_command(command)
+    else:
+        logger.error(f"archive: '{archive}' not found in in't catalog database: {database_path}")
+        return cat_no
+
+    if process.returncode == 0:
+        logger.info(f"'{archive}' removed from it's catalog")
+    else:
+        logger.error(process.stdout)
+        logger.error(process.sterr)
+
+    return process.returncode
+
 
 
 
@@ -362,19 +430,20 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
     if args.remove_specific_archive:
-        # Implement remove specific archive logic
-        pass
+        sys.exit(remove_specific_archive(args.remove_specific_archive, config_settings))
+
 
 
     if args.list_catalog:
         if args.backup_def:
-            result = list_catalogs(args.backup_def, config_settings)
+            process = list_catalogs(args.backup_def, config_settings)
+            result = process.returncode
         else:
+            result = 0
             for root, dirs, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
                     current_backupdef = os.path.basename(file)
-                    result = 0
-                    if list_catalogs(current_backupdef, config_settings) != 0:
+                    if list_catalogs(current_backupdef, config_settings).returncode != 0:
                         result = 1
         sys.exit(result)
 

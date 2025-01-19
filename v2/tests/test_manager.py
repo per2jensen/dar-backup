@@ -197,6 +197,44 @@ def test_find_file(setup_environment: None, env: EnvData):
 
 
 
+def test_remove_specific_archive(setup_environment: None, env: EnvData):
+    """
+    verify deletion of catalog
+    """
+    ##
+    ### Positive test
+    ##
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
+
+    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file]
+    process = run_command(command)
+    if process.returncode != 0:
+        print(f"stdout:\n{process.stdout}")  
+        print(f"stderr:\n{process.stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+    command = ['manager', '--remove-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
+    process = run_command(command)
+
+    assert process.returncode == 0, "Archive was not removed"
+
+    command = ['manager', '--list-catalog' ,'-d', 'example', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
+    process = run_command(command)
+    print(process.stdout)
+
+
+    ##
+    ### Negative test
+    ##
+    non_existing_archive = "example_FULL_1970-01-01"
+    command = ['manager', '--remove-specific-archive', non_existing_archive, '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
+    process = run_command(command)
+    env.logger.debug(process)
+    assert process.returncode != 0, "manager returned success removing a non-existing archive"
+
+
 
 
 def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
