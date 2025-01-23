@@ -119,11 +119,11 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
         return -1
     line_no = 1
     for line in process.stdout.splitlines():
-        #print(f"{line_no}: {line}")
+        #print(f"{line_no}: '{line}'")
         line_no += 1
-        search = re.search(f"\s+(\d+)\s+.*?({archive}).*", line)
+        search = re.search(f".*?(\d+)\s+.*?({archive}).*", line)
         if search:
-            #print("FOUND")
+            #print(f"FOUND: archive: {search.group(2)}, catalog #: '{search.group(1)}'")
             logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
             return int(search.group(1))
     return -1
@@ -288,7 +288,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     backup_def = backup_def_from_archive(archive)
     database_path = os.path.join(config_settings.backup_dir, f"{backup_def}{DB_SUFFIX}")
     cat_no = cat_no_for_name(archive, config_settings)
-    if cat_no > 0:
+    if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
         process = run_command(command)
     else:
@@ -430,7 +430,11 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
     if args.remove_specific_archive:
-        sys.exit(remove_specific_archive(args.remove_specific_archive, config_settings))
+        
+        if remove_specific_archive(args.remove_specific_archive, config_settings) == 0:
+            sys.exit(0)
+        else:  
+            sys.exit(1)
 
 
 
