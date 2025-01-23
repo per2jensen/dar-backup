@@ -15,10 +15,11 @@ import re
 import subprocess
 import shlex
 import sys
+import threading
 import traceback
 from datetime import datetime
 
-from typing import NamedTuple
+from typing import NamedTuple, List
 
 logger=None
 
@@ -101,45 +102,110 @@ class CommandResult(NamedTuple):
     command: list[str]
 
     def __str__(self):
-        return f"CommandResult: [Return Code: '{self.returncode}', Stdout: '{self.stdout}', Stderr: '{self.stderr}', Timeout: '{self.timeout}', Command: '{self.command}']"
+        #return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}', \nStdout:\n'{self.stdout}', \nStderr:\n'{self.stderr}', \nTimeout: '{self.timeout}']"
+        return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}']"
 
 
-def run_command(command: list[str], timeout: int=30) -> typing.NamedTuple:
+
+def  _stream_reader(pipe, log_func, output_accumulator: List[str]):
     """
-    Executes a given command via subprocess and captures its output.
+    Reads lines from the subprocess pipe, logs them, and accumulates them.
+
+    Args:
+        pipe: The pipe to read from (stdout or stderr).
+        log_func: The logging function to use (e.g., logger.info, logger.error).
+        output_accumulator: A list to store the lines read from the pipe.
+    """
+    with pipe:
+        for line in iter(pipe.readline, ''):
+            stripped_line = line.strip()
+            output_accumulator.append(stripped_line)  # Accumulate the output
+            log_func(stripped_line)  # Log the output in real time
+
+
+def run_command(command: List[str], timeout: int = 30) -> CommandResult:
+    """
+    Executes a given command via subprocess, logs its output in real time, and returns the result.
 
     Args:
         command (list): The command to be executed, represented as a list of strings.
-        timeout (int): The maximum time in seconds to wait for the command to complete.Defaults to 30 seconds.
+        timeout (int): The maximum time in seconds to wait for the command to complete. Defaults to 30 seconds.
 
     Returns:
-        a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
-        - process: of type subprocess.CompletedProcess: The result of the command execution.
-        - stdout: of type str: The standard output of the command.
-        - stderr: of type str: The standard error of the command.
-        - returncode: of type int: The return code of the command.
-        - timeout: of type int: The timeout value in seconds used to run the command.
-        - command: of type list[str): The command executed.
-    
+        A CommandResult NamedTuple with the following properties:
+        - process: subprocess.CompletedProcess
+        - stdout: str: The full standard output of the command.
+        - stderr: str: The full standard error of the command.
+        - returncode: int: The return code of the command.
+        - timeout: int: The timeout value in seconds used to run the command.
+        - command: list[str]: The command executed.
+
+    Logs:
+        - Logs standard output (`stdout`) in real-time at the INFO log level.
+        - Logs standard error (`stderr`) in real-time at the ERROR log level.
+
     Raises:
-        subprocess.TimeoutExpired: if the command execution times out (see `timeout` parameter).
-        Exception: raise exceptions during command runs.
+        subprocess.TimeoutExpired: If the command execution times out (see `timeout` parameter).
+        Exception: If other exceptions occur during command execution.
+
+    Notes:
+        - While the command runs, its `stdout` and `stderr` streams are logged in real-time.
+        - The returned `stdout` and `stderr` capture the complete output, even though the output is also logged.
+        - The command is forcibly terminated if it exceeds the specified timeout.
     """
-    stdout = None
-    stderr = None
+    stdout_lines = []  # To accumulate stdout
+    stderr_lines = []  # To accumulate stderr
+    process = None  # Track the process for cleanup
+
     try:
         logger.debug(f"Running command: {command}")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate(timeout)  # Wait with timeout
-        result = CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
-        logger.debug(f"Command result: {str(result)}")
+
+        # Start threads to read and log stdout and stderr
+        stdout_thread = threading.Thread(target=_stream_reader, args=(process.stdout, logger.info, stdout_lines))
+        stderr_thread = threading.Thread(target=_stream_reader, args=(process.stderr, logger.error, stderr_lines))
+        
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # Wait for process to complete or timeout
+        process.wait(timeout=timeout)
+
     except subprocess.TimeoutExpired:
-        process.terminate()
+        if process:
+            process.terminate()
         logger.error(f"Command: '{command}' timed out and was terminated.")
         raise
     except Exception as e:
         logger.error(f"Error running command: {command}", exc_info=True)
         raise
+    finally:
+        # Ensure threads are joined to clean up
+        if stdout_thread.is_alive():
+            stdout_thread.join()
+        if stderr_thread.is_alive():
+            stderr_thread.join()
+
+        # Ensure process streams are closed
+        if process and process.stdout:
+            process.stdout.close()
+        if process and process.stderr:
+            process.stderr.close()
+
+    # Combine captured stdout and stderr lines into single strings
+    stdout = "\n".join(stdout_lines)
+    stderr = "\n".join(stderr_lines)
+
+    # Build the result object
+    result = CommandResult(
+        process=process,
+        stdout=stdout,
+        stderr=stderr,
+        returncode=process.returncode,
+        timeout=timeout,
+        command=command
+    )
+    logger.debug(f"Command result: {result}")
     return result
 
 

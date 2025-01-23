@@ -14,13 +14,13 @@ verbose:
 # -vs
 
 # shows diretory currently being processed
-# -vd 
+ -vd 
 
 # shows detailed messages, not related to files and directories
 # -vm
 
 # shows summary of each treated directory, including average compression
-# -vf
+ -vf
 
 # equivalent to "-vm -vs -vt"
 # -va
