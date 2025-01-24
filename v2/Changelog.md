@@ -1,4 +1,17 @@
 
+## v2-alpha-0.6.5 - 2025-01-24
+
+Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.5)
+
+### Added
+
+- Changelog.md added
+
+- LICENSE added to the dar-backup wheel package
+
+- Link to Changelog added to PyPi page
+
+
 ## v2-alpha-0.6.4 - 2025-01-23
 
 Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.4)
