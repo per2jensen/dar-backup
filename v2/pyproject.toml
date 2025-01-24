@@ -9,6 +9,14 @@ addopts = [
     "--import-mode=importlib",
 ]
 
+[tool.hatch.build]
+include = [
+    "Changelog.md",
+    "LICENSE",
+    "README.md"
+]
+
+
 [tool.hatch.build.targets.sdist]
 include = [
   "/src/dar_backup", "/tests"
@@ -39,6 +47,7 @@ description = """A script to do full, differential and incremental backups using
     The script also has a cleanup feature to remove old backups and par2 files."""
 readme = "README.md"
 readme-content-type = "text/markdown"
+license = { file="LICENSE", name="GPL-3.0-or-later" }
 requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -51,4 +60,5 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/per2jensen/dar-backup"
+Changelog = "https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md"
 Issues = "https://github.com/per2jensen/dar-backup/issues"

@@ -44,3 +44,7 @@ pytest tests/test_verbose.py
 twine upload dist/<wheel package
 ````
 
+
+# Git log
+
+git log --pretty=format:"%ad - %an: %s %d" --date=short

@@ -271,13 +271,17 @@ verbose:
 # -vs
 
 # shows diretory currently being processed
-# -vd 
+# dar-backup logs `dar` stdout in real time, so directories being processed are now shown in the log file.
+# this is quite useful in long running jobs
+ -vd 
 
 # shows detailed messages, not related to files and directories
 # -vm
 
 # shows summary of each treated directory, including average compression
-# -vf
+# dar-backup logs `dar` stdout in real time, so directories being processed are now shown in the log file.
+# this is quite useful in long running jobs
+ -vf
 
 # equivalent to "-vm -vs -vt"
 # -va
@@ -571,4 +575,12 @@ deactivate
 ```
 
 
+# Points of interest
+ 
+## .darrc sets -vd -vf (since v0.6.4)
+
+These .darrc settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
+This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
+
+if --log-stdout is used the information would be picked up by systemd and logged by journald
 
