@@ -105,14 +105,6 @@ def test_list_catalog_contents(setup_environment: None, env: EnvData):
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
-    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
-    process = run_command(command)
-    if process.returncode != 0:
-        print(f"stdout: {stdout}")  
-        print(f"stderr: {stderr}")  
-        raise Exception(f"Command failed: {command}")
-
-
     command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr
@@ -142,14 +134,6 @@ def test_find_file(setup_environment: None, env: EnvData):
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
-
-    command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file]
-    process = run_command(command)
-    if process.returncode != 0:
-        print(f"stdout: {stdout}")  
-        print(f"stderr: {stderr}")  
-        raise Exception(f"Command failed: {command}")
-
 
     command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file]
     process = run_command(command)

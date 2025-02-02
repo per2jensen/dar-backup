@@ -60,6 +60,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
 
     if os.path.exists(database_path):
         logger.warning(f'"{database_path}" already exists, skipping creation')
+        return 0
     else:
         logger.info(f'Create catalog database: "{database_path}"')
         command = ['dar_manager', '--create' , database_path]

@@ -30,7 +30,7 @@ from dar_backup.util import RestoreError
 
 logger = None
 
-def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings):
+def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace):
     """
     Performs a backup using the 'dar' command.
 
@@ -64,6 +64,15 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
             raise Exception(str(process))
+
+        if process.returncode == 0 or process.returncode == 5:
+            add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file, '--log-level', "debug", "--log-stdout"]
+            command_result = run_command(add_catalog_command, config_settings.command_timeout_secs)
+            if command_result.returncode == 0:
+                logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
+            else:
+                logger.error(f"Catalog for archive '{backup_file}' not added.")
+
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
@@ -409,19 +418,22 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             command = create_backup_command(backup_type, backup_file, args.darrc, backup_definition_path, latest_base_backup)
 
             # Perform backup
-            generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings)
+            generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
 
             logger.info("Starting verification...")
-            result = verify(args, backup_file, backup_definition_path, config_settings)
-            if result:
+            verify_result = verify(args, backup_file, backup_definition_path, config_settings)
+            if verify_result:   
                 logger.info("Verification completed successfully.")
             else:
                 logger.error("Verification failed.")
 
-            if config_settings.par2_enabled:
+            
+            if verify_result and config_settings.par2_enabled:
                 logger.info("Generate par2 redundancy files.")
                 generate_par2_files(backup_file, config_settings, args)
                 logger.info("par2 files completed successfully.")
+            
+
         except Exception as e:
             logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
 
@@ -461,16 +473,14 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
     for slice_file in dar_slices:
         file_path = os.path.join(config_settings.backup_dir, slice_file)
     
-        if args.verbose or args.log_level == "debug" or args.log_level == "trace":
-            logger.info(f"{counter}/{number_of_slices}: Now generating par2 files for {file_path}")
+        logger.info(f"{counter}/{number_of_slices}: Now generating par2 files for {file_path}")
 
         # Run the par2 command to generate redundancy files with error correction
         command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
         process = run_command(command, config_settings.command_timeout_secs)
 
         if process.returncode == 0:
-            if args.verbose or args.log_level == "debug" or args.log_level == "trace":
-                logger.info(f"{counter}/{number_of_slices}: Done")
+            logger.info(f"{counter}/{number_of_slices}: Done")
         else:
             logger.error(f"Error generating par2 files for {file_path}")
             raise subprocess.CalledProcessError(process.returncode, command)

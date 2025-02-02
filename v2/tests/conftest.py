@@ -13,7 +13,7 @@ from dar_backup.util import setup_logging
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.util import setup_logging
-
+from dar_backup.util import run_command
 
 # Session-scoped fixture for the logger
 @pytest.fixture(scope='session')
@@ -88,6 +88,10 @@ def setup_environment(request, logger):
         env.logger.exception("Failed to copy .darrc to test directory")
         raise
     
+    
+    create_catalog_db(env)  
+
+
     # Print variables to console
     print_variables(env)
 
@@ -160,6 +164,20 @@ def create_directories_from_template(env : EnvData):
     except NoSectionError:
         env.logger.exception("Section 'DIRECTORIES' not found in the config file")
         raise RuntimeError(f"Section 'DIRECTORIES' not found in the config file {config_file}")
+
+
+
+
+def create_catalog_db(env):
+    command = ['manager', '--create-db' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    if process.returncode != 0:
+        stdout, stderr = process.stdout, process.stderr
+        print(f"stdout: {stdout}")  
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
 
 
 def teardown_environment(env: EnvData):

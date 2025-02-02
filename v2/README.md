@@ -153,6 +153,7 @@ Example of backup definition for a home directory
 Installation is currently in a venv. These commands are installed in the venv:
 - dar-back
 - cleanup
+- manager
 
 To install, create a venv and run pip:
 ````    
@@ -219,22 +220,32 @@ options:
   --log-stdout          also print log messages to stdout
   --do-not-compare      do not compare restores to file system
   -v, --version         Show version and license information.
-
 ````    
 
 ## 4
+Generate the archive catalog database(s). 
+`dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
+
+````    
+manager --create-db --config-file <path to config file> --log-level debug --log-stdout
+````    
+
+
+
+
+## 5
 You are ready to do backups of all your backup definitions, if your backup definitions are 
 in place in BACKUP.D_DIR (see config file)
 ````    
 dar-backup --full-backup 
 ````    
 
-or a backup of a single definition
+or a backup of a single definition. The definition's name is the filename of the definition in the `backup.d` config directory.
 ````    
 dar-backup --full-backup -d <your backup definition>
 ````
 
-## 5 
+## 6 
 
 Deactivate the virtual environment
 ````

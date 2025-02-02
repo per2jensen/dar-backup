@@ -13,6 +13,21 @@ from tests.envdata import EnvData
 from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,test_files, run_backup_script
 
 
+
+def list_catalog_db(env):    
+    command = ['manager', '--list-catalog' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    if process.returncode != 0:
+        stdout, stderr = process.stdout, process.stderr
+        print(f"stdout: {stdout}")  
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+    print(process.stdout)
+    return process.stdout
+
+
+
+
 def test_backup_functionality(setup_environment, env):
     try:
         create_test_files(env)
@@ -63,6 +78,9 @@ def test_backup_functionality(setup_environment, env):
         verify_restore_contents(test_files_inc, f"example_INCR_{env.datestamp}", env )
 
         env.logger.info("Incremental backup verification succeeded")
+
+        list_catalog_db(env)
+
 
     except Exception as e:
         env.logger.exception("Backup functionality test failed")
@@ -123,6 +141,8 @@ def test_backup_functionality_short_options(setup_environment, env):
         verify_backup_contents(test_files_inc, f"example_INCR_{env.datestamp}", env)
         verify_restore_contents(test_files_inc, f"example_INCR_{env.datestamp}", env )
         env.logger.info("Incremental backup verification succeeded")
+
+        list_catalog_db(env)
 
     except Exception as e:
         env.logger.exception("Backup functionality test failed")

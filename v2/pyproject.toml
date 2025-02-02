@@ -59,6 +59,6 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/per2jensen/dar-backup"
+Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"
 Changelog = "https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md"
 Issues = "https://github.com/per2jensen/dar-backup/issues"
