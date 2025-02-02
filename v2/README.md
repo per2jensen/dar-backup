@@ -239,8 +239,12 @@ in place in BACKUP.D_DIR (see config file)
 ````    
 dar-backup --full-backup 
 ````    
+If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This is also useful if dar-backup is started by systemd.
 
-or a backup of a single definition. The definition's name is the filename of the definition in the `backup.d` config directory.
+If you want more log messages, use the `--log-level debug` option.
+
+
+If you want a backup of a single definition, use the `-d <backup definition>` option. The definition's name is the filename of the definition in the `backup.d` config directory.
 ````    
 dar-backup --full-backup -d <your backup definition>
 ````
