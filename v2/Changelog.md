@@ -1,4 +1,12 @@
 
+## v2-alpha-0.6.6 - 2025-02-02
+
+Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.6)
+
+### Added
+
+- Archive catalogs now added to database(s) after a backup has been performed
+
 ## v2-alpha-0.6.5 - 2025-01-24
 
 Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.5)
