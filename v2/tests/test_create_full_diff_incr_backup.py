@@ -15,7 +15,7 @@ from testdata_verification import create_test_files, verify_backup_contents, ver
 
 
 def list_catalog_db(env):    
-    command = ['manager', '--list-catalog' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    command = ['manager', '--list-catalogs' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr

@@ -97,6 +97,52 @@ def test_manager_help(setup_environment: None, env: envdata.EnvData):
         raise Exception(f"Command failed: {command}")
 
 
+def test_list_catalog(setup_environment: None, env: EnvData):
+    """
+    Add a backup to it's catalog database, then list catalogs
+    """
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
+
+    command = ['manager', '--list-catalogs', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info(f"stdout:\n{stdout}")
+    if process.returncode != 0:
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
+    if f"example_FULL_{today_date}" not in stdout:
+        raise Exception(f"File name f'example_FULL_{today_date}' not found in stdout")
+    print("Archive catalog found in database")
+
+
+def test_list_catalog_short_option(setup_environment: None, env: EnvData):
+    """
+    Add a backup to it's catalog database, then list catalogs
+    """
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
+
+    command = ['manager', '-l', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info(f"stdout:\n{stdout}")
+    if process.returncode != 0:
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
+    if f"example_FULL_{today_date}" not in stdout:
+        raise Exception(f"File name f'example_FULL_{today_date}' not found in stdout")
+    print("Archive catalog found in database")
+
+
+
 def test_list_catalog_contents(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then list the contents
@@ -204,7 +250,7 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
 
     assert process.returncode == 0, "Archive was not removed"
 
-    command = ['manager', '--list-catalog' ,'-d', 'example', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
+    command = ['manager', '--list-catalogs' ,'-d', 'example', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
     process = run_command(command)
     print(process.stdout)
 
@@ -296,7 +342,7 @@ def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
 
 
     # list catalogs
-    command = ['manager', '--list-catalog' ,'--config-file', env.config_file]
+    command = ['manager', '--list-catalogs' ,'--config-file', env.config_file]
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:

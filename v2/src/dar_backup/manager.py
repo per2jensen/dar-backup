@@ -323,7 +323,7 @@ def main():
     parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition')
     parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database')
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database')
-    parser.add_argument('--list-catalog', action='store_true', help='List catalogs in databases for all backup definitions')
+    parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
     parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
@@ -439,7 +439,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
 
-    if args.list_catalog:
+    if args.list_catalogs:
         if args.backup_def:
             process = list_catalogs(args.backup_def, config_settings)
             result = process.returncode
