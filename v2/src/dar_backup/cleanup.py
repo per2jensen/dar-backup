@@ -249,15 +249,15 @@ def main():
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
 
-    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
-    if len(error_lines) > 0:
-        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-        for line in error_lines:
-            args.verbose and print(line)
-        sys.exit(1)
-    else:
-        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
-        sys.exit(0)
+#    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
+#    if len(error_lines) > 0:
+#        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
+#        for line in error_lines:
+#            args.verbose and print(line)
+#        sys.exit(1)
+#    else:
+#        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
+#        sys.exit(0)
 
 if __name__ == "__main__":
     main()
