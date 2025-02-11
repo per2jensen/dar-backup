@@ -1,4 +1,13 @@
 
+## v2-alpha-0.6.7 - 2025-02-11
+
+Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.7)
+
+### Added
+
+- Cleanups now remove catalogs from the catalog databases
+
+
 ## v2-alpha-0.6.6 - 2025-02-02
 
 Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.6)
