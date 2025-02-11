@@ -44,7 +44,7 @@ def run_cleanup_script(env):
 #    print(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
 #    env.logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
 
-    command = ['cleanup', '-d', 'example', '--config-file', env.config_file]
+    command = ['cleanup', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
@@ -62,6 +62,7 @@ def test_cleanup_functionality(setup_environment, env):
     
     create_test_files(env)
     run_cleanup_script(env)
+
 
     env.logger.info(f"Assert 'example_DIFF_{date_40_days_ago}.1.dar' was deleted")
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'example_DIFF_{date_40_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_DIFF_{date_40_days_ago}.1.dar')} still exists"
@@ -127,7 +128,8 @@ def test_cleanup_specific_archives(setup_environment, env):
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
             f.write(content)
 
-    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose']
+
+    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose', '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
@@ -184,7 +186,7 @@ def test_cleanup_multiple_specific_archives(setup_environment, env):
 
 
 
-    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file]
+    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
@@ -226,7 +228,7 @@ def test_cleanup_alternate_dir(setup_environment, env):
             f.write(content)
 
 
-    command = ['cleanup', '--alternate-archive-dir', alternate_dir, '--config-file', env.config_file]
+    command = ['cleanup', '--alternate-archive-dir', alternate_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)

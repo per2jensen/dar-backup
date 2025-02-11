@@ -167,6 +167,8 @@ def main():
     parser.add_argument('--cleanup-specific-archives', type=str, help="Commas separated list of archives to cleanup") 
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
+    parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
+    parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     args = parser.parse_args()
 
     args.config_file = os.path.expanduser(args.config_file)
@@ -179,7 +181,8 @@ def main():
     config_settings = ConfigSettings(args.config_file)
 
     start_time=int(time())
-    logger = setup_logging(config_settings.logfile_location, logging.INFO)
+    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
+
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {about.__version__}")
 
