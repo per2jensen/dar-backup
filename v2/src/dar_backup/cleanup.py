@@ -22,17 +22,22 @@ import sys
 
 from datetime import datetime, timedelta
 from time import time
+from typing import Dict, List, NamedTuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import extract_error_lines
 from dar_backup.util import list_backups
+from dar_backup.util import run_command
 from dar_backup.util import setup_logging
+
+from dar_backup.util import CommandResult   
+
 
 
 logger = None 
 
-def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
+def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None):
     """
     Delete backups older than the specified age in days.
     Only .dar and .par2 files are considered for deletion.
@@ -45,6 +50,8 @@ def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
 
     now = datetime.now()
     cutoff_date = now - timedelta(days=age)
+
+    archives_deleted = {}
 
     for filename in sorted(os.listdir(backup_dir)):
         if not (filename.endswith('.dar') or filename.endswith('.par2')):
@@ -64,11 +71,18 @@ def delete_old_backups(backup_dir, age, backup_type, backup_definition=None):
                 try:
                     os.remove(file_path)
                     logger.info(f"Deleted {backup_type} backup: {file_path}")
+                    archive_name = filename.split('.')[0]
+                    if not archive_name in archives_deleted:
+                        logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
+                    archives_deleted[archive_name] = True
                 except Exception as e:
                     logger.error(f"Error deleting file {file_path}: {e}")
 
+    for archive_name in archives_deleted.keys():
+        delete_catalog(archive_name, args)
 
-def delete_archive(backup_dir, archive_name):
+
+def delete_archive(backup_dir, archive_name, args):
     """
     Delete all .dar and .par2 files in the backup directory for the given archive name.
 
@@ -90,7 +104,9 @@ def delete_archive(backup_dir, archive_name):
             except Exception as e:
                 logger.error(f"Error deleting archive slice {file_path}: {e}")
     
-    if not files_deleted:
+    if files_deleted:
+            delete_catalog(archive_name, args)
+    else:
         logger.info("No .dar files matched the regex for deletion.")
 
     # Delete associated .par2 files
@@ -110,6 +126,29 @@ def delete_archive(backup_dir, archive_name):
         logger.info("No .par2 matched the regex for deletion.")
 
 
+def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
+    """
+    Call `manager.py` to delete the specified catalog in it's database
+    """
+    command = [f"manager", "--remove-specific-archive", catalog_name, "--config-file", args.config_file, '--log-level', 'debug', '--log-stdout']
+    logger.info(f"Deleting catalog '{catalog_name}' using config file: '{args.config_file}'")
+    try:
+        result:CommandResult = run_command(command)
+        if result.returncode == 0:
+            logger.info(f"Deleted catalog '{catalog_name}', using config file: '{args.config_file}'")
+            logger.debug(f"Stdout: manager.py --remove-specific-archive output:\n{result.stdout}")
+            return True
+        elif result.returncode == 2:
+            logger.warning(f"catalog '{catalog_name}' not found in the database, skipping deletion")
+            return True
+        else:
+            logger.error(f"Error deleting catalog {catalog_name}: {result.stderr}")
+            return False
+    except Exception as e:
+        logger.error(f"Error deleting catalog {catalog_name}: {e}")
+        return False
+
+
 def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {about.__version__}")
@@ -118,8 +157,6 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 def main():
-
-    
     global logger
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
@@ -127,7 +164,7 @@ def main():
     parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
-    parser.add_argument('--cleanup-specific-archive', type=str, help="List of archives to cleanup") 
+    parser.add_argument('--cleanup-specific-archives', type=str, help="Commas separated list of archives to cleanup") 
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     args = parser.parse_args()
@@ -156,7 +193,7 @@ def main():
     args.verbose and (print(f"Backup dir:                 {config_settings.backup_dir}"))
     args.verbose and (print(f"Logfile location:           {config_settings.logfile_location}"))
     args.verbose and (print(f"--alternate-archive-dir:    {args.alternate_archive_dir}"))
-    args.verbose and (print(f"--cleanup-specific-archive: {args.cleanup_specific_archive}")) 
+    args.verbose and (print(f"--cleanup-specific-archives:{args.cleanup_specific_archives}")) 
 
     # run PREREQ scripts
     if 'PREREQ' in config_settings.config:
@@ -175,15 +212,21 @@ def main():
 
 
     if args.alternate_archive_dir:
+        if not os.path.exists(args.alternate_archive_dir):
+            logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
+            sys.exit(1) 
+        if  not os.path.isdir(args.alternate_archive_dir):
+            logger.error(f"Alternate archive directory is not a directory, exiting")
+            sys.exit(1) 
         config_settings.backup_dir = args.alternate_archive_dir
 
 
-    if args.cleanup_specific_archive:
-        print(f"Cleaning up specific archives: {args.cleanup_specific_archive}")
-        archive_names = args.cleanup_specific_archive.split(',')
+    if args.cleanup_specific_archives:
+        logger.info(f"Cleaning up specific archives: {args.cleanup_specific_archives}")
+        archive_names = args.cleanup_specific_archives.split(',')
         for archive_name in archive_names:
-            print(f"Deleting archive: {archive_name}")
-            delete_archive(config_settings.backup_dir, archive_name.strip())
+            logger.info(f"Deleting archive: {archive_name}")
+            delete_archive(config_settings.backup_dir, archive_name.strip(), args)
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)
     else:
@@ -196,8 +239,8 @@ def main():
                     backup_definitions.append(file.split('.')[0])
 
         for definition in backup_definitions:
-            delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', definition)
-            delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', definition)
+            delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', args, definition)
+            delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', args, definition)
 
 
     end_time=int(time())

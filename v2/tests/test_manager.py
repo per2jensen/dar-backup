@@ -262,7 +262,7 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
     command = ['manager', '--remove-specific-archive', non_existing_archive, '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
     process = run_command(command)
     env.logger.debug(process)
-    assert process.returncode != 0, "manager returned success removing a non-existing archive"
+    assert process.returncode == 2, "manager did not return 2 due to removing a non-existing archive"
 
 
 

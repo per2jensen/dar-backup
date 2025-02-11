@@ -7,6 +7,8 @@ from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
 
+from dar_backup.util import run_command
+
 # Ensure the test directory is in the Python path
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from tests.envdata import EnvData
@@ -35,19 +37,19 @@ def create_test_files(env):
 
 
 def run_cleanup_script(env):
-    current_pythonpath = os.environ.get('PYTHONPATH', '')
-    new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
+#    current_pythonpath = os.environ.get('PYTHONPATH', '')
+#    new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+#    os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
 
-    print(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
-    env.logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
+#    print(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
+#    env.logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
 
     command = ['cleanup', '-d', 'example', '--config-file', env.config_file]
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
 
-    os.environ['PYTHONPATH'] = current_pythonpath   
+#    os.environ['PYTHONPATH'] = current_pythonpath   
 
     if result.returncode != 0:
         env.logger.error(result.stderr)
@@ -82,6 +84,25 @@ def test_cleanup_specific_archives(setup_environment, env):
     """
     Verify that the cleanup script can delete multiple specific archives
     """
+
+    filename = "specific"
+    with open(os.path.join(env.test_dir, 'backup.d', filename), 'w') as f:
+            f.write("dummy")
+
+    command = ['manager', '--create-db', '--log-level', 'debug', '--log-stdout', '--config-file', env.config_file]
+    process = run_command(command)
+    env.logger.debug(f"return code from 'db created': {process.returncode}")
+    if process.returncode == 0:
+        env.logger.info(f'Database created')
+    else:
+        env.logger.error(f'Something went wrong creating the database')
+        stdout, stderr = process.stdout, process.stderr 
+        env.logger.error(f"stderr: {stderr}")
+        env.logger.error(f"stdout: {stdout}")
+        sys.exit(1)
+
+
+
     test_files = {
         f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
         f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
@@ -106,7 +127,7 @@ def test_cleanup_specific_archives(setup_environment, env):
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
             f.write(content)
 
-    command = ['cleanup', '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose']
+    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
@@ -137,7 +158,7 @@ def test_cleanup_specific_archives(setup_environment, env):
 
 
 
-def test_cleanup_multiple_specific_archive(setup_environment, env):
+def test_cleanup_multiple_specific_archives(setup_environment, env):
     test_files = {
         f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
         f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
@@ -150,7 +171,20 @@ def test_cleanup_multiple_specific_archive(setup_environment, env):
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
             f.write(content)
 
-    command = ['cleanup', '--cleanup-specific-archive', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file]
+    with open(os.path.join(env.test_dir, 'backup.d', "specific"), 'w') as f:  # Create a dummy backup definition, so th catalog db is created
+            f.write("dummy")
+    
+    command = ['manager', '--create-db' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    if process.returncode != 0:
+        stdout, stderr = process.stdout, process.stderr
+        print(f"stdout: {stdout}")  
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+
+
+    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file]
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)

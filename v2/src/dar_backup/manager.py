@@ -31,6 +31,8 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import run_command
 from dar_backup.util import setup_logging
+from dar_backup.util import CommandResult
+
 from datetime import datetime
 from time import time
 from typing import Dict, List, NamedTuple
@@ -91,8 +93,16 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTupl
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
     if not os.path.exists(database_path):
-        logger.error(f'Database not found: "{database_path}"')
-        return 1
+        error_msg = f'Database not found: "{database_path}"'
+        logger.error(error_msg)
+        commandResult = CommandResult(
+        process=None,
+        stdout='',
+        stderr=error_msg,
+        returncode=1,
+        timeout=1,
+        command=[])
+        return commandResult
     command = ['dar_manager', '--base', database_path, '--list']
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr 
@@ -278,32 +288,44 @@ def backup_def_from_archive(archive: str) -> str:
     """
     return the backup definition from archive name
     """
+    logger.debug(f"Get backup definition from archive: '{archive}'")
     search = re.search("(.*?)_", archive)
-    backup_def = search.group(1)
-    logger.debug(f"backup definition: '{backup_def}' from given archive '{archive}'")
-    return backup_def
+    if search:
+        backup_def = search.group(1)
+        logger.debug(f"backup definition: '{backup_def}' from given archive '{archive}'")
+        return backup_def
+    logger.error(f"Could not find backup definition from archive name: '{archive}'")
+    return None
 
 
 
 def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> int:
+    """
+    
+    Returns:
+        - 0 if the archive was removed from it's catalog
+        - 1 if there was an error removing the archive
+        - 2 if the archive was not found in the catalog  
+
+    """
     backup_def = backup_def_from_archive(archive)
     database_path = os.path.join(config_settings.backup_dir, f"{backup_def}{DB_SUFFIX}")
     cat_no = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
-        process = run_command(command)
+        process: CommandResult = run_command(command)
+        logger.info(f"CommandResult: {process}")
     else:
-        logger.error(f"archive: '{archive}' not found in in't catalog database: {database_path}")
-        return cat_no
+        logger.warning(f"archive: '{archive}' not found in it's catalog database: {database_path}")
+        return 2
 
     if process.returncode == 0:
         logger.info(f"'{archive}' removed from it's catalog")
+        return 0
     else:
         logger.error(process.stdout)
         logger.error(process.sterr)
-
-    return process.returncode
-
+        return 1    
 
 
 
@@ -431,11 +453,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
     if args.remove_specific_archive:
-        
-        if remove_specific_archive(args.remove_specific_archive, config_settings) == 0:
-            sys.exit(0)
-        else:  
-            sys.exit(1)
+        return remove_specific_archive(args.remove_specific_archive, config_settings)
 
 
 
