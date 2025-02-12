@@ -209,7 +209,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     for restored_file_path in random_files:
         try:
             logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-O', '-Q']
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = run_command(command, config_settings.command_timeout_secs)    
             if process.returncode != 0:
@@ -239,7 +239,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
     """
     backup_file = os.path.join(config_settings.backup_dir, backup_name)
-    command = ['dar', '-x', backup_file, '-O', '-Q', '-D']
+    command = ['dar', '-x', backup_file, '-Q', '-D']
     if restore_dir:
         if not os.path.exists(restore_dir):
             os.makedirs(restore_dir)
