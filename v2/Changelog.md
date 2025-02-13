@@ -1,3 +1,12 @@
+## v2-beta-0.6.8 - 2025-02-13
+
+Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.8)
+
+### Added
+
+- switching from alpha --> beta status
+- manager --list-archive-contents added
+
 
 ## v2-alpha-0.6.7 - 2025-02-11
 

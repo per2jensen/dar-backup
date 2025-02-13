@@ -26,8 +26,12 @@
   These scripts are licensed under the GPLv3 license.
   Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
+
 # Status
 As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
+
+As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
+
 
 **Breaking change in version 0.6.0**
 
