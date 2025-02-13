@@ -77,7 +77,7 @@ def test_ordered_by_slicenumber(setup_environment, env):
     
     modify_slice_size(env, 'example', '1k')    
 
-    command = ['dar-backup', '-F', '-d', "example", '--verbose', '--log-stdout', '--config-file', env.config_file]
+    command = ['dar-backup', '-F', '-d', "example", '--verbose', '--log-stdout', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
     stdout,stderr = process.stdout, process.stderr
     env.logger.info(stdout)

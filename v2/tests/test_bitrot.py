@@ -145,6 +145,7 @@ def test_5_bitrot_recovery(setup_environment, env: EnvData):
     redundancy = 5  # redundancy in percent
     run_bitrot_recovery(env, redundancy)
 
+    
 
 def test_25_bitrot_recovery(setup_environment, env: EnvData):
     """
@@ -170,13 +171,22 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     generate_datafiles(env, file_sizes)
     modify_par2_redundancy(env, redundancy_percentage)
     print(f"env: {env}")
-    command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
+    command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
     stdout,stderr = process.stdout, process.stderr
     if process.returncode != 0:
         logging.error(f"dar stdout: {stdout}")
         logging.error(f"dar stderr: {stderr}")
         raise RuntimeError(f"dar-backup failed to create a full backup")
+    
+    command = ['ls', '-hl', os.path.join(env.test_dir, 'backups')]
+    stdout,stderr = process.stdout, process.stderr
+    process = run_command(command)
+    if process.returncode != 0:
+        logging.error(f"ls stdout: {stdout}")
+        logging.error(f"ls stderr: {stderr}")
+        raise RuntimeError(f"dar-backup failed to create a full backup")
+
     simulate_bitrot(env, redundancy_percentage)
     check_bitrot_recovery(env)
 
