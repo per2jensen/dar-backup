@@ -14,7 +14,9 @@ Update __about__.py first
 ````
 python3 -m build
 
-pip install --force-reinstall dist/<wheel package> 
+VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+')
+python3 -m build && pip install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
+
 
 ````
 Venv packages:

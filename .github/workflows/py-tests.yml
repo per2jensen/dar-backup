@@ -39,6 +39,7 @@ jobs:
           python3 -m pip install wheel build pytest hatchling hatch
           python3 -m build
           VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+')
+          echo "Version: $VERSION"
           pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
           
 

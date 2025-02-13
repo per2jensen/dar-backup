@@ -6,6 +6,7 @@ import os
 from dar_backup.util import run_command
 from datetime import datetime
 from tests.envdata import EnvData
+from dar_backup.util import CommandResult
 
 """
 This module contains unit tests for detecting bitrot and fixing it in dar archives.
@@ -109,7 +110,9 @@ def check_bitrot_recovery(env: EnvData):
     archive_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}.1.dar")
     try:
         command = ['dar', '-t', basename_path]
-        process = run_command(command)
+        process: CommandResult  = run_command(command)
+        logging.info(f"stdout:\n{process.stdout}")
+        logging.info(f"stderr:\n{process.stderr}")
         if process.returncode != 0:
             raise RuntimeError(f"dar detected a bad archive: {basename_path}")
         else:
@@ -121,13 +124,17 @@ def check_bitrot_recovery(env: EnvData):
     try:
         # fix bitrot with parchive2
         command = ["par2", "repair", "-q", archive_path]
-        process = run_command(command)
+        process: CommandResult  = run_command(command)
+        logging.info(f"stdout:\n{process.stdout}")
+        logging.info(f"stderr:\n{process.stderr}")
         if process.returncode != 0:
             raise RuntimeError(f"parchive2 failed to repair the archive: {archive_path}")
         
         # test archive once more
         command = ['dar', '-t', basename_path]
-        process = run_command(command)
+        process: CommandResult  = run_command(command)
+        logging.info(f"stdout:\n{process.stdout}")
+        logging.info(f"stderr:\n{process.stderr}")
         if process.returncode != 0:
             raise RuntimeError(f"dar archive test failed: {basename_path}")
         
@@ -172,19 +179,19 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     modify_par2_redundancy(env, redundancy_percentage)
     print(f"env: {env}")
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process: CommandResult  = run_command(command)
+    logging.info(f"stdout:\n{process.stdout}")
+    logging.info(f"stderr:\n{process.stderr}")
     stdout,stderr = process.stdout, process.stderr
     if process.returncode != 0:
-        logging.error(f"dar stdout: {stdout}")
-        logging.error(f"dar stderr: {stderr}")
         raise RuntimeError(f"dar-backup failed to create a full backup")
     
     command = ['ls', '-hl', os.path.join(env.test_dir, 'backups')]
     stdout,stderr = process.stdout, process.stderr
-    process = run_command(command)
+    process: CommandResult  = run_command(command)
+    logging.info(f"stdout:\n{process.stdout}")
+    logging.info(f"stderr:\n{process.stderr}")
     if process.returncode != 0:
-        logging.error(f"ls stdout: {stdout}")
-        logging.error(f"ls stderr: {stderr}")
         raise RuntimeError(f"dar-backup failed to create a full backup")
 
     simulate_bitrot(env, redundancy_percentage)
