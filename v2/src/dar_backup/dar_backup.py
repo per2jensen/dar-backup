@@ -209,7 +209,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     for restored_file_path in random_files:
         try:
             logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q']
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q', '-B', args.darrc, 'restore-options']
             logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = run_command(command, config_settings.command_timeout_secs)    
             if process.returncode != 0:
