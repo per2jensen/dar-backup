@@ -37,19 +37,11 @@ def create_test_files(env):
 
 
 def run_cleanup_script(env):
-#    current_pythonpath = os.environ.get('PYTHONPATH', '')
-#    new_pythonpath = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-#    os.environ['PYTHONPATH'] = f"{new_pythonpath}:{current_pythonpath}"
-
-#    print(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
-#    env.logger.info(f"PYTHONPATH: {os.environ['PYTHONPATH']}")
 
     command = ['cleanup', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
-
-#    os.environ['PYTHONPATH'] = current_pythonpath   
 
     if result.returncode != 0:
         env.logger.error(result.stderr)

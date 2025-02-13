@@ -267,9 +267,34 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
 
 
 
+def test_list_archive_contents(setup_environment: None, env: EnvData):
+    """
+    verify listing the contents of an archive, given the archive name
+    """
+    today_date = date.today().strftime("%Y-%m-%d")
+    generate_catalog_db(env)
+    files = generate_test_data_and_full_backup(env)
+
+    command = ['manager', '--list-archive-contents', f'example_FULL_{today_date}' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info(f"stdout:\n{stdout}")
+    if process.returncode != 0:
+        print(f"stderr: {stderr}")  
+        raise Exception(f"Command failed: {command}")
+
+    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
+    for file_name in files.keys():
+        if file_name not in stdout:
+            raise Exception(f"File name '{file_name}' not found in stdout")
+
+    print("All file names are present in stdout")
+
+
+
 def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
     """
-    verify failing if params given to the list catalog contents operation
+    verify failing if params given to the --list-catalog-contents are wrong
     """
     command = ['manager', '--list-catalog-contents', 'test', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     process = run_command(command)
@@ -309,6 +334,7 @@ def test_add_archive_to_catalog_db(setup_environment: None, env: EnvData):
     today_date = date.today().strftime("%Y-%m-%d")
     command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
     run_manager_adding(command, env)
+
 
 
 def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
@@ -387,6 +413,7 @@ def generate_test_data_and_full_backup(env: envdata.EnvData) -> Dict:
         '1MB': 1024 * 1024,
         '10MB': 10 * 1024 * 1024
    }
+
     test_bitrot.generate_datafiles(env, file_sizes)
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
     process = run_command(command)

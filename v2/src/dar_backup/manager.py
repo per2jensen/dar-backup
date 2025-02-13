@@ -141,16 +141,41 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
 
 
 
+def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int :
+    """
+    List the contents of a specific archive, given the archive name
+    """
+    backup_def = backup_def_from_archive(archive)
+    database = f"{backup_def}{DB_SUFFIX}"
+    database_path = os.path.join(config_settings.backup_dir, database)
+    if not os.path.exists(database_path):
+        logger.error(f'Database not found: "{database_path}"')
+        return 1
+    cat_no = cat_no_for_name(archive, config_settings)
+    if cat_no < 0:
+        logger.error(f"archive: '{archive}' not found in database: '{database_path}'")
+        return 1
+    command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr 
+    if process.returncode != 0:
+        logger.error(f'Error listing catalogs for: "{database_path}"')
+        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stdout: {stdout}")
+    else:
+        print(stdout)
+    return process.returncode
 
 
-def list_catalog_contents(catalog_number: int, backup_def: str, config_settings: ConfigSettings):
+
+def list_catalog_contents(catalog_number: int, backup_def: str, config_settings: ConfigSettings)  -> int:
     """
     List the contents of catalog # in catalog database for given backup definition
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
     if not os.path.exists(database_path):
-        logger.error(f'Database not found: "{database_path}"')
+        logger.error(f'Catalog database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
     process = run_command(command)
@@ -347,6 +372,7 @@ def main():
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database')
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
     parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
+    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog.")
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
@@ -415,6 +441,11 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
             sys.exit(1)
 
 
+    if args.list_archive_contents and not args.list_archive_contents.strip():
+        logger.error(f"--list-archive-contents <param> not given, exiting")
+        sys.exit(1)
+
+
     if args.list_catalog_contents and not args.backup_def:
         logger.error(f"--list-catalog-contents requires the --backup-def, exiting")
         sys.exit(1)
@@ -468,6 +499,11 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
                     current_backupdef = os.path.basename(file)
                     if list_catalogs(current_backupdef, config_settings).returncode != 0:
                         result = 1
+        sys.exit(result)
+
+
+    if args.list_archive_contents:
+        result = list_archive_contents(args.list_archive_contents, config_settings)
         sys.exit(result)
 
     if args.list_catalog_contents:

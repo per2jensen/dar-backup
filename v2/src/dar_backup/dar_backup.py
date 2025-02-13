@@ -66,7 +66,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             raise Exception(str(process))
 
         if process.returncode == 0 or process.returncode == 5:
-            add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file, '--log-level', "debug", "--log-stdout"]
+            add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file]
             command_result = run_command(add_catalog_command, config_settings.command_timeout_secs)
             if command_result.returncode == 0:
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
