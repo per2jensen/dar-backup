@@ -26,19 +26,22 @@ verbose:
 # -va
 
 
-extract:
+restore-options:
 # don't restore File Specific Attributes
 #--fsa-scope none
 
 # ignore owner, useful when used by a non-privileged user
 --comparison-field=ignore-owner
 
+
+
+# Exclude specific file types from compression
+compress-exclusion:
+
 # First setting case insensitive mode on:
 -an
 -ag
 
-# Exclude specific file types from compression
-compress-exclusion:
 -Z    "*.gz"
 -Z    "*.bz2"
 -Z    "*.xz"
@@ -105,6 +108,5 @@ compress-exclusion:
 -Z    "*.dar"
 
 # Now we swap back to case sensitive mode for masks which is the default
-# mode:
 -acase
 

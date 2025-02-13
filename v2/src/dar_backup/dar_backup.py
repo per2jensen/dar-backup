@@ -228,7 +228,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
 
 
 
-def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, selection: str =None):
+def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str, selection: str =None):
     """
     Restores a backup file to a specified directory.
 
@@ -249,6 +249,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     if selection:
         selection_criteria = shlex.split(selection)
         command.extend(selection_criteria)
+    command.extend(['-B', darrc,  'restore-options'])  # the .darrc `restore-options` section
     logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
@@ -676,7 +677,7 @@ def main():
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
             logger.debug(f"Restoring {args.restore} to {restore_dir}")
-            restore_backup(args.restore, config_settings, restore_dir, args.selection)
+            restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection)
         else:
             parser.print_help()
 
