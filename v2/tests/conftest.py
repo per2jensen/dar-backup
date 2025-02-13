@@ -125,6 +125,8 @@ def create_backup_definitions(env : EnvData) -> None:
 -s 10G
 -z6
 -am
+--comparison-field=ignore-owner
+--cache-directory-tagging
 -g {os.path.join(env.test_dir, 'data')}
 """.replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
     }
@@ -132,7 +134,6 @@ def create_backup_definitions(env : EnvData) -> None:
     for filename, content in backup_definitions.items():
         with open(os.path.join(env.test_dir, 'backup.d', filename), 'w') as f:
             f.write(content)
-
 
 
 
