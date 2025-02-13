@@ -119,13 +119,11 @@ def create_backup_definitions(env : EnvData) -> None:
     logging.info("Generating backup definition")
     backup_definitions = {
         "example" : f"""
--Q 
 -B {env.dar_rc}
 -R /
 -s 10G
 -z6
 -am
---comparison-field=ignore-owner
 --cache-directory-tagging
 -g {os.path.join(env.test_dir, 'data')}
 """.replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
