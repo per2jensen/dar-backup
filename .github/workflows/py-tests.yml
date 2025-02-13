@@ -28,18 +28,29 @@ jobs:
       - name: Install virtualenv, build and install the dar-backup package
         run: |
           cd $GITHUB_WORKSPACE/v2
+
+          if [[ -d venv ]]; then
+             rm -fr venv
+          fi  
+
           python3 -m venv venv
           . venv/bin/activate
           python3 -m pip install --upgrade pip
           python3 -m pip install wheel build pytest hatchling hatch
           python3 -m build
-          pip3 install .
+          VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+')
+          pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
           
 
       - name: Run pytest
         run: |
           cd $GITHUB_WORKSPACE/v2
-          export PYTHONPATH=$GITHUB_WORKSPACE/v2 
+          export PYTHONPATH=$GITHUB_WORKSPACE/v2
+
+          if [[ "$VIRTUAL_ENV" ]]; then
+             deactivate
+          fi
+        
           if [[ -z "$VIRTUAL_ENV" ]]; then
           . venv/bin/activate
           fi
