@@ -428,10 +428,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.error("Verification failed.")
 
             
-            if verify_result and config_settings.par2_enabled:
-                logger.info("Generate par2 redundancy files.")
-                generate_par2_files(backup_file, config_settings, args)
-                logger.info("par2 files completed successfully.")
+            logger.info("Generate par2 redundancy files.")
+            generate_par2_files(backup_file, config_settings, args)
+            logger.info("par2 files completed successfully.")
             
 
         except Exception as e:
