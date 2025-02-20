@@ -57,7 +57,7 @@ def test_version(setup_environment, env: EnvData):
 
 
     assert f"clean-log version {about.__version__}" in process.stdout, f"Version # not found in output"   
-
+    assert f'Licensed under GNU GENERAL PUBLIC LICENSE v3' in process.stdout, f"License not found in output"  
 
 
 
