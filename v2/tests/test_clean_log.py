@@ -64,7 +64,7 @@ def test_version(setup_environment, env: EnvData):
 def test_clean_log_removes_entries(setup_environment, env: EnvData, sample_log_file):
     """Test that `clean-log` removes the expected log entries."""
     
-    command = ["clean-log", "-f", sample_log_file]
+    command = ["clean-log", "-f", sample_log_file, '-c', env.config_file]
     process = run_command(command)
     
     assert process.returncode == 0, f"Command failed: {process.stderr}"
@@ -81,7 +81,7 @@ def test_clean_log_removes_entries(setup_environment, env: EnvData, sample_log_f
 def test_clean_log_keeps_unrelated_entries(setup_environment, env: EnvData, sample_log_file):
     """Test that `clean-log` does not remove unrelated log entries."""
     
-    command = ["clean-log", "-f", sample_log_file]
+    command = ["clean-log", "-f", sample_log_file, '-c', env.config_file]
     run_command(command)
 
     with open(sample_log_file, "r") as f:
@@ -99,7 +99,7 @@ def test_clean_log_empty_file(setup_environment, env: EnvData):
     # Create an empty file
     open(log_file, "w").close()
 
-    command = ["clean-log", "-f", log_file]
+    command = ["clean-log", "-f", log_file, '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode == 0, f"Command failed: {process.stderr}"
@@ -116,7 +116,7 @@ def test_clean_log_multiple_files(setup_environment, env: EnvData, sample_log_fi
     log_file_2 = os.path.join(env.test_dir, "test2.log")
     shutil.copy(sample_log_file, log_file_2)  # Duplicate the log file
 
-    command = ["clean-log", "-f", sample_log_file, log_file_2]
+    command = ["clean-log", "-f", sample_log_file, log_file_2, '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode == 0, f"Command failed: {process.stderr}"
@@ -132,7 +132,7 @@ def test_clean_log_non_existent_file(setup_environment, env: EnvData):
     """Test `clean-log` on a non-existent file."""
     log_file = os.path.join(env.test_dir, "does_not_exist.log")
 
-    command = ["clean-log", "-f", log_file]
+    command = ["clean-log", "-f", log_file, '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode != 0, "Command should fail on a non-existent file!"
@@ -147,7 +147,7 @@ def test_clean_log_read_only_file(setup_environment, env: EnvData, sample_log_fi
     import stat
     os.chmod(sample_log_file, stat.S_IREAD)  # Make file read-only
 
-    command = ["clean-log", "-f", sample_log_file]
+    command = ["clean-log", "-f", sample_log_file, '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode != 0, "Command should fail on a read-only file!"
@@ -167,7 +167,7 @@ def test_clean_log_corrupted_file(setup_environment, env: EnvData):
     with open(log_file, "w", encoding="utf-8", errors="ignore") as f:
         f.write(corrupted_content)
 
-    command = ["clean-log", "-f", log_file]
+    command = ["clean-log", "-f", log_file, '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode == 0, "Command should handle corrupted files!"
@@ -185,7 +185,7 @@ def test_clean_log_corrupted_file(setup_environment, env: EnvData):
 def test_clean_log_dry_run(setup_environment, env: EnvData, sample_log_file):
     """Test `clean-log --dry-run` to ensure it correctly displays removable lines."""
     
-    command = ["clean-log", "-f", sample_log_file, "--dry-run"]
+    command = ["clean-log", "-f", sample_log_file, "--dry-run", '-c', env.config_file]
     process = run_command(command)
 
     assert process.returncode == 0, "Command failed in dry-run mode!"
