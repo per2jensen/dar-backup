@@ -59,7 +59,6 @@ def clean_log_file(log_file_path, dry_run=False):
     ]
 
     try:
-
         with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
 
             for line in infile:
@@ -74,27 +73,11 @@ def clean_log_file(log_file_path, dry_run=False):
                         line = re.sub(pattern, "", line).strip()  # Remove only matched part
 
                 if not dry_run and line:  # In normal mode, only write non-empty lines
-                    outfile.write(line + "\n")
+                    outfile.write(line.rstrip() + "\n")
 
                 if dry_run and matched:
                     continue  # In dry-run mode, skip writing (since we’re just showing)
 
-
-
-            # for line in infile:
-            #     original_line = line  # Store the original line before modifying it
-            #     for pattern in patterns:
-            #         line = re.sub(pattern, "", line).strip()  # Remove only the matched part
-
-            #     if line:  # Only write the line if it still contains content
-            #         outfile.write(line + "\n")
-            #     else:
-            #         print(f"Removing full line: {original_line.strip()}")  # Debugging step
-
-        # with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
-        #     for line in infile:
-        #         if not any(re.search(pattern, line) for pattern in patterns):
-        #             outfile.write(line)
         
         # Ensure the temp file exists before renaming
         if not os.path.exists(temp_file_path):
@@ -141,6 +124,9 @@ def main():
 
     config_settings = ConfigSettings(os.path.expanduser(args.config_file))
 
+    if not args.file:
+        args.file = [config_settings.logfile_location]
+
     for file_path in args.file:
         if not isinstance(file_path, (str, bytes, os.PathLike)):
             print(f"Error: Invalid file path type: {file_path}")
@@ -155,14 +141,11 @@ def main():
             sys.exit(1)
 
 
-
-    if not args.file:
-        args.file = [config_settings.logfile_location]
-
     # Run the log file cleaning function
     for log_file in args.file:
         clean_log_file(log_file, dry_run=args.dry_run)
     print(f"Log file '{args.file}' has been cleaned successfully.")
+
 
 if __name__ == "__main__":
     main()
