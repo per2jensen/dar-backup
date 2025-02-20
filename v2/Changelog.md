@@ -1,6 +1,15 @@
+## v2-beta-0.6.9 - 2025-xx-XX
+
+Github link: [v2-beta-0.6.9](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.9/v2)
+
+### Added
+
+ - clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
+
+
 ## v2-beta-0.6.8 - 2025-02-13
 
-Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.8)
+Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.8/v2)
 
 ### Added
 
@@ -10,7 +19,7 @@ Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-be
 
 ## v2-alpha-0.6.7 - 2025-02-11
 
-Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.7)
+Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.7/v2)
 
 ### Added
 
@@ -19,7 +28,7 @@ Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.6 - 2025-02-02
 
-Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.6)
+Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.6/v2)
 
 ### Added
 
@@ -27,7 +36,7 @@ Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.5 - 2025-01-24
 
-Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.5)
+Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.5/v2)
 
 ### Added
 
@@ -40,7 +49,7 @@ Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.4 - 2025-01-23
 
-Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.4)
+Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.4/v2)
 
 ### Added
 
@@ -67,7 +76,7 @@ Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.2 - 2025-01-12
 
-Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.2)
+Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.2/v2)
 
 ### Added
 
@@ -82,7 +91,7 @@ Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.1 - 2025-01-05
 
-Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.1)
+Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.1/v2)
 
 ### Added
 
@@ -93,7 +102,7 @@ Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ## v2-alpha-0.6.0 - 2025-01-05
 
-Github link: [v2-alpha-0.6.0](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.0)
+Github link: [v2-alpha-0.6.0](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.0/v2)
 
 ### Added
 
