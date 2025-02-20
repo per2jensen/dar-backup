@@ -28,7 +28,8 @@ See section 15 and section 16 in the supplied "LICENSE" file.'''
 
 def clean_log_file(log_file_path, dry_run=False):
     """Removes specific log lines from the given file using a memory-efficient streaming approach."""
-    
+
+
     if not os.path.isfile(log_file_path):
         print(f"File '{log_file_path}' not found!")
         sys.exit(1)
@@ -36,6 +37,11 @@ def clean_log_file(log_file_path, dry_run=False):
     if not os.access(log_file_path, os.R_OK):
         print(f"No read permission for '{log_file_path}'")
         sys.exit(1)
+
+    if not os.access(log_file_path, os.W_OK):
+        print(f"Error: No write permission for '{log_file_path}'")
+        sys.exit(1)
+
 
     if dry_run:
         print(f"Performing a dry run on: {log_file_path}")
@@ -48,30 +54,58 @@ def clean_log_file(log_file_path, dry_run=False):
         r"INFO\s*-\s*</Directory",
         r"INFO\s*-\s*<Directory",
         r"INFO\s*-\s*</File",
-        r"INFO\s*-\s*Inspecting directory",
-        r"INFO\s*-\s*Finished Inspecting"
-        r"INFO - Finished Inspecting"
+        r"INFO\s*-\s*Inspecting\s*directory",
+        r"INFO\s*-\s*Finished\s*Inspecting"
     ]
 
     try:
-        with open(log_file_path, "r") as infile:
+
+        with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
+
             for line in infile:
-                if any(re.search(pattern, line) for pattern in patterns):
-                    if dry_run:
-                        print(f"Would remove: {line.strip()}")
-                    continue  # Skip writing this line if not in dry-run mode
+                original_line = line  # Store the original line before modifying it
+                matched = False  # Track if a pattern is matched
 
-                if not dry_run:
-                    with open(temp_file_path, "a") as outfile:
-                        outfile.write(line)
+                for pattern in patterns:
+                    if re.search(pattern, line):  # Check if the pattern matches
+                        if dry_run:
+                            print(f"Would remove: {original_line.strip()}")  # Print full line for dry-run
+                        matched = True  # Mark that a pattern matched
+                        line = re.sub(pattern, "", line).strip()  # Remove only matched part
 
-        if not dry_run:
-            os.replace(temp_file_path, log_file_path)
+                if not dry_run and line:  # In normal mode, only write non-empty lines
+                    outfile.write(line + "\n")
+
+                if dry_run and matched:
+                    continue  # In dry-run mode, skip writing (since we’re just showing)
+
+
+
+            # for line in infile:
+            #     original_line = line  # Store the original line before modifying it
+            #     for pattern in patterns:
+            #         line = re.sub(pattern, "", line).strip()  # Remove only the matched part
+
+            #     if line:  # Only write the line if it still contains content
+            #         outfile.write(line + "\n")
+            #     else:
+            #         print(f"Removing full line: {original_line.strip()}")  # Debugging step
+
+        # with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
+        #     for line in infile:
+        #         if not any(re.search(pattern, line) for pattern in patterns):
+        #             outfile.write(line)
+        
+        # Ensure the temp file exists before renaming
+        if not os.path.exists(temp_file_path):
+            open(temp_file_path, "w").close()  # Create an empty file if nothing was written
+
+        os.replace(temp_file_path, log_file_path)
+        print(f"Successfully cleaned log file: {log_file_path}")
 
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
-
 
 
     
@@ -107,9 +141,20 @@ def main():
 
     config_settings = ConfigSettings(os.path.expanduser(args.config_file))
 
-    if args.file and (not os.path.exists(args.file) or args.file.strip() == ""):
-        print(f"Error: Log file '{args.file}' does not exist.")
-        sys.exit(1)
+    for file_path in args.file:
+        if not isinstance(file_path, (str, bytes, os.PathLike)):
+            print(f"Error: Invalid file path type: {file_path}")
+            sys.exit(1)
+
+        if not os.path.exists(file_path):
+            print(f"Error: Log file '{file_path}' does not exist.")
+            sys.exit(1)
+
+        if file_path.strip() == "":
+            print(f"Error: Invalid empty filename '{file_path}'.")
+            sys.exit(1)
+
+
 
     if not args.file:
         args.file = [config_settings.logfile_location]
