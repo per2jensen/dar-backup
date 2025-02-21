@@ -158,6 +158,7 @@ Installation is currently in a venv. These commands are installed in the venv:
 - dar-back
 - cleanup
 - manager
+- clean-log
 
 To install, create a venv and run pip:
 ````    
@@ -177,56 +178,16 @@ alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 Typing `db` at the command line gives this
 ````    
 (venv) user@machine:~$ db
-dar-backup 0.5.17
+dar-backup 0.6.9
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.
 ````
 
-`dar-backup -h` gives the usage output:
-````
-usage: dar-backup [-h] [-F] [-D] [-I] [-d BACKUP_DEFINITION]
-                  [--alternate-reference-archive ALTERNATE_REFERENCE_ARCHIVE] [-c CONFIG_FILE] [--darrc DARRC]
-                  [--examples] [-l] [--list-contents LIST_CONTENTS] [--selection SELECTION] [-r RESTORE]
-                  [--restore-dir RESTORE_DIR] [--verbose] [--log-level LOG_LEVEL] [--log-stdout]
-                  [--do-not-compare] [-v]
-
-Backup and verify using dar backup definitions.
-
-options:
-  -h, --help            show this help message and exit
-  -F, --full-backup     Perform a full backup.
-  -D, --differential-backup
-                        Perform differential backup.
-  -I, --incremental-backup
-                        Perform incremental backup.
-  -d BACKUP_DEFINITION, --backup-definition BACKUP_DEFINITION
-                        Specific 'recipe' to select directories and files.
-  --alternate-reference-archive ALTERNATE_REFERENCE_ARCHIVE
-                        DIFF or INCR compared to specified archive.
-  -c CONFIG_FILE, --config-file CONFIG_FILE
-                        Path to 'dar-backup.conf'
-  --darrc DARRC         Optional path to .darrc
-  --examples            Examples of using dar-backup.py.
-  -l, --list            List available archives.
-  --list-contents LIST_CONTENTS
-                        List the contents of the specified archive.
-  --selection SELECTION
-                        dar file selection for listing/restoring specific files/directories.
-  -r RESTORE, --restore RESTORE
-                        Restore specified archive.
-  --restore-dir RESTORE_DIR
-                        Directory to restore files to.
-  --verbose             Print various status messages to screen
-  --log-level LOG_LEVEL
-                        `debug` or `trace`
-  --log-stdout          also print log messages to stdout
-  --do-not-compare      do not compare restores to file system
-  -v, --version         Show version and license information.
-````    
 
 ## 4
+
 Generate the archive catalog database(s). 
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
 
@@ -234,10 +195,8 @@ Generate the archive catalog database(s).
 manager --create-db --config-file <path to config file> --log-level debug --log-stdout
 ````    
 
-
-
-
 ## 5
+
 You are ready to do backups of all your backup definitions, if your backup definitions are 
 in place in BACKUP.D_DIR (see config file)
 ````    
@@ -306,19 +265,21 @@ verbose:
 # -va
 
 
-extract:
+restore-options:
 # don't restore File Specific Attributes
 #--fsa-scope none
 
 # ignore owner, useful when used by a non-privileged user
 --comparison-field=ignore-owner
 
+
+# Exclude specific file types from compression
+compress-exclusion:
+
 # First setting case insensitive mode on:
 -an
 -ag
 
-# Exclude specific file types from compression
-compress-exclusion:
 -Z    "*.gz"
 -Z    "*.bz2"
 -Z    "*.xz"
@@ -388,6 +349,7 @@ compress-exclusion:
 #mode:
 -acase
 ````
+
 
 # Systemctl examples
 I have dar-backup scheduled to run via systemd --user settings.
@@ -602,4 +564,76 @@ These .darrc settings make `dar` print the current directory being processed (-v
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
 
 if --log-stdout is used the information would be picked up by systemd and logged by journald
+
+
+
+# Reference
+
+## dar-backup.py
+
+This script is responsible for managing the backup creation and validation process. It supports the following options:
+
+```
+--full-backup                     Perform a full backup.
+--differential-backup             Perform a differential backup.
+--incremental-backup              Perform an incremental backup.
+--backup-definition <name>        Specify the backup definition file.
+--alternate-reference-archive <file>  Use a different archive for DIFF/INCR backups.
+--config-file <path>              Specify the path to the configuration file.
+--darrc <path>                    Specify an optional path to .darrc.
+--examples                        Show examples of using dar-backup.py.
+--list                            List available backups.
+--list-contents <archive>         List the contents of a specified archive.
+--selection <params>              Define file selection for listing/restoring.
+--restore <archive>               Restore a specified archive.
+--restore-dir <path>              Directory to restore files to.
+--verbose                         Enable verbose output.
+--log-level <level>               Set log level (debug, trace, etc.).
+--log-stdout                      Also print log messages to stdout.
+--do-not-compare                  Do not compare restores to file system.
+--version                         Show version and license information.
+```
+
+## manager.py
+
+This script manages `dar` databases and catalogs. Available options include:
+
+```
+--create-db                     Create missing databases for all backup definitions.
+--alternate-archive-dir <path>   Use this directory instead of BACKUP_DIR in the config file.
+--add-dir <path>                 Add all archive catalogs in this directory to databases.
+-d, --backup-def <name>          Restrict to work only on this backup definition.
+--add-specific-archive <file>    Add this archive to the catalog database.
+--remove-specific-archive <file> Remove this archive from the catalog database.
+-l, --list-catalogs              List catalogs in databases for all backup definitions.
+--list-catalog-contents <num>    List contents of a catalog by archive number.
+--list-archive-contents <file>   List contents of an archive’s catalog.
+--find-file <file>               Search catalogs for a specific file.
+--verbose                        Enable verbose output.
+--log-level <level>              Set log level.
+```
+
+## cleanup.py
+
+This script cleans up old backups and manages storage. Supported options:
+
+```
+--prune-older-than <days>   Remove backups older than the specified number of days.
+--keep-last <num>           Retain only the last <num> backups.
+--dry-run                   Show what would be deleted without actually deleting.
+--backup-dir <path>         Specify the backup directory.
+--verbose                   Enable verbose output.
+--help                      Show this help message and exit.
+```
+
+## clean_log.py
+
+This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
+
+```
+-f, --file <path>          Specify the log file(s) to be cleaned.
+-c, --config-file <path>   Specify the configuration file (default: ~/.config/dar-backup/dar-backup.conf).
+--dry-run                  Show which lines would be removed without modifying the file.
+-v, --version              Display version and licensing information.
+```
 
