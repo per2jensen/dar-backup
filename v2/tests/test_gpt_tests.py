@@ -175,3 +175,54 @@ def test_par2_insufficient_redundancy(setup_environment, env):
         env.logger.exception("PAR2 excessive corruption test failed")
         pytest.fail("PAR2 excessive corruption test encountered an exception")
 
+
+
+def test_extreme_restore_failure(setup_environment, env):
+    """
+    Attempts to make dar fail by severely corrupting an archive beyond recovery.
+    """
+    try:
+        create_test_files(env)
+        run_backup_script("--full-backup", env)
+        backup_name = f"example_FULL_{env.datestamp}"
+        backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
+        
+        # Corrupt the entire file by overwriting with random data
+        with open(backup_file, 'wb') as f:
+            f.write(os.urandom(os.path.getsize(backup_file)))
+        
+        # Attempt to restore
+        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q']
+        result = run_command(restore_command)
+        
+        assert result.returncode != 0, "dar unexpectedly succeeded despite extreme corruption!"
+        env.logger.info("dar correctly failed due to extreme corruption")
+    except Exception as e:
+        env.logger.exception("Extreme restore failure test failed")
+        pytest.fail("Extreme restore failure test encountered an exception")
+
+
+def test_metadata_corruption_failure(setup_environment, env):
+    """
+    Attempts to make dar fail by corrupting only the metadata portion of the archive.
+    """
+    try:
+        create_test_files(env)
+        run_backup_script("--full-backup", env)
+        backup_name = f"example_FULL_{env.datestamp}"
+        backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
+        
+        # Corrupt only the first 4KB of the file, which likely contains metadata
+        with open(backup_file, 'r+b') as f:
+            f.seek(0)
+            f.write(os.urandom(4096))
+        
+        # Attempt to restore
+        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q']
+        result = run_command(restore_command)
+        
+        assert result.returncode != 0, "dar unexpectedly succeeded despite metadata corruption!"
+        env.logger.info("dar correctly failed due to metadata corruption")
+    except Exception as e:
+        env.logger.exception("Metadata corruption failure test failed")
+        pytest.fail("Metadata corruption failure test encountered an exception")
