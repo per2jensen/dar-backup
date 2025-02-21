@@ -1,12 +1,17 @@
 # Default configuration file for dar
 # Place this file in the user's home directory as .darrc or specify it with the -B option
 
-extract:
+restore-options:
 # don't restore File Specific Attributes
 #--fsa-scope none
 
 # ignore owner, useful when used by a non-privileged user
 --comparison-field=ignore-owner
+
+
+
+compress-exclusion:
+# Exclude specific file types from compression
 
 # First setting case insensitive mode on:
 -an
@@ -14,7 +19,6 @@ extract:
 
 
 # Exclude specific file types from compression
-compress-exclusion:
 -Z  *.gz
 -Z  *.bz2
 -Z    *.xz

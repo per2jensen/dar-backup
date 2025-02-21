@@ -27,7 +27,7 @@ def test_restore_functionality(setup_environment, env):
         restore_path.mkdir(parents=True, exist_ok=True)
         
         # Restore backup
-        restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         
         assert result.returncode == 0, "Restore command failed!"
@@ -45,7 +45,7 @@ def test_invalid_backup_handling(setup_environment, env):
     """
     try:
         invalid_backup_name = "nonexistent_backup"
-        restore_command = ['dar', '-x', os.path.join(env.backup_dir, invalid_backup_name), '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', os.path.join(env.backup_dir, invalid_backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         
         assert result.returncode != 0, "Expected failure on restoring nonexistent backup"
@@ -128,7 +128,7 @@ def test_par2_repair_bit_rot(setup_environment, env):
         assert result.returncode == 0, "PAR2 failed to repair the archive!"
         
         # Verify restoration after repair
-        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         assert result.returncode == 0, "Restore failed after PAR2 repair!"
         
@@ -194,7 +194,7 @@ def test_extreme_restore_failure(setup_environment, env):
             f.write(os.urandom(os.path.getsize(backup_file)))
         
         # Attempt to restore
-        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite extreme corruption!"
@@ -220,7 +220,7 @@ def test_metadata_corruption_failure(setup_environment, env):
             f.write(os.urandom(4096))
         
         # Attempt to restore
-        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite metadata corruption!"
@@ -246,7 +246,7 @@ def test_restore_functionality(setup_environment, env):
         restore_path.mkdir(parents=True, exist_ok=True)
         
         # Restore backup
-        restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q']
+        restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
         result = run_command(restore_command)
         
         assert result.returncode == 0, "Restore command failed!"
