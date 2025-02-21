@@ -322,7 +322,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         stdout,stderr = process.stdout, process.stderr
         if process.returncode != 0:
             logger.error(f"Error listing contents of backup: '{backup_name}'")
-            raise subprocess.CalledProcessError(str(process))
+            raise RuntimeError(str(process))
         for line in stdout.splitlines():
             if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
                 print(line)
