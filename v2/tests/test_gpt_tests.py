@@ -1,6 +1,8 @@
 import pytest
 import os
 import shutil
+import re
+import random
 from pathlib import Path
 from dar_backup.util import run_command
 from tests.envdata import EnvData
@@ -226,3 +228,33 @@ def test_metadata_corruption_failure(setup_environment, env):
     except Exception as e:
         env.logger.exception("Metadata corruption failure test failed")
         pytest.fail("Metadata corruption failure test encountered an exception")
+
+
+def test_restore_functionality(setup_environment, env):
+    """
+    Tests restoring backups and verifying integrity.
+    """
+    try:
+        create_test_files(env)
+        run_backup_script("--full-backup", env)
+        backup_name = f"example_FULL_{env.datestamp}"
+        
+        # Ensure restore directory exists
+        restore_path = Path(env.restore_dir)
+        if restore_path.exists():
+            shutil.rmtree(restore_path)
+        restore_path.mkdir(parents=True, exist_ok=True)
+        
+        # Restore backup
+        restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q']
+        result = run_command(restore_command)
+        
+        assert result.returncode == 0, "Restore command failed!"
+        
+        # Verify restored content
+        verify_restore_contents(test_files, backup_name, env)
+        env.logger.info("Restore verification succeeded")
+    except Exception as e:
+        env.logger.exception("Restore functionality test failed")
+        pytest.fail("Restore test encountered an exception")
+
