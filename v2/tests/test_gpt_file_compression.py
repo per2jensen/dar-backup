@@ -6,13 +6,16 @@ from pathlib import Path
 from dar_backup.util import run_command
 from tests.envdata import EnvData
 
+
+file_types = [
+    "gz", "bz2", "xz", "zip", "rar", "7z", "tar", "tgz", "tbz2", "txz",
+    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg",
+    "mp4", "avi", "mkv", "mov", "wmv", "flv", "mpeg", "mpg"
+]
+
+
 def create_test_files(env):
     """Creates test files with different cases and compression types."""
-    file_types = [
-        "gz", "bz2", "xz", "zip", "rar", "7z", "tar", "tgz", "tbz2", "txz",
-        "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg",
-        "mp4", "avi", "mkv", "mov", "wmv", "flv", "mpeg", "mpg"
-    ]
     test_data = b"TestData" * 1000  # 10KB of test data
     
     for ext in file_types:
@@ -22,6 +25,37 @@ def create_test_files(env):
             with open(file_path, "wb") as f:
                 f.write(test_data)
     
+
+def check_no_compression(list_result, backed_up_files, env):
+    """Ensure no compression percentage exists in the output for the test files.
+    
+    Args:
+        list_result (str): Output of the `dar -l` command.
+        backed_up_files (dict): Dictionary of test files and their compression status.
+        env (EnvData): Environment data.
+
+    Returns:
+        bool: True if no compression of files were discovered, False otherwise.
+    """
+    compression_not_found = True
+    env.logger.debug(f"backed_up_files: {backed_up_files}")
+    for line in list_result.splitlines():
+        #env.logger.debug(f"---------\nline: {line}")
+        columns = line.split()
+        #env.logger.debug(f"split line: {columns} ")
+        match = None
+        match = re.search(r'\[\s*(\d+%)\s*\]', line)  # extracts percentage if present
+        #env.logger.debug(f"match: {match}")
+        if match:
+            if len(columns) > 1:
+                backed_up_file = os.path.basename(columns[-1])
+                #env.logger.debug(f"filename: {backed_up_file}")   
+                if backed_up_file in backed_up_files:
+                    #env.logger.debug(f"match found for file: {backed_up_file}")
+                    compression_not_found = False
+                    env.logger.error(f"Erroneous compression detected in line: {line}")
+    return compression_not_found
+
 
 def test_dar_backup_compression_exclusion(setup_environment, env):
     """Tests that dar excludes specified file types from compression and restores them correctly."""
@@ -48,46 +82,36 @@ def test_dar_backup_compression_exclusion(setup_environment, env):
     
     # Verify `dar` did not compress files
     compression_check_failed = False
-    backed_up_files = {f'test_file.{ext}': False for ext in [
-        "gz", "bz2", "xz", "zip", "rar", "7z", "tar", "tgz", "tbz2", "txz",
-        "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg",
-        "mp4", "avi", "mkv", "mov", "wmv", "flv", "mpeg", "mpg"
-    ]}
-    backed_up_files.update({f'TEST_FILE.{ext.upper()}': False for ext in backed_up_files})
+    backed_up_files = {f'test_file.{ext}': False for ext in file_types}
+    backed_up_files.update({f'TEST_FILE.{ext.upper()}': False for ext in file_types})
     list_command = ["dar", "-l", backup_file, "-am", "-as", "-Q"]
     list_result = run_command(list_command)
-    
+    compression_check = check_no_compression(list_result.stdout, backed_up_files, env)
+    assert compression_check, "Some files were compressed when they should not have been!"
 
+    fake_list_result = """
+[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
+--------------------------------+------------+-------+-------+---------+-------------------------------+------------
+[Saved][-]       [-L-][   0%][ ]  drwxrwxrwt   root	root	390 kio	Sat Feb 22 11:12:36 2025	tmp
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	390 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	390 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	390 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/test_file.gz
+[Saved][ ]       [-L-][   0%][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/TEST_FILE.GZ
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/test_file.bz2
+[Saved][ ]       [-L-][1111%][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/TEST_FILE.BZ2
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/test_file.xz
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/TEST_FILE.XZ
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   pj	pj	7 kio	Sat Feb 22 11:12:36 2025	tmp/unit-test/test_dar_backup_compression_exclusion/data/test_file.zip
+"""
 
-    # Ensure no compression percentage exists in the output
-    for line in list_result.stdout.splitlines():
-        env.logger.debug(f"line: {line}")
-        columns = line.split()
-        #env.logger.debug(f"split line: {columns} ")
-        match = None
-        if len(columns) > 1:
-            filename = os.path.basename(columns[-1])
-        #env.logger.debug(f"filename: {filename}") 
+    compression_check_fails = check_no_compression(fake_list_result, backed_up_files, env)
+    env.logger.debug(f"'compression_check_must_fail' : {compression_check_fails}")
+    assert not compression_check_fails, "Some files were compressed when they should not have been!"
 
-        if len(columns) > 1 and filename in backed_up_files:
-            match = re.search(r'\[([0-9]+%)\]', line)  # extracts percentage if present
-            if match:
-                env.logger.debug(f"match: {match}")
-        columns = line.split()
-        if match and filename in backed_up_files:
-            compression_check_failed = True
-            env.logger.error(f"Compression detected in line: {line}")
-    
-    assert not compression_check_failed, "Some files were compressed when they should not have been!"
-    
-    for ext in [
-        "gz", "bz2", "xz", "zip", "rar", "7z", "tar", "tgz", "tbz2", "txz",
-        "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg",
-        "mp4", "avi", "mkv", "mov", "wmv", "flv", "mpeg", "mpg"
-    ]:
-        assert f"test_file.{ext}" in list_result.stdout or f"TEST_FILE.{ext.upper()}" in list_result.stdout, \
-            f"{ext} files may have been compressed incorrectly!"
+    # Verify all files were restored    
+    for ext in file_types:
+        assert f"test_file.{ext}" in list_result.stdout and f"TEST_FILE.{ext.upper()}" in list_result.stdout, \
+            f"{ext} files may have been backed up or restored incorrectly"
     
     env.logger.info("DAR correctly excluded file types from compression and restored them successfully.")
-
-    assert False, "Test not implemented"
