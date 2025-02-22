@@ -16,6 +16,7 @@ Github link: [v2-beta-0.6.9](https://github.com/per2jensen/dar-backup/tree/v2-be
 ### Added
 
 - clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
+- ChatGPT generated pytest cases
 
 
 ## v2-beta-0.6.8 - 2025-02-13
