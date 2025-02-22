@@ -22,4 +22,14 @@ def test_stdout_1MB(setup_environment, env):
 
 
 
+def test_command_not_found(setup_environment, env):
+    """
+    Test that run_command correctly handles a missing command.
+    """
+    command = ["nonexistent_command"]
+    result = run_command(command)
+    
+    assert result.returncode == 127, "Expected return code 127 for command not found"
+    assert "Command not found" in result.stderr or "not found" in result.stderr.lower(), "Expected command not found message in stderr"
+    env.logger.info("Successfully handled missing command")
                         

@@ -1,5 +1,13 @@
 # dar-backup Changelog
 
+## v2-beta-0.6.11 - 2025-
+
+Github link: [v2-beta-0.6.11](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.11/v2)
+
+### Added
+
+- run_command() fixed to handle missing command. Test case added.
+
 ## v2-beta-0.6.10 - 2025-02-22
 
 Github link: [v2-beta-0.6.10](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.10/v2)
