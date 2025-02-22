@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import datetime
 import filecmp
 
 import os
@@ -81,30 +80,31 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         raise BackupError(f"Unexpected error during backup: {e}") from e
  
 
-# Function to recursively find <File> tags and build their full paths
-def find_files_with_paths(element: ET, current_path=""):
+
+def find_files_with_paths(xml_root: ET.Element):
     """
-    Recursively finds files within a directory element and returns a list of file paths with their sizes.
+    Finds files within an XML element and returns a list of file paths with their sizes.
 
     Args:
-        element (Element): The directory element to search within.
-        current_path (str, optional): The current path of the directory element. Defaults to "".
+        xml_root (Element): The root element of the XML.
 
     Returns:
         list: A list of tuples containing file paths and their sizes.
     """
-    logger.debug(f"Recursively generate list of tuples with file paths and sizes for File elements in dar xml output")
+    logger.debug("Generating list of tuples with file paths and sizes for File elements in dar xml output")
     files = []
-    if element.tag == "Directory":
-        current_path = f"{current_path}/{element.get('name')}"
-    for child in element:
-        if child.tag == "File":
-            file_path = (f"{current_path}/{child.get('name')}", child.get('size'))  # tuple (filepath, size)
-            files.append(file_path)
-        elif child.tag == "Directory":
-            files.extend(find_files_with_paths(child, current_path))
-    return files
+    current_path = []
 
+    for elem in xml_root.iter():
+        if elem.tag == "directory":
+            current_path.append(elem.get('name'))
+        elif elem.tag == "file":
+            file_path = ("/".join(current_path + [elem.get('name')]), elem.get('size'))
+            files.append(file_path)
+        elif elem.tag == "directory" and elem.get('name') in current_path:
+            current_path.pop()
+
+    return files
 
 
 def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], config_settings: ConfigSettings):
@@ -238,20 +238,20 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         restore_dir (str): The directory where the backup should be restored to.
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
     """
-    backup_file = os.path.join(config_settings.backup_dir, backup_name)
-    command = ['dar', '-x', backup_file, '-Q', '-D']
-    if restore_dir:
-        if not os.path.exists(restore_dir):
-            os.makedirs(restore_dir)
-        command.extend(['-R', restore_dir])
-    else:
-        raise RestoreError("Restore directory ('-R <dir>') not specified")
-    if selection:
-        selection_criteria = shlex.split(selection)
-        command.extend(selection_criteria)
-    command.extend(['-B', darrc,  'restore-options'])  # the .darrc `restore-options` section
-    logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
     try:
+        backup_file = os.path.join(config_settings.backup_dir, backup_name)
+        command = ['dar', '-x', backup_file, '-Q', '-D']
+        if restore_dir:
+            if not os.path.exists(restore_dir):
+                os.makedirs(restore_dir)
+            command.extend(['-R', restore_dir])
+        else:
+            raise RestoreError("Restore directory ('-R <dir>') not specified")
+        if selection:
+            selection_criteria = shlex.split(selection)
+            command.extend(selection_criteria)
+        command.extend(['-B', darrc,  'restore-options'])  # the .darrc `restore-options` section
+        logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
         process = run_command(command, config_settings.command_timeout_secs)
         if process.returncode == 0:
             logger.info(f"Restore completed successfully to: '{restore_dir}'")
@@ -260,6 +260,9 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             raise RestoreError(str(process))
     except subprocess.CalledProcessError as e:
         raise RestoreError(f"Restore command failed: {e}") from e
+    except OSError as e:
+        logger.error(f"Failed to create restore directory: {e}")
+        raise RestoreError("Could not create restore directory")
     except Exception as e:
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
@@ -285,7 +288,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
         # Parse the XML data
         root = ET.fromstring(process.stdout)
         output = None  # help gc
-        # Extract full paths and file size for all <File> elements
+        # Extract full paths and file size for all <file> elements
         file_paths = find_files_with_paths(root)
         root = None # help gc
         logger.trace(str(process))
@@ -623,6 +626,14 @@ def main():
         logger.debug(f"Using .darrc: {args.darrc}")                
     else:
         logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file")
+
+    if not args.config_file:
+        logger.error(f"Config file not specified, exiting")
+        sys.exit(1) 
+    
+    if not os.path.exists(args.config_file):
+        logger.error(f"Config file {args.config_file} does not exist.")
+        sys.exit(1)
 
 
     try:
