@@ -3,6 +3,47 @@
   The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for
   the heavy lifting, together with the par2 suite in these scripts.
 
+## Table of Contents
+
+- [Full, differential or incremental backups using 'dar'](#full-differential-or-incremental-backups-using-dar)
+- [My use case](#my-use-case)
+- [License](#license)
+- [Status](#status)
+  - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
+- [Homepage - Github](#homepage---github)
+- [Requirements](#requirements)
+- [Config file](#config-file)
+- [How to run](#how-to-run)
+  - [1](#1)
+  - [2](#2)
+  - [3](#3)
+  - [4](#4)
+  - [5](#5)
+  - [6](#6)
+- [.darrc](#darrc)
+- [Systemctl examples](#systemctl-examples)
+  - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
+  - [Timer: dar-back --incremental-backup](#timer-dar-back---incremental-backup)
+- [List contents of an archive](#list-contents-of-an-archive)
+- [dar file selection examples](#dar-file-selection-examples)
+  - [Select a directory](#select-a-directory)
+  - [Select file dates in the directory](#select-file-dates-in-the-directory)
+  - [Exclude .xmp files from that date](#exclude-xmp-files-from-that-date)
+- [Restoring](#restoring)
+  - [Default location for restores](#default-location-for-restores)
+  - [--restore-dir option](#restore-dir-option)
+  - [A single file](#a-single-file)
+  - [A directory](#a-directory)
+  - [.NEF from a specific date](#nef-from-a-specific-date)
+- [Points of interest](#points-of-interest)
+  - [dar manager databases](#dar-manager-databases)
+  - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
+- [Reference](#reference)
+  - [dar-backup.py](#dar-backuppy)
+  - [manager.py](#managerpy)
+  - [cleanup.py](#cleanuppy)
+  - [clean-log.py](#clean-logpy)
+
 ## My use case
 
 I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
@@ -38,7 +79,7 @@ Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* i
 
 ## Homepage - Github
 
-This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
+This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup/tree/main/v2
 
 This python version is v2 of dar-backup, the first is made in bash.
 
@@ -580,12 +621,20 @@ deactivate
 
 ## Points of interest
 
+### dar manager databases
+
+`dar-backup` now saves archive catalogs in dar catalog databases.
+
+This makes it easier to restore to a given date when having many FULL, DIFF and INCR archives.
+
 ### .darrc sets -vd -vf (since v0.6.4)
 
 These .darrc settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
 
-if --log-stdout is used the information would be picked up by systemd and logged by journald
+if --log-stdout is used the information would be picked up by systemd and logged by journald.½
+
+The log file can get quite cluttered, if you want the clutter to be removed, run the `clean-log`script.
 
 ## Reference
 

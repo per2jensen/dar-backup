@@ -1,10 +1,21 @@
-## v2-beta-0.6.9 - 2025-xx-XX
+# dar-backup Changelog
+
+## v2-beta-0.6.10 - 2025-02-22
+
+Github link: [v2-beta-0.6.10](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.10/v2)
+
+### Added
+
+- unit test verifying no compression of many compressed file formats
+- README.md lint fixes + a TOC 
+
+## v2-beta-0.6.9 - 2025-02-21
 
 Github link: [v2-beta-0.6.9](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.9/v2)
 
 ### Added
 
- - clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
+- clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
 
 
 ## v2-beta-0.6.8 - 2025-02-13
@@ -16,7 +27,6 @@ Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-be
 - switching from alpha --> beta status
 - manager --list-archive-contents added
 
-
 ## v2-alpha-0.6.7 - 2025-02-11
 
 Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.7/v2)
@@ -24,7 +34,6 @@ Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-a
 ### Added
 
 - Cleanups now remove catalogs from the catalog databases
-
 
 ## v2-alpha-0.6.6 - 2025-02-02
 
@@ -45,7 +54,6 @@ Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-a
 - LICENSE added to the dar-backup wheel package
 
 - Link to Changelog added to PyPi page
-
 
 ## v2-alpha-0.6.4 - 2025-01-23
 
@@ -73,7 +81,6 @@ Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 - added test for --restore-dir 
 
-
 ## v2-alpha-0.6.2 - 2025-01-12
 
 Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.2/v2)
@@ -88,7 +95,6 @@ Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 - dar-backup --verbose option: print info on par2 generation
 
-
 ## v2-alpha-0.6.1 - 2025-01-05
 
 Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.1/v2)
@@ -98,7 +104,6 @@ Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-a
 - FIX timeout error on run_command(). Set a long timeout on "heavy" operations. Default is 30 seconds.
 
 - Log the __str__ of CommandResult on return from run_command()
-
 
 ## v2-alpha-0.6.0 - 2025-01-05
 
