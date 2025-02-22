@@ -4,65 +4,70 @@
   the heavy lifting, together with the par2 suite in these scripts.
 
 
-#  My use case
+## My use case
 
  I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
- - a non-privileged user (me :-)) can perform a mount
- - a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
+ 
+- a non-privileged user (me :-)) can perform a mount
+- a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
  I needed the following:
- - Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
- - Backup primarily photos, video and different types of documents
- - Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
- - During backup archives must be tested and a restore test (however small) performed
- - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
- - Easy to verify archive's integrity, after being moved around.
+
+- Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
+- Backup primarily photos, video and different types of documents
+- Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
+- During backup archives must be tested and a restore test (however small) performed
+- Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
+- Easy to verify archive's integrity, after being moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
- 
 
-# License
+## License
 
   These scripts are licensed under the GPLv3 license.
   Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
+## Status
 
-# Status
 As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
 
 As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
 
-
-**Breaking change in version 0.6.0**
+### Breaking change in version 0.6.0
 
 Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* in the config file.
 
-# Homepage - Github
+## Homepage - Github
+
 This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup
 
 This python version is v2 of dar-backup, the first is made in bash.
 
-# Requirements
-  - dar
-  - par2
-  - python3 :-)
+## Requirements
+
+- dar
+- par2
+- python3 :-)
 
 On Ubuntu, install the requirements this way:
-  ````
-    sudo apt install dar par2 python3
-  ````
 
-# Config file
+```` bash
+    sudo apt install dar par2 python3
+````
+
+## Config file
 
 The default configuration is expected here: ~/.config/dar-backup/dar-backup.conf
 
-# How to run 
+## How to run 
 
-## 1
+### 1
+
 Config file default location is $HOME/.config/dar-backup/dar-backup.conf
 
 Example:
-````
+
+```` code
 [MISC]
 LOGFILE_LOCATION=/home/user/dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20
@@ -99,9 +104,10 @@ ENABLED = True
 # SCRIPT_2 = <something>
 # ...
 
-````    
+````
 
-## 2 
+### 2
+
 Put your backup definitions in the directory $BACKUP.D_DIR (defined in the config file)
 
 The name of the file is the `backup definition` name.
@@ -111,7 +117,8 @@ Make as many backup definitions as you need. Run them all in one go, or run one 
 The `dar` [documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS) has good information on file selection.
 
 Example of backup definition for a home directory
-````    
+
+```` code
 
 # Switch to ordered selection mode, which means that the following
 # options will be considered top to bottom
@@ -125,7 +132,7 @@ Example of backup definition for a home directory
 # if you want to take a backup of /home/user/Documents only, uncomment next line
 #  -g Documents 
 
-# Some directories to exclude below the Root dir
+# Some directories to exclude below the Root dir (here Root directory is `/home/user` as set in the -R option)
  -P mnt
  -P tmp
  -P .cache
@@ -144,39 +151,40 @@ Example of backup definition for a home directory
  # size of each slice in the archive
  --slice 10G
 
-# see https://github.com/per2jensen/dar-backup?tab=readme-ov-file#restore-test-exit-code-4
---comparison-field=ignore-owner
 
 # bypass directores marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
 --cache-directory-tagging
-````    
+````
 
+### 3
 
-## 3
 Installation is currently in a venv. These commands are installed in the venv:
+
 - dar-back
 - cleanup
 - manager
 - clean-log
 
 To install, create a venv and run pip:
-````    
+
+```` bash
 mkdir $HOME/tmp
 cd $HOME/tmp
 python3 -m venv venv    # create the virtual environment 
 . venv/bin/activate     # activate the virtual env
 pip install dar-backup  # run pip to install `dar-backup`
-````    
-
+````
 
 I have an alias in ~/.bashrc pointing to my venv:
-````    
+
+```` bash
 alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
-````    
+````
 
 Typing `db` at the command line gives this
-````    
+
+```` bash
 (venv) user@machine:~$ db
 dar-backup 0.6.9
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
@@ -185,49 +193,51 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.
 ````
 
-
-## 4
+### 4
 
 Generate the archive catalog database(s). 
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
 
-````    
-manager --create-db --config-file <path to config file> --log-level debug --log-stdout
-````    
+```` bash
+manager --create-db
+````
 
-## 5
+### 5
 
 You are ready to do backups of all your backup definitions, if your backup definitions are 
 in place in BACKUP.D_DIR (see config file)
-````    
+
+```` bash
 dar-backup --full-backup 
-````    
+````
+
 If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This is also useful if dar-backup is started by systemd.
 
 If you want more log messages, use the `--log-level debug` option.
 
-
 If you want a backup of a single definition, use the `-d <backup definition>` option. The definition's name is the filename of the definition in the `backup.d` config directory.
-````    
+
+```` bash
 dar-backup --full-backup -d <your backup definition>
 ````
 
-## 6 
+### 6
 
 Deactivate the virtual environment
-````
+
+```` bash
 deactivate
 ````
 
+## .darrc
 
-# .darrc
 The package includes a default `.darrc` file which configures `dar`.
 
 You can override the default `.darrc` using the `--darrc` option.
 
 The default `.darrc` contents are as follows:
 
-````
+```` code
 #  .darrc configuration file for `dar` as used by the `dar-backup` script.
 #  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
 
@@ -350,15 +360,15 @@ compress-exclusion:
 -acase
 ````
 
+## Systemctl examples
 
-# Systemctl examples
 I have dar-backup scheduled to run via systemd --user settings.
 
 The files are located in: ~/.config/systemd/user
 
 Once the .service and .timer files are in place, timers must be enabled and started.
 
-````
+```` bash
 systemctl --user enable dar-inc-backup.timer
 systemctl --user start  dar-inc-backup.timer
 systemctl --user daemon-reload
@@ -366,7 +376,7 @@ systemctl --user daemon-reload
 
 Verify your timers are set up as you want:
 
-````
+```` bash
 systemctl --user list-timers
 ````
 
@@ -374,7 +384,8 @@ systemctl --user list-timers
 ## Service: dar-back --incremental-backup
 
 File:  dar-inc-backup.service
-````
+
+```` code
 [Unit]
 Description=dar-backup INC
 StartLimitIntervalSec=120
@@ -389,7 +400,8 @@ ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate 
 ## Timer: dar-back --incremental-backup
 
 File:  dar-inc-backup.timer
-````
+
+```` code
 [Unit]
 Description=dar-backup INC timer
 
@@ -401,15 +413,17 @@ Persistent=true
 WantedBy=timers.target
 ````
 
+## list contents of an archive
 
-# list contents of an archive
-```
+```` bash
 . <the virtual evn>/bin/activate
 dar-backup --list-contents example_FULL_2024-06-23 --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
-```
+````
+
 gives
-```
+
+``` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
 [Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
@@ -419,17 +433,17 @@ gives
 [Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
 ```
 
+## dar file selection exmaples
 
+### select a directory
 
-
-# dar file selection exmaples
-
-## select a directory
-```
+``` bash
 dar -l /tmp/example_FULL_2024-06-23  -g home/pj/tmp/LUT-play
 ```
+
 gives
-```
+
+```` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
 [Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
@@ -456,15 +470,17 @@ gives
 [Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:15 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
 [Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:48 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
 [Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:19 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
-```
+````
 
+### select file dates in the directory:
 
-## select file dates in the directory:
-```
+``` bash
 dar -l /tmp/example_FULL_2024-06-23  -I '*2024-06-16*' -g home/pj/tmp/LUT-play
 ```
+
 gives
-```
+
+``` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
 [Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
@@ -493,12 +509,16 @@ gives
 [Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:19 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
 ```
 
-## exclude .xmp files from that date
-```
+### exclude .xmp files from that date
+
+``` bash
 dar -l /tmp/example_FULL_2024-06-23 -X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play
+
 ```
+
 gives
-```
+
+``` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
 [Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
@@ -510,16 +530,16 @@ gives
 
 Nice :-)
 
+## Restoring
 
+### default location for restores
 
-# Restoring
-
-## default location for restores
 dar-backup will use the TEST_RESTORE_DIR location as the Root for restores, if the --restore-dir option has not been supplied.
 
 See example below to see where files are restored to.
 
-## --restore-dir option
+### --restore-dir option
+
 When the --restore-dir option is used for restoring, a directory must be supplied.
 
 The directory supplied functions as the Root of the restore operation.
@@ -527,53 +547,55 @@ The directory supplied functions as the Root of the restore operation.
 **Example**:
 
 A backup has been taken using this backup definition:
-```
+
+``` code
 -R /
 -g home/user/Documents
 ```
 
 When restoring and using `/tmp` for --restore-dir, the restored files can be found in `/tmp/home/user/Documents`
 
-## a single file
-```
+### a single file
+
+``` code
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name> --selection "-g path/to/file"
 deactivate
+
 ```
-## a directory
-```
+
+### a directory
+
+``` bash
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name> --selection "-g path/to/directory"
 deactivate
 ```
 
+### .NEF from a specific date
 
-## .NEF from a specific date
-```
+``` bash
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
 ```
 
+## Points of interest
 
-# Points of interest
- 
-## .darrc sets -vd -vf (since v0.6.4)
+### .darrc sets -vd -vf (since v0.6.4)
 
 These .darrc settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
 
 if --log-stdout is used the information would be picked up by systemd and logged by journald
 
+## Reference
 
-
-# Reference
-
-## dar-backup.py
+### dar-backup.py
 
 This script is responsible for managing the backup creation and validation process. It supports the following options:
 
-```
+``` code
 --full-backup                     Perform a full backup.
 --differential-backup             Perform a differential backup.
 --incremental-backup              Perform an incremental backup.
@@ -594,11 +616,11 @@ This script is responsible for managing the backup creation and validation proce
 --version                         Show version and license information.
 ```
 
-## manager.py
+### manager.py
 
 This script manages `dar` databases and catalogs. Available options include:
 
-```
+``` code
 --create-db                     Create missing databases for all backup definitions.
 --alternate-archive-dir <path>   Use this directory instead of BACKUP_DIR in the config file.
 --add-dir <path>                 Add all archive catalogs in this directory to databases.
@@ -613,11 +635,11 @@ This script manages `dar` databases and catalogs. Available options include:
 --log-level <level>              Set log level.
 ```
 
-## cleanup.py
+### cleanup.py
 
 This script cleans up old backups and manages storage. Supported options:
 
-```
+``` code
 --prune-older-than <days>   Remove backups older than the specified number of days.
 --keep-last <num>           Retain only the last <num> backups.
 --dry-run                   Show what would be deleted without actually deleting.
@@ -626,14 +648,13 @@ This script cleans up old backups and manages storage. Supported options:
 --help                      Show this help message and exit.
 ```
 
-## clean_log.py
+### clean-log.py
 
 This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
 
-```
+``` code
 -f, --file <path>          Specify the log file(s) to be cleaned.
 -c, --config-file <path>   Specify the configuration file (default: ~/.config/dar-backup/dar-backup.conf).
 --dry-run                  Show which lines would be removed without modifying the file.
 -v, --version              Display version and licensing information.
 ```
-
