@@ -1,13 +1,12 @@
 # Full, differential or incremental backups using 'dar' 
 
-  The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for 
+  The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for
   the heavy lifting, together with the par2 suite in these scripts.
-
 
 ## My use case
 
- I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
- 
+I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
+
 - a non-privileged user (me :-)) can perform a mount
 - a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
@@ -379,7 +378,6 @@ Verify your timers are set up as you want:
 ```` bash
 systemctl --user list-timers
 ````
-
 
 ## Service: dar-back --incremental-backup
 
