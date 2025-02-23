@@ -1,6 +1,6 @@
 # dar-backup Changelog
 
-## v2-beta-0.6.12 - 2025-
+## v2-beta-0.6.12 - 2025-02-23
 
 Github link: [v2-beta-0.6.12](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.12/v2)
 
@@ -12,6 +12,7 @@ Github link: [v2-beta-0.6.12](https://github.com/per2jensen/dar-backup/tree/v2-b
 - dar-backup.py does not import sys, use from/import of specific functions
 - fix handling of missing config file
 - if config file, .darrc or backup definition not found, return 127
+- installer added to demo dar-back, installs demo config and backup definition
 
 ## v2-beta-0.6.11 - 2025-02-23
 
