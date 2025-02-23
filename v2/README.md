@@ -1,6 +1,6 @@
-# Full, differential or incremental backups using 'dar' 
+# Full, differential or incremental backups using 'dar'
 
-  The wonderful 'dar' [Disk Archiver] (https://github.com/Edrusb/DAR) is used for
+  The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
   the heavy lifting, together with the par2 suite in these scripts.
 
 ## Table of Contents
@@ -13,30 +13,37 @@
 - [Homepage - Github](#homepage---github)
 - [Requirements](#requirements)
 - [Config file](#config-file)
-- [How to run](#how-to-run)
-  - [1](#1)
-  - [2](#2)
-  - [3](#3)
-  - [4](#4)
-  - [5](#5)
-  - [6](#6)
+- [How to install & run](#how-to-run)
+  - [1 - config file](#1---config-file)
+  - [2 - backup definitions](#2---backup-definitions)
+  - [3 - installation](#3---installation)
+  - [4 - generate catalog databases](#4---generate-catalog-databases)
+  - [5 - do FULL backups](#5---do-full-backups)
+  - [6 - deactivate venv](#6---deactivate-venv)
 - [.darrc](#darrc)
 - [Systemctl examples](#systemctl-examples)
   - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
   - [Timer: dar-back --incremental-backup](#timer-dar-back---incremental-backup)
 - [List contents of an archive](#list-contents-of-an-archive)
-- [dar file selection examples](#dar-file-selection-examples)
+- [dar file selection examples](#dar-file-selection-exmaples)
   - [Select a directory](#select-a-directory)
   - [Select file dates in the directory](#select-file-dates-in-the-directory)
   - [Exclude .xmp files from that date](#exclude-xmp-files-from-that-date)
 - [Restoring](#restoring)
   - [Default location for restores](#default-location-for-restores)
-  - [--restore-dir option](#restore-dir-option)
+  - [--restore-dir option](#--restore-dir-option)
   - [A single file](#a-single-file)
   - [A directory](#a-directory)
   - [.NEF from a specific date](#nef-from-a-specific-date)
+  - [Restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
+  - [Restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
+- [Par2](#par2)
+  - [Par2 to verify/repair](#par2-to-verifyrepair)
+  - [Par2 create redundancy files](#par2-create-redundancy-files)
 - [Points of interest](#points-of-interest)
+  - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
   - [dar manager databases](#dar-manager-databases)
+  - [Performance tip due to par2](#performance-tip-due-to-par2)
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
 - [Reference](#reference)
   - [dar-backup.py](#dar-backuppy)
@@ -101,7 +108,7 @@ The default configuration is expected here: ~/.config/dar-backup/dar-backup.conf
 
 ## How to run 
 
-### 1
+### 1 - config file
 
 Config file default location is $HOME/.config/dar-backup/dar-backup.conf
 
@@ -146,7 +153,7 @@ ENABLED = True
 
 ````
 
-### 2
+### 2 - backup definitions
 
 Put your backup definitions in the directory $BACKUP.D_DIR (defined in the config file)
 
@@ -197,7 +204,7 @@ Example of backup definition for a home directory
 --cache-directory-tagging
 ````
 
-### 3
+### 3 - installation
 
 Installation is currently in a venv. These commands are installed in the venv:
 
@@ -233,7 +240,7 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.
 ````
 
-### 4
+### 4 - generate catalog databases
 
 Generate the archive catalog database(s). 
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
@@ -242,7 +249,7 @@ Generate the archive catalog database(s).
 manager --create-db
 ````
 
-### 5
+### 5 - do FULL backups
 
 You are ready to do backups of all your backup definitions, if your backup definitions are 
 in place in BACKUP.D_DIR (see config file)
@@ -261,9 +268,9 @@ If you want a backup of a single definition, use the `-d <backup definition>` op
 dar-backup --full-backup -d <your backup definition>
 ````
 
-### 6
+### 6 - deactivate venv
 
-Deactivate the virtual environment
+Deactivate the virtual environment (venv)
 
 ```` bash
 deactivate
