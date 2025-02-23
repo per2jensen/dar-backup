@@ -1,6 +1,6 @@
 # dar-backup Changelog
 
-## v2-beta-0.6.11 - 2025-
+## v2-beta-0.6.11 - 2025-02-23
 
 Github link: [v2-beta-0.6.11](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.11/v2)
 
@@ -9,6 +9,7 @@ Github link: [v2-beta-0.6.11](https://github.com/per2jensen/dar-backup/tree/v2-b
 - run_command() fixed to handle missing command. Test case added.
 - refactoring xml parsing of dar list output. From recursive to iterating the xml document.
 - a bit more input verification to ensure the given config file actually exists.
+- README.md updated with useful information from v1 + some tweaks
 
 ## v2-beta-0.6.10 - 2025-02-22
 
