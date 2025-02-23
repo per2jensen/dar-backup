@@ -8,13 +8,16 @@ import random
 import re
 import shlex
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 
 
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
+from sys import exit
+from sys import stderr
+from sys import argv
+from sys import version_info
 from time import time
 from typing import List
 
@@ -407,7 +410,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                     logger.info(f"Using alternate reference archive: {latest_base_backup}")
                     if not os.path.exists(latest_base_backup + '.1.dar'):
                         logger.error(f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exiting.")
-                        sys.exit(1)
+                        exit(1)
                 else:
                     base_backups = sorted(
                         [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
@@ -492,7 +495,7 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
 
 
 def show_version():
-    script_name = os.path.basename(sys.argv[0])
+    script_name = os.path.basename(argv[0])
     print(f"{script_name} {about.__version__}") 
     print(f"dar-backup.py source code is here: https://github.com/per2jensen/dar-backup")
     print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
@@ -580,9 +583,9 @@ def main():
     global logger 
 
     MIN_PYTHON_VERSION = (3, 9)
-    if sys.version_info < MIN_PYTHON_VERSION:
-        sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
-        sys.exit(1)
+    if version_info < MIN_PYTHON_VERSION:
+        stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
+        exit(1)
 
     parser = argparse.ArgumentParser(description="Backup and verify using dar backup definitions.")
     parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
@@ -606,15 +609,25 @@ def main():
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
     args = parser.parse_args()
 
-    args.config_file = os.path.expanduser(args.config_file)
-    config_settings = ConfigSettings(args.config_file)
-
     if args.version:
         show_version()
-        sys.exit(0)
+        exit(0)
     elif args.examples:
         show_examples()
-        sys.exit(0)
+        exit(0)
+
+    if not args.config_file:
+        print(f"Config file not specified, exiting", file=stderr)
+        exit(1) 
+    
+    config_settings_path = os.path.expanduser(os.path.expandvars(args.config_file))
+    if not os.path.exists(config_settings_path):
+        print(f"Config file {args.config_file} does not exist.", file=stderr)
+        exit(127)
+
+    args.config_file = config_settings_path
+    config_settings = ConfigSettings(args.config_file)
+
 
     logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
 
@@ -622,18 +635,13 @@ def main():
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
         args.darrc = os.path.join(current_script_dir, ".darrc")
 
-    if os.path.exists(args.darrc) and os.path.isfile(args.darrc):
+    darrc_file = os.path.expanduser(os.path.expandvars(args.darrc))
+    if os.path.exists(darrc_file) and os.path.isfile(darrc_file):
         logger.debug(f"Using .darrc: {args.darrc}")                
     else:
-        logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file")
+        logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting", file=stderr)
+        exit(127)
 
-    if not args.config_file:
-        logger.error(f"Config file not specified, exiting")
-        sys.exit(1) 
-    
-    if not os.path.exists(args.config_file):
-        logger.error(f"Config file {args.config_file} does not exist.")
-        sys.exit(1)
 
 
     try:
@@ -668,10 +676,10 @@ def main():
         # sanity check
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):
             logger.error(f"Backup definition: '{args.backup_definition}' does not exist, exiting")
-            sys.exit(1)
+            exit(1)
         if args.backup_definition and '_' in args.backup_definition:
             logger.error(f"Backup definition: '{args.backup_definition}' contains '_', exiting")
-            sys.exit(1)
+            exit(1)
 
 
         requirements('PREREQ', config_settings)
@@ -695,12 +703,12 @@ def main():
         requirements('POSTREQ', config_settings)
 
         args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
-        sys.exit(0)
+        exit(0)
     except Exception as e:
         logger.exception("An error occurred")
         logger.error("Exception details:", exc_info=True)
         args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-        sys.exit(1) 
+        exit(1) 
     finally:
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")

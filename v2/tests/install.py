@@ -7,7 +7,7 @@ import os
 import shutil
 import logging
 
-INSTALL_DIR = os.path.expanduser('~/programmer/dar-backup.py')
+INSTALL_DIR = os.path.expanduser(os.path.expandvars('~/programmer/dar-backup.py'))
 ARCHIVES_DIR = os.path.join(INSTALL_DIR, 'archives')
 BIN_DIR = os.path.join(INSTALL_DIR, 'bin')
 CONF_DIR = os.path.join(INSTALL_DIR, 'conf')

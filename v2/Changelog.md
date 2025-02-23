@@ -1,5 +1,15 @@
 # dar-backup Changelog
 
+## v2-beta-0.6.12 - 2025-
+
+Github link: [v2-beta-0.6.12](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.12/v2)
+
+### Added
+
+- support environment variables in paths, both on command line and in config files
+- test case for env vars in config file added
+- dar-backup.py does not import sys, use from/import
+
 ## v2-beta-0.6.11 - 2025-02-23
 
 Github link: [v2-beta-0.6.11](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.11/v2)

@@ -395,7 +395,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         sys.exit(0)
 
     # setup logging
-    args.config_file = os.path.expanduser(args.config_file)
+    args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
     config_settings = ConfigSettings(args.config_file)
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")

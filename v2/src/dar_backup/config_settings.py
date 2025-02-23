@@ -1,8 +1,11 @@
-from dataclasses import dataclass, field
+
 import configparser
-from pathlib import Path
-import sys
 import logging
+import sys
+
+from dataclasses import dataclass, field, fields
+from os.path import expandvars, expanduser
+from pathlib import Path
 
 @dataclass
 class ConfigSettings:
@@ -20,21 +23,35 @@ class ConfigSettings:
         backup_d_dir (str): The directory for backup.d.
         diff_age (int): The age for differential backups before deletion.
         incr_age (int): The age for incremental backups before deletion.
+        error_correction_percent (int): The error correction percentage for PAR2.
+        par2_enabled (bool): Whether PAR2 is enabled.
     """
 
-    def __init__(self, config_file: str):
+    config_file: str
+    logfile_location: str = field(init=False)
+    max_size_verification_mb: int = field(init=False)
+    min_size_verification_mb: int = field(init=False)
+    no_files_verification: int = field(init=False)
+    command_timeout_secs: int = field(init=False)
+    backup_dir: str = field(init=False)
+    test_restore_dir: str = field(init=False)
+    backup_d_dir: str = field(init=False)
+    diff_age: int = field(init=False)
+    incr_age: int = field(init=False)
+    error_correction_percent: int = field(init=False)
+    par2_enabled: bool = field(init=False)
+
+    def __post_init__(self):
         """
-        Initializes the ConfigSettings instance by reading the specified configuration file.
-        
-        Args:
-            config_file (str): The path to the configuration file.
+        Initializes the ConfigSettings instance by reading the specified configuration file
+        and expands environment variables for all string fields.
         """
-        if config_file is None:
+        if self.config_file is None:
             raise ValueError("`config_file` must be specified.")
         
         self.config = configparser.ConfigParser()
         try:
-            self.config.read(config_file)
+            self.config.read(self.config_file)
             self.logfile_location = self.config['MISC']['LOGFILE_LOCATION']
             self.max_size_verification_mb = int(self.config['MISC']['MAX_SIZE_VERIFICATION_MB'])
             self.min_size_verification_mb = int(self.config['MISC']['MIN_SIZE_VERIFICATION_MB'])
@@ -46,11 +63,17 @@ class ConfigSettings:
             self.diff_age = int(self.config['AGE']['DIFF_AGE'])
             self.incr_age = int(self.config['AGE']['INCR_AGE'])
             self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
-            self.par2_enabled = bool(self.config['PAR2']['ENABLED'])
+            self.par2_enabled = self.config['PAR2']['ENABLED'].lower() in ('true', '1', 'yes')
+            
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
             Path(self.test_restore_dir).mkdir(parents=True, exist_ok=True)
             Path(self.backup_d_dir).mkdir(parents=True, exist_ok=True)
+
+            # Expand environment variables for all string fields
+            for field in fields(self):
+                if isinstance(getattr(self, field.name), str):
+                    setattr(self, field.name, expanduser(expandvars(getattr(self, field.name))))
 
         except FileNotFoundError as e:
             logging.error(f"Configuration file not found: {self.config_file}")

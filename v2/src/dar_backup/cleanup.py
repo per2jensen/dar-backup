@@ -171,7 +171,7 @@ def main():
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     args = parser.parse_args()
 
-    args.config_file = os.path.expanduser(args.config_file)
+    args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
     
 
     if args.version:

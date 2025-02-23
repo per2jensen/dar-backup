@@ -122,7 +122,7 @@ def main():
 
     args = parser.parse_args()
 
-    config_settings = ConfigSettings(os.path.expanduser(args.config_file))
+    config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
 
     if not args.file:
         args.file = [config_settings.logfile_location]
