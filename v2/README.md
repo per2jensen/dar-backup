@@ -13,19 +13,18 @@
 - [Homepage - Github](#homepage---github)
 - [Requirements](#requirements)
 - [Config file](#config-file)
-- [How to install & run](#how-to-run)
-  - [1 - config file](#1---config-file)
-  - [2 - backup definitions](#2---backup-definitions)
-  - [3 - installation](#3---installation)
-  - [4 - generate catalog databases](#4---generate-catalog-databases)
-  - [5 - do FULL backups](#5---do-full-backups)
-  - [6 - deactivate venv](#6---deactivate-venv)
+- [How to run](#how-to-run)
+  - [1 - installation](#1---installation)
+  - [2 - configuration](#2---configuration)
+  - [3 - generate catalog databases](#3---generate-catalog-databases)
+  - [4 - do FULL backups](#4---do-full-backups)
+  - [5 - deactivate venv](#5---deactivate-venv)
 - [.darrc](#darrc)
 - [Systemctl examples](#systemctl-examples)
   - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
   - [Timer: dar-back --incremental-backup](#timer-dar-back---incremental-backup)
 - [List contents of an archive](#list-contents-of-an-archive)
-- [dar file selection examples](#dar-file-selection-exmaples)
+- [dar file selection examples](#dar-file-selection-examples)
   - [Select a directory](#select-a-directory)
   - [Select file dates in the directory](#select-file-dates-in-the-directory)
   - [Exclude .xmp files from that date](#exclude-xmp-files-from-that-date)
@@ -106,105 +105,9 @@ On Ubuntu, install the requirements this way:
 
 The default configuration is expected here: ~/.config/dar-backup/dar-backup.conf
 
-## How to run 
+## How to run
 
-### 1 - config file
-
-Config file default location is $HOME/.config/dar-backup/dar-backup.conf
-
-Example:
-
-```` code
-[MISC]
-LOGFILE_LOCATION=/home/user/dar-backup.log
-MAX_SIZE_VERIFICATION_MB = 20
-MIN_SIZE_VERIFICATION_MB = 1
-NO_FILES_VERIFICATION = 5
-
-# timeout in seconds for backup, test, restore and par2 operations
-# The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
-# If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
-COMMAND_TIMEOUT_SECS = 86400
-
-[DIRECTORIES]
-BACKUP_DIR = /home/user/mnt/dir/
-BACKUP.D_DIR = /home/user/.config/dar-backup/backup.d/
-TEST_RESTORE_DIR = /tmp/dar-backup/restore/
-
-[AGE]
-# age settings are in days
-DIFF_AGE = 100
-INCR_AGE = 40
-
-[PAR2]
-ERROR_CORRECTION_PERCENT = 5
-# False means "do not generate par2 redundancy files"
-ENABLED = True  
-
-[PREREQ]
-# SCRIPT_1 = /home/user/programmer/dar-backup/prereq/mount-server.sh
-# SCRIPT_2 = <something>
-# ...
-
-[POSTREQ]
-# SCRIPT_1 = /home/user/programmer/dar-backup/postreq/umount-server.sh
-# SCRIPT_2 = <something>
-# ...
-
-````
-
-### 2 - backup definitions
-
-Put your backup definitions in the directory $BACKUP.D_DIR (defined in the config file)
-
-The name of the file is the `backup definition` name.
-
-Make as many backup definitions as you need. Run them all in one go, or run one at a time using the `-d` option.
-
-The `dar` [documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS) has good information on file selection.
-
-Example of backup definition for a home directory
-
-```` code
-
-# Switch to ordered selection mode, which means that the following
-# options will be considered top to bottom
- -am
-
-
-# Backup Root dir
- -R /home/user
-
-# Directories to backup below the Root dir
-# if you want to take a backup of /home/user/Documents only, uncomment next line
-#  -g Documents 
-
-# Some directories to exclude below the Root dir (here Root directory is `/home/user` as set in the -R option)
- -P mnt
- -P tmp
- -P .cache
- -P .config/Code/CachedData
- -P .config/Code/Cache
- -P ".config/Code/Service Worker"
- -P .config/Code/logs
- -P snap/firefox/common/.cache
- 
-# compression level
- -z5
-
- # no overwrite, if you rerun a backup, 'dar' halts and asks what to do (and Quits due to the "-Q" given by dar-backup)
- -n
- 
- # size of each slice in the archive
- --slice 10G
-
-
-# bypass directores marked as cache directories
-# http://dar.linux.free.fr/doc/Features.html
---cache-directory-tagging
-````
-
-### 3 - installation
+### 1 - installation
 
 Installation is currently in a venv. These commands are installed in the venv:
 
@@ -212,6 +115,7 @@ Installation is currently in a venv. These commands are installed in the venv:
 - cleanup
 - manager
 - clean-log
+- installer
 
 To install, create a venv and run pip:
 
@@ -233,25 +137,48 @@ Typing `db` at the command line gives this
 
 ```` bash
 (venv) user@machine:~$ db
-dar-backup 0.6.9
+dar-backup 0.6.12
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.
 ````
 
-### 4 - generate catalog databases
+### 2 - configuration
 
-Generate the archive catalog database(s). 
+The dar-backup installer is non-destructive and stops if some of the default directories exist.
+
+Run the installer
+
+```` bash
+installer --install
+````
+
+The output is
+
+```` text
+Directories created: `/home/user/dar-backup/` and `/home/user/.config/dar-backup`
+Config file deployed to /home/user/.config/dar-backup/dar-backup.conf
+Default backup definition deployed to /home/user/.config/dar-backup/backup.d/default
+1. Now run `manager --create` to create the catalog database.
+2. Then you can run `dar-backup --full-backup` to create a backup.
+3. List backups with `dar-backup --list`
+4. List contents of a backup with `dar-backup --list-contents <backup-name>`
+````
+
+### 3 - generate catalog databases
+
+Generate the archive catalog database(s).
+
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
 
 ```` bash
-manager --create-db
+manager --create
 ````
 
-### 5 - do FULL backups
+### 4 - do FULL backups
 
-You are ready to do backups of all your backup definitions, if your backup definitions are 
+You are ready to do backups of all your backup definitions, if your backup definitions are
 in place in BACKUP.D_DIR (see config file)
 
 ```` bash
@@ -268,7 +195,7 @@ If you want a backup of a single definition, use the `-d <backup definition>` op
 dar-backup --full-backup -d <your backup definition>
 ````
 
-### 6 - deactivate venv
+### 5 - deactivate venv
 
 Deactivate the virtual environment (venv)
 

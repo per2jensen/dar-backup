@@ -34,6 +34,7 @@ dar-backup = "dar_backup.dar_backup:main"
 cleanup = "dar_backup.cleanup:main"
 clean-log = "dar_backup.clean_log:main"
 manager = "dar_backup.manager:main"
+installer = "dar_backup.installer:main"
 
 [project]
 name = "dar-backup"
