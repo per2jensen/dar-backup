@@ -6,11 +6,54 @@ import sys
 import tempfile
 
 from tests.envdata import EnvData
+from time import time
 from dar_backup.util import run_command
 
 
 
-def modify_config_file(env: EnvData) -> dict:
+def modify_config_file_tilde(env: EnvData) -> dict:
+    """
+    Modify the LOG_DIR in the config file to include "~"
+
+    Args:
+        env (EnvData): The environment data object.
+    
+    Returns:
+        dict: { "LOGFILE_LOCATION" : "<path to log file>" }
+    
+    Raises:
+        RuntimeError: If the command fails.
+    """
+
+    unix_time = int(time())
+
+    LOGFILE_LOCATION = f"~/.test_{unix_time}_dar-backup.log"
+    env.logger.info(f"LOGFILE_LOCATION: {LOGFILE_LOCATION}")
+
+    config_path = os.path.join(env.test_dir, env.config_file)
+    env.logger.info(f"config file path: {config_path}")
+
+    with open(config_path, 'r') as f:
+        lines = f.readlines()
+    with open(config_path, 'w') as f:
+        for line in lines:
+            if line.startswith('LOGFILE_LOCATION = '):
+                f.write(f'LOGFILE_LOCATION = {LOGFILE_LOCATION}\n')
+            else:
+                f.write(line)
+
+    env.logger.info("Patched config file:")
+    with open(config_path, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            env.logger.info(line)
+
+    return { 'LOGFILE_LOCATION': LOGFILE_LOCATION }   
+
+
+
+
+def modify_config_file_env_vars(env: EnvData) -> dict:
     """
     Modify the BACKUP_DIR and LOG_DIR in the config file to include environtment variables
 
@@ -60,7 +103,7 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
     """
 
     # Create temporary config file with environment variables
-    env_vars = temp_config_file = modify_config_file(env)
+    env_vars = modify_config_file_env_vars(env)
 
     # Set environment variables
     os.environ['BACKUP_DIR'] = env_vars['BACKUP_DIR']
@@ -94,6 +137,38 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
             command = ['rm', '-rf', f"/tmp/{env_vars['LOG_DIR'][5:]}"]
 
 
+def test_tilde_in_config_file(setup_environment, env: EnvData):
+    """
+    Test that "~" in the config file is correctly expanded.
+    """
+
+    # Create temporary config file with environment variables
+    dict = modify_config_file_tilde(env)
+
+    try:
+        # Run the dar-backup command with the temporary config file
+        command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
+        process = run_command(command)
+
+        # Check that the command executed successfully
+        assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
+
+        # Verify that logfile exists
+        logfile = os.path.expanduser(dict['LOGFILE_LOCATION'])  
+        assert os.path.exists(logfile), f'Logfile: {logfile} not found in home directory'
+        assert os.path.getsize(logfile) > 0, f'Logfile: {logfile} is empty'
+
+        env.logger.info(f"Contents of logfile '{logfile}'\n==================")
+        with open(logfile, 'r') as f:
+            for line in f:
+                env.logger.info(line.strip())  # Removes unnecessary newlines
+        
+    finally:
+        # Clean up temporary config file and directories
+        if os.path.exists(logfile):
+            os.remove(logfile)
+            env.logger.info(f"Removed logfile: {logfile}")
+
 
 def test_dar_backup_definition_with_underscore(setup_environment, env):
     command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example_2']
@@ -104,8 +179,7 @@ def test_dar_backup_definition_with_underscore(setup_environment, env):
 def test_dar_backup_nonexistent_definition_(setup_environment, env):
     command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'nonexistent_definition']
     process = run_command(command)
-    if process.returncode == 0:
-        raise Exception(f'dar-backup must fail if backup definition is not found, using -d option')
+    assert process.returncode == 127, f'dar-backup must fail if backup definition is not found, using -d option'
 
 
 def test_dar_backup_nonexistent_config_file(setup_environment, env):

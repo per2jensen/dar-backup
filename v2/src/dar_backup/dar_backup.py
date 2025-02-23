@@ -676,7 +676,7 @@ def main():
         # sanity check
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):
             logger.error(f"Backup definition: '{args.backup_definition}' does not exist, exiting")
-            exit(1)
+            exit(127)
         if args.backup_definition and '_' in args.backup_definition:
             logger.error(f"Backup definition: '{args.backup_definition}' contains '_', exiting")
             exit(1)
