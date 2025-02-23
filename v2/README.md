@@ -619,13 +619,91 @@ dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -
 deactivate
 ```
 
+### restore test fails with exit code 4
+
+"dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
+
+Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied .darrc file (located in the virtual environment where dar-backup is installed). 
+
+This causes dar to restore without an error.
+
+It is a good option when using dar as a non-privileged user.
+
+### restore test fails with exit code 5
+
+If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
+
+That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
+My home directory is on a btrfs filesystem, while /tmp (for the restore test) is on zfs.
+
+The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
+
+If you need to use this option, un-comment it in the .darrc file (located in the virtual environment where dar-backup is installed)
+
+## Par2
+
+### Par2 to verify/repair
+
+You can run a par2 verification on an archive like this:
+
+```` bash
+for file in <archive>*.dar.par2; do
+  par2 verify "$file"
+done
+````
+
+if there are problems with a slice, try to repair it like this:
+
+```` bash
+  par2 repair <archive>.<slice number>.dar.par2
+````
+
+### Par2 create redundancy files
+
+If you have merged archives, you will need to create the .par2 redundency files manually.
+Here is an example
+
+```` bash
+for file in <some-archive>_FULL_yyyy-mm-dd.*; do
+  par2 c -r5 -n1 "$file"
+done
+````
+
+where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+
 ## Points of interest
+
+### Merge FULL with DIFF, creating new FULL
+
+Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
+One way to do that, is to let dar create a FULL archive from scratch, another is to merge a FULL archive with a DIFF, and from there do DIFF's until they once again gets too large for your taste.
+
+I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
+
+```` bash
+dar --merge pj-homedir_FULL_2021-09-12  -A pj-homedir_FULL_2021-06-06  -@pj-homedir_DIFF_2021-08-29 -s 12G
+
+# test the new FULL archive
+dar -t pj-homedir_FULL_2021-09-12
+
+# create Par2 redundancy files
+for file in pj-homedir_FULL_yyyy-mm-dd.*.dar; do
+  par2 c -r5 -n1 "$file"
+done
+
+````
 
 ### dar manager databases
 
 `dar-backup` now saves archive catalogs in dar catalog databases.
 
 This makes it easier to restore to a given date when having many FULL, DIFF and INCR archives.
+
+### Performance tip due to par2
+
+This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
+
+Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the the par2 data in memory.
 
 ### .darrc sets -vd -vf (since v0.6.4)
 
