@@ -74,13 +74,6 @@ def main():
     )
 
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show which lines would be removed without modifying the file."
-    )
-
-
-    parser.add_argument(
         "-v", "--version",
         action="version",
         version=f"%(prog)s version {about.__version__}, {LICENSE}"
