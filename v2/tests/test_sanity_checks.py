@@ -114,7 +114,7 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
 
     try:
         #run manager --create again, since the BACKUP_DIR was changed after the environment was set up
-        command = ['manager', '--create', '--config-file', env.config_file]
+        command = ['manager', '--create-db', '--config-file', env.config_file]
         process = run_command(command)
         assert process.returncode == 0, f'manager command failed with return code {process.returncode}'
 
@@ -136,6 +136,7 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
         if os.environ['LOG_DIR'].startswith('/tmp/'):
             command = ['rm', '-rf', f"/tmp/{env_vars['LOG_DIR'][5:]}"]
 
+    assert False
 
 def test_tilde_in_config_file(setup_environment, env: EnvData):
     """

@@ -335,7 +335,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     """
     backup_def = backup_def_from_archive(archive)
     database_path = os.path.join(config_settings.backup_dir, f"{backup_def}{DB_SUFFIX}")
-    cat_no = cat_no_for_name(archive, config_settings)
+    cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
         process: CommandResult = run_command(command)

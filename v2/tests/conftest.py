@@ -119,7 +119,7 @@ def create_backup_definitions(env : EnvData) -> None:
     logging.info("Generating backup definition")
     backup_definitions = {
         "example" : f"""
--B {env.dar_rc}
+#-B {env.dar_rc}
 -R /
 -s 10G
 -z6
