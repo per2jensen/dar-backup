@@ -1,4 +1,15 @@
+<!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
+
+## v2-beta-0.6.13 - 2025-
+
+Github link: [v2-beta-0.6.13](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.13/v2)
+
+### Added
+
+- README.md now good MarkDown, fixed reference section
+- Changelog.md now good MarkDown
+- --suppress-dar-msg option added (one way to cancel the verbosity options in .darrc)
 
 ## v2-beta-0.6.12 - 2025-02-23
 
@@ -32,7 +43,7 @@ Github link: [v2-beta-0.6.10](https://github.com/per2jensen/dar-backup/tree/v2-b
 ### Added
 
 - unit test verifying no compression of many compressed file formats
-- README.md lint fixes + a TOC 
+- README.md lint fixes + a TOC
 
 ## v2-beta-0.6.9 - 2025-02-21
 
@@ -42,7 +53,6 @@ Github link: [v2-beta-0.6.9](https://github.com/per2jensen/dar-backup/tree/v2-be
 
 - clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
 - ChatGPT generated pytest cases
-
 
 ## v2-beta-0.6.8 - 2025-02-13
 
@@ -87,14 +97,13 @@ Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 - Stdout & stderr from called programs are streamed to logfile in real time. This makes it easier to see if a very long running process is still active.
 - .darrc: -vd & -vf options enabled, so `dar` emits information when entering a directory and print some stats when leaving it
-- manager --remove-specific-archive option added 
-- manager --find-file option added 
-- manager --list-catalog option added 
-- improved tests for manager 
+- manager --remove-specific-archive option added
+- manager --list-catalog option added
+- improved tests for manager
 - manager --add-dir option added
 - verify slices are par2 processed by increasing slice number
 - reorg unit test,
-- added test for --restore-dir 
+- added test for --restore-dir
 
 ## v2-alpha-0.6.2 - 2025-01-12
 
@@ -102,8 +111,8 @@ Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-a
 
 ### Added
 
-- refactor backup functions 
-- minor doc fixes 
+- refactor backup functions
+- minor doc fixes
 - par2: process slices by increasing #
 - dar-backup --verbose option: print info on par2 generation
 
@@ -127,3 +136,5 @@ Github link: [v2-alpha-0.6.0](https://github.com/per2jensen/dar-backup/tree/v2-a
 - document 0.6.0 breaking change
 - FIX: ensure run_command() works correctly when a command writes a lot of data to stdout
 - updated README with details on --restore-dir option
+
+<!-- markdownlint-enable MD024 -->

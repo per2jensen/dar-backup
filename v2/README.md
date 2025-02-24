@@ -1,7 +1,9 @@
 # Full, differential or incremental backups using 'dar'
 
-  The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
-  the heavy lifting, together with the par2 suite in these scripts.
+The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
+the heavy lifting, together with the par2 suite in these scripts.
+
+This is the `Python` based **version 2** of `dar-backup`.
 
 ## Table of Contents
 
@@ -44,6 +46,7 @@
   - [dar manager databases](#dar-manager-databases)
   - [Performance tip due to par2](#performance-tip-due-to-par2)
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
+- [Todo](#todo)
 - [Reference](#reference)
   - [dar-backup](#dar-backup)
   - [manager](#manager)
@@ -161,7 +164,7 @@ The output is
 Directories created: `/home/user/dar-backup/` and `/home/user/.config/dar-backup`
 Config file deployed to /home/user/.config/dar-backup/dar-backup.conf
 Default backup definition deployed to /home/user/.config/dar-backup/backup.d/default
-1. Now run `manager --create` to create the catalog database.
+1. Now run `manager --create-db` to create the catalog database.
 2. Then you can run `dar-backup --full-backup` to create a backup.
 3. List backups with `dar-backup --list`
 4. List contents of a backup with `dar-backup --list-contents <backup-name>`
@@ -174,7 +177,7 @@ Generate the archive catalog database(s).
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
 
 ```` bash
-manager --create
+manager --create-db
 ````
 
 ### 4 - do FULL backups
@@ -652,6 +655,7 @@ The log file can get quite cluttered, if you want the clutter to be removed, run
 - `installer` to generate, but not deploy systemd units and timers for:
   - FULL, DIFF and INCR backups.
   - cleanup.
+- --suppress-dar-msg:  dar's xml catalog output is sille written to the log file
 
 ## Reference
 
@@ -674,6 +678,7 @@ This script is responsible for managing the backup creation and validation proce
 --restore <archive>                   Restore a specified archive.
 --restore-dir <path>                  Directory to restore files to.
 --verbose                             Enable verbose output.
+--suppress-dar-msg                    Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
 --log-level <level>                   `debug` or `trace`, default is `info`", default="info".
 --log-stdout                          Also print log messages to stdout.
 --do-not-compare                      Do not compare restores to file system.

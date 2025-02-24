@@ -1,4 +1,5 @@
 exclude venv/*
 include README.md
+include Changelog.md
 include LICENSE
 

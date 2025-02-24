@@ -1,4 +1,7 @@
 
+# dar-backup version 1
+
+This is the `bash` based **version 1** of `dar-backup`.
 
 # Table of contents
 
