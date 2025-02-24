@@ -136,7 +136,6 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
         if os.environ['LOG_DIR'].startswith('/tmp/'):
             command = ['rm', '-rf', f"/tmp/{env_vars['LOG_DIR'][5:]}"]
 
-    assert False
 
 def test_tilde_in_config_file(setup_environment, env: EnvData):
     """

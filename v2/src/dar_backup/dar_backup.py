@@ -7,8 +7,12 @@ import os
 import random
 import re
 import shlex
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
+import tempfile
+
+
 
 
 from argparse import ArgumentParser
@@ -494,6 +498,44 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
 
 
 
+def filter_darrc_file(darrc_path):
+    """
+    Filters the .darrc file to remove lines containing the options: -vt, -vs, -vd, -vf, and -va.
+    The filtered version is stored in a uniquely named file in the home directory of the user running the script.
+    The file permissions are set to 440.
+    
+    :param darrc_path: Path to the original .darrc file.
+    :return: Path to the filtered .darrc file.
+    """
+    # Define options to filter out
+    options_to_remove = {"-vt", "-vs", "-vd", "-vf", "-va"}
+
+    # Get the user's home directory
+    home_dir = os.path.expanduser("~")
+
+    # Create a unique file name in the home directory
+    filtered_darrc_path = os.path.join(home_dir, f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc")
+
+    try:
+        with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
+            for line in infile:
+                # Check if any unwanted option is in the line
+                if not any(option in line for option in options_to_remove):
+                    outfile.write(line)
+        
+        # Set file permissions to 440 (read-only for owner and group, no permissions for others)
+        os.chmod(filtered_darrc_path, 0o440)
+
+        return filtered_darrc_path
+
+    except Exception as e:
+        # If anything goes wrong, clean up the temp file if it was created
+        if os.path.exists(filtered_darrc_path):
+            os.remove(filtered_darrc_path)
+        raise RuntimeError(f"Error filtering .darrc file: {e}")
+
+
+
 def show_version():
     script_name = os.path.basename(argv[0])
     print(f"{script_name} {about.__version__}") 
@@ -603,6 +645,7 @@ def main():
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.")
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
+    parser.add_argument('--suppress-dar-msg', action='store_true', help="cancel dar options in .darrc: -vt, -vs, -vd, -vf and -va")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
@@ -631,20 +674,25 @@ def main():
 
     logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
 
-    if not args.darrc:
-        current_script_dir = os.path.dirname(os.path.abspath(__file__))
-        args.darrc = os.path.join(current_script_dir, ".darrc")
-
-    darrc_file = os.path.expanduser(os.path.expandvars(args.darrc))
-    if os.path.exists(darrc_file) and os.path.isfile(darrc_file):
-        logger.debug(f"Using .darrc: {args.darrc}")                
-    else:
-        logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting", file=stderr)
-        exit(127)
-
-
-
+    
     try:
+        if not args.darrc:
+            current_script_dir = os.path.dirname(os.path.abspath(__file__))
+            args.darrc = os.path.join(current_script_dir, ".darrc")
+
+        darrc_file = os.path.expanduser(os.path.expandvars(args.darrc))
+        if os.path.exists(darrc_file) and os.path.isfile(darrc_file):
+            logger.debug(f"Using .darrc: {args.darrc}")                
+        else:
+            logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting", file=stderr)
+            exit(127)
+
+        if args.suppress_dar_msg:
+            logger.info("Suppressing dar messages: -vt, -vs, -vd, -vf and -va")
+            args.darrc = filter_darrc_file(args.darrc)
+            logger.debug(f"Filtered .darrc file saved at: {args.darrc}")
+
+
         start_time=int(time())
         logger.info(f"=====================================")
         logger.info(f"dar-backup.py started, version: {about.__version__}")
@@ -712,9 +760,11 @@ def main():
     finally:
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
-
-#    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
-
+        # Clean up
+        if args.suppress_dar_msg and os.path.exists(args.darrc) and os.path.dirname(args.darrc) == os.path.expanduser("~"):
+            if args.darrc.startswith("filtered_darrc_"):
+                os.remove(args.darrc)
+                logger.info(f"Removed filtered .darrc: {args.darrc}")
 
 if __name__ == "__main__":
     main()

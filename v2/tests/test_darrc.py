@@ -4,13 +4,11 @@ import re
 import sys
 import os
 
-# Ensure the test directory is in the Python path
-#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
-from tests.envdata import EnvData
-
-
 from dar_backup.util import run_command
+from dar_backup.dar_backup import filter_darrc_file
+from tests.envdata import EnvData
+from tests.test_bitrot import generate_datafiles
+
 
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")
@@ -22,6 +20,7 @@ def create_test_files(env: EnvData) -> dict:
             f.write(content)
 
     return test_files
+
 
 def test_verbose(setup_environment, env):
     test_files = create_test_files(env)   
@@ -51,3 +50,71 @@ def test_verbose(setup_environment, env):
 
     for pattern in expected_patterns:
         assert re.search(pattern, stdout), f".darrc not found alongside dar_backup.py"
+
+
+def test_verify_filtering(setup_environment, env):
+    """
+    Verify that the filtering options from .darrc works as expected
+    """
+    # Define options to filter out
+    options_to_remove = {"-vt", "-vs", "-vd", "-vf", "-va"}
+
+    found_options_in_darrc = []
+
+    try:
+        with open(env.dar_rc, "r") as infile:
+            for line in infile:
+                # Check if any unwanted option is in the line
+                if any(option in line for option in options_to_remove):
+                    found_options_in_darrc.append(line)
+        for option in found_options_in_darrc:
+            env.logger.info(f"Option {option} found in .darrc")
+
+        if len(found_options_in_darrc) == 0:
+            assert False, "No options to filter out found in .darrc  ==> the test is not valid"
+
+       
+        # Filter out options from .darrc
+        path_filtered_darrc = filter_darrc_file(env.dar_rc)
+        env.logger.info(f"Filtered .darrc saved to {path_filtered_darrc}")
+        env.logger.info(f"Verify options have been filtered out: {options_to_remove}")  
+        with open(path_filtered_darrc, "r") as infile:
+            for line in infile:
+                # Check if any unwanted option is in the line
+                if any(option in line for option in options_to_remove):
+                    assert False, f"'{line}' filtered option found in filtered .darrc '{path_filtered_darrc}'"
+
+    except:
+        env.logger.error(f"Failed to filter out options", exc_info=True)
+        assert False
+    finally:
+        # Clean up
+        if os.path.exists(path_filtered_darrc):
+            os.remove(path_filtered_darrc)
+
+
+def test_backup_with_filtered_darrc(setup_environment, env):
+    file_sizes = {
+        '10B': 10,
+        '100B': 100,        
+        '100kB': 100 * 1024,
+        '1MB': 1024 * 1024
+    }
+    generate_datafiles(env, file_sizes)
+
+    command = ['dar-backup', '-F', '--config-file', env.config_file, '--verbose', '--log-level', 'debug', '--log-stdout', '--suppress-dar-msg']
+    process = run_command(command)
+    stdout, stderr = process.stdout, process.stderr
+    
+    for line in stdout.split("\n"):
+        if "-Txml" in line:
+            env.logger.info(f"dar list contents in xml found, stop here: {line}")
+            break
+        if "<File" in line or "<Directory" in line:
+            assert False, f"dar verbose message found in output: {line}"
+    
+    if process.returncode != 0:
+        env.logger.error(f"Command failed: {command}")
+        env.logger.error(f"stderr: {stderr}")
+        raise Exception(f"Command failed: {command}")
+
