@@ -45,16 +45,17 @@
   - [Performance tip due to par2](#performance-tip-due-to-par2)
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
 - [Reference](#reference)
-  - [dar-backup.py](#dar-backuppy)
-  - [manager.py](#managerpy)
-  - [cleanup.py](#cleanuppy)
-  - [clean-log.py](#clean-logpy)
-
+  - [dar-backup](#dar-backup)
+  - [manager](#manager)
+  - [cleanup](#cleanup)
+  - [clean-log](#clean-log)
+  - [installer](#installer)
+  
 ## My use case
 
 I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
 
-- a non-privileged user (me :-)) can perform a mount
+- a non-privileged user can perform a mount
 - a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
  I needed the following:
@@ -71,7 +72,7 @@ I have cloud storage mounted on a directory within my home dir. The filesystem i
 ## License
 
   These scripts are licensed under the GPLv3 license.
-  Read more here: https://www.gnu.org/licenses/gpl-3.0.en.html, or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+  Read more here: [GNU CPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
 ## Status
 
@@ -85,7 +86,7 @@ Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* i
 
 ## Homepage - Github
 
-This 'dar-backup' package lives at: https://github.com/per2jensen/dar-backup/tree/main/v2
+This 'dar-backup' package lives at: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
 
 This python version is v2 of dar-backup, the first is made in bash.
 
@@ -93,7 +94,7 @@ This python version is v2 of dar-backup, the first is made in bash.
 
 - dar
 - par2
-- python3 :-)
+- python3
 
 On Ubuntu, install the requirements this way:
 
@@ -399,14 +400,14 @@ gives
 ``` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 10:46:30 2024	home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 09:17:42 2024	home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj	pj	50 Mio	Wed Jun 19 20:52:13 2024	home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
 ```
 
-## dar file selection exmaples
+## dar file selection examples
 
 ### select a directory
 
@@ -419,33 +420,33 @@ gives
 ```` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 10:46:30 2024	home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 09:17:42 2024	home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj	pj	50 Mio	Wed Jun 19 20:52:13 2024	home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	48 kio	Sat Jun 22 21:51:24 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	50 kio	Sat Jun 22 21:51:25 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:26 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:27 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:27 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
-[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj	pj	77 kio	Sat Jun 22 21:50:16 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	52 kio	Sat Jun 22 21:49:37 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:47 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:12 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:12 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:39 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:36 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:35 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
-[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj	pj	15 kio	Sat Jun 22 21:51:11 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj	pj	84 kio	Sat Jun 22 21:51:09 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj	pj	90 kio	Sat Jun 22 21:51:04 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:15 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:48 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:19 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
+[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      48 kio    Sat Jun 22 21:51:24 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      50 kio    Sat Jun 22 21:51:25 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:26 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
+[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj     pj      77 kio    Sat Jun 22 21:50:16 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      52 kio    Sat Jun 22 21:49:37 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:47 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:39 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:36 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:35 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
+[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj     pj      15 kio    Sat Jun 22 21:51:11 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
+[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      84 kio    Sat Jun 22 21:51:09 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
+[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      90 kio    Sat Jun 22 21:51:04 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:15 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:48 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:19 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
 ````
 
-### select file dates in the directory:
+### select file dates in the directory
 
 ``` bash
 dar -l /tmp/example_FULL_2024-06-23  -I '*2024-06-16*' -g home/pj/tmp/LUT-play
@@ -456,30 +457,30 @@ gives
 ``` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 10:46:30 2024	home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 09:17:42 2024	home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj	pj	50 Mio	Wed Jun 19 20:52:13 2024	home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	48 kio	Sat Jun 22 21:51:24 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	50 kio	Sat Jun 22 21:51:25 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:26 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:27 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	51 kio	Sat Jun 22 21:51:27 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
-[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj	pj	77 kio	Sat Jun 22 21:50:16 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj	pj	52 kio	Sat Jun 22 21:49:37 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:47 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:12 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:12 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:39 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:36 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:35 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
-[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj	pj	15 kio	Sat Jun 22 21:51:11 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj	pj	84 kio	Sat Jun 22 21:51:09 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj	pj	90 kio	Sat Jun 22 21:51:04 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:51:15 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:48 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj	pj	24 kio	Sat Jun 22 21:50:19 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
+[Saved][-]       [-L-][   0%][ ] drwxr-xr-x   root    root    113 Mio   Sat May 11 16:16:48 2024        home
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Sed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      48 kio    Sat Jun 22 21:51:24 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      50 kio    Sat Jun 22 21:51:25 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:26 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
+[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj     pj      77 kio    Sat Jun 22 21:50:16 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
+[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      52 kio    Sat Jun 22 21:49:37 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:47 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:39 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:36 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:35 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
+[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj     pj      15 kio    Sat Jun 22 21:51:11 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
+[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      84 kio    Sat Jun 22 21:51:09 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
+[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      90 kio    Sat Jun 22 21:51:04 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:15 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:48 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:19 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
 ```
 
 ### exclude .xmp files from that date
@@ -491,17 +492,15 @@ dar -l /tmp/example_FULL_2024-06-23 -X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/
 
 gives
 
-``` code
+```` code
 [Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
 --------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root	root	113 Mio	Sat May 11 16:16:48 2024	home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 10:46:30 2024	home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj	pj	113 Mio	Sun Jun 23 09:17:42 2024	home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj	pj	50 Mio	Wed Jun 19 20:52:13 2024	home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj	pj	49 Mio	Sun Jun 16 12:52:22 2024	home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-```
-
-Nice :-)
+[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        ome/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        ome/pj/tmp
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024      ` ome/pj/tmp/LUT-play
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024      ` home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+````
 
 ## Restoring
 
@@ -557,7 +556,7 @@ deactivate
 
 "dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
 
-Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied .darrc file (located in the virtual environment where dar-backup is installed). 
+Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied .darrc file (located in the virtual environment where dar-backup is installed).
 
 This causes dar to restore without an error.
 
@@ -648,66 +647,75 @@ if --log-stdout is used the information would be picked up by systemd and logged
 
 The log file can get quite cluttered, if you want the clutter to be removed, run the `clean-log`script.
 
+## Todo
+
+- `installer` to generate, but not deploy systemd units and timers for:
+  - FULL, DIFF and INCR backups.
+  - cleanup.
+
 ## Reference
 
-### dar-backup.py
+### dar-backup
 
 This script is responsible for managing the backup creation and validation process. It supports the following options:
 
 ``` code
---full-backup                     Perform a full backup.
---differential-backup             Perform a differential backup.
---incremental-backup              Perform an incremental backup.
---backup-definition <name>        Specify the backup definition file.
+--full-backup                         Perform a full backup.
+--differential-backup                 Perform a differential backup.
+--incremental-backup                  Perform an incremental backup.
+--backup-definition <name>            Specify the backup definition file.
 --alternate-reference-archive <file>  Use a different archive for DIFF/INCR backups.
---config-file <path>              Specify the path to the configuration file.
---darrc <path>                    Specify an optional path to .darrc.
---examples                        Show examples of using dar-backup.py.
---list                            List available backups.
---list-contents <archive>         List the contents of a specified archive.
---selection <params>              Define file selection for listing/restoring.
---restore <archive>               Restore a specified archive.
---restore-dir <path>              Directory to restore files to.
---verbose                         Enable verbose output.
---log-level <level>               Set log level (debug, trace, etc.).
---log-stdout                      Also print log messages to stdout.
---do-not-compare                  Do not compare restores to file system.
---version                         Show version and license information.
+--config-file <path>                  Specify the path to the configuration file.
+--darrc <path>                        Specify an optional path to .darrc.
+--examples                            Show examples of using dar-backup.py.
+--list                                List available backups.
+--list-contents <archive>             List the contents of a specified archive.
+--selection <params>                  Define file selection for listing/restoring.
+--restore <archive>                   Restore a specified archive.
+--restore-dir <path>                  Directory to restore files to.
+--verbose                             Enable verbose output.
+--log-level <level>                   `debug` or `trace`, default is `info`", default="info".
+--log-stdout                          Also print log messages to stdout.
+--do-not-compare                      Do not compare restores to file system.
+--version                             Show version and license information.
 ```
 
-### manager.py
+### manager
 
 This script manages `dar` databases and catalogs. Available options include:
 
 ``` code
---create-db                     Create missing databases for all backup definitions.
---alternate-archive-dir <path>   Use this directory instead of BACKUP_DIR in the config file.
---add-dir <path>                 Add all archive catalogs in this directory to databases.
--d, --backup-def <name>          Restrict to work only on this backup definition.
---add-specific-archive <file>    Add this archive to the catalog database.
---remove-specific-archive <file> Remove this archive from the catalog database.
--l, --list-catalogs              List catalogs in databases for all backup definitions.
---list-catalog-contents <num>    List contents of a catalog by archive number.
---list-archive-contents <file>   List contents of an archive’s catalog.
---find-file <file>               Search catalogs for a specific file.
---verbose                        Enable verbose output.
---log-level <level>              Set log level.
+--create-db                           Create missing databases for all backup definitions.
+--alternate-archive-dir <path>        Use this directory instead of BACKUP_DIR in the config file.
+--add-dir <path>                      Add all archive catalogs in this directory to databases.
+-d, --backup-def <name>               Restrict to work only on this backup definition.
+--add-specific-archive <archive>      Add this archive to the catalog database.
+--remove-specific-archive <archive>   Remove this archive from the catalog database.
+-l, --list-catalogs                   List catalogs in databases for all backup definitions.
+--list-catalog-contents <num>         List contents of a catalog by catalog number.
+--list-archive-contents <archive>     List contents of an archive’s catalog, given the archive name.
+--find-file <file>                    Search catalogs for a specific file.
+--verbose                             Enable verbose output.
+--log-level <level>                   `debug` or `trace`, default is `info`", default="info".
 ```
 
-### cleanup.py
+### cleanup
 
 This script cleans up old backups and manages storage. Supported options:
 
 ``` code
---prune-older-than <days>   Remove backups older than the specified number of days.
---keep-last <num>           Retain only the last <num> backups.
---dry-run                   Show what would be deleted without actually deleting.
---backup-dir <path>         Specify the backup directory.
---verbose                   Enable verbose output.
---help                      Show this help message and exit.
+-d, --backup-definition                       Backup definition to cleanup.
+-c, --config-file                             Path to 'dar-backup.conf', default='~/.config/dar-backup/dar-backup.conf.
+-v, --version                                 Show version & license information.
+--alternate-archive-dir                       Clean up in this directory instead of the default one.
+--cleanup-specific-archives <archive>, ...    Comma separated list of archives to cleanup.
+-l,  --list                                   List available archives.
+--verbose                                     Print various status messages to screen.
+--log-level <level>                           `debug` or `trace`, default is `info`", default="info".
+--log-stdout                                  Print log messages to stdout.
 ```
 
-### clean-log.py
+### clean-log
 
 This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
 
@@ -716,4 +724,30 @@ This script removes excessive logging output from `dar` logs, improving readabil
 -c, --config-file <path>   Specify the configuration file (default: ~/.config/dar-backup/dar-backup.conf).
 --dry-run                  Show which lines would be removed without modifying the file.
 -v, --version              Display version and licensing information.
+-h, --help                 Displays usage info
+```
+
+### installer
+
+Sets up `dar-backup`for a user.
+
+It is non-destructive and stops if directories are already in place.
+
+Create directories:
+
+- ~/.config/dar-backup/
+  - ~/.config/dar-backup/backup.d/
+- ~/dar-backup/
+  - ~/dar-backup/backups
+  - ~/dar-backup/restore
+
+Sets up demo config files:
+
+- ~/.config/dar-backup/dar-backup.conf
+- ~/.config/dar-backup/backup.d/default
+
+``` code
+-i, --install              Sets up `dar-backup`.
+-v, --version              Display version and licensing information.
+-h, --help                 Displays usage info
 ```
