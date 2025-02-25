@@ -1,6 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.13.1 - 2025-02-25
+
+Github link: [v2-beta-0.6.13.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.13.1/v2)
+
+### FIX
+
+- remove a leftover print() in run_command()
+
 ## v2-beta-0.6.13 - 2025-02-25
 
 Github link: [v2-beta-0.6.13](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.13/v2)
