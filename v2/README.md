@@ -663,6 +663,8 @@ In order to not clutter that log file with the output of commands being run, a n
   - FULL, DIFF and INCR backups.
   - cleanup.
 
+- fix --log-stdout spams console with command output
+
 ## Reference
 
 ### dar-backup

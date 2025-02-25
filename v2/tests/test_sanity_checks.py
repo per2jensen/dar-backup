@@ -8,7 +8,7 @@ import tempfile
 from tests.envdata import EnvData
 from time import time
 from dar_backup.util import run_command
-
+from dar_backup.dar_backup import find_files_with_paths
 
 
 def modify_config_file_tilde(env: EnvData) -> dict:
@@ -188,3 +188,95 @@ def test_dar_backup_nonexistent_config_file(setup_environment, env):
     assert process.returncode == 127, f'dar-backup must fail and return code must be 127 if config file is not found'
 
 
+def test_validate_xml_parser(setup_environment, env):
+    """
+    Test that the XML parser is working correctly.
+    """
+    # Create a temporary XML file
+    xml_doc = """<?xml version="1.0" ?>
+<!DOCTYPE Catalog SYSTEM "dar-catalog.dtd">
+<Catalog format="1.2">
+<Directory name=".local">
+<Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwx------" atime="1739280438" mtime="1715508282" ctime="1721767430" />
+        <Directory name="share">
+        <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" drwx------" atime="1738346589" mtime="1739283519" ctime="1739283519" />
+                <Directory name="vlc">
+                <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" drwx------" atime="1738346589" mtime="1739283601" ctime="1739283601" />
+                        <File name="ml.xspf" size="297 o" stored="178 o" crc="207a1300" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                        <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-rw-r--" atime="1739283601" mtime="1739283601" ctime="1739283601" />
+                        </File>
+                </Directory>
+                <Directory name="gegl-0.4">
+                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwx------" atime="1738346589" mtime="1715621892" ctime="1715621892" />
+                        <Directory name="plug-ins">
+                        <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwx------" atime="1739128963" mtime="1715621892" ctime="1715621892" />
+                        </Directory>
+                </Directory>
+                <Directory name="vulkan">
+                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxrwxr-x" atime="1738346589" mtime="1715717830" ctime="1715717830" />
+                        <Directory name="implicit_layer.d">
+                        <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxrwxr-x" atime="1739130249" mtime="1715717830" ctime="1715717830" />
+                                <File name="steamoverlay_i386.json" size="457 o" stored="" crc="" dirty="no" sparse="yes" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" -rwxrwxr-x" atime="1739130249" mtime="1736456318" ctime="1736456318" />
+                                </File>
+                                <File name="steamoverlay_x86_64.json" size="457 o" stored="" crc="" dirty="no" sparse="yes" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" -rwxrwxr-x" atime="1739130249" mtime="1736456318" ctime="1736456318" />
+                                </File>
+                                <File name="steamfossilize_i386.json" size="632 o" stored="" crc="" dirty="no" sparse="yes" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" -rwxrwxr-x" atime="1739130249" mtime="1736456318" ctime="1736456318" />
+                                </File>
+                                <File name="steamfossilize_x86_64.json" size="632 o" stored="" crc="" dirty="no" sparse="yes" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" -rwxrwxr-x" atime="1739130249" mtime="1736456318" ctime="1736456318" />
+                                </File>
+                        </Directory>
+                </Directory>
+                <Directory name="systemd">
+                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxr-xr-x" atime="1738346589" mtime="1715793442" ctime="1715793442" />
+                        <Directory name="timers">
+                        <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxr-xr-x" atime="1738346589" mtime="1723114240" ctime="1723114240" />
+                                <File name="stamp-dar-diff-backup.timer" size="0" stored="0" crc="00" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-r--r--" atime="1738432997" mtime="1738432997" ctime="1738432997" />
+                                </File>
+                                <File name="stamp-dar-inc-backup.timer" size="0" stored="0" crc="00" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-r--r--" atime="1739210592" mtime="1739210592" ctime="1739210592" />
+                                </File>
+                        </Directory>
+                </Directory>
+                <Directory name="remmina">
+                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxr-x---" atime="1738346589" mtime="1716212561" ctime="1716212561" />
+                </Directory>
+                <Directory name="lensfun">
+                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxrwxr-x" atime="1739116520" mtime="1719036714" ctime="1719036714" />
+                        <Directory name="updates">
+                        <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxrwxr-x" atime="1738346589" mtime="1734813717" ctime="1734813717" />
+                                <Directory name="version_1">
+                                <Attributes data="referenced" metadata="absent" user="pj" group="pj" permissions=" drwxrwxr-x" atime="1739116520" mtime="1734813718" ctime="1734813718" />
+                                        <File name="mil-sony.xml" size="265 kio" stored="" crc="" dirty="no" sparse="yes" delta_sig="no" patch_base_crc="" patch_result_crc="">
+                                        <Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-r--r--" atime="1739210592" mtime="1739210592" ctime="1739210592" />
+                                        </File>
+                                </Directory>
+                        </Directory>
+                </Directory>
+        </Directory>
+</Directory>
+</Catalog>
+"""
+
+    paths = find_files_with_paths(xml_doc)
+
+    expected_paths = {".local/share/vlc/ml.xspf" : True,
+        ".local/share/vulkan/implicit_layer.d/steamoverlay_i386.json" : True, 
+        ".local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json" : True,
+        ".local/share/vulkan/implicit_layer.d/steamfossilize_i386.json" : True,
+        ".local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json" : True,
+        ".local/share/systemd/timers/stamp-dar-diff-backup.timer" : True,
+        ".local/share/systemd/timers/stamp-dar-inc-backup.timer" : True,
+        ".local/share/lensfun/updates/version_1/mil-sony.xml" : True
+    }
+
+    env.logger.info(f"Files in dar XML\n=================")
+    for path, size in paths:
+        env.logger.info(f"{path} -> {size}")
+        assert path in expected_paths, f'Unexpected path: {path}'
+
+    assert len(paths) == len(expected_paths), f'Expected {len(expected_paths)} paths, but found {len(paths)}'   
