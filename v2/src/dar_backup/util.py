@@ -195,8 +195,6 @@ def run_command(command: List[str], timeout: int = 30, no_output_log: bool = Fal
     stdout = "\n".join(stdout_lines)
     stderr = "\n".join(stderr_lines)
 
-    print(f"run_command(): stdout: {stdout}")
-
     #Build the result object
     result = CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
     return result
