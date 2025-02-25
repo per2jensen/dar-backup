@@ -9,6 +9,7 @@ import os
 import re
 from envdata import EnvData
 from dar_backup.util import run_command
+from dar_backup.util import CommandResult
 from typing import Dict
 
 test_files = {
@@ -35,19 +36,18 @@ def create_test_files(env):
 
 
 
-def run_backup_script(type: str, env: EnvData):
+def run_backup_script(type: str, env: EnvData) -> CommandResult:
     """
     Expects to run in a virtual environment with dar-backup installed
     """
     command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug','--log-stdout' ,'--config-file', env.config_file]
-    process = run_command(command)
-    stdout,stderr = process.stdout, process.stderr
-    env.logger.info(stdout)
-    if process.returncode != 0:
+    result: CommandResult = run_command(command)
+    stdout,stderr = result.stdout, result.stderr
+    if result.returncode != 0:
         env.logger.error(f"Error running backup command: {command}")
         env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Error running backup command: {command}")
-    return True
+    return result
 
 
 

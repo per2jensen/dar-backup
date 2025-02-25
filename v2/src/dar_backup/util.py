@@ -23,6 +23,184 @@ from datetime import datetime
 from typing import NamedTuple, List
 
 logger=None
+secondary_logger=None   
+
+
+def setup_logging(log_file: str, command_output_log_file: str, log_level: str = "info", log_to_stdout: bool = False) -> logging.Logger:
+    """
+    Sets up logging for the main program and a separate secondary logfile for command outputs.
+
+    Args:
+        log_file (str): The path to the main log file.
+        command_output_log_file (str): The path to the secondary log file for command outputs.
+        log_level (str): The log level to use. Can be "info", "debug", or "trace". Defaults to "info".
+        log_to_stdout (bool): If True, log messages will be printed to the console. Defaults to False.
+
+    Returns:
+        None
+
+    Raises:
+        Exception: If an error occurs during logging initialization
+    """
+    global logger, secondary_logger
+    try:
+        TRACE_LEVEL_NUM = 5
+        logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+        def trace(self, message, *args, **kws):
+            if self.isEnabledFor(TRACE_LEVEL_NUM):
+                self.log(TRACE_LEVEL_NUM, message, *args, **kws)
+
+        logging.Logger.trace = trace
+
+        # Setup main logger
+        logger = logging.getLogger("main_logger")
+        logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        # Setup secondary logger for command outputs
+        secondary_logger = logging.getLogger("command_output_logger")
+        secondary_logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
+        sec_file_handler = logging.FileHandler(command_output_log_file)
+        sec_file_handler.setFormatter(formatter)
+        secondary_logger.addHandler(sec_file_handler)
+
+        if log_to_stdout:
+            stdout_handler = logging.StreamHandler(sys.stdout)
+            stdout_handler.setFormatter(formatter)
+            logger.addHandler(stdout_handler)
+            secondary_logger.addHandler(stdout_handler)
+
+        return logger
+    except Exception as e:
+        print("Logging initialization failed.")
+        traceback.print_exc()
+        sys.exit(1)
+
+
+
+def get_logger(command_output_logger: bool = False) -> logging.Logger:
+    """
+    Returns a logger
+
+    Args:
+        use_secondary (bool): If True, returns the secondary logger. Defaults to False.
+
+    Returns:
+      logger to dar-backup.log or the logger for command output.
+    """
+    global logger, secondary_logger
+
+    return secondary_logger if command_output_logger else logger
+
+
+
+def _stream_reader(pipe, log_funcs, output_accumulator: List[str]):
+    """
+    Reads lines from the subprocess pipe and logs them to multiple destinations.
+    """
+    with pipe:
+        for line in iter(pipe.readline, ''):
+            stripped_line = line.strip()
+            output_accumulator.append(stripped_line)
+            for log_func in log_funcs:
+                log_func(stripped_line)  # Log the output in real-time
+
+
+
+def run_command(command: List[str], timeout: int = 30, no_output_log: bool = False):
+    """
+    Executes a command and streams output only to the secondary log unless no_log is set to True.
+
+
+    Returns:
+        A CommandResult NamedTuple with the following properties:
+        - process: subprocess.CompletedProcess
+        - stdout: str: The full standard output of the command.
+        - stderr: str: The full standard error of the command.
+        - returncode: int: The return code of the command.
+        - timeout: int: The timeout value in seconds used to run the command.
+        - command: list[str]: The command executed.
+
+    Logs:
+        - Logs standard output (`stdout`) and standard error in real-time to the
+          logger.secondary_log (that contains the command output).  
+    
+    Raises:
+        subprocess.TimeoutExpired: If the command execution times out (see `timeout` parameter).
+        Exception: If other exceptions occur during command execution.
+        FileNotFoundError: If the command is not found.
+    """
+    stdout_lines, stderr_lines = [], []
+    process = None
+    stdout_thread, stderr_thread = None, None
+
+    try:
+        logger =         get_logger(command_output_logger=False)
+        command_logger = get_logger(command_output_logger=True)
+
+        if not shutil.which(command[0]):
+            raise FileNotFoundError(f"Command not found: {command[0]}")
+   
+        logger.debug(f"Running command: {command}")
+        command_logger.info(f"Running command: {command}")
+
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        log_funcs = [command_logger.info] if not no_output_log else []
+        err_log_funcs = [command_logger.error] if not no_output_log else []
+
+        stdout_thread = threading.Thread(target=_stream_reader, args=(process.stdout, log_funcs,     stdout_lines))
+        stderr_thread = threading.Thread(target=_stream_reader, args=(process.stderr, err_log_funcs, stderr_lines))
+        
+        stdout_thread.start()
+        stderr_thread.start()
+
+        process.wait(timeout=timeout)
+
+    except FileNotFoundError as e:
+        logger.error(f"Command not found: {command[0]}")
+        return CommandResult(
+            process=None,
+            stdout="",
+            stderr=str(e),
+            returncode=127,
+            timeout=timeout,
+            command=command
+        )
+    except subprocess.TimeoutExpired:
+        if process:
+            process.terminate()
+        logger.error(f"Command: '{command}' timed out and was terminated.")
+        raise
+    except Exception as e:
+        logger.error(f"Error running command: {command}", exc_info=True)
+        raise
+    finally:
+        if stdout_thread and stdout_thread.is_alive():
+            stdout_thread.join()
+        if stderr_thread and stderr_thread.is_alive():
+            stderr_thread.join()
+        if process:
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+
+    
+    # Combine captured stdout and stderr lines into single strings
+    stdout = "\n".join(stdout_lines)
+    stderr = "\n".join(stderr_lines)
+
+    print(f"run_command(): stdout: {stdout}")
+
+    #Build the result object
+    result = CommandResult(process=process, stdout=stdout, stderr=stderr, returncode=process.returncode, timeout=timeout, command=command)
+    return result
+
 
 class BackupError(Exception):
     """Exception raised for errors in the backup process."""
@@ -42,55 +220,6 @@ class RestoreError(Exception):
 
 
 
-
-def setup_logging(log_file: str, log_level: str, log_to_stdout: bool=False, logger_name: str=__name__) -> logging.Logger:
-    """
-    log_level can be set to "debug" or "trace" for more verbose logging.
-    """    
-    global logger
-    try:
-        TRACE_LEVEL_NUM = 5
-        logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
-
-        def trace(self, message, *args, **kws):
-            if self.isEnabledFor(TRACE_LEVEL_NUM):
-                self.log(TRACE_LEVEL_NUM, message, args, **kws)
-
-        logging.Logger.trace = trace
-
-        # Create a custom logger
-        logger = logging.getLogger(__name__)
-
-        level_used = logging.INFO
-        logger.setLevel(logging.INFO)
-        if log_level == "debug":
-            level_used = logging.DEBUG
-            logger.setLevel(logging.DEBUG)
-        elif log_level == "trace":
-            level_used = TRACE_LEVEL_NUM
-            logger.setLevel(TRACE_LEVEL_NUM)
-
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
-
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(level_used)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
-        if log_to_stdout:
-            stdout_handler = logging.StreamHandler(sys.stdout)
-            stdout_handler.setLevel(level_used)
-            stdout_handler.setFormatter(formatter)
-            logger.addHandler(stdout_handler)
-
-    except Exception as e:
-        print("logging not initialized, exiting.")
-        traceback.print_exc()
-        sys.exit(1)
-
-    return logger
-
-
 class CommandResult(NamedTuple):
     """
     The reult of the run_command() function.
@@ -107,224 +236,6 @@ class CommandResult(NamedTuple):
         return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}']"
 
 
-
-def  _stream_reader(pipe, log_func, output_accumulator: List[str]):
-    """
-    Reads lines from the subprocess pipe, logs them, and accumulates them.
-
-    Args:
-        pipe: The pipe to read from (stdout or stderr).
-        log_func: The logging function to use (e.g., logger.info, logger.error).
-        output_accumulator: A list to store the lines read from the pipe.
-    """
-    with pipe:
-        for line in iter(pipe.readline, ''):
-            stripped_line = line.strip()
-            output_accumulator.append(stripped_line)  # Accumulate the output
-            log_func(stripped_line)  # Log the output in real time
-
-
-
-def run_command(command: List[str], timeout: int = 30) -> CommandResult:
-    """
-    Executes a given command via subprocess, logs its output in real time, and returns the result.
-
-    Args:
-        command (list): The command to be executed, represented as a list of strings.
-        timeout (int): The maximum time in seconds to wait for the command to complete. Defaults to 30 seconds.
-
-    Returns:
-        A CommandResult NamedTuple with the following properties:
-        - process: subprocess.CompletedProcess
-        - stdout: str: The full standard output of the command.
-        - stderr: str: The full standard error of the command.
-        - returncode: int: The return code of the command.
-        - timeout: int: The timeout value in seconds used to run the command.
-        - command: list[str]: The command executed.
-
-    Logs:
-        - Logs standard output (`stdout`) in real-time at the INFO log level.
-        - Logs standard error (`stderr`) in real-time at the ERROR log level.
-
-    Raises:
-        subprocess.TimeoutExpired: If the command execution times out (see `timeout` parameter).
-        Exception: If other exceptions occur during command execution.
-        FileNotFoundError: If the command is not found.
-
-    Notes:
-        - While the command runs, its `stdout` and `stderr` streams are logged in real-time.
-        - The returned `stdout` and `stderr` capture the complete output, even though the output is also logged.
-        - The command is forcibly terminated if it exceeds the specified timeout.
-    """
-    stdout_lines = []  # To accumulate stdout
-    stderr_lines = []  # To accumulate stderr
-    process = None  # Track the process for cleanup
-    stdout_thread = None
-    stderr_thread = None
-
-    try:
-        # Check if the command exists before executing
-        if not shutil.which(command[0]):
-            raise FileNotFoundError(f"Command not found: {command[0]}")
-
-        logger.debug(f"Running command: {command}")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        # Start threads to read and log stdout and stderr
-        stdout_thread = threading.Thread(target=_stream_reader, args=(process.stdout, logger.info, stdout_lines))
-        stderr_thread = threading.Thread(target=_stream_reader, args=(process.stderr, logger.error, stderr_lines))
-        
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # Wait for process to complete or timeout
-        process.wait(timeout=timeout)
-
-    except FileNotFoundError as e:
-        logger.error(f"Command not found: {command[0]}")
-        return CommandResult(
-            process=None,
-            stdout="",
-            stderr=str(e),
-            returncode=127,
-            timeout=timeout,
-            command=command
-        )
-    except subprocess.TimeoutExpired:
-        if process:
-            process.terminate()
-        logger.error(f"Command: '{command}' timed out and was terminated.")
-        raise
-    except Exception as e:
-        logger.error(f"Error running command: {command}", exc_info=True)
-        raise
-    finally:
-        # Ensure threads are joined to clean up (only if they were started)
-        if stdout_thread and stdout_thread.is_alive():
-            stdout_thread.join()
-        if stderr_thread and stderr_thread.is_alive():
-            stderr_thread.join()
-
-        # Ensure process streams are closed
-        if process and process.stdout:
-            process.stdout.close()
-        if process and process.stderr:
-            process.stderr.close()
-
-    # Combine captured stdout and stderr lines into single strings
-    stdout = "\n".join(stdout_lines)
-    stderr = "\n".join(stderr_lines)
-
-    # Build the result object
-    result = CommandResult(
-        process=process,
-        stdout=stdout,
-        stderr=stderr,
-        returncode=process.returncode,
-        timeout=timeout,
-        command=command
-    )
-    logger.debug(f"Command result: {result}")
-    return result
-
-def run_command2(command: List[str], timeout: int = 30) -> CommandResult:
-    """
-    Executes a given command via subprocess, logs its output in real time, and returns the result.
-
-    Args:
-        command (list): The command to be executed, represented as a list of strings.
-        timeout (int): The maximum time in seconds to wait for the command to complete. Defaults to 30 seconds.
-
-    Returns:
-        A CommandResult NamedTuple with the following properties:
-        - process: subprocess.CompletedProcess
-        - stdout: str: The full standard output of the command.
-        - stderr: str: The full standard error of the command.
-        - returncode: int: The return code of the command.
-        - timeout: int: The timeout value in seconds used to run the command.
-        - command: list[str]: The command executed.
-
-    Logs:
-        - Logs standard output (`stdout`) in real-time at the INFO log level.
-        - Logs standard error (`stderr`) in real-time at the ERROR log level.
-
-    Raises:
-        subprocess.TimeoutExpired: If the command execution times out (see `timeout` parameter).
-        Exception: If other exceptions occur during command execution.
-
-    Notes:
-        - While the command runs, its `stdout` and `stderr` streams are logged in real-time.
-        - The returned `stdout` and `stderr` capture the complete output, even though the output is also logged.
-        - The command is forcibly terminated if it exceeds the specified timeout.
-    """
-    stdout_lines = []  # To accumulate stdout
-    stderr_lines = []  # To accumulate stderr
-    process = None  # Track the process for cleanup
-
-    try:
-        # Check if the command exists before executing
-        if not shutil.which(command[0]):
-            raise FileNotFoundError(f"Command not found: {command[0]}")
-
-        logger.debug(f"Running command: {command}")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        # Start threads to read and log stdout and stderr
-        stdout_thread = threading.Thread(target=_stream_reader, args=(process.stdout, logger.info, stdout_lines))
-        stderr_thread = threading.Thread(target=_stream_reader, args=(process.stderr, logger.error, stderr_lines))
-        
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # Wait for process to complete or timeout
-        process.wait(timeout=timeout)
-
-    except FileNotFoundError as e:
-        logger.error(f"Command not found: {command[0]}")
-        return CommandResult(
-            process=None,
-            stdout="",
-            stderr=str(e),
-            returncode=127,
-            timeout=timeout,
-            command=command
-        )
-    except subprocess.TimeoutExpired:
-        if process:
-            process.terminate()
-        logger.error(f"Command: '{command}' timed out and was terminated.")
-        raise
-    except Exception as e:
-        logger.error(f"Error running command: {command}", exc_info=True)
-        raise
-    finally:
-        # Ensure threads are joined to clean up
-        if stdout_thread.is_alive():
-            stdout_thread.join()
-        if stderr_thread.is_alive():
-            stderr_thread.join()
-
-        # Ensure process streams are closed
-        if process and process.stdout:
-            process.stdout.close()
-        if process and process.stderr:
-            process.stderr.close()
-
-    # Combine captured stdout and stderr lines into single strings
-    stdout = "\n".join(stdout_lines)
-    stderr = "\n".join(stderr_lines)
-
-    # Build the result object
-    result = CommandResult(
-        process=process,
-        stdout=stdout,
-        stderr=stderr,
-        returncode=process.returncode,
-        timeout=timeout,
-        command=command
-    )
-    logger.debug(f"Command result: {result}")
-    return result
 
 
 def extract_error_lines(log_file_path: str, start_time: str, end_time: str):

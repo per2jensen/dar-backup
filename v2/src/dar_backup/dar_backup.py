@@ -12,9 +12,6 @@ import subprocess
 import xml.etree.ElementTree as ET
 import tempfile
 
-
-
-
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +31,7 @@ from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 
 
+RESULT = True
 logger = None
 
 def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace):
@@ -103,12 +101,12 @@ def find_files_with_paths(xml_root: ET.Element):
     current_path = []
 
     for elem in xml_root.iter():
-        if elem.tag == "directory":
+        if elem.tag == "Directory":
             current_path.append(elem.get('name'))
-        elif elem.tag == "file":
+        elif elem.tag == "File":
             file_path = ("/".join(current_path + [elem.get('name')]), elem.get('size'))
             files.append(file_path)
-        elif elem.tag == "directory" and elem.get('name') in current_path:
+        elif elem.tag == "Directory" and elem.get('Name') in current_path:
             current_path.pop()
 
     return files
@@ -196,10 +194,10 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         logger.info(f"No files between {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB for verification, skipping")
         return result
 
+    # find Root path in backup definition
     with open(backup_definition, 'r') as f:
         backup_definition_content = f.readlines()
         logger.debug(f"Backup definition: '{backup_definition}', content:\n{backup_definition_content}")
-    # Initialize a variable to hold the path after "-R"
     root_path = None
     for line in backup_definition_content:
         line = line.strip()
@@ -207,7 +205,10 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             root_path = line.split("-R", 1)[1].strip()
             break
     if root_path is None:
-        logger.warning("No Root (-R) path specified in the backup definition file.")
+        msg = f"No Root (-R) path found in the backup definition file: '{backup_definition}', restore verification skipped"
+        raise BackupError(msg)
+
+
 
     no_files_verification = config_settings.no_files_verification
     if len(files) < config_settings.no_files_verification:
@@ -442,9 +443,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             logger.info("Generate par2 redundancy files.")
             generate_par2_files(backup_file, config_settings, args)
             logger.info("par2 files completed successfully.")
-            
 
         except Exception as e:
+            global RESULT
+            RESULT = False
             logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
 
 
@@ -622,14 +624,14 @@ def requirements(type: str, config_setting: ConfigSettings):
 
 
 def main():
-    global logger 
+    global logger, RESULT 
 
     MIN_PYTHON_VERSION = (3, 9)
     if version_info < MIN_PYTHON_VERSION:
         stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
         exit(1)
 
-    parser = argparse.ArgumentParser(description="Backup and verify using dar backup definitions.")
+    parser = argparse.ArgumentParser(description="Backup, verify & redundancy using dar and par2.")
     parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
     parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
@@ -671,10 +673,12 @@ def main():
     args.config_file = config_settings_path
     config_settings = ConfigSettings(args.config_file)
 
+    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
+    if command_output_log == config_settings.logfile_location:
+        print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
 
-    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
+    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
 
-    
     try:
         if not args.darrc:
             current_script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -691,7 +695,6 @@ def main():
             logger.info("Suppressing dar messages: -vt, -vs, -vd, -vf and -va")
             args.darrc = filter_darrc_file(args.darrc)
             logger.debug(f"Filtered .darrc file saved at: {args.darrc}")
-
 
         start_time=int(time())
         logger.info(f"=====================================")
@@ -719,7 +722,6 @@ def main():
         args.verbose and (print(f".darrc location:   {args.darrc}"))
         args.verbose and (print(f"PAR2 enabled:      {config_settings.par2_enabled}"))
         args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
-
 
         # sanity check
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):
@@ -750,13 +752,11 @@ def main():
 
         requirements('POSTREQ', config_settings)
 
-        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
-        exit(0)
     except Exception as e:
         logger.exception("An error occurred")
         logger.error("Exception details:", exc_info=True)
         args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-        exit(1) 
+        RESULT = False
     finally:
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
@@ -766,5 +766,10 @@ def main():
                 os.remove(args.darrc)
                 logger.info(f"Removed filtered .darrc: {args.darrc}")
 
+
+    if RESULT:
+        exit(0)
+    else:
+        exit(1)
 if __name__ == "__main__":
     main()

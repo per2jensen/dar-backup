@@ -400,7 +400,11 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")
         sys.exit(1) 
-    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
+
+#    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
+    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
+    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+
 
     start_time=int(time())
     logger.info(f"=====================================")

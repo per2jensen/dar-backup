@@ -10,6 +10,7 @@ Github link: [v2-beta-0.6.13](https://github.com/per2jensen/dar-backup/tree/v2-b
 - README.md now good MarkDown, fixed reference section
 - Changelog.md now good MarkDown
 - --suppress-dar-msg option added (one way to cancel the verbosity options in .darrc)
+- separate log file for command outputs. This keeps the core dar-backup.log more readable
 
 ## v2-beta-0.6.12 - 2025-02-23
 

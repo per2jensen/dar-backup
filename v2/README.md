@@ -46,6 +46,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [dar manager databases](#dar-manager-databases)
   - [Performance tip due to par2](#performance-tip-due-to-par2)
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
+  - [Separate log file for command output](#separate-log-file-for-command-output)
 - [Todo](#todo)
 - [Reference](#reference)
   - [dar-backup](#dar-backup)
@@ -650,12 +651,17 @@ if --log-stdout is used the information would be picked up by systemd and logged
 
 The log file can get quite cluttered, if you want the clutter to be removed, run the `clean-log`script.
 
+### Separate log file for command output
+
+Dar-backup's log file is called `dar-backup.log`.
+
+In order to not clutter that log file with the output of commands being run, a new log file has been introduced `dar-backup-commands.log`.
+
 ## Todo
 
 - `installer` to generate, but not deploy systemd units and timers for:
   - FULL, DIFF and INCR backups.
   - cleanup.
-- --suppress-dar-msg:  dar's xml catalog output is sille written to the log file
 
 ## Reference
 

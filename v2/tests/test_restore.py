@@ -11,7 +11,9 @@ import tempfile
 
 from tests.envdata import EnvData
 from dar_backup.util import run_command
+from dar_backup.util import CommandResult
 from testdata_verification import test_files, verify_restore_contents, verify_backup_contents, create_test_files, run_backup_script 
+
 def test_restoredir_requires_value(setup_environment, env):
     """
     Verify that dar-backup fails when --restore-dir is given without a value
@@ -70,3 +72,17 @@ def test_restore_with_restoredir(setup_environment, env):
     finally:
         shutil.rmtree(unique_dir)
         env.logger.info(f"test_restore_with_restoredir():  removed directory {unique_dir}")
+
+
+def test_restore_validatation(setup_environment, env):
+    """
+    do a full backup, verify the comparison with the original is executed
+    """
+    try:
+        create_test_files(env)
+        result: CommandResult = run_backup_script("--full-backup", env)
+
+        if "Restoring file: '" not in result.stdout or "' for file comparing" not in result.stdout:
+            assert False, f"Expected message not found in stdout: {result.stdout}"
+    finally:
+        pass

@@ -181,7 +181,11 @@ def main():
     config_settings = ConfigSettings(args.config_file)
 
     start_time=int(time())
-    logger = setup_logging(config_settings.logfile_location, args.log_level, args.log_stdout)
+
+#    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
+    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
+    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+
 
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {about.__version__}")
