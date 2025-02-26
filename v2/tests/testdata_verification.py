@@ -11,29 +11,7 @@ from envdata import EnvData
 from dar_backup.util import run_command
 from dar_backup.util import CommandResult
 from typing import Dict
-
-test_files = {
-        'file1.txt': 'This is file 1.',
-        'file2.txt': 'This is file 2.',
-        'file3.txt': 'This is file 3.',
-        'file with spaces.txt': 'This is file with spaces.',
-        'file_with_danish_chars_æøå.txt': 'This is file with danish chars æøå.',
-        'file_with_DANISH_CHARS_ÆØÅ.txt': 'This is file with DANISH CHARS ÆØÅ.',
-        'file_with_colon:.txt': 'This is file with colon :.',
-        'file_with_hash#.txt': 'This is file with hash #.',
-        'file_with_currency$.txt': 'This is file with currency $ ¤.',
-        'file with spaces.txt': 'This is file with spaces.',
- }
-
-
-def create_test_files(env):
-    env.logger.info("Creating test files...")
-    for filename, content in test_files.items():
-        env.logger.info(f"Creating {filename} with content: {content} in {env.test_dir}")
-        with open(os.path.join(env.test_dir, 'data', filename), 'w') as f:
-            f.write(content)
-
-
+from tests.conftest import test_files
 
 
 def run_backup_script(type: str, env: EnvData) -> CommandResult:

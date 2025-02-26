@@ -15,6 +15,22 @@ from tests.envdata import EnvData
 from dar_backup.util import setup_logging
 from dar_backup.util import run_command
 
+
+test_files = {
+        'file1.txt': 'This is file 1.',
+        'file2.txt': 'This is file 2.',
+        'file3.txt': 'This is file 3.',
+        'file with spaces.txt': 'This is file with spaces.',
+        'file_with_danish_chars_æøå.txt': 'This is file with danish chars æøå.',
+        'file_with_DANISH_CHARS_ÆØÅ.txt': 'This is file with DANISH CHARS ÆØÅ.',
+        'file_with_colon:.txt': 'This is file with colon :.',
+        'file_with_hash#.txt': 'This is file with hash #.',
+        'file_with_currency$.txt': 'This is file with currency $ ¤.',
+        'file with spaces.txt': 'This is file with spaces.',
+}
+
+
+
 # Session-scoped fixture for the logger
 @pytest.fixture(scope='session')
 def logger():
@@ -66,7 +82,7 @@ def setup_environment(request, logger):
 
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
-    if env.test_dir.startswith("/tmp") and os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
+    if env.test_dir.startswith("/tmp/") and os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
         shutil.rmtree(env.test_dir)
 
     # Create the unit test directory
@@ -93,6 +109,7 @@ def setup_environment(request, logger):
     
     create_catalog_db(env)  
 
+    create_a_bit_of_testdata(env)
 
     # Print variables to console
     print_variables(env)
@@ -179,6 +196,14 @@ def create_catalog_db(env):
         raise Exception(f"Command failed: {command}")
 
 
+
+def create_a_bit_of_testdata(env: EnvData):
+    global test_files
+    env.logger.info("Creating test data files...")
+    for filename, content in test_files.items():
+        env.logger.info(f"Creating '{filename}' in '{env.data_dir}'")
+        with open(os.path.join(env.data_dir, filename), 'w') as f:
+            f.write(content)
 
 
 def teardown_environment(env: EnvData):

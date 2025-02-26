@@ -10,7 +10,9 @@ from pathlib import Path
 
 from dar_backup.util import run_command
 from tests.envdata import EnvData
-from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,test_files, run_backup_script
+from tests.conftest import test_files 
+from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,run_backup_script
+
 
 
 
@@ -30,8 +32,6 @@ def list_catalog_db(env):
 
 def test_backup_functionality(setup_environment, env):
     try:
-        create_test_files(env)
-
         # full backup
         run_backup_script("--full-backup", env)
 
@@ -90,8 +90,6 @@ def test_backup_functionality(setup_environment, env):
 
 def test_backup_functionality_short_options(setup_environment, env):
     try:
-        create_test_files(env)
-
         # full backup
         run_backup_script("-F", env)
 

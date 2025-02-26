@@ -10,9 +10,10 @@ import shutil
 import tempfile
 
 from tests.envdata import EnvData
+from tests.conftest import test_files
 from dar_backup.util import run_command
 from dar_backup.util import CommandResult
-from testdata_verification import test_files, verify_restore_contents, verify_backup_contents, create_test_files, run_backup_script 
+from testdata_verification import verify_restore_contents, verify_backup_contents, run_backup_script 
 
 def test_restoredir_requires_value(setup_environment, env):
     """
@@ -53,7 +54,6 @@ def test_restore_with_restoredir(setup_environment, env):
     do a full backup, then restore using --restore-dir and verify the restored files
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
 
         unique_dir = tempfile.mkdtemp(dir='/tmp')
@@ -79,7 +79,6 @@ def test_restore_validatation(setup_environment, env):
     do a full backup, verify the comparison with the original is executed
     """
     try:
-        create_test_files(env)
         result: CommandResult = run_backup_script("--full-backup", env)
 
         if "Restoring file: '" not in result.stdout or "' for file comparing" not in result.stdout:

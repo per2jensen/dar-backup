@@ -6,9 +6,10 @@ import random
 from pathlib import Path
 from dar_backup.util import run_command
 from tests.envdata import EnvData
+from tests.conftest import test_files
 from testdata_verification import (
-    create_test_files, verify_backup_contents, 
-    verify_restore_contents, test_files, run_backup_script
+    verify_backup_contents, 
+    verify_restore_contents, run_backup_script
 )
 
 def test_restore_functionality(setup_environment, env):
@@ -16,7 +17,6 @@ def test_restore_functionality(setup_environment, env):
     Tests restoring backups and verifying integrity.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         
@@ -77,7 +77,6 @@ def test_multiple_incremental_backups(setup_environment, env):
     Ensures that multiple incremental backups are handled correctly.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         run_backup_script("--differential-backup", env)  # Ensure DIFF backup exists
         
@@ -104,7 +103,6 @@ def test_par2_repair_bit_rot(setup_environment, env):
     Tests whether par2 can successfully repair an archive with simulated bit rot using dar-backup's generated PAR2 files.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
@@ -143,7 +141,6 @@ def test_par2_insufficient_redundancy(setup_environment, env):
     Tests if PAR2 fails when bit rot exceeds available redundancy.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
@@ -184,7 +181,6 @@ def test_extreme_restore_failure(setup_environment, env):
     Attempts to make dar fail by severely corrupting an archive beyond recovery.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
@@ -209,7 +205,6 @@ def test_metadata_corruption_failure(setup_environment, env):
     Attempts to make dar fail by corrupting only the metadata portion of the archive.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
@@ -235,7 +230,6 @@ def test_restore_functionality(setup_environment, env):
     Tests restoring backups and verifying integrity.
     """
     try:
-        create_test_files(env)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         
