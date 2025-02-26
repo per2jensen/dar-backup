@@ -30,13 +30,14 @@ test_files = {
 }
 
 
-
 # Session-scoped fixture for the logger
 @pytest.fixture(scope='session')
 def logger():
     os.path.exists("/tmp/unit-test") or os.makedirs("/tmp/unit-test")
-    test_log = "/tmp/unit-test/test.log"
+
+    test_log =                "/tmp/unit-test/test.log"
     test_command_output_log = "/tmp/unit-test/test_command_output.log"
+
     logger = setup_logging(test_log, test_command_output_log, "debug", False)
     return logger
 
@@ -48,20 +49,11 @@ def env(request, logger):
     """
     Setup the EnvData dataclass for each test case before the "yield" statement.
     """
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../dar_backup')))
-
-    print(f"Logger: {logger}")  
-
     env = EnvData(request.node.name, logger) # name of test case
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     yield env
 
-    try:
-        pass
-    except Exception as e:
-        env.logger.exception("Failed to tear down environment")
-        
 
 @pytest.fixture(scope='function')
 def setup_environment(request, logger):
@@ -69,10 +61,6 @@ def setup_environment(request, logger):
     Setup the environment for each test case before the "yield" statement.
     Tear down the environment after the "yield" statement.
     """
-
-    print("current os.path.dirname: " + os.path.join(os.path.dirname(__file__)))
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../dar_backup')))
-
     env = EnvData(request.node.name, logger) # name of test case
 
     env.logger.info("================================================================")
@@ -138,13 +126,12 @@ def create_backup_definitions(env : EnvData) -> None:
     logging.info("Generating backup definition")
     backup_definitions = {
         "example" : f"""
-#-B {env.dar_rc}
 -R /
 -s 10G
 -z6
 -am
 --cache-directory-tagging
--g {os.path.join(env.test_dir, 'data')}
+-g {env.data_dir}
 """.replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
     }
 
@@ -254,6 +241,7 @@ def teardown_environment(env: EnvData):
         raise
 
 
+
 def copy_dar_rc(env : EnvData):
     try:
         shutil.copy(env.template_dar_rc, os.path.join(env.test_dir, env.dar_rc))
@@ -264,13 +252,6 @@ def copy_dar_rc(env : EnvData):
 
 
 def print_variables(env : EnvData):
-    print(f"Test case name: {env.test_case_name}")
-    print(f"Test directory: {env.test_dir}")
-    print(f"Template config file: {env.template_config_file}")
-    print(f"Config file: {env.config_file}")
-    print(f"Log file: {env.log_file}")
-    print(f".darrc file: {env.dar_rc}")
-
     env.logger.info(f"Test case name: {env.test_case_name}")
     env.logger.info(f"Test directory: {env.test_dir}")
     env.logger.info(f"Template config file: {env.template_config_file}")
