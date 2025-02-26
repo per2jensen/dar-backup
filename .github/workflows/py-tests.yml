@@ -41,7 +41,7 @@ jobs:
           python3 -m venv venv
           . venv/bin/activate
           python3 -m pip install --upgrade pip
-          python3 -m pip install wheel build pytest hatchling hatch
+          python3 -m pip install wheel build pytest hatchling hatch psutil
           python3 -m build
           VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
           echo "Version: $VERSION"

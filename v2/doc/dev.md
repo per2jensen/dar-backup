@@ -10,7 +10,7 @@ cd <path/to/dar-backup/v2>
 ## Setup venv
 
 ```` bash
-pip install build hatch hatchling pytest twine wheel
+pip install build hatch hatchling pytest twine wheel psutil
 ````
 
 ## build, deploy to dev venv

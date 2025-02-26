@@ -2,6 +2,7 @@
 import pytest
 import subprocess
 import os
+import psutil
 import random
 import time
 import shutil
@@ -11,6 +12,8 @@ import tempfile
 from dar_backup.util import run_command
 from dar_backup.util import CommandResult
 
+from tests.envdata import EnvData
+import hashlib
 
 DISK_IMG = "testdisk.img"
 DISK_SIZE_MB = 10
@@ -18,7 +21,7 @@ PID_FILE = "guestmount.pid"
 
 
 
-def guest_unmount(env, pid, img_path):
+def guest_unmount(env: EnvData, pid, img_path):
     try:
         unmount_script=f"""
     guestunmount "{env.data_dir}"
@@ -70,16 +73,31 @@ def guest_unmount(env, pid, img_path):
                 command = ['umount', '-l', env.data_dir]
                 result: CommandResult =  run_command(command)
 
-        os.remove(img_path)
+        #os.remove(img_path)
         os.remove(script_path)
 
 
+def mount(env: EnvData):
+        pid_path = os.path.join(env.test_dir, PID_FILE)
+        img_path = os.path.join(env.test_dir, DISK_IMG)
+
+        command = ["guestmount", "-a", f"{img_path}", "--pid-file", f"{pid_path}", "-m", "/dev/sda", f"{env.data_dir}"]
+        result: CommandResult = run_command(command)
+        assert result.returncode == 0, "guestmount failed"
+
+        with open(pid_path, "r") as f:
+            pid = f.read()
+        env.logger.info(f"guestmount PID: {pid}")
+
+        return pid
+
 
 @pytest.fixture(scope="function")
-def guestmount_disk(env):
+def guestmount_disk(env: EnvData):
     try:
+        
+        #pid_path = os.path.join(env.test_dir, PID_FILE)
         img_path = os.path.join(env.test_dir, DISK_IMG)
-        pid_path = os.path.join(env.test_dir, PID_FILE)
 
         # sanity check
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".sh") as tmpfile:
@@ -102,13 +120,7 @@ def guestmount_disk(env):
         result:CommandResult = run_command(command)
         assert result.returncode == 0, f'mkfs.ext4 in: f"{img_path}" failed'
         
-        command = ["guestmount", "-a", f"{img_path}", "--pid-file", f"{pid_path}", "-m", "/dev/sda", f"{env.data_dir}"]
-        result: CommandResult = run_command(command)
-        assert result.returncode == 0, "guestmount failed"
-
-        with open(pid_path, "r") as f:
-            pid = f.read()
-        env.logger.info(f"guestmount PID: {pid}")
+        pid = mount(env)
 
         # Populate disk with files to make backup take some time
         for i in range(60):
@@ -123,13 +135,20 @@ def guestmount_disk(env):
     except Exception as e:
         env.logger.error(e)
         guest_unmount(env, pid, img_path)
+        assert False, "exception happened" 
 
-    yield
+    yield pid, img_path
+
+    # pid may have changed
+    pid_path = os.path.join(env.test_dir, PID_FILE)
+    with open(pid_path, "r") as f:
+        pid = f.read()
+    env.logger.info(f"guestmount PID: {pid}")
 
     guest_unmount(env, pid, img_path)
 
     
-def test_verify_guestmount_is_working(setup_environment, env, guestmount_disk):
+def test_verify_guestmount_is_working(setup_environment, env: EnvData, guestmount_disk):
 
     command = ["ls", "-l", f"{env.data_dir}"]
     run_command(command)
@@ -141,17 +160,75 @@ def test_verify_guestmount_is_working(setup_environment, env, guestmount_disk):
     env.logger.info(f"FULL backup took: {end - start:.4f} seconds")
 
 
-def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
-    """Specifically corrupts the ext filesystem superblock."""
-    with open(img_file, 'r+b') as f:
-        f.seek(offset)
-        f.write(os.urandom(corruption_size))
-    print(f"[+] Superblock corrupted at offset {offset}, size {corruption_size} bytes.")
+def xtest_corrupt_unmounted_img_file(setup_environment, env: EnvData, guestmount_disk):
+    """"
+    try to corrupt the img file, while it is unmounted
+    """
+    
+    pid, img_path = guestmount_disk
+
+    #unmount before corruption
+    guest_unmount(env, pid, img_path)
+    corrupt_disk_image(img_path, env)
+
+    # mount the now corrupted image
+    pid = mount(env)
+
+    start = time.perf_counter()
+    command = ['dar-backup', '-F', '-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    run_command(command)
+    end = time.perf_counter()
+    env.logger.info(f"FULL backup took: {end - start:.4f} seconds")
 
 
 
-def corrupt_disk_image(img_file, num_corruptions=10, corruption_size=4096):
+def calculate_sha256(img_file: str) -> str:
+    """Calculate SHA256 of the image file."""
+    sha256_hash = hashlib.sha256()
+    with open(img_file, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
+def number_of_handles(path: str) -> int:
+    """
+    Determine the number of file handles on a file
+    """
+    count = 0
+    for proc in psutil.process_iter(['pid', 'name', 'open_files']):
+        try:
+            if proc.info['open_files']:
+                for f in proc.info['open_files']:
+                    if f.path == path:
+                        count += 1
+                        print(f"Process {proc.info['name']} (PID {proc.info['pid']}) has the file open: {f.path}")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return count
+
+
+
+def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corruption_size=65536):
     """In-place disk image corruption."""
+    env.logger.info(f"image file to corrupt: {img_file}")
+    if not os.path.exists(img_file):
+        assert False, f"image: {img_file} does not exist"
+
+    if not img_file.startswith("/tmp/"):
+        assert False, "img path does not start with /tmp/"
+
+    img_sha256 = calculate_sha256(img_file)
+    env.logger.info(f"SHA256 of the image file before corruption: {img_sha256}")
+
+    env.logger.info(f"Number of file handles on image file: {number_of_handles(img_file)}")
+
+    # ext4 superblock corruption
+    with open(img_file, 'r+b') as f:
+        f.seek(1024)
+        f.write(os.urandom(1024))
+    env.logger.info(f"[+] Superblock corrupted at offset 1024, size 1024 bytes.")
+
     with open(img_file, 'r+b') as f:
         f.seek(0, os.SEEK_END)
         size = f.tell()
@@ -159,7 +236,30 @@ def corrupt_disk_image(img_file, num_corruptions=10, corruption_size=4096):
             pos = random.randint(0, size - corruption_size)
             f.seek(pos)
             f.write(os.urandom(corruption_size))
-    print(f"[+] Corrupted {img_file} at {num_corruptions} locations.")
+            env.logger.info(f"Corruption at position: {pos}, size: {corruption_size}")
+    env.logger.info(f"[+] Corrupted {img_file} at {num_corruptions} locations.")
+
+    img_sha256 = calculate_sha256(img_file)
+    env.logger.info(f"SHA256 of the image file after corruption: {img_sha256}")
+
+    env.logger.info(f"Number of file handles on image file: {number_of_handles(img_file)}")
+
+
+    command = ['sync']
+    run_command(command)
+    time.sleep(2)
+    run_command(command)
+    time.sleep(2)
+    
+
+
+def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
+    """Specifically corrupts the ext filesystem superblock."""
+    with open(img_file, 'r+b') as f:
+        f.seek(offset)
+        f.write(os.urandom(corruption_size))
+    print(f"[+] Superblock corrupted at offset {offset}, size {corruption_size} bytes.")
+
 
 
 
