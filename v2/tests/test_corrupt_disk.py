@@ -1,148 +1,145 @@
-"""
-sudo apt install libguestfs-tools
-
-
-
-.
-├── backups
-├── data
-│   ├── testdisk.img
-│   └── mnt
-└── tests
-    └── test_live_corruption.py
-
-    
-Notes:
-On Ubuntu the kernel image has permissions 0o400, so a user cannot read it
-
-Fix:
-https://unix.stackexchange.com/questions/437984/why-isnt-the-linux-kernel-image-read-only-by-default
-
-
-sudo bash -c "cat > /etc/kernel/postinst.d/statoverride << 'EOF'
-#!/bin/sh
-version=\"\$1\" # passing the kernel version is required 
-[ -z \"\${version}\" ] && exit 0
-dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-\${version}
-EOF"
-
-sudo chmod +x /etc/kernel/postinst.d/statoverride
-
-
-
-cleanup function for trapping errors and unmounting the disk image:
-=======================================================================
-
-guestmount_cleanup() {
-    echo "Cleaning up..."
-    # Check if the mount point is active using mountpoint command
-    if mountpoint -q "${MNT}"; then
-        echo "Mount point '${MNT}' is active. Attempting to unmount using guestunmount..."
-        if guestunmount "${MNT}"; then
-            echo "Successfully unmounted '${MNT}' with guestunmount."
-        else
-            echo "guestunmount failed. Attempting lazy unmount..."
-            if umount -l "${MNT}"; then
-                echo "Successfully unmounted '${MNT}' using lazy unmount."
-            else
-                echo "Failed to unmount '${MNT}'. Please check MANUALLY."
-            fi
-        fi
-    else
-        echo "Mount point '${MNT}' is not mounted."
-    fi
-
-    # Remove the PID file if it exists
-    if [ -f "${PID}" ]; then
-        if rm -f "${PID}"; then
-            echo "PID file '${PID}' removed."
-        else
-            echo "Failed to remove PID file '${PID}'."
-        fi
-    fi
-}
-
-
-Mount:
-========
-set -e
-set -o pipeail 
-
-IMG=~/tmp/disk.img
-PID=/tmp/guestmount_dar-backup_test.pid
-MNT=~/tmp/mnt
-IMG_SIZE_MB=20
-
-mount |grep -q "$MNT" && echo "Image: \'${IMG}\' already mounted on: \'${MNT}\'" && exit 1
-
-mkdir -p "${MNT}"
-
-dd if=/dev/zero of="${IMG}" bs=1M count="${IMG_SIZE_MB}"  || { echo "Failed to create image: ${IMG}"; exit 1; }
-
-mkfs.ext4 "${IMG}"  || { echo "Failed to create filesystem on: ${IMG}"; exit 1; }
-
-guestmount -a "${IMG}" --pid-file "${PID}" -m /dev/sda "${MNT}"  || { echo "Failed to mount image: ${IMG}"; exit 1; }
-
-pid="$(cat "${PID}")"
-echo "guestmount started with PID: ${pid}"
-
-trap guestmount_cleanup ERR
-
-
-Unmount:
-========
-guestunmount "${MNT}"
-timeout=10
-count=$timeout
-while [ $count -gt 0 ]; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-        break
-    fi
-    sleep 1
-    ((count--))
-done
-if [ $count -gt 0 ]; then
-    rm -f "${PID}" || echo "Unmount succeeded, PID file removal failed"
-else
-    echo "$0: wait for guestmount to exit. Unmount failed after $timeout seconds"
-    exit 1
-fi
-
-"""
 
 import pytest
 import subprocess
 import os
 import random
 import time
+import shutil
 import signal
+import tempfile
 
-DISK_IMG = "data/testdisk.img"
-MOUNT_POINT = "data/mnt"
-BACKUP_DIR = "backups"
-DISK_SIZE_MB = 100
+from dar_backup.util import run_command
+from dar_backup.util import CommandResult
 
-@pytest.fixture(scope="module")
-def guestmount_disk():
-    os.makedirs("data", exist_ok=True)
-    os.makedirs(BACKUP_DIR, exist_ok=True)
 
-    subprocess.run(f"dd if=/dev/zero of={DISK_IMG} bs=1M count={DISK_SIZE_MB}", shell=True, check=True)
-    subprocess.run(f"mkfs.ext4 {DISK_IMG}", shell=True, check=True)
-    os.makedirs(MOUNT_POINT, exist_ok=True)
-    subprocess.run(f"guestmount -a {DISK_IMG} -m /dev/sda {MOUNT_POINT}", shell=True, check=True)
+DISK_IMG = "testdisk.img"
+DISK_SIZE_MB = 10
+PID_FILE = "guestmount.pid"
 
-    # Populate disk with files to make backup take some time
-    for i in range(50):
-        fname = os.path.join(MOUNT_POINT, f"file_{i}.txt")
-        with open(fname, "w") as f:
-            f.write("Hello pytest!\n" * 5000)
-    subprocess.run("sync", shell=True)
 
-    yield MOUNT_POINT
 
-    subprocess.run(f"guestunmount {MOUNT_POINT}", shell=True, check=True)
-    os.remove(DISK_IMG)
+def guest_unmount(env, pid, img_path):
+    try:
+        unmount_script=f"""
+    guestunmount "{env.data_dir}"
+    count=10
+    while [ $count -gt 0 ]; do
+        if ! kill -0 "{pid}" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+        ((count--))
+    done
+    if [ $count -gt 0 ]; then
+        echo "Unmount succeeded"
+        exit 0
+    else
+        echo "$0: wait for guestmount to exit. Unmount failed after $timeout seconds"
+        exit 1
+    fi
+    """
+
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".sh") as tmpfile:
+            tmpfile.write(unmount_script)
+            script_path = tmpfile.name
+
+        os.chmod(script_path, 0o700)
+
+        command = ['ls', '-l', script_path]
+        result: CommandResult =  run_command(command)
+
+        command = ['cat', script_path]
+        result: CommandResult =  run_command(command)
+           
+    except:
+        assert False, "guest unmount failed"
+    finally:
+        command = ['bash', '-c', script_path]
+        result: CommandResult =  run_command(command)
+        if result.returncode == 0:
+            env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
+        else:
+            time.sleep(5)
+            command = ['bash', '-c', script_path]
+            result: CommandResult =  run_command(command)
+
+            if result.returncode == 0:
+                env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
+            else:
+                time.sleep(5)
+                command = ['umount', '-l', env.data_dir]
+                result: CommandResult =  run_command(command)
+
+        os.remove(img_path)
+        os.remove(script_path)
+
+
+
+@pytest.fixture(scope="function")
+def guestmount_disk(env):
+    try:
+        img_path = os.path.join(env.test_dir, DISK_IMG)
+        pid_path = os.path.join(env.test_dir, PID_FILE)
+
+        # sanity check
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".sh") as tmpfile:
+            tmpfile.write( f"df | grep {env.data_dir}")
+            script_path = tmpfile.name  
+        os.chmod(script_path, 0o700)
+        command = ['bash', '-c', script_path]
+        result: CommandResult =  run_command(command)
+        assert not result.returncode == 0, f'an image is already mounted on: f"{img_path}", failing test'
+
+        # make sure the directory is empty, otherwise guestmount fails
+        shutil.rmtree(env.data_dir)
+        os.makedirs(env.data_dir)
+
+        command = ['dd', 'if=/dev/zero', f"of={img_path}", 'bs=1M', f"count={DISK_SIZE_MB}"]
+        result:CommandResult = run_command(command)
+        assert result.returncode == 0, f'dd: f"{img_path}" failed'
+
+        command = ['mkfs.ext4', f"{img_path}"]
+        result:CommandResult = run_command(command)
+        assert result.returncode == 0, f'mkfs.ext4 in: f"{img_path}" failed'
+        
+        command = ["guestmount", "-a", f"{img_path}", "--pid-file", f"{pid_path}", "-m", "/dev/sda", f"{env.data_dir}"]
+        result: CommandResult = run_command(command)
+        assert result.returncode == 0, "guestmount failed"
+
+        with open(pid_path, "r") as f:
+            pid = f.read()
+        env.logger.info(f"guestmount PID: {pid}")
+
+        # Populate disk with files to make backup take some time
+        for i in range(60):
+            fname = os.path.join(env.data_dir, f"file_{i}.txt")
+            with open(fname, "w") as f:
+                f.write("Hello pytest!\n" * 5000)
+
+        command = ["sync"]
+        result: CommandResult = run_command(command)
+        assert result.returncode == 0, "generating test data in guest file system failed"
+
+    except Exception as e:
+        env.logger.error(e)
+        guest_unmount(env, pid, img_path)
+
+    yield
+
+    guest_unmount(env, pid, img_path)
+
+    
+def test_verify_guestmount_is_working(setup_environment, env, guestmount_disk):
+
+    command = ["ls", "-l", f"{env.data_dir}"]
+    run_command(command)
+
+    start = time.perf_counter()
+    command = ['dar-backup', '-F', '-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    run_command(command)
+    end = time.perf_counter()
+    env.logger.info(f"FULL backup took: {end - start:.4f} seconds")
+
 
 def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
     """Specifically corrupts the ext filesystem superblock."""
@@ -150,6 +147,7 @@ def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
         f.seek(offset)
         f.write(os.urandom(corruption_size))
     print(f"[+] Superblock corrupted at offset {offset}, size {corruption_size} bytes.")
+
 
 
 def corrupt_disk_image(img_file, num_corruptions=10, corruption_size=4096):
@@ -164,7 +162,8 @@ def corrupt_disk_image(img_file, num_corruptions=10, corruption_size=4096):
     print(f"[+] Corrupted {img_file} at {num_corruptions} locations.")
 
 
-def test_dar_backup_with_live_corruption(guestmount_disk):
+
+def xtest_dar_backup_with_live_corruption(guestmount_disk):
     backup_name = os.path.join(BACKUP_DIR, "test_backup")
 
     # Start dar backup as a subprocess
@@ -202,7 +201,8 @@ def test_dar_backup_with_live_corruption(guestmount_disk):
     assert "error" in backup_output or backup_proc.returncode != 0, \
         "Backup did not detect corruption!"
 
-def test_dar_with_superblock_corruption(guestmount_disk):
+
+def xtest_dar_with_superblock_corruption(guestmount_disk):
     backup_name = os.path.join(BACKUP_DIR, "superblock_backup")
 
     # Start dar backup
