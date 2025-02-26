@@ -11,7 +11,7 @@ from pathlib import Path
 from dar_backup.util import run_command
 from tests.envdata import EnvData
 from tests.conftest import test_files 
-from testdata_verification import create_test_files, verify_backup_contents, verify_restore_contents,run_backup_script
+from testdata_verification import verify_backup_contents, verify_restore_contents,run_backup_script
 
 
 

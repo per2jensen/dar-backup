@@ -153,6 +153,8 @@ def test_tilde_in_config_file(setup_environment, env: EnvData, modify_config_fil
     Test that "~" in the config file is correctly expanded.
     """
 
+    
+
     # Create temporary config file with environment variables
     logfile_location_fixture = modify_config_file_tilde
 
