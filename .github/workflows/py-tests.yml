@@ -60,5 +60,5 @@ jobs:
           if [[ -z "$VIRTUAL_ENV" ]]; then
           . venv/bin/activate
           fi
-          pytest tests/
+          pytest -c pytest-minimal.ini tests/
 
