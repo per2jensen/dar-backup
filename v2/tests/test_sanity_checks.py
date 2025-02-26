@@ -1,17 +1,23 @@
 # modified: 2021-07-25 to be a pytest test
 import importlib
 import os
+import pytest
 import re
+import shutil
 import sys
 import tempfile
 
-from tests.envdata import EnvData
-from time import time
+
 from dar_backup.util import run_command
 from dar_backup.dar_backup import find_files_with_paths
+from tests.envdata import EnvData
+from time import time
+from typing import Generator
 
 
-def modify_config_file_tilde(env: EnvData) -> dict:
+
+@pytest.fixture
+def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
     """
     Modify the LOG_DIR in the config file to include "~"
 
@@ -48,12 +54,17 @@ def modify_config_file_tilde(env: EnvData) -> dict:
         for line in lines:
             env.logger.info(line)
 
-    return { 'LOGFILE_LOCATION': LOGFILE_LOCATION }   
+    yield { 'LOGFILE_LOCATION': LOGFILE_LOCATION }   
+
+    # cleanup
+    if LOGFILE_LOCATION and os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
+        os.remove(os.path.expanduser(LOGFILE_LOCATION))
+        env.logger.info(f"Removed: {LOGFILE_LOCATION}")
 
 
 
-
-def modify_config_file_env_vars(env: EnvData) -> dict:
+@pytest.fixture
+def modify_config_file_env_vars(env: EnvData) -> Generator[dict, None, None]:
     """
     Modify the BACKUP_DIR and LOG_DIR in the config file to include environtment variables
 
@@ -93,17 +104,25 @@ def modify_config_file_env_vars(env: EnvData) -> dict:
         for line in lines:
             env.logger.info(line)
 
-    return {'BACKUP_DIR': BACKUP_DIR, 'LOG_DIR': LOG_DIR}   
+    yield {'BACKUP_DIR': BACKUP_DIR, 'LOG_DIR': LOG_DIR}
+
+    # cleanup
+    if BACKUP_DIR.startswith('/tmp/') and len(BACKUP_DIR) > 5  and os.path.exists(BACKUP_DIR):
+        shutil.rmtree(BACKUP_DIR)
+        env.logger.info(f"Removed directory: {BACKUP_DIR}") 
+
+    if LOG_DIR.startswith('/tmp/') and len(LOG_DIR) > 5  and os.path.exists(LOG_DIR):
+        shutil.rmtree(LOG_DIR)
+        env.logger.info(f"Removed directory: {LOG_DIR}") 
 
 
-
-def test_env_vars_in_config_file(setup_environment, env: EnvData):
+def test_env_vars_in_config_file(setup_environment, env: EnvData, modify_config_file_env_vars: dict):
     """
     Test that environment variables in the config file are correctly expanded.
     """
 
     # Create temporary config file with environment variables
-    env_vars = modify_config_file_env_vars(env)
+    env_vars = modify_config_file_env_vars
 
     # Set environment variables
     os.environ['BACKUP_DIR'] = env_vars['BACKUP_DIR']
@@ -112,64 +131,48 @@ def test_env_vars_in_config_file(setup_environment, env: EnvData):
     os.environ['LOG_DIR']    = env_vars['LOG_DIR']
     env.logger.info(f"env var $LOG_DIR: {os.environ['LOG_DIR']}")
 
-    try:
-        #run manager --create again, since the BACKUP_DIR was changed after the environment was set up
-        command = ['manager', '--create-db', '--config-file', env.config_file]
-        process = run_command(command)
-        assert process.returncode == 0, f'manager command failed with return code {process.returncode}'
+    #run manager --create again, since the BACKUP_DIR was changed after the environment was set up
+    command = ['manager', '--create-db', '--config-file', env.config_file]
+    process = run_command(command)
+    assert process.returncode == 0, f'manager command failed with return code {process.returncode}'
 
-        # Run the dar-backup command with the temporary config file
-        command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
-        process = run_command(command)
+    # Run the dar-backup command with the temporary config file
+    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
 
-        # Check that the command executed successfully
-        assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
+    # Check that the command executed successfully
+    assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
 
-        # Verify that the backup and log directories were used correctly
-        assert os.path.exists(os.path.join(os.environ['BACKUP_DIR'], f'example_FULL_{env.datestamp}.1.dar')), f'Archive f"example_FULL_{env.datestamp}.1.dar" not found in Backup directory'
-        assert os.path.exists(os.path.join(os.environ['LOG_DIR'], 'dar-backup.log')), 'Log directory was not used correctly'
-    finally:
-        # Clean up temporary config file and directories
-        if os.environ['BACKUP_DIR'].startswith('/tmp/'):
-            command = ['rm', '-rf', f"/tmp/{env_vars['BACKUP_DIR'][5:]}"]
-
-        if os.environ['LOG_DIR'].startswith('/tmp/'):
-            command = ['rm', '-rf', f"/tmp/{env_vars['LOG_DIR'][5:]}"]
+    # Verify that the backup and log directories were used correctly
+    assert os.path.exists(os.path.join(os.environ['BACKUP_DIR'], f'example_FULL_{env.datestamp}.1.dar')), f'Archive f"example_FULL_{env.datestamp}.1.dar" not found in Backup directory'
+    assert os.path.exists(os.path.join(os.environ['LOG_DIR'], 'dar-backup.log')), 'Log directory was not used correctly'
 
 
-def test_tilde_in_config_file(setup_environment, env: EnvData):
+def test_tilde_in_config_file(setup_environment, env: EnvData, modify_config_file_tilde: dict):
     """
     Test that "~" in the config file is correctly expanded.
     """
 
     # Create temporary config file with environment variables
-    dict = modify_config_file_tilde(env)
+    logfile_location_fixture = modify_config_file_tilde
 
-    try:
-        # Run the dar-backup command with the temporary config file
-        command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
-        process = run_command(command)
+    # Run the dar-backup command with the temporary config file
+    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
+    process = run_command(command)
 
-        # Check that the command executed successfully
-        assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
+    # Check that the command executed successfully
+    assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
 
-        # Verify that logfile exists
-        logfile = os.path.expanduser(dict['LOGFILE_LOCATION'])  
-        assert os.path.exists(logfile), f'Logfile: {logfile} not found in home directory'
-        assert os.path.getsize(logfile) > 0, f'Logfile: {logfile} is empty'
+    # Verify that logfile exists
+    logfile = os.path.expanduser(logfile_location_fixture['LOGFILE_LOCATION'])  
+    assert os.path.exists(logfile), f'Logfile: {logfile} not found in home directory'
+    assert os.path.getsize(logfile) > 0, f'Logfile: {logfile} is empty'
 
-        env.logger.info(f"Contents of logfile '{logfile}'\n==================")
-        with open(logfile, 'r') as f:
-            for line in f:
-                env.logger.info(line.strip())  # Removes unnecessary newlines
-        
-    finally:
-        # Clean up temporary config file and directories
-        if os.path.exists(logfile):
-            os.remove(logfile)
-            env.logger.info(f"Removed logfile: {logfile}")
-
-
+    env.logger.info(f"Contents of logfile '{logfile}'\n==================")
+    with open(logfile, 'r') as f:
+        for line in f:
+            env.logger.info(line.strip())  # Removes unnecessary newlines
+    
 def test_dar_backup_definition_with_underscore(setup_environment, env):
     command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example_2']
     process = run_command(command)

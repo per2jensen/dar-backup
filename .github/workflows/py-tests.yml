@@ -23,7 +23,12 @@ jobs:
           git config user.email "<>"
 
       - name: Install required packages
-        run:  sudo apt install -y dar dar-static par2 git python3 python3-venv
+        run:  sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
+
+      - name: Make kernel ready for libguestfs (readable by users)
+        run: |
+          version=$(uname -r)
+          sudo dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-\${version}
 
       - name: Install virtualenv, build and install the dar-backup package
         run: |

@@ -1,52 +1,58 @@
+# Dev snippets
 
+## Activate the venv
 
-# First
-````
+```` bash
 cd <path/to/dar-backup/v2>
 . venv/bin/activate
 ````
 
+## Setup venv
 
-# build, deploy to dev venv
-
-Update __about__.py first
-
+```` bash
+pip install build hatch hatchling pytest twine wheel
 ````
-python3 -m build
 
-VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+')
+## build, deploy to dev venv
+
+Make sure __about__.py has the correct version number
+
+```` bash
+VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
 python3 -m build && pip install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
-
-
-````
-Venv packages:
-````
-pip install  build hatch hatchling pytest twine wheel
 ````
 
+## use pytest in venv
 
+A pytest.ini is located in the v2 directory, so that pytest writes out captures to  console.
 
-# use pytest in venv
-````
+That is useful when working with a single test and is the default
+
+```` bash
 pytest
-
 ````
 
+If you do not want that a empty ini file is also there: pytest-minimal.ini.
+Use use to get the minimal info on successful test cases
 
-# how to run a single pytest test case
-````
-pytest tests/test_verbose.py
-````
-
-
-
-
-# Upload to PyPI
-````
-twine upload dist/<wheel package
+```` bash
+pytest -c pytest-minimal.ini
 ````
 
+or
 
-# Git log
+```` bash
+pytest -c pytest-minimal.ini tests/test_verbose.py
+````
 
+## Upload to PyPI
+
+```` bash
+twine upload dist/<wheel package>
+````
+
+## Git log
+
+```` bash
 git log --pretty=format:"%ad - %an: %s %d" --date=short
+````
