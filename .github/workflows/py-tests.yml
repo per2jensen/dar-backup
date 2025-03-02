@@ -10,7 +10,7 @@ on:
 
 jobs:
   python3-unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
           git config user.email "<>"
 
       - name: Install required packages
-        run:  sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
+        run:  sudo apt update && sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
 
       - name: Make kernel ready for libguestfs (readable by users)
         run: |
