@@ -233,7 +233,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
     
-    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-ai", "-Q"]
+    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q"]
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr
 
