@@ -32,7 +32,6 @@ from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 
 
-RESULT = True
 logger = None
 
 def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace):
@@ -234,8 +233,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
                 logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
-                logger.error(f"Failure: file '{restored_file_path}' did not match the original")
-                result = False
+                raise BackupError(f"Failure: file '{restored_file_path}' did not match the original")
         except PermissionError:
             result = False
             logger.exception(f"Permission error while comparing files, continuing....")
@@ -254,6 +252,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         restore_dir (str): The directory where the backup should be restored to.
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
     """
+    results: List[tuple] = []
     try:
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
         command = ['dar', '-x', backup_file, '-Q', '-D']
@@ -282,6 +281,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     except Exception as e:
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
+    return results
 
 
 def get_backed_up_files(backup_name: str, backup_dir: str):
@@ -373,7 +373,7 @@ def create_backup_command(backup_type: str, backup_file: str, darrc: str, backup
 
 
 
-def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str):
+def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str) -> List[str]:
     """
     Perform backup operation.
 
@@ -381,21 +381,27 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         args: Command-line arguments.
         config_settings: An instance of the ConfigSettings class.
         backup_type: Type of backup (FULL, DIFF, INCR).
+
+    Returns:
+    List[tuples] - each tuple consists of (<str message>, <exit code>)
     """
-    logger.debug(f"perform_backup({backup_type}) started")
     backup_definitions = []
+    results: List[tuple] = []
 
     # Gather backup definitions
     if args.backup_definition:
         if '_' in args.backup_definition:
-            logger.error(f"Skipping backup definition: '{args.backup_definition}' due to '_' in name")
-            return
+            msg = f"Skipping backup definition: '{args.backup_definition}' due to '_' in name"
+            logger.error(msg)
+            return results.append((msg, 1))
         backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(config_settings.backup_d_dir, args.backup_definition)))
     else:
         for root, _, files in os.walk(config_settings.backup_d_dir):
             for file in files:
                 if '_' in file:
-                    logger.error(f"Skipping backup definition: '{file}' due to '_' in name")
+                    msg = f"Skipping backup definition: '{file} due to '_' in: name"
+                    logger.error(msg)
+                    results.append((msg, 1))
                     continue
                 backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
 
@@ -405,7 +411,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
 
             if os.path.exists(backup_file + '.1.dar'):
-                logger.error(f"Backup file {backup_file}.1.dar already exists. Skipping backup.")
+                msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
+                logger.error(msg)
+                results.append((msg, 1))
                 continue
 
             latest_base_backup = None
@@ -416,15 +424,18 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                     latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)
                     logger.info(f"Using alternate reference archive: {latest_base_backup}")
                     if not os.path.exists(latest_base_backup + '.1.dar'):
-                        logger.error(f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exiting.")
-                        exit(1)
+                        msg = f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exiting..."
+                        logger.error(msg)
+                        results.append((msg, 1))
+                        return results
                 else:
                     base_backups = sorted(
                         [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
                         key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
                     )
                     if not base_backups:
-                        logger.warning(f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup.")
+                        msg = f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup."
+                        results.append((msg, 1))
                         continue
                     latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])
 
@@ -439,19 +450,19 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if verify_result:   
                 logger.info("Verification completed successfully.")
             else:
-                logger.error("Verification failed.")
-
-            
+                msg = f"Verification of '{backup_file}' failed."
+                logger.error(msg)
+                results.append((msg, 1))
             logger.info("Generate par2 redundancy files.")
             generate_par2_files(backup_file, config_settings, args)
             logger.info("par2 files completed successfully.")
 
         except Exception as e:
-            global RESULT
-            RESULT = False
+            results.aapend((repr(e), 1))
             logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
 
-
+    logger.trace(f"perform_backup() results[]: {results}")
+    return results
 
 def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args):
     """
@@ -595,18 +606,23 @@ INCR back of a single backup definition in backup.d
 
 def requirements(type: str, config_setting: ConfigSettings):
     """
-    Perform PREREQ or POSTREQ requisites.
+    Perform PREREQ or POSTREQ requirements.
 
     Args:
         type (str): The type of prereq (PREREQ, POSTREQ).
         config_settings (ConfigSettings): An instance of the ConfigSettings class.
 
     Raises:
-        RuntimeError: If a subprocess invoked during the backup process exits with a non-zero status.
+        RuntimeError: If a subprocess  returns anything but zero.
+
+        subprocess.CalledProcessError: if CalledProcessError is raised in subprocess.run(), let it bobble up.
     """
-    if str is None or config_setting is None:
-        logger.error(f"requirements: {type} or config_setting is None, existing")
-        raise RuntimeError(f"requirements: {type} or config_setting is None, existing")
+    if type is None or config_setting is None:
+        raise RuntimeError(f"requirements: 'type' or config_setting is None")
+
+    allowed_types = ['PREREQ', 'POSTREQ'] 
+    if type not in allowed_types:
+        raise RuntimeError(f"requirements: {type} not in: {allowed_types}")
 
 
     logger.info(f"Performing  {type}")
@@ -626,7 +642,8 @@ def requirements(type: str, config_setting: ConfigSettings):
 
 
 def main():
-    global logger, RESULT 
+    global logger
+    results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
 
     MIN_PYTHON_VERSION = (3, 9)
     if version_info < MIN_PYTHON_VERSION:
@@ -739,26 +756,27 @@ def main():
         if args.list:
             list_backups(config_settings.backup_dir, args.backup_definition)
         elif args.full_backup and not args.differential_backup and not args.incremental_backup:
-            perform_backup(args, config_settings, "FULL")
+            results.extend(perform_backup(args, config_settings, "FULL"))
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
-            perform_backup(args, config_settings, "DIFF")
+            results.extend(perform_backup(args, config_settings, "DIFF"))
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
-            perform_backup(args, config_settings, "INCR")
+            results.extend(perform_backup(args, config_settings, "INCR"))
+            logger.debug(f"results from perform_backup(): {results}")
         elif args.list_contents:
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
             logger.debug(f"Restoring {args.restore} to {restore_dir}")
-            restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection)
+            results.extend(restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection))
         else:
             parser.print_help()
+
+        logger.debug(f"results[]: {results}")
 
         requirements('POSTREQ', config_settings)
 
     except Exception as e:
-        logger.exception("An error occurred")
         logger.error("Exception details:", exc_info=True)
-        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-        RESULT = False
+        results.append((repr(e), 1))
     finally:
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
@@ -769,9 +787,26 @@ def main():
                 logger.info(f"Removed filtered .darrc: {args.darrc}")
 
 
-    if RESULT:
-        exit(0)
-    else:
+    error = False
+    logger.debug(f"results[]: {results}")
+    if results:
+        i = 0
+        for result in results:
+            if isinstance(result, tuple) and len(result) == 2:
+                msg, exit_code = result
+                logger.debug(f"exit code: {exit_code}, msg: {msg}")
+                if exit_code == 1:
+                    error = True
+                    args.verbose and print(msg)
+            else:
+                logger.error(f"not correct result type: {result}, which must be a tuple (<msg>, <exit_code>)")
+            i=i+1
+    if error:
+        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
         exit(1)
+    else:
+        args.verbose and print("\033[1m\033[32mSuccess\033[0m all backups completed") 
+        exit(0)
+    
 if __name__ == "__main__":
     main()
