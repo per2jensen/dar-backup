@@ -15,9 +15,6 @@ from tests.conftest import test_files
 
 
 def run_backup_script(type: str, env: EnvData) -> CommandResult:
-    """
-    Expects to run in a virtual environment with dar-backup installed
-    """
     command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug','--log-stdout' ,'--config-file', env.config_file]
     result: CommandResult = run_command(command)
     stdout,stderr = result.stdout, result.stderr
