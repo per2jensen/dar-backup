@@ -61,3 +61,34 @@ def test_verbose_cleanup(setup_environment, env):
 
     for pattern in expected_patterns:
         assert re.search(pattern, stdout), f"Pattern {pattern} not found in output"
+
+def test_verbose_error_reporting(setup_environment, env):
+    # Patch config file with a successful command
+    with open(env.config_file, 'a') as f:
+        f.write('\n[PREREQ]\n')
+        f.write('PREREQ_01 = ls /tmp\n')
+
+
+    # Run the command
+    command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--verbose']
+    process = run_command(command)
+    assert process.returncode == 0
+    
+    # Patch the config file with a failing command
+    with open(env.config_file, 'a') as f:
+        f.write('PREREQ_02 = command-does-not-exist /tmp\n')
+    env.logger.info(f"PREREQ_02 which fails has been added to config file: {env.config_file}")
+
+    # Run the command
+    try:
+        command = ['dar-backup', '--differential-backup' ,'-d', "example", '--config-file', env.config_file, '--verbose']
+        process = run_command(command)
+        assert process.returncode != 0
+        assert "CalledProcessError(127, 'command-does-not-exist /tmp')" in process.stdout
+
+    except Exception as e:
+        env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")
+        assert True
+        
+
+
