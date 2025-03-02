@@ -1,14 +1,17 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.14 - 2025- -
+## v2-beta-0.6.14 - 2025-03-02
 
 Github link: [v2-beta-0.6.14](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.14/v2)
 
 ### Added
 
-- `dar` catalog in xml now parsed correctly, test case added 
-
+- `dar` catalog in xml now parsed correctly, test case added
+- error handling improved, --verbose print terse list of errors on exit, test case added
+- test cases simulating disk corruption being worked on, not yet in test suite
+- postreq test case improved
+- manager is not given "-ai" when adding catalogs (might give an issue on cloud backups, investigate....)
 
 ## v2-beta-0.6.13.1 - 2025-02-25
 
