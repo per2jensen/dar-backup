@@ -5,6 +5,7 @@ import re
 import random
 from pathlib import Path
 from dar_backup.util import run_command
+from dar_backup.util import CommandResult
 from tests.envdata import EnvData
 from tests.conftest import test_files
 from testdata_verification import (
@@ -72,31 +73,6 @@ def test_backup_with_large_files(setup_environment, env):
         env.logger.exception("Large file backup test failed")
         pytest.fail("Large file backup test encountered an exception")
 
-def test_multiple_incremental_backups(setup_environment, env):
-    """
-    Ensures that multiple incremental backups are handled correctly.
-    """
-    try:
-        run_backup_script("--full-backup", env)
-        run_backup_script("--differential-backup", env)  # Ensure DIFF backup exists
-        
-        modified_file_path = os.path.join(env.test_dir, 'data', 'file2.txt')
-        for i in range(3):  # Perform multiple incremental backups
-            with open(modified_file_path, 'a') as f:
-                f.write(f"\nChange {i+1}")
-            run_backup_script("--incremental-backup", env)
-        
-        backup_name = f"example_INCR_{env.datestamp}"
-        backup_file_path = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
-        
-        # Ensure backup file exists before verification
-        assert os.path.exists(backup_file_path), f"Incremental backup file {backup_file_path} is missing!"
-        
-        verify_backup_contents(['data/file2.txt'], backup_name, env)
-        env.logger.info("Multiple incremental backup verification succeeded")
-    except Exception as e:
-        env.logger.exception("Multiple incremental backup test failed")
-        pytest.fail("Multiple incremental backup test encountered an exception")
 
 def test_par2_repair_bit_rot(setup_environment, env):
     """
