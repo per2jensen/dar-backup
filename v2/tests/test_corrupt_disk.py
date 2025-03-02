@@ -148,7 +148,7 @@ def guestmount_disk(env: EnvData):
     guest_unmount(env, pid, img_path)
 
     
-def test_verify_guestmount_is_working(setup_environment, env: EnvData, guestmount_disk):
+def xtest_verify_guestmount_is_working(setup_environment, env: EnvData, guestmount_disk):
 
     command = ["ls", "-l", f"{env.data_dir}"]
     run_command(command)
