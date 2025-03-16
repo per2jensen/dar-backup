@@ -80,6 +80,13 @@ def test_backup_definition_with_space(setup_environment, env):
 
     create_backup_definitions(env)
 
+    # make sure the catalog database is in place
+    command = ['manager', '--create-db', '--config-file', env.config_file]
+    process = run_command(command)
+    if process.returncode != 0:
+        raise Exception(f"Command failed {command}")    
+
+
     command = ['dar-backup', '--full-backup' ,'-d', "example 2", '--config-file', env.config_file]
     process = run_command(command)
     if process.returncode != 0:

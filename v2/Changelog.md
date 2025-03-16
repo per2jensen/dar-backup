@@ -1,6 +1,17 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.15- 2025-
+
+Github link: [v2-beta-0.6.15](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.15/v2)
+
+### Added
+
+- Restore test details now logged only if args.verbose is set (less clutter in log file)
+- `--log-stdout` now does not show run_command() output from program being run
+- Report error and exit code `1` if manager did not add an archive to it's database
+- Much more clean log file in default config, use `--verbose` for more information, `--log-level debug` for even more
+
 ## v2-beta-0.6.14 - 2025-03-02
 
 Github link: [v2-beta-0.6.14](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.14/v2)

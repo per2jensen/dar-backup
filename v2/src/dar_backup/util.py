@@ -72,7 +72,7 @@ def setup_logging(log_file: str, command_output_log_file: str, log_level: str = 
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setFormatter(formatter)
             logger.addHandler(stdout_handler)
-            secondary_logger.addHandler(stdout_handler)
+            #secondary_logger.addHandler(stdout_handler)
 
         return logger
     except Exception as e:

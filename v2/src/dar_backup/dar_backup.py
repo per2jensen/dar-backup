@@ -34,7 +34,7 @@ from dar_backup.util import RestoreError
 
 logger = None
 
-def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace):
+def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace) -> List[str]:
     """
     Performs a backup using the 'dar' command.
 
@@ -54,10 +54,14 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         config_settings (ConfigSettings): An instance of the ConfigSettings class.
 
 
-
     Raises:
-        BackupError: If an error occurs during the backup process.
+        BackupError: If an error leading to a bad backup occurs during the backup process.
+
+    Returns:
+        List of tuples (<msg>, <exit_code>) of errors not considered critical enough for raising an exception  
     """
+    result: List[tuple] = []
+
     logger.info(f"===> Starting {type} backup for {backup_definition}")
     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
@@ -75,7 +79,11 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             if command_result.returncode == 0:
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
             else:
-                logger.error(f"Catalog for archive '{backup_file}' not added.")
+                msg = f"Catalog for archive '{backup_file}' not added."
+                logger.error(msg)
+                result.append((msg, 1))
+
+        return result
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
@@ -83,7 +91,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     except Exception as e:
         logger.exception(f"Unexpected error during backup")
         raise BackupError(f"Unexpected error during backup: {e}") from e
- 
+    
 
 
 def find_files_with_paths(xml_doc: str):
@@ -184,7 +192,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     """
     result = True
     command = ['dar', '-t', backup_file, '-Q']
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+    logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
     process = run_command(command, config_settings.command_timeout_secs)
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
@@ -208,8 +216,9 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     root_path = None
     for line in backup_definition_content:
         line = line.strip()
-        if line.startswith("-R"):
-            root_path = line.split("-R", 1)[1].strip()
+        match = re.match(r'^\s*-R\s+(.*)', line)
+        if match:
+            root_path = match.group(1).strip()
             break
     if root_path is None:
         msg = f"No Root (-R) path found in the backup definition file: '{backup_definition}', restore verification skipped"
@@ -223,15 +232,15 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     random_files = random.sample(files, no_files_verification)
     for restored_file_path in random_files:
         try:
-            logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
+            args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q', '-B', args.darrc, 'restore-options']
-            logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+            args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = run_command(command, config_settings.command_timeout_secs)    
             if process.returncode != 0:
                 raise Exception(str(process))
 
             if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
-                logger.info(f"Success: file '{restored_file_path}' matches the original")
+                args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
                 raise BackupError(f"Failure: file '{restored_file_path}' did not match the original")
         except PermissionError:
@@ -295,11 +304,11 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     Returns:
         list: A list of file paths for all backed up files in the DAR archive.
     """
-    logger.debug(f"Getting backed up files from DAR archive in xml: '{backup_name}'")
+    logger.debug(f"Getting backed up files in xml from DAR archive: '{backup_name}'")
     backup_path = os.path.join(backup_dir, backup_name)
     try:
         command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
-        logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+        logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
         command_result = run_command(command)
         # Parse the XML data
         file_paths = find_files_with_paths(command_result.stdout)
@@ -383,7 +392,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         backup_type: Type of backup (FULL, DIFF, INCR).
 
     Returns:
-    List[tuples] - each tuple consists of (<str message>, <exit code>)
+      List[tuples] - each tuple consists of (<str message>, <exit code>)
     """
     backup_definitions = []
     results: List[tuple] = []
@@ -443,7 +452,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             command = create_backup_command(backup_type, backup_file, args.darrc, backup_definition_path, latest_base_backup)
 
             # Perform backup
-            generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
+            backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
+            results.extend(backup_result)
 
             logger.info("Starting verification...")
             verify_result = verify(args, backup_file, backup_definition_path, config_settings)
@@ -458,7 +468,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             logger.info("par2 files completed successfully.")
 
         except Exception as e:
-            results.aapend((repr(e), 1))
+            results.append((repr(e), 1))
             logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
 
     logger.trace(f"perform_backup() results[]: {results}")
@@ -519,8 +529,14 @@ def filter_darrc_file(darrc_path):
     The filtered version is stored in a uniquely named file in the home directory of the user running the script.
     The file permissions are set to 440.
     
-    :param darrc_path: Path to the original .darrc file.
-    :return: Path to the filtered .darrc file.
+    Params:
+      darrc_path: Path to the original .darrc file.
+    
+    Raises:
+      RuntimeError if something went wrong
+
+    Returns:
+      Path to the filtered .darrc file.
     """
     # Define options to filter out
     options_to_remove = {"-vt", "-vs", "-vd", "-vf", "-va"}
@@ -631,8 +647,8 @@ def requirements(type: str, config_setting: ConfigSettings):
             script = config_setting.config[type][key]
             try:
                 result = subprocess.run(script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-                logger.info(f"{type} {key}: '{script}' run, return code: {result.returncode}")
-                logger.info(f"{type} stdout:\n{result.stdout}")
+                logger.debug(f"{type} {key}: '{script}' run, return code: {result.returncode}")
+                logger.debug(f"{type} stdout:\n{result.stdout}")
                 if result.returncode != 0:
                     logger.error(f"{type} stderr:\n{result.stderr}")
                     raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")    
@@ -711,9 +727,9 @@ def main():
             exit(127)
 
         if args.suppress_dar_msg:
-            logger.info("Suppressing dar messages: -vt, -vs, -vd, -vf and -va")
+            logger.info("Suppressing dar messages, do not use options: -vt, -vs, -vd, -vf, -va")
             args.darrc = filter_darrc_file(args.darrc)
-            logger.debug(f"Filtered .darrc file saved at: {args.darrc}")
+            logger.debug(f"Filtered .darrc file: {args.darrc}")
 
         start_time=int(time())
         logger.info(f"=====================================")
@@ -781,12 +797,13 @@ def main():
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
         # Clean up
-        if args.suppress_dar_msg and os.path.exists(args.darrc) and os.path.dirname(args.darrc) == os.path.expanduser("~"):
+        if os.path.exists(args.darrc) and os.path.dirname(args.darrc) == os.path.expanduser("~"):
             if args.darrc.startswith("filtered_darrc_"):
                 os.remove(args.darrc)
-                logger.info(f"Removed filtered .darrc: {args.darrc}")
+                logger.debug(f"Removed filtered .darrc: {args.darrc}")
 
 
+    # Determine exit code 
     error = False
     logger.debug(f"results[]: {results}")
     if results:
@@ -795,7 +812,7 @@ def main():
             if isinstance(result, tuple) and len(result) == 2:
                 msg, exit_code = result
                 logger.debug(f"exit code: {exit_code}, msg: {msg}")
-                if exit_code == 1:
+                if exit_code > 0:
                     error = True
                     args.verbose and print(msg)
             else:
