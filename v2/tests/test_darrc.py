@@ -106,6 +106,21 @@ def test_backup_with_filtered_darrc(setup_environment, env):
     process = run_command(command)
     stdout, stderr = process.stdout, process.stderr
     
+    # verify the temporary filtered darrc is removed
+    darrc_location = None
+    for line in stdout.split("\n"):
+        if ".darrc location: " in line:
+            darrc_location = line.split(".darrc location: ")[1].strip()
+            env.logger.info(f"Extracted .darrc location: {darrc_location}")
+            break
+
+    if not darrc_location:
+        assert False, "Failed to find '.darrc location' in stdout"
+
+    assert not os.path.exists(darrc_location), f"The filtered darrc file '{darrc_location}' should have been removed"
+
+
+    # verify dar output is not as verbose as the default configures
     for line in stdout.split("\n"):
         if "-Txml" in line:
             env.logger.info(f"dar list contents in xml found, stop here: {line}")

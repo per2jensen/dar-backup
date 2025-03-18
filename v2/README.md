@@ -92,7 +92,7 @@ Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* i
 
 This 'dar-backup' package lives at: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
 
-This python version is v2 of dar-backup, the first is made in bash.
+This python version is v2 of dar-backup, the version 1 is made in bash.
 
 ## Requirements
 
@@ -190,9 +190,9 @@ in place in BACKUP.D_DIR (see config file)
 dar-backup --full-backup 
 ````
 
-If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This is also useful if dar-backup is started by systemd.
+If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This can be useful if dar-backup is started by systemd.
 
-If you want more log messages, use the `--log-level debug` option.
+If you want more log messages, use the `--verbose` or `--log-level debug` for even more.
 
 If you want a backup of a single definition, use the `-d <backup definition>` option. The definition's name is the filename of the definition in the `backup.d` config directory.
 
@@ -636,26 +636,27 @@ done
 
 This makes it easier to restore to a given date when having many FULL, DIFF and INCR archives.
 
+If the manager does not add an archive to it's catalog database, `dar-backup` will log an error and continue. The important part is verify the archive is usable and continue to other backup definitions.
+
 ### Performance tip due to par2
 
 This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
 
-Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the the par2 data in memory.
+Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the par2 data in memory.
 
 ### .darrc sets -vd -vf (since v0.6.4)
 
 These .darrc settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
+
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
-
-if --log-stdout is used the information would be picked up by systemd and logged by journald.½
-
-The log file can get quite cluttered, if you want the clutter to be removed, run the `clean-log`script.
 
 ### Separate log file for command output
 
 Dar-backup's log file is called `dar-backup.log`.
 
-In order to not clutter that log file with the output of commands being run, a new log file has been introduced `dar-backup-commands.log`.
+In order to not clutter that log file with the output of commands being run, a new secondary log file has been introduced `dar-backup-commands.log`.
+
+The secondary log file can get quite cluttered, if you want to remove the clutter, run the `clean-log`script with the `--file` option, or simply delete it.
 
 ## Todo
 
@@ -663,7 +664,7 @@ In order to not clutter that log file with the output of commands being run, a n
   - FULL, DIFF and INCR backups.
   - cleanup.
 
-- fix --log-stdout spams console with command output
+- Add option to dar-backup to use the `dar` option `--fsa-scope none`
 
 ## Reference
 

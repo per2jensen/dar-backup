@@ -797,10 +797,10 @@ def main():
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
         # Clean up
-        if os.path.exists(args.darrc) and os.path.dirname(args.darrc) == os.path.expanduser("~"):
-            if args.darrc.startswith("filtered_darrc_"):
-                os.remove(args.darrc)
-                logger.debug(f"Removed filtered .darrc: {args.darrc}")
+        if os.path.exists(args.darrc) and (os.path.dirname(args.darrc) == os.path.expanduser("~")):
+            if os.path.basename(args.darrc).startswith("filtered_darrc_"):
+                if os.remove(args.darrc):
+                    logger.debug(f"Removed filtered .darrc: {args.darrc}")
 
 
     # Determine exit code 

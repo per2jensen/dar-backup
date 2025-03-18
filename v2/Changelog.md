@@ -1,7 +1,16 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.15- 2025-
+## v2-beta-0.6.16- 2025-
+
+Github link: [v2-beta-0.6.16](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.16/v2)
+
+### Added
+
+- The generated filtered darrc file from `-suppress-dar-msg` now removed at program exit. Test case modified to check for removal
+- README.md updated to reflect recent changes
+
+## v2-beta-0.6.15- 2025-03-16
 
 Github link: [v2-beta-0.6.15](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.15/v2)
 
