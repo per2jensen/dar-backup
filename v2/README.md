@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD024 -->
 # Full, differential or incremental backups using 'dar'
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
@@ -14,6 +15,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
 - [Homepage - Github](#homepage---github)
 - [Requirements](#requirements)
+- [Principles](#dar-backup-principles)
 - [How to run](#how-to-run)
   - [1 - installation](#1---installation)
   - [2 - configuration](#2---configuration)
@@ -22,6 +24,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [5 - deactivate venv](#5---deactivate-venv)
 - [Config file](#config-file)
 - [.darrc](#darrc)
+- [Backup definition](#backup-definition-example)
 - [Systemctl examples](#systemctl-examples)
   - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
   - [Timer: dar-back --incremental-backup](#timer-dar-back---incremental-backup)
@@ -105,6 +108,26 @@ On Ubuntu, install the requirements this way:
 ```` bash
     sudo apt install dar par2 python3
 ````
+
+## dar-backup principles
+
+### dar-backup
+
+`dar-backup` is built in a way that emphasizes getting backups. It loops over the backup definitions, and in the event of a failure while backing up a backup definition, dar-backup shall log an error and start working on the next backup definition.
+
+There are 3 levels of backups, FULL, DIFF and INCR.
+
+- The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s).
+- The author makes a DIFF once a month. The DIFF backs up new and changed files compared to the FULL backup.
+- The author takes an INCR backup every 3 days. An INCR backup includes new and changed files compared to the DIFF backup.
+--  So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
+--  No INCR backups will taken until a DIFF backup has been taken.
+
+### cleanup
+
+The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
+
+`cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used.
 
 ## How to run
 
@@ -376,6 +399,48 @@ compress-exclusion:
 # Now we swap back to case sensitive mode for masks which is the default
 #mode:
 -acase
+````
+
+## Backup definition example
+
+This piece of configuration is a `backup definition`. It is placed in the BACKUP.D_DIR (see config file description).
+The name of the file is the name of the backup definition.
+
+You can use as many backup definitions as you need.
+
+```` code
+ # Switch to ordered selection mode, which means that the following
+ # options will be considered top to bottom
+ -am
+
+# Backup Root Dir
+# This is the top directory, where the backups start.
+#Directories mentioned below, are relative to the Root Dir.
+ -R /home/user/
+
+# Directories to backup below the Root dir
+# uncomment the next line to backup only the Documents directory
+# -g Documents
+
+# Directories to exclude below the Root dir
+ -P mnt
+ -P tmp
+ -P .cache
+ -P .config/Code/CachedData
+ 
+# compression level
+ -z5
+
+# no overwrite, if you rerun a backup, 'dar' halts and asks what to do
+# due to the -Q option given to `dar`, the program will terminate and give en error.
+ -n
+ 
+# size of each slice in the archive
+ --slice 7G
+
+# bypass directores marked as cache directories
+# http://dar.linux.free.fr/doc/Features.html
+--cache-directory-tagging
 ````
 
 ## Systemctl examples
