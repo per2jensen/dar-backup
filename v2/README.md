@@ -14,13 +14,13 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
 - [Homepage - Github](#homepage---github)
 - [Requirements](#requirements)
-- [Config file](#config-file)
 - [How to run](#how-to-run)
   - [1 - installation](#1---installation)
   - [2 - configuration](#2---configuration)
   - [3 - generate catalog databases](#3---generate-catalog-databases)
   - [4 - do FULL backups](#4---do-full-backups)
   - [5 - deactivate venv](#5---deactivate-venv)
+- [Config file](#config-file)
 - [.darrc](#darrc)
 - [Systemctl examples](#systemctl-examples)
   - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
@@ -105,10 +105,6 @@ On Ubuntu, install the requirements this way:
 ```` bash
     sudo apt install dar par2 python3
 ````
-
-## Config file
-
-The default configuration is expected here: ~/.config/dar-backup/dar-backup.conf
 
 ## How to run
 
@@ -206,6 +202,49 @@ Deactivate the virtual environment (venv)
 
 ```` bash
 deactivate
+````
+
+## Config file
+
+The configuration file's default location is: ~/.config/dar-backup/dar-backup.conf
+
+If you have your config file somewhere else, use the `--config` option to point to it.
+
+Tilde `~` and environment variables can be used in the paths for various file locations.
+
+```` code
+[MISC]
+LOGFILE_LOCATION=~/.dar-backup.log
+MAX_SIZE_VERIFICATION_MB = 20
+MIN_SIZE_VERIFICATION_MB = 1
+NO_FILES_VERIFICATION = 5
+# timeout in seconds for backup, test, restore and par2 operations
+# The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
+# If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
+COMMAND_TIMEOUT_SECS = 86400
+
+[DIRECTORIES]
+BACKUP_DIR = /some/where/dar-backup/backups/
+BACKUP.D_DIR = /some/where/dar-backup/backup.d
+TEST_RESTORE_DIR = /tmp/dar-backup/restore/
+
+[AGE]
+# age settings are in days
+DIFF_AGE = 100
+INCR_AGE = 40
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+ENABLED = True
+
+# scripts to run before the backup to setup the environment
+[PREREQ]
+SCRIPT_1 = ls -l /tmp
+#SCRIPT_2 = another_script.sh
+
+[POSTREQ]
+SCRIPT_1 = df -h
+#SCRIPT_2 = another_script.sh
 ````
 
 ## .darrc
