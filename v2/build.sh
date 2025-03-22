@@ -11,6 +11,12 @@
 # Install in development virtual environment
 #
 
+if [ ! -e "$(realpath ./venv)" ]; then
+    echo "Virtual environment not found (no ./venv)"
+    echo "See doc/dev.md for instructions on setting up the virtual environment"
+    exit 1
+fi
+
 if [ -z "$VIRTUAL_ENV" ] || [ "$VIRTUAL_ENV" != "$(realpath ./venv)" ]; then
     echo "Activating virtual environment in ./venv"
     source ./venv/bin/activate
