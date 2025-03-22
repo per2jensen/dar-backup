@@ -22,12 +22,13 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [3 - generate catalog databases](#3---generate-catalog-databases)
   - [4 - do FULL backups](#4---do-full-backups)
   - [5 - deactivate venv](#5---deactivate-venv)
-- [Config file](#config-file)
-- [.darrc](#darrc)
-- [Backup definition](#backup-definition-example)
-- [Systemctl examples](#systemctl-examples)
-  - [Service: dar-back --incremental-backup](#service-dar-back---incremental-backup)
-  - [Timer: dar-back --incremental-backup](#timer-dar-back---incremental-backup)
+- [Config](#config)
+  - [Config file](#config-file)
+  - [.darrc](#darrc)
+  - [Backup definition](#backup-definition-example)
+- [Systemd examples](#systemctl-examples)
+  - [Service: dar-back --incremental-backup](#service-dar-backup---incremental-backup)
+  - [Timer: dar-back --incremental-backup](#timer-dar-backup---incremental-backup)
 - [List contents of an archive](#list-contents-of-an-archive)
 - [dar file selection examples](#dar-file-selection-examples)
   - [Select a directory](#select-a-directory)
@@ -227,7 +228,9 @@ Deactivate the virtual environment (venv)
 deactivate
 ````
 
-## Config file
+## Config
+
+### Config file
 
 The configuration file's default location is: ~/.config/dar-backup/dar-backup.conf
 
@@ -270,7 +273,7 @@ SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
 ````
 
-## .darrc
+### .darrc
 
 The package includes a default `.darrc` file which configures `dar`.
 
@@ -401,7 +404,7 @@ compress-exclusion:
 -acase
 ````
 
-## Backup definition example
+### Backup definition example
 
 This piece of configuration is a `backup definition`. It is placed in the BACKUP.D_DIR (see config file description).
 The name of the file is the name of the backup definition.
@@ -463,7 +466,7 @@ Verify your timers are set up as you want:
 systemctl --user list-timers
 ````
 
-## Service: dar-back --incremental-backup
+## Service: dar-backup --incremental-backup
 
 File:  dar-inc-backup.service
 
@@ -479,7 +482,7 @@ RemainAfterExit=no
 ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate && dar-backup --incremental-backup --verbose'
 ````
 
-## Timer: dar-back --incremental-backup
+## Timer: dar-backup --incremental-backup
 
 File:  dar-inc-backup.timer
 

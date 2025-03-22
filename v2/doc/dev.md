@@ -1,16 +1,19 @@
 # Dev snippets
 
+## Setup the venv
+
+```` bash
+cd <path/to/dar-backup/v2>
+python3 -m venv venv
+. venv/bin/activate
+pip install build hatch hatchling pytest twine wheel psutil
+````
+
 ## Activate the venv
 
 ```` bash
 cd <path/to/dar-backup/v2>
 . venv/bin/activate
-````
-
-## Setup venv
-
-```` bash
-pip install build hatch hatchling pytest twine wheel psutil
 ````
 
 ## build, deploy to dev venv
@@ -29,17 +32,16 @@ A pytest.ini is located in the v2 directory, so that pytest writes out captures 
 That is useful when working with a single test and is the default
 
 ```` bash
-pytest
+pytest -c pytest-minimal.ini tests/test_verbose.py::test_verbose_error_reporting
 ````
 
-If you do not want that a empty ini file is also there: pytest-minimal.ini.
-Use use to get the minimal info on successful test cases
+Use  to get the minimal info on successful test cases
 
 ```` bash
 pytest -c pytest-minimal.ini
 ````
 
-or
+or for specific file with test cases
 
 ```` bash
 pytest -c pytest-minimal.ini tests/test_verbose.py
