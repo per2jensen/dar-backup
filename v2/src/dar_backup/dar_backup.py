@@ -629,7 +629,7 @@ def requirements(type: str, config_setting: ConfigSettings):
         config_settings (ConfigSettings): An instance of the ConfigSettings class.
 
     Raises:
-        RuntimeError: If a subprocess  returns anything but zero.
+        RuntimeError: If a subprocess returns anything but zero.
 
         subprocess.CalledProcessError: if CalledProcessError is raised in subprocess.run(), let it bobble up.
     """
@@ -641,7 +641,7 @@ def requirements(type: str, config_setting: ConfigSettings):
         raise RuntimeError(f"requirements: {type} not in: {allowed_types}")
 
 
-    logger.info(f"Performing  {type}")
+    logger.debug(f"Performing  {type}")
     if type in config_setting.config:
         for key in sorted(config_setting.config[type].keys()):
             script = config_setting.config[type][key]
