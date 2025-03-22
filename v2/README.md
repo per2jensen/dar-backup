@@ -119,10 +119,12 @@ On Ubuntu, install the requirements this way:
 There are 3 levels of backups, FULL, DIFF and INCR.
 
 - The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s).
-- The author makes a DIFF once a month. The DIFF backs up new and changed files compared to the FULL backup.
-- The author takes an INCR backup every 3 days. An INCR backup includes new and changed files compared to the DIFF backup.
---  So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
---  No INCR backups will taken until a DIFF backup has been taken.
+- The author makes a DIFF once a month. The DIFF backs up new and changed files **compared** to the **FULL** backup.
+- The author takes an INCR backup every 3 days. An INCR backup includes new and changed files **compared** to the **DIFF** backup.
+  
+  - So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
+  
+  - No INCR backups are taken until a DIFF backup has been taken for a particular backup definition.
 
 ### cleanup
 
@@ -784,7 +786,7 @@ The secondary log file can get quite cluttered, if you want to remove the clutte
 
 ### dar-backup
 
-This script is responsible for managing the backup creation and validation process. It supports the following options:
+This script does backups, validation and restoring. It has the following options:
 
 ``` code
 --full-backup                         Perform a full backup.
@@ -810,7 +812,7 @@ This script is responsible for managing the backup creation and validation proce
 
 ### manager
 
-This script manages `dar` databases and catalogs. Available options include:
+This script manages `dar` databases and catalogs. Available options:
 
 ``` code
 --create-db                           Create missing databases for all backup definitions.
@@ -829,18 +831,19 @@ This script manages `dar` databases and catalogs. Available options include:
 
 ### cleanup
 
-This script cleans up old backups and manages storage. Supported options:
+This script cleans up old backups and par2 files. Supported options:
 
 ``` code
--d, --backup-definition                       Backup definition to cleanup.
--c, --config-file                             Path to 'dar-backup.conf', default='~/.config/dar-backup/dar-backup.conf.
--v, --version                                 Show version & license information.
---alternate-archive-dir                       Clean up in this directory instead of the default one.
---cleanup-specific-archives <archive>, ...    Comma separated list of archives to cleanup.
--l,  --list                                   List available archives.
---verbose                                     Print various status messages to screen.
---log-level <level>                           `debug` or `trace`, default is `info`", default="info".
---log-stdout                                  Print log messages to stdout.
+-d, --backup-definition                           Backup definition to cleanup.
+-c, --config-file                                 Path to 'dar-backup.conf', default='~/.config/dar-backup/dar-backup.conf.
+-v, --version                                     Show version & license information.
+--alternate-archive-dir                           Clean up in this directory instead of the default one.
+--cleanup-specific-archives "<archive>, <>, ..."  Comma separated list of archives to cleanup.
+-l,  --list                                       List available archives.
+--verbose                                         Print various status messages to screen.
+--log-level <level>                               `debug` or `trace`, default is `info`", default="info".
+--log-stdout                                      Print log messages to stdout.
+--test-mode                                       This is used when running pytest test cases
 ```
 
 ### clean-log
