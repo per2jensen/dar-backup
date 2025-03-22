@@ -1,5 +1,12 @@
 exclude venv/*
+exclude tests/*
+exclude dist/*
+exclude build.sh
+exclude testall.sh
+exclude pytest*
 include README.md
 include Changelog.md
 include LICENSE
+include doc/*
+
 

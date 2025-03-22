@@ -94,9 +94,9 @@ Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* i
 
 ## Homepage - Github
 
-This 'dar-backup' package lives at: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
+'dar-backup' package lives here: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
 
-This python version is v2 of dar-backup, the version 1 is made in bash.
+This python version is v2 of dar-backup, v1 is made in bash.
 
 ## Requirements
 
@@ -203,8 +203,10 @@ manager --create-db
 
 ### 4 - do FULL backups
 
-You are ready to do backups of all your backup definitions, if your backup definitions are
-in place in BACKUP.D_DIR (see config file)
+Prereq:
+Backup definitions are in place in BACKUP.D_DIR (see config file)
+
+You are ready to do backups of all your backup definitions.
 
 ```` bash
 dar-backup --full-backup 
