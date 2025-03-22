@@ -21,6 +21,7 @@ import subprocess
 import sys
 
 from datetime import datetime, timedelta
+from inputimeout import inputimeout, TimeoutOccurred
 from time import time
 from typing import Dict, List, NamedTuple
 
@@ -156,6 +157,7 @@ def show_version():
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
+
 def main():
     global logger
 
@@ -164,11 +166,12 @@ def main():
     parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
-    parser.add_argument('--cleanup-specific-archives', type=str, help="Commas separated list of archives to cleanup") 
+    parser.add_argument('--cleanup-specific-archives', type=str, help="Comma separated list of archives to cleanup") 
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
+    parser.add_argument('--test-mode', action='store_true', help='Read envvars in order to run some pytest cases')
     args = parser.parse_args()
 
     args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
@@ -232,6 +235,33 @@ def main():
         logger.info(f"Cleaning up specific archives: {args.cleanup_specific_archives}")
         archive_names = args.cleanup_specific_archives.split(',')
         for archive_name in archive_names:
+            if "_FULL_" in archive_name:
+                try:
+                    try:
+                        # used for pytest cases
+                        if args.test_mode:
+                            confirmation = os.environ.get("CLEANUP_TEST_DELETE_FULL")
+                            if confirmation == None:
+                                raise RuntimeError("envvar 'CLEANUP_TEST_DELETE_FULL' not set")
+                            
+                        else:
+                            confirmation = inputimeout(
+                                prompt=f"Are you sure you want to delete the FULL archive '{archive_name}'? (yes/no): ",
+                                timeout=30)
+                        if confirmation == None:
+                            continue
+                        else:
+                            confirmation = confirmation.strip().lower()
+                    except TimeoutOccurred:
+                        logger.info(f"Timeout waiting for confirmation for FULL archive: {archive_name}. Skipping deletion.")
+                        continue
+                except KeyboardInterrupt:
+                    logger.info(f"User interrupted confirmation for FULL archive: {archive_name}. Skipping deletion.")
+                    continue
+
+                if confirmation != 'yes':
+                    logger.info(f"User did not answer 'yes' to confirm deletion of FULL archive: {archive_name}. Skipping deletion.")
+                    continue
             logger.info(f"Deleting archive: {archive_name}")
             delete_archive(config_settings.backup_dir, archive_name.strip(), args)
     elif args.list:

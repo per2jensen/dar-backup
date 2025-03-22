@@ -6,7 +6,7 @@
 cd <path/to/dar-backup/v2>
 python3 -m venv venv
 . venv/bin/activate
-pip install build hatch hatchling pytest twine wheel psutil
+pip install inputimeout build hatch hatchling pytest twine wheel psutil
 ````
 
 ## Activate the venv

@@ -19,7 +19,10 @@ Github link: [v2-beta-0.6.15](https://github.com/per2jensen/dar-backup/tree/v2-b
 - Restore test details now logged only if args.verbose is set (less clutter in log file)
 - `--log-stdout` now does not show run_command() output from program being run
 - Report error and exit code `1` if manager did not add an archive to it's database
+- `cleanup` now requires a confirmation to delete a _FULL_ archive (using the option: --cleanup-specific-archives)
+- Module `inputimeout` used and installed into the venv, when `dar-backup` is installed
 - Much more clean log file in default config, use `--verbose` for more information, `--log-level debug` for even more
+- Added option  --test-mode to `cleanup` to run tests verifying that FULL archives are deleted only if the user answers "yes"
 
 ## v2-beta-0.6.14 - 2025-03-02
 

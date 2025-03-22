@@ -128,7 +128,7 @@ There are 3 levels of backups, FULL, DIFF and INCR.
 
 The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
 
-`cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used.
+`cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used. It requires the user to confirm deletion of FULL archives.
 
 ## How to run
 
@@ -141,6 +141,11 @@ Installation is currently in a venv. These commands are installed in the venv:
 - manager
 - clean-log
 - installer
+
+Note:
+
+The module `inputimeout` is installed into the venv and used for the confirmation input (with a 30 second timeout)
+
 
 To install, create a venv and run pip:
 

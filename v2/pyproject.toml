@@ -59,6 +59,10 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: System :: Archiving :: Backup",
 ]
+dependencies = [
+    "inputimeout>=1.0.4",
+    # other dependencies
+]
 
 [project.urls]
 Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"

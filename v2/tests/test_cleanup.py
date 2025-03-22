@@ -73,7 +73,7 @@ def test_cleanup_functionality(setup_environment, env):
     assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar')} does not exist"
 
 
-def test_cleanup_specific_archives(setup_environment, env):
+def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
     """
     Verify that the cleanup script can delete multiple specific archives
     """
@@ -120,9 +120,10 @@ def test_cleanup_specific_archives(setup_environment, env):
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
             f.write(content)
 
-
-    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose', '--log-level', 'debug', '--log-stdout']
+    monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "yes")
+    command = ['cleanup', '--test-mode', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago} , specific_FULL_{date_20_days_ago}'  , '--config-file', env.config_file, '--verbose', '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
+    
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
     if result.returncode != 0:
@@ -152,7 +153,7 @@ def test_cleanup_specific_archives(setup_environment, env):
 
 
 
-def test_cleanup_multiple_specific_archives(setup_environment, env):
+def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch):
     test_files = {
         f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
         f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
@@ -177,8 +178,8 @@ def test_cleanup_multiple_specific_archives(setup_environment, env):
         raise Exception(f"Command failed: {command}")
 
 
-
-    command = ['cleanup', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "yes")
+    command = ['cleanup', '--test-mode', '--cleanup-specific-archives', f'specific_FULL_{date_100_days_ago}'  , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
     result = subprocess.run(command, capture_output=True, text=True)
     env.logger.info(result.stdout)
@@ -193,9 +194,6 @@ def test_cleanup_multiple_specific_archives(setup_environment, env):
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2')} still exists"
-
-
-
 
 
 def test_cleanup_alternate_dir(setup_environment, env):
@@ -233,4 +231,50 @@ def test_cleanup_alternate_dir(setup_environment, env):
 
     assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'example_DIFF_{date_20_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_DIFF_{date_20_days_ago}.1.dar')} does not exist"
     assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar')} does not exist"
+
+
+
+def test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatch):
+    """
+    Verify that the cleanup script does not delete a FULL archive if the user does not confirm the deletion
+    """
+    test_files = {
+            f'example_FULL_1970-01-01.1.dar': 'dummy'
+        }
+
+    for filename, content in test_files.items():
+        with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
+            f.write(content)
+
+    monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "no")
+    command = ['cleanup', '--test-mode', '--cleanup-specific-archives', 'example_FULL_1970-01-01', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    env.logger.info(command)
+    result = subprocess.run(command, text=True, capture_output=True, timeout=1)
+    env.logger.info(result.stdout)
+
+    assert "User did not answer 'yes' to confirm deletion of FULL archive: " in result.stdout, f"Expected confirmation message not found in stdout"
+    assert result.returncode == 0, f"Cleanup script failed with return code {result.returncode}"
+    assert os.path.exists(os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')), f"File {os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')} was deleted"
+
+
+def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
+    test_files = {
+            f'example_FULL_1970-01-01.1.dar': 'dummy',
+            f'example_FULL_1970-01-01.1.dar.par2': 'dummy',
+        }
+
+    for filename, content in test_files.items():
+        with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
+            f.write(content)
+
+    monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "yes")
+    command = ['cleanup', '--test-mode', '--cleanup-specific-archives', 'example_FULL_1970-01-01', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
+    env.logger.info(command)
+    result = subprocess.run(command, text=True, capture_output=True, timeout=1)
+    env.logger.info(result.stdout)
+
+    assert result.returncode == 0, f"Cleanup script failed to delete the FULL archive"
+    for file in test_files:
+        assert not os.path.exists(os.path.join(env.test_dir, 'backups', file)), f"File {os.path.join(env.test_dir, 'backups', file)} was not deleted"
+    
 
