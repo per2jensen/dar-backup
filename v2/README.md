@@ -131,6 +131,8 @@ There are 3 levels of backups, FULL, DIFF and INCR.
 
 After each backup of a backup definition, `dar-backup` tests the archive and then performs a few restore operations of random files from the archive (see [dar-backup.conf](#config-file)). The restored files are compared to the originals to check if the restore went well.
 
+`dar-backup` skips doing a backup of a backup definition if an archive is already in place. So, if you for some reason need to take a new backup on the same date, the first archive must be deleted (I recommend using [cleanup](#cleanup-1)).
+
 ### cleanup
 
 The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
@@ -850,7 +852,7 @@ This script cleans up old backups and par2 files. Supported options:
 -v, --version                                     Show version & license information.
 --alternate-archive-dir                           Clean up in this directory instead of the default one.
 --cleanup-specific-archives "<archive>, <>, ..."  Comma separated list of archives to cleanup.
--l,  --list                                       List available archives.
+-l, --list                                       List available archives (filter using the -d option).
 --verbose                                         Print various status messages to screen.
 --log-level <level>                               `debug` or `trace`, default is `info`", default="info".
 --log-stdout                                      Print log messages to stdout.
