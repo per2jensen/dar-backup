@@ -815,7 +815,7 @@ This script does backups, validation and restoring. It has the following options
 --restore-dir <path>                  Directory to restore files to.
 --verbose                             Enable verbose output.
 --suppress-dar-msg                    Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
---log-level <level>                   `debug` or `trace`, default is `info`", default="info".
+--log-level <level>                   `debug` or `trace`, default is `info`.
 --log-stdout                          Also print log messages to stdout.
 --do-not-compare                      Do not compare restores to file system.
 --version                             Show version and license information.
