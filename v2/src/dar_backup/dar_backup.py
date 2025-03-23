@@ -63,7 +63,6 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     result: List[tuple] = []
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
-    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
     try:
         process = run_command(command, config_settings.command_timeout_secs)
         if process.returncode == 0:
@@ -192,7 +191,6 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     """
     result = True
     command = ['dar', '-t', backup_file, '-Q']
-    logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
     process = run_command(command, config_settings.command_timeout_secs)
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
@@ -339,7 +337,6 @@ def list_contents(backup_name, backup_dir, selection=None):
         if selection:
             selection_criteria = shlex.split(selection)
             command.extend(selection_criteria)
-        logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
         process = run_command(command)
         stdout,stderr = process.stdout, process.stderr
         if process.returncode != 0:

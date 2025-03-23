@@ -145,8 +145,8 @@ def run_command(command: List[str], timeout: int = 30, no_output_log: bool = Fal
         if not shutil.which(command[0]):
             raise FileNotFoundError(f"Command not found: {command[0]}")
    
-        logger.debug(f"Running command: {command}")
-        command_logger.info(f"Running command: {command}")
+        logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
+        command_logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
 
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
