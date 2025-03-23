@@ -118,19 +118,30 @@ On Ubuntu, install the requirements this way:
 
 There are 3 levels of backups, FULL, DIFF and INCR.
 
-- The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s).
+- The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s) (assuming `-d` was not given).
 - The author makes a DIFF once a month. The DIFF backs up new and changed files **compared** to the **FULL** backup.
+
+  - No DIFF backups are taken until a FULL backup has been taken for a particular backup definition.
+
 - The author takes an INCR backup every 3 days. An INCR backup includes new and changed files **compared** to the **DIFF** backup.
   
   - So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
   
   - No INCR backups are taken until a DIFF backup has been taken for a particular backup definition.
 
+After each backup of a backup definition, `dar-backup` tests the archive and then performs a few restore operations of random files from the archive (see [dar-backup.conf](#config-file)). The restored files are compared to the originals to check if the restore went well.
+
 ### cleanup
 
 The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
 
 `cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used. It requires the user to confirm deletion of FULL archives.
+
+### manager
+
+`dar`has the concept of catalogs which can be exported and optionally be added to a catalog database. That database makes it much easier to restore the correct version of a backed up file if for example a target date has been set.
+
+`dar-backup` adds archive catalogs to their databases (using the `manager` script). Should the operation fail, `dar-backup` logs an error and continue with testing and restore validation tests.
 
 ## How to run
 
