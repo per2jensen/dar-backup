@@ -738,9 +738,9 @@ def main():
         file_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Script directory:  {file_dir}"))
         args.verbose and (print(f"Config file:       {args.config_file}"))
-        args.verbose and args.full_backup         and (print(f"Type of backup: FULL"))
-        args.verbose and args.differential_backup and (print(f"Type of backup: DIFF"))
-        args.verbose and args.incremental_backup  and (print(f"Type of backup: INCR"))
+        args.verbose and args.full_backup         and (print(f"Type of backup:    FULL"))
+        args.verbose and args.differential_backup and (print(f"Type of backup:    DIFF"))
+        args.verbose and args.incremental_backup  and (print(f"Type of backup:    INCR"))
         args.verbose and args.backup_definition   and (print(f"Backup definition: '{args.backup_definition}'"))
         if args.alternate_reference_archive:
             args.verbose and (print(f"Alternate ref archive: {args.alternate_reference_archive}"))
