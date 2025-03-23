@@ -222,7 +222,7 @@ manager --create-db
 ### 4 - do FULL backups
 
 Prereq:
-Backup definitions are in place in BACKUP.D_DIR (see config file)
+Backup definitions are in place in BACKUP.D_DIR (see [config file](#config-file)).
 
 You are ready to do backups of all your backup definitions.
 
@@ -295,7 +295,7 @@ SCRIPT_1 = df -h
 
 ### .darrc
 
-The package includes a default `.darrc` file which configures `dar`.
+The package includes a default `darrc` file which configures `dar`.
 
 You can override the default `.darrc` using the `--darrc` option.
 
@@ -687,7 +687,7 @@ deactivate
 
 "dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
 
-Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied .darrc file (located in the virtual environment where dar-backup is installed).
+Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed).
 
 This causes dar to restore without an error.
 
@@ -702,7 +702,7 @@ My home directory is on a btrfs filesystem, while /tmp (for the restore test) is
 
 The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
 
-If you need to use this option, un-comment it in the .darrc file (located in the virtual environment where dar-backup is installed)
+If you need to use this option, un-comment it in the [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed)
 
 ## Par2
 
@@ -773,7 +773,7 @@ Slice size should be smaller than available RAM, apparently a large performance 
 
 ### .darrc sets -vd -vf (since v0.6.4)
 
-These .darrc settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
+These [.darrc](#darrc) settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
 
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
 
