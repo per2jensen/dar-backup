@@ -114,7 +114,7 @@ On Ubuntu, install the requirements this way:
 
 ### dar-backup
 
-`dar-backup` is built in a way that emphasizes getting backups. It loops over the backup definitions, and in the event of a failure while backing up a backup definition, dar-backup shall log an error and start working on the next backup definition.
+`dar-backup` is built in a way that emphasizes getting backups. It loops over the [backup definitions](#backup-definition-example), and in the event of a failure while backing up a backup definition, dar-backup shall log an error and start working on the next backup definition.
 
 There are 3 levels of backups, FULL, DIFF and INCR.
 
@@ -160,7 +160,6 @@ Installation is currently in a venv. These commands are installed in the venv:
 Note:
 
 The module `inputimeout` is installed into the venv and used for the confirmation input (with a 30 second timeout)
-
 
 To install, create a venv and run pip:
 
@@ -224,7 +223,7 @@ manager --create-db
 ### 4 - do FULL backups
 
 Prereq:
-Backup definitions are in place in BACKUP.D_DIR (see [config file](#config-file)).
+[Backup definitions](#backup-definition-example) are in place in BACKUP.D_DIR (see [config file](#config-file)).
 
 You are ready to do backups of all your backup definitions.
 
@@ -428,7 +427,7 @@ compress-exclusion:
 
 ### Backup definition example
 
-This piece of configuration is a `backup definition`. It is placed in the BACKUP.D_DIR (see config file description).
+This piece of configuration is a [backup definition](#backup-definition-example). It is placed in the BACKUP.D_DIR (see config file description).
 The name of the file is the name of the backup definition.
 
 You can use as many backup definitions as you need.
