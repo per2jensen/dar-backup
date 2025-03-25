@@ -797,7 +797,6 @@ The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cached
 
 If the option is not in the backup definition, the cache directories are backed up as any other.
 
-
 ## Todo
 
 - `installer` to generate, but not deploy systemd units and timers for:
