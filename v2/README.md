@@ -54,11 +54,11 @@ This is the `Python` based **version 2** of `dar-backup`.
 - [Todo](#todo)
 - [Reference](#reference)
   - [Test coverage report](#test-coverage)
-  - [dar-backup](#dar-backup)
-  - [manager](#manager)
-  - [cleanup](#cleanup)
-  - [clean-log](#clean-log)
-  - [installer](#installer)
+  - [dar-backup](#dar-backup-options)
+  - [manager](#manager-options)
+  - [cleanup](#cleanup-options)
+  - [clean-log](#clean-log-options)
+  - [installer](#installer-options)
   
 ## My use case
 
@@ -802,7 +802,7 @@ The secondary log file can get quite cluttered, if you want to remove the clutte
 Running
 
 ```` bash
-    pytest --cov=dar_backup tests/
+pytest --cov=dar_backup tests/
 ````
 
 gives for version 0.6.17:
@@ -824,7 +824,7 @@ venv/lib/python3.12/site-packages/dar_backup/util.py                162     35  
 TOTAL                                                              1314    340    74%
 ````
 
-### dar-backup
+### dar-backup options
 
 This script does backups, validation and restoring. It has the following options:
 
@@ -850,7 +850,7 @@ This script does backups, validation and restoring. It has the following options
 -v --version                         Show version and license information.
 ```
 
-### manager
+### manager options
 
 This script manages `dar` databases and catalogs. Available options:
 
@@ -870,7 +870,7 @@ This script manages `dar` databases and catalogs. Available options:
 --log-level <level>                  `debug` or `trace`, default is `info`", default="info".
 ```
 
-### cleanup
+### cleanup options
 
 This script cleans up old backups and par2 files. Supported options:
 
@@ -887,7 +887,7 @@ This script cleans up old backups and par2 files. Supported options:
 --test-mode                                       This is used when running pytest test cases
 ```
 
-### clean-log
+### clean-log options
 
 This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
 
@@ -899,7 +899,7 @@ This script removes excessive logging output from `dar` logs, improving readabil
 -h, --help                 Displays usage info
 ```
 
-### installer
+### installer options
 
 Sets up `dar-backup`for a user.
 
