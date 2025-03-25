@@ -51,6 +51,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [Performance tip due to par2](#performance-tip-due-to-par2)
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
   - [Separate log file for command output](#separate-log-file-for-command-output)
+  - [Skipping cache directories](#skipping-cache-directories)
 - [Todo](#todo)
 - [Reference](#reference)
   - [Test coverage report](#test-coverage)
@@ -465,6 +466,7 @@ You can use as many backup definitions as you need.
 
 # bypass directores marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
+# https://bford.info/cachedir/
 --cache-directory-tagging
 ````
 
@@ -786,6 +788,15 @@ Dar-backup's log file is called `dar-backup.log`.
 In order to not clutter that log file with the output of commands being run, a new secondary log file has been introduced `dar-backup-commands.log`.
 
 The secondary log file can get quite cluttered, if you want to remove the clutter, run the `clean-log`script with the `--file` option, or simply delete it.
+
+### Skipping cache directories
+
+The author uses the `--cache-directory-tagging` option in his [backup definitions](#backup-definition-example).
+
+The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cachedir/) file are not backed up. Those directories contain content fetched from the net, which is of an ephemeral nature and probably not what you want to back up.
+
+If the option is not in the backup definition, the cache directories are backed up as any other.
+
 
 ## Todo
 
