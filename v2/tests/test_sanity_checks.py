@@ -192,6 +192,46 @@ def test_dar_backup_nonexistent_config_file(setup_environment, env):
     process = run_command(command)
     assert process.returncode == 127, f'dar-backup must fail and return code must be 127 if config file is not found'
 
+def setup_cache_directory(env):
+    """
+    Creates a directory called 'cache-dir' below env.data_dir, adds three small test files,
+    and includes a CACHEDIR.TAG file with the specified content.
+
+    Args:
+        env: The environment object containing the data_dir attribute.
+    """
+    # Define the cache directory path
+    cache_dir = os.path.join(env.data_dir, "cache-dir")
+    
+    # Create the cache directory if it doesn't exist
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # Create three small test files in the cache directory
+    for i in range(1, 4):
+        test_file_path = os.path.join(cache_dir, f"test_file_{i}.txt")
+        with open(test_file_path, "w") as test_file:
+            test_file.write(f"This is test file {i}.\n")
+    
+    # Create the CACHEDIR.TAG file with the specified content
+    cachedir_tag_path = os.path.join(cache_dir, "CACHEDIR.TAG")
+    with open(cachedir_tag_path, "w", encoding='utf-8') as cachedir_tag_file:
+        cachedir_tag_file.write("Signature: 8a477f597d28d172789f06886806bc55")    
+    print(f"Cache directory setup complete at: {cache_dir}")
+
+
+def test_skip_cache_directories(setup_environment, env):
+    setup_cache_directory(env)
+
+    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--verbose', '--log-stdout']
+    process = run_command(command)
+
+    command = ['dar-backup', '--config-file', env.config_file, '--list-contents', f'example_FULL_{env.datestamp}']
+    process = run_command(command)
+
+    assert process.stdout.find("cache-dir/CACHEDIR.TAG") == -1 , f'dar-backup must not backup a CACHEDIR'
+    assert process.stdout.find("cache-dir/test_file_1.txt") == -1 , f'dar-backup must not backup a CACHEDIR'
+
+
 
 def test_validate_xml_parser(setup_environment, env):
     """
