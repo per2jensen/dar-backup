@@ -801,25 +801,25 @@ The secondary log file can get quite cluttered, if you want to remove the clutte
 This script does backups, validation and restoring. It has the following options:
 
 ``` code
---full-backup                         Perform a full backup.
---differential-backup                 Perform a differential backup.
---incremental-backup                  Perform an incremental backup.
---backup-definition <name>            Specify the backup definition file.
---alternate-reference-archive <file>  Use a different archive for DIFF/INCR backups.
---config-file <path>                  Specify the path to the configuration file.
---darrc <path>                        Specify an optional path to .darrc.
---examples                            Show examples of using dar-backup.py.
---list                                List available backups.
---list-contents <archive>             List the contents of a specified archive.
---selection <params>                  Define file selection for listing/restoring.
---restore <archive>                   Restore a specified archive.
---restore-dir <path>                  Directory to restore files to.
---verbose                             Enable verbose output.
---suppress-dar-msg                    Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
---log-level <level>                   `debug` or `trace`, default is `info`.
---log-stdout                          Also print log messages to stdout.
---do-not-compare                      Do not compare restores to file system.
---version                             Show version and license information.
+-F, --full-backup                    Perform a full backup.
+-D, --differential-backup            Perform a differential backup.
+-I, --incremental-backup             Perform an incremental backup.
+-d, --backup-definition <name>       Specify the backup definition file.
+--alternate-reference-archive <file> Use a different archive for DIFF/INCR backups.
+-c, --config-file <path>             Specify the path to the configuration file.
+--darrc <path>                       Specify an optional path to .darrc.
+--examples                           Show examples of using dar-backup.py.
+-l, --list                           List available backups.
+--list-contents <archive>            List the contents of a specified archive.
+--selection <params>                 Define file selection for listing/restoring.
+--restore <archive>                  Restore a specified archive.
+-r, --restore-dir <path>             Directory to restore files to.
+--verbose                            Enable verbose output.
+--suppress-dar-msg                   Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
+--log-level <level>                  `debug` or `trace`, default is `info`.
+--log-stdout                         Also print log messages to stdout.
+--do-not-compare                     Do not compare restores to file system.
+-v --version                         Show version and license information.
 ```
 
 ### manager
@@ -827,18 +827,19 @@ This script does backups, validation and restoring. It has the following options
 This script manages `dar` databases and catalogs. Available options:
 
 ``` code
---create-db                           Create missing databases for all backup definitions.
---alternate-archive-dir <path>        Use this directory instead of BACKUP_DIR in the config file.
---add-dir <path>                      Add all archive catalogs in this directory to databases.
--d, --backup-def <name>               Restrict to work only on this backup definition.
---add-specific-archive <archive>      Add this archive to the catalog database.
---remove-specific-archive <archive>   Remove this archive from the catalog database.
--l, --list-catalogs                   List catalogs in databases for all backup definitions.
---list-catalog-contents <num>         List contents of a catalog by catalog number.
---list-archive-contents <archive>     List contents of an archive’s catalog, given the archive name.
---find-file <file>                    Search catalogs for a specific file.
---verbose                             Enable verbose output.
---log-level <level>                   `debug` or `trace`, default is `info`", default="info".
+-c, --config-file                    Path to dar-backup.conf
+--create-db                          Create missing databases for all backup definitions.
+--alternate-archive-dir <path>       Use this directory instead of BACKUP_DIR in the config file.
+--add-dir <path>                     Add all archive catalogs in this directory to databases.
+-d, --backup-def <name>              Restrict to work only on this backup definition.
+--add-specific-archive <archive>     Add this archive to the catalog database.
+--remove-specific-archive <archive>  Remove this archive from the catalog database.
+-l, --list-catalogs                  List catalogs in databases for all backup definitions.
+--list-catalog-contents <num>        List contents of a catalog by catalog number.
+--list-archive-contents <archive>    List contents of an archive’s catalog, given the archive name.
+--find-file <file>                   Search catalogs for a specific file.
+--verbose                            Enable verbose output.
+--log-level <level>                  `debug` or `trace`, default is `info`", default="info".
 ```
 
 ### cleanup
@@ -847,7 +848,7 @@ This script cleans up old backups and par2 files. Supported options:
 
 ``` code
 -d, --backup-definition                           Backup definition to cleanup.
--c, --config-file                                 Path to 'dar-backup.conf', default='~/.config/dar-backup/dar-backup.conf.
+-c, --config-file                                 Path to 'dar-backup.conf'
 -v, --version                                     Show version & license information.
 --alternate-archive-dir                           Clean up in this directory instead of the default one.
 --cleanup-specific-archives "<archive>, <>, ..."  Comma separated list of archives to cleanup.
@@ -864,7 +865,7 @@ This script removes excessive logging output from `dar` logs, improving readabil
 
 ``` code
 -f, --file <path>          Specify the log file(s) to be cleaned.
--c, --config-file <path>   Specify the configuration file (default: ~/.config/dar-backup/dar-backup.conf).
+-c, --config-file <path>   Path to dar-backup.conf.
 --dry-run                  Show which lines would be removed without modifying the file.
 -v, --version              Display version and licensing information.
 -h, --help                 Displays usage info
