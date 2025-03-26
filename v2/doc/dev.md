@@ -59,6 +59,22 @@ twine upload dist/<wheel package>
 git log --pretty=format:"%ad - %an: %s %d" --date=short
 ````
 
+## tarball for chatgpt
+
+```` bash
+tar --exclude='*/__pycache__' -cvf dar-backup.tar \
+    tests/ \
+    src/ \
+    README.md \
+    Changelog.md \
+    pyproject.toml \
+    testall.sh \
+    build.sh \
+    pytest.ini \
+    MANIFEST.in
+````
+
+
 ## build dar
 
 This worked for dar version 2.7.17 on ubuntu 24.04
