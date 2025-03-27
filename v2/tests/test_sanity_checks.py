@@ -324,4 +324,33 @@ def test_validate_xml_parser(setup_environment, env):
         env.logger.info(f"{path} -> {size}")
         assert path in expected_paths, f'Unexpected path: {path}'
 
-    assert len(paths) == len(expected_paths), f'Expected {len(expected_paths)} paths, but found {len(paths)}'   
+    assert len(paths) == len(expected_paths), f'Expected {len(expected_paths)} paths, but found {len(paths)}' 
+
+
+def test_duplicate_full_backup_fails(setup_environment, env: EnvData):
+    """
+    Run two full backups in a row. The second should fail because the archive already exists.
+    """
+    env.logger.info("Creating first full backup...")
+    first = run_command([
+        "dar-backup",
+        "--full-backup",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug",
+        "--log-stdout"
+    ])
+    assert first.returncode == 0, f"First full backup failed unexpectedly: {first.stderr}"
+
+    env.logger.info("Attempting second full backup, which should fail due to archive name collision...")
+    second = run_command([
+        "dar-backup",
+        "--full-backup",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug",
+        "--log-stdout"
+    ])
+    assert second.returncode != 0, "Second full backup unexpectedly succeeded"
+    assert "already exists" in second.stderr or "already exists" in second.stdout, \
+        "Expected archive naming conflict not reported"

@@ -825,13 +825,13 @@ venv/lib/python3.12/site-packages/dar_backup/__about__.py             1      0  
 venv/lib/python3.12/site-packages/dar_backup/__init__.py              0      0   100%
 venv/lib/python3.12/site-packages/dar_backup/clean_log.py            68     14    79%
 venv/lib/python3.12/site-packages/dar_backup/cleanup.py             196     53    73%
-venv/lib/python3.12/site-packages/dar_backup/config_settings.py      61     17    72%
-venv/lib/python3.12/site-packages/dar_backup/dar_backup.py          464    103    78%
+venv/lib/python3.12/site-packages/dar_backup/config_settings.py      66      8    88%
+venv/lib/python3.12/site-packages/dar_backup/dar_backup.py          464     99    79%
 venv/lib/python3.12/site-packages/dar_backup/installer.py            46     46     0%
 venv/lib/python3.12/site-packages/dar_backup/manager.py             316     72    77%
-venv/lib/python3.12/site-packages/dar_backup/util.py                162     35    78%
+venv/lib/python3.12/site-packages/dar_backup/util.py                162     34    79%
 -------------------------------------------------------------------------------------
-TOTAL                                                              1314    340    74%
+TOTAL                                                              1319    326    75%
 ````
 
 ### dar-backup options

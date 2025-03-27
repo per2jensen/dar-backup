@@ -94,11 +94,9 @@ def modify_par2_redundancy(env: EnvData, redundancy: int) -> None:
                 f.write(line)
 
 
-
 def check_bitrot_recovery(env: EnvData):
     """
     Verify the bitrot recovery process.
-
     This test method performs the following steps:
     1. Simulates bitrot in the backup archive.
     2. Verifies that dar detects the bitrot and raises an exception.
@@ -108,40 +106,43 @@ def check_bitrot_recovery(env: EnvData):
     date = datetime.now().strftime('%Y-%m-%d')
     basename_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}")
     archive_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}.1.dar")
-    try:
-        command = ['dar', '-t', basename_path]
-        process: CommandResult  = run_command(command)
-        logging.info(f"stdout:\n{process.stdout}")
-        logging.info(f"stderr:\n{process.stderr}")
-        if process.returncode != 0:
-            raise RuntimeError(f"dar detected a bad archive: {basename_path}")
-        else:
-            logging.error(f"dar does not detect a bad archive: {basename_path} ")
-            sys.exit(1)
-    except Exception as e:
-        logging.info(f"Expected exception due to bitrot")
     
+    # Step 1: dar should detect corruption
     try:
-        # fix bitrot with parchive2
-        command = ["par2", "repair", "-q", archive_path]
-        process: CommandResult  = run_command(command)
-        logging.info(f"stdout:\n{process.stdout}")
-        logging.info(f"stderr:\n{process.stderr}")
-        if process.returncode != 0:
-            raise RuntimeError(f"parchive2 failed to repair the archive: {archive_path}")
-        
-        # test archive once more
         command = ['dar', '-t', basename_path]
-        process: CommandResult  = run_command(command)
-        logging.info(f"stdout:\n{process.stdout}")
-        logging.info(f"stderr:\n{process.stderr}")
-        if process.returncode != 0:
-            raise RuntimeError(f"dar archive test failed: {basename_path}")
-        
-        logging.info(f"Archive: {archive_path}  successfully repaired")
-    except Exception as e:
-        logging.exception(f"Expected no errors after parchive repair")
+        result: CommandResult = run_command(command)
+        logging.info(f"stdout:\n{result.stdout}")
+        logging.info(f"stderr:\n{result.stderr}")
+        # Assert bitrot is detected from stderr or non-zero return
+        assert result.returncode != 0, "dar returned success on corrupted archive!"
+        assert any(
+            keyword in result.stderr.lower()
+            for keyword in ("crc", "error", "corrupt", "checksum")
+        ), "Expected bitrot error not found in stderr"
+        logging.info("dar detected archive corruption as expected.")
+    except AssertionError as ae:
+        logging.exception("Bitrot was not detected as expected")
         sys.exit(1)
+
+    # Step 2: Repair
+    try:
+        command = ["par2", "repair", "-q", archive_path]
+        result: CommandResult = run_command(command)
+        logging.info(f"stdout:\n{result.stdout}")
+        logging.info(f"stderr:\n{result.stderr}")
+        assert result.returncode == 0, "par2 failed to repair the archive"
+
+        # Step 3: dar test should now pass
+        command = ['dar', '-t', basename_path]
+        result: CommandResult = run_command(command)
+        logging.info(f"stdout:\n{result.stdout}")
+        logging.info(f"stderr:\n{result.stderr}")
+        assert result.returncode == 0, "dar test failed after par2 repair"
+        logging.info(f"Archive successfully repaired and verified: {archive_path}")
+    except Exception:
+        logging.exception("Unexpected error during recovery or verification")
+        sys.exit(1)
+
 
 
 def test_5_bitrot_recovery(setup_environment, env: EnvData):
@@ -196,4 +197,3 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
 
     simulate_bitrot(env, redundancy_percentage)
     check_bitrot_recovery(env)
-
