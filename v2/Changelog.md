@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.17 - 2025-xx-yy
+## v2-beta-0.6.17 - 2025-unknown
 
 Github link: [v2-beta-0.6.17](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.17/v2)
 
@@ -10,6 +10,8 @@ Github link: [v2-beta-0.6.17](https://github.com/per2jensen/dar-backup/tree/v2-b
 - prereq and postreq logging now using debug level.
 - documentation: updates, links and fixes. Test coverage result included.
 - multiple .info() modified to debug() to keep the log file easily readable.
+- FIX: test case found an error in config_setting init
+- more testcases to expand coverage
 
 ## v2-beta-0.6.16- 2025-03-22
 

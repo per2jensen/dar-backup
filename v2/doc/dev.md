@@ -74,6 +74,13 @@ tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     MANIFEST.in
 ````
 
+## chatgpt prompts
+
+### the next test case
+
+```` text
+Please take a look at the `dar`wrapper scripts and the pytest test cases in tests/ and then suggest the most important test case to write. And generate a pytest test case that uses the test case setup in tests/conftest.py and also uses the tests/envdata.py
+````
 
 ## build dar
 

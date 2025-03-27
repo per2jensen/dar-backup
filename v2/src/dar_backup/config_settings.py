@@ -63,7 +63,14 @@ class ConfigSettings:
             self.diff_age = int(self.config['AGE']['DIFF_AGE'])
             self.incr_age = int(self.config['AGE']['INCR_AGE'])
             self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
-            self.par2_enabled = self.config['PAR2']['ENABLED'].lower() in ('true', '1', 'yes')
+            val = self.config['PAR2']['ENABLED'].strip().lower()
+            if val in ('true', '1', 'yes'):
+                self.par2_enabled = True
+            elif val in ('false', '0', 'no'):
+                self.par2_enabled = False
+            else:
+                raise ValueError(f"Invalid boolean value for 'ENABLED' in [PAR2]: '{val}'")
+            #self.par2_enabled = self.config['PAR2']['ENABLED'].lower() in ('true', '1', 'yes')
             
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
