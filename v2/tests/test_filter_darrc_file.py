@@ -8,7 +8,8 @@ from tests.envdata import EnvData
 
 def test_filter_darrc_file_removes_verbose_flags(monkeypatch):
     logger = logging.getLogger("test_logger")
-    env = EnvData("FilterDarrcVerboseTest", logger)
+    command_logger = logging.getLogger("command_logger")
+    env = EnvData("FilterDarrcVerboseTest", logger, command_logger)
 
     # Create test .darrc content with verbose flags and valid entries
     verbose_lines = [

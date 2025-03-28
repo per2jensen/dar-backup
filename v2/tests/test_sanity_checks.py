@@ -6,39 +6,30 @@ import re
 import shutil
 import sys
 import tempfile
-
-
-from dar_backup.util import run_command
-from dar_backup.dar_backup import find_files_with_paths
-from tests.envdata import EnvData
 from time import time
 from typing import Generator
 
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+from dar_backup.command_runner import CommandRunner
+from dar_backup.dar_backup import find_files_with_paths
+from tests.envdata import EnvData
+
+runner: CommandRunner = None
+
+@pytest.fixture(autouse=True)
+def setup_runner(env: EnvData):
+    global runner
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
 @pytest.fixture
 def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
-    """
-    Modify the LOG_DIR in the config file to include "~"
-
-    Args:
-        env (EnvData): The environment data object.
-    
-    Returns:
-        dict: { "LOGFILE_LOCATION" : "<path to log file>" }
-    
-    Raises:
-        RuntimeError: If the command fails.
-    """
-
     unix_time = int(time())
-
     LOGFILE_LOCATION = f"~/.test_{unix_time}_dar-backup.log"
     env.logger.info(f"LOGFILE_LOCATION: {LOGFILE_LOCATION}")
-
     config_path = os.path.join(env.test_dir, env.config_file)
     env.logger.info(f"config file path: {config_path}")
-
     with open(config_path, 'r') as f:
         lines = f.readlines()
     with open(config_path, 'w') as f:
@@ -47,46 +38,16 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
                 f.write(f'LOGFILE_LOCATION = {LOGFILE_LOCATION}\n')
             else:
                 f.write(line)
-
-    env.logger.info("Patched config file:")
-    with open(config_path, 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            env.logger.info(line)
-
-    yield { 'LOGFILE_LOCATION': LOGFILE_LOCATION }   
-
-    # cleanup
-    if LOGFILE_LOCATION and os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
+    yield {'LOGFILE_LOCATION': LOGFILE_LOCATION}
+    if os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
         os.remove(os.path.expanduser(LOGFILE_LOCATION))
         env.logger.info(f"Removed: {LOGFILE_LOCATION}")
 
-
-
 @pytest.fixture
 def modify_config_file_env_vars(env: EnvData) -> Generator[dict, None, None]:
-    """
-    Modify the BACKUP_DIR and LOG_DIR in the config file to include environtment variables
-
-    Args:
-        env (EnvData): The environment data object.
-    
-    Returns:
-        dict: with the keys BACKUP_DIR and LOG_DIR
-    
-    Raises:
-        RuntimeError: If the command fails.
-    """
-
     BACKUP_DIR = tempfile.mkdtemp(dir="/tmp")
-    env.logger.info(f"BACKUP_DIR: {BACKUP_DIR}")
-
-    LOG_DIR    = tempfile.mkdtemp(dir="/tmp")  
-    env.logger.info(f"LOG_DIR: {LOG_DIR}")
-
+    LOG_DIR = tempfile.mkdtemp(dir="/tmp")
     config_path = os.path.join(env.test_dir, env.config_file)
-    env.logger.info(f"Resulting config file path: {config_path}")
-
     with open(config_path, 'r') as f:
         lines = f.readlines()
     with open(config_path, 'w') as f:
@@ -97,147 +58,61 @@ def modify_config_file_env_vars(env: EnvData) -> Generator[dict, None, None]:
                 f.write('LOGFILE_LOCATION = ${LOG_DIR}/dar-backup.log\n')
             else:
                 f.write(line)
-
-    env.logger.info("Patched config file:")
-    with open(config_path, 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            env.logger.info(line)
-
     yield {'BACKUP_DIR': BACKUP_DIR, 'LOG_DIR': LOG_DIR}
-
-    # cleanup
-    if BACKUP_DIR.startswith('/tmp/') and len(BACKUP_DIR) > 5  and os.path.exists(BACKUP_DIR):
+    if os.path.exists(BACKUP_DIR):
         shutil.rmtree(BACKUP_DIR)
-        env.logger.info(f"Removed directory: {BACKUP_DIR}") 
-
-    if LOG_DIR.startswith('/tmp/') and len(LOG_DIR) > 5  and os.path.exists(LOG_DIR):
+    if os.path.exists(LOG_DIR):
         shutil.rmtree(LOG_DIR)
-        env.logger.info(f"Removed directory: {LOG_DIR}") 
-
 
 def test_env_vars_in_config_file(setup_environment, env: EnvData, modify_config_file_env_vars: dict):
-    """
-    Test that environment variables in the config file are correctly expanded.
-    """
-
-    # Create temporary config file with environment variables
-    env_vars = modify_config_file_env_vars
-
-    # Set environment variables
-    os.environ['BACKUP_DIR'] = env_vars['BACKUP_DIR']
-    env.logger.info(f"env var $BACKUP_DIR: {os.environ['BACKUP_DIR']}")
-
-    os.environ['LOG_DIR']    = env_vars['LOG_DIR']
-    env.logger.info(f"env var $LOG_DIR: {os.environ['LOG_DIR']}")
-
-    #run manager --create again, since the BACKUP_DIR was changed after the environment was set up
-    command = ['manager', '--create-db', '--config-file', env.config_file]
-    process = run_command(command)
-    assert process.returncode == 0, f'manager command failed with return code {process.returncode}'
-
-    # Run the dar-backup command with the temporary config file
-    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
-
-    # Check that the command executed successfully
-    assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
-
-    # Verify that the backup and log directories were used correctly
-    assert os.path.exists(os.path.join(os.environ['BACKUP_DIR'], f'example_FULL_{env.datestamp}.1.dar')), f'Archive f"example_FULL_{env.datestamp}.1.dar" not found in Backup directory'
-    assert os.path.exists(os.path.join(os.environ['LOG_DIR'], 'dar-backup.log')), 'Log directory was not used correctly'
-
+    os.environ['BACKUP_DIR'] = modify_config_file_env_vars['BACKUP_DIR']
+    os.environ['LOG_DIR'] = modify_config_file_env_vars['LOG_DIR']
+    process = runner.run(['manager', '--create-db', '--config-file', env.config_file])
+    assert process.returncode == 0
+    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout'])
+    assert process.returncode == 0
+    assert os.path.exists(os.path.join(os.environ['BACKUP_DIR'], f'example_FULL_{env.datestamp}.1.dar'))
+    assert os.path.exists(os.path.join(os.environ['LOG_DIR'], 'dar-backup.log'))
 
 def test_tilde_in_config_file(setup_environment, env: EnvData, modify_config_file_tilde: dict):
-    """
-    Test that "~" in the config file is correctly expanded.
-    """
-
-    
-
-    # Create temporary config file with environment variables
-    logfile_location_fixture = modify_config_file_tilde
-
-    # Run the dar-backup command with the temporary config file
-    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
-
-    # Check that the command executed successfully
-    assert process.returncode == 0, f'dar-backup command failed with return code {process.returncode}'
-
-    # Verify that logfile exists
-    logfile = os.path.expanduser(logfile_location_fixture['LOGFILE_LOCATION'])  
-    assert os.path.exists(logfile), f'Logfile: {logfile} not found in home directory'
-    assert os.path.getsize(logfile) > 0, f'Logfile: {logfile} is empty'
-
-    env.logger.info(f"Contents of logfile '{logfile}'\n==================")
+    logfile = os.path.expanduser(modify_config_file_tilde['LOGFILE_LOCATION'])
+    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout'])
+    assert process.returncode == 0
+    assert os.path.exists(logfile)
+    assert os.path.getsize(logfile) > 0
     with open(logfile, 'r') as f:
         for line in f:
-            env.logger.info(line.strip())  # Removes unnecessary newlines
-    
+            env.logger.info(line.strip())
+
 def test_dar_backup_definition_with_underscore(setup_environment, env):
-    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example_2']
-    process = run_command(command)
-    if process.returncode == 0:
-        raise Exception(f'dar-backup must fail on a backup definition with an underscore in the name')
+    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example_2'])
+    assert process.returncode != 0
 
 def test_dar_backup_nonexistent_definition_(setup_environment, env):
-    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'nonexistent_definition']
-    process = run_command(command)
-    assert process.returncode == 127, f'dar-backup must fail if backup definition is not found, using -d option'
-
+    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'nonexistent_definition'])
+    assert process.returncode == 127
 
 def test_dar_backup_nonexistent_config_file(setup_environment, env):
-    command = ['dar-backup', '--full-backup', '--config-file', 'non-existent-config-file', '-d', 'example']
-    process = run_command(command)
-    assert process.returncode == 127, f'dar-backup must fail and return code must be 127 if config file is not found'
+    process = runner.run(['dar-backup', '--full-backup', '--config-file', 'non-existent-config-file', '-d', 'example'])
+    assert process.returncode == 127
 
 def setup_cache_directory(env):
-    """
-    Creates a directory called 'cache-dir' below env.data_dir, adds three small test files,
-    and includes a CACHEDIR.TAG file with the specified content.
-
-    Args:
-        env: The environment object containing the data_dir attribute.
-    """
-    # Define the cache directory path
     cache_dir = os.path.join(env.data_dir, "cache-dir")
-    
-    # Create the cache directory if it doesn't exist
     os.makedirs(cache_dir, exist_ok=True)
-    
-    # Create three small test files in the cache directory
     for i in range(1, 4):
-        test_file_path = os.path.join(cache_dir, f"test_file_{i}.txt")
-        with open(test_file_path, "w") as test_file:
-            test_file.write(f"This is test file {i}.\n")
-    
-    # Create the CACHEDIR.TAG file with the specified content
-    cachedir_tag_path = os.path.join(cache_dir, "CACHEDIR.TAG")
-    with open(cachedir_tag_path, "w", encoding='utf-8') as cachedir_tag_file:
-        cachedir_tag_file.write("Signature: 8a477f597d28d172789f06886806bc55")    
-    print(f"Cache directory setup complete at: {cache_dir}")
-
+        with open(os.path.join(cache_dir, f"test_file_{i}.txt"), "w") as f:
+            f.write(f"This is test file {i}.\n")
+    with open(os.path.join(cache_dir, "CACHEDIR.TAG"), "w", encoding='utf-8') as f:
+        f.write("Signature: 8a477f597d28d172789f06886806bc55")
 
 def test_skip_cache_directories(setup_environment, env):
     setup_cache_directory(env)
-
-    command = ['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--verbose', '--log-stdout']
-    process = run_command(command)
-
-    command = ['dar-backup', '--config-file', env.config_file, '--list-contents', f'example_FULL_{env.datestamp}']
-    process = run_command(command)
-
-    assert process.stdout.find("cache-dir/CACHEDIR.TAG") == -1 , f'dar-backup must not backup a CACHEDIR'
-    assert process.stdout.find("cache-dir/test_file_1.txt") == -1 , f'dar-backup must not backup a CACHEDIR'
-
-
+    runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--verbose', '--log-stdout'])
+    process = runner.run(['dar-backup', '--config-file', env.config_file, '--list-contents', f'example_FULL_{env.datestamp}'])
+    assert "cache-dir/CACHEDIR.TAG" not in process.stdout
+    assert "cache-dir/test_file_1.txt" not in process.stdout
 
 def test_validate_xml_parser(setup_environment, env):
-    """
-    Test that the XML parser is working correctly.
-    """
-    # Create a temporary XML file
     xml_doc = """<?xml version="1.0" ?>
 <!DOCTYPE Catalog SYSTEM "dar-catalog.dtd">
 <Catalog format="1.2">
@@ -308,49 +183,23 @@ def test_validate_xml_parser(setup_environment, env):
 """
 
     paths = find_files_with_paths(xml_doc)
-
-    expected_paths = {".local/share/vlc/ml.xspf" : True,
-        ".local/share/vulkan/implicit_layer.d/steamoverlay_i386.json" : True, 
-        ".local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json" : True,
-        ".local/share/vulkan/implicit_layer.d/steamfossilize_i386.json" : True,
-        ".local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json" : True,
-        ".local/share/systemd/timers/stamp-dar-diff-backup.timer" : True,
-        ".local/share/systemd/timers/stamp-dar-inc-backup.timer" : True,
-        ".local/share/lensfun/updates/version_1/mil-sony.xml" : True
+    expected_paths = {
+        ".local/share/vlc/ml.xspf": True,
+        ".local/share/vulkan/implicit_layer.d/steamoverlay_i386.json": True,
+        ".local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json": True,
+        ".local/share/vulkan/implicit_layer.d/steamfossilize_i386.json": True,
+        ".local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json": True,
+        ".local/share/systemd/timers/stamp-dar-diff-backup.timer": True,
+        ".local/share/systemd/timers/stamp-dar-inc-backup.timer": True,
+        ".local/share/lensfun/updates/version_1/mil-sony.xml": True
     }
-
-    env.logger.info(f"Files in dar XML\n=================")
     for path, size in paths:
-        env.logger.info(f"{path} -> {size}")
-        assert path in expected_paths, f'Unexpected path: {path}'
-
-    assert len(paths) == len(expected_paths), f'Expected {len(expected_paths)} paths, but found {len(paths)}' 
-
+        assert path in expected_paths
+    assert len(paths) == len(expected_paths)
 
 def test_duplicate_full_backup_fails(setup_environment, env: EnvData):
-    """
-    Run two full backups in a row. The second should fail because the archive already exists.
-    """
-    env.logger.info("Creating first full backup...")
-    first = run_command([
-        "dar-backup",
-        "--full-backup",
-        "-d", "example",
-        "--config-file", env.config_file,
-        "--log-level", "debug",
-        "--log-stdout"
-    ])
-    assert first.returncode == 0, f"First full backup failed unexpectedly: {first.stderr}"
-
-    env.logger.info("Attempting second full backup, which should fail due to archive name collision...")
-    second = run_command([
-        "dar-backup",
-        "--full-backup",
-        "-d", "example",
-        "--config-file", env.config_file,
-        "--log-level", "debug",
-        "--log-stdout"
-    ])
-    assert second.returncode != 0, "Second full backup unexpectedly succeeded"
-    assert "already exists" in second.stderr or "already exists" in second.stdout, \
-        "Expected archive naming conflict not reported"
+    first = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
+    assert first.returncode == 0
+    second = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
+    assert second.returncode != 0
+    assert "already exists" in second.stderr or "already exists" in second.stdout

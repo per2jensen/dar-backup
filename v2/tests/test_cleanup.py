@@ -2,15 +2,14 @@ import os
 import subprocess
 import logging
 import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
 
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 
-# Ensure the test directory is in the Python path
-#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from tests.envdata import EnvData
 
 today = datetime.now().strftime('%Y-%m-%d')
@@ -50,6 +49,7 @@ def run_cleanup_script(env):
 
 
 def test_cleanup_functionality(setup_environment, env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     
     create_test_files(env)
@@ -77,13 +77,14 @@ def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
     """
     Verify that the cleanup script can delete multiple specific archives
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     filename = "specific"
     with open(os.path.join(env.test_dir, 'backup.d', filename), 'w') as f:
             f.write("dummy")
 
     command = ['manager', '--create-db', '--log-level', 'debug', '--log-stdout', '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     env.logger.debug(f"return code from 'db created': {process.returncode}")
     if process.returncode == 0:
         env.logger.info(f'Database created')
@@ -154,6 +155,7 @@ def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
 
 
 def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
         f'specific_FULL_{date_100_days_ago}.1.dar': 'dummy',
         f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2': 'dummy',
@@ -170,7 +172,7 @@ def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch)
             f.write("dummy")
     
     command = ['manager', '--create-db' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -197,6 +199,7 @@ def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch)
 
 
 def test_cleanup_alternate_dir(setup_environment, env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     alternate_dir = os.path.join(env.test_dir, 'backups-alternate')
     if not alternate_dir.startswith('/tmp/unit-test'):
         raise RuntimeError("Alternate directory is not a temporary directory")
@@ -238,6 +241,7 @@ def test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatch
     """
     Verify that the cleanup script does not delete a FULL archive if the user does not confirm the deletion
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
             f'example_FULL_1970-01-01.1.dar': 'dummy'
         }
@@ -258,6 +262,7 @@ def test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatch
 
 
 def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
             f'example_FULL_1970-01-01.1.dar': 'dummy',
             f'example_FULL_1970-01-01.1.dar.par2': 'dummy',

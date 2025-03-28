@@ -2,8 +2,9 @@ import logging
 import random
 import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.util import CommandResult
@@ -103,6 +104,7 @@ def check_bitrot_recovery(env: EnvData):
     3. Uses parchive2 to repair the bitrot.
     4. Verifies that the archive is successfully repaired.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     date = datetime.now().strftime('%Y-%m-%d')
     basename_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}")
     archive_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}.1.dar")
@@ -110,7 +112,7 @@ def check_bitrot_recovery(env: EnvData):
     # Step 1: dar should detect corruption
     try:
         command = ['dar', '-t', basename_path]
-        result: CommandResult = run_command(command)
+        result: CommandResult = runner.run(command)
         logging.info(f"stdout:\n{result.stdout}")
         logging.info(f"stderr:\n{result.stderr}")
         # Assert bitrot is detected from stderr or non-zero return
@@ -127,14 +129,14 @@ def check_bitrot_recovery(env: EnvData):
     # Step 2: Repair
     try:
         command = ["par2", "repair", "-q", archive_path]
-        result: CommandResult = run_command(command)
+        result: CommandResult = runner.run(command)
         logging.info(f"stdout:\n{result.stdout}")
         logging.info(f"stderr:\n{result.stderr}")
         assert result.returncode == 0, "par2 failed to repair the archive"
 
         # Step 3: dar test should now pass
         command = ['dar', '-t', basename_path]
-        result: CommandResult = run_command(command)
+        result: CommandResult = runner.run(command)
         logging.info(f"stdout:\n{result.stdout}")
         logging.info(f"stderr:\n{result.stderr}")
         assert result.returncode == 0, "dar test failed after par2 repair"
@@ -171,6 +173,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     Verify the bitrot recovery process with `redundancy_percentage` bitrot.
     Expects to run in a virtual environment with dar-backup installed
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     file_sizes = {
         '100kB': 100 * 1024,
         '1MB': 1024 * 1024,
@@ -180,7 +183,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     modify_par2_redundancy(env, redundancy_percentage)
     print(f"env: {env}")
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process: CommandResult  = run_command(command)
+    process: CommandResult  = runner.run(command)
     logging.info(f"stdout:\n{process.stdout}")
     logging.info(f"stderr:\n{process.stderr}")
     stdout,stderr = process.stdout, process.stderr
@@ -189,7 +192,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     
     command = ['ls', '-hl', os.path.join(env.test_dir, 'backups')]
     stdout,stderr = process.stdout, process.stderr
-    process: CommandResult  = run_command(command)
+    process: CommandResult  = runner.run(command)
     logging.info(f"stdout:\n{process.stdout}")
     logging.info(f"stderr:\n{process.stderr}")
     if process.returncode != 0:

@@ -20,8 +20,9 @@ class EnvData():
     log_file: str
     datestamp: str
     logger: logging.Logger
+    command_logger: logging.Logger
 
-    def __init__(self, test_case_name: str, logger: logging.Logger):
+    def __init__(self, test_case_name: str, logger: logging.Logger, command_logger: logging.Logger):
         self.test_case_name = test_case_name
         self.test_dir = f"/tmp/unit-test/{test_case_name.lower()}"
         self.backup_dir = os.path.join(self.test_dir, "backups")
@@ -34,3 +35,4 @@ class EnvData():
         self.log_file = "/tmp/unit-test/test.log"
         self.datestamp = datetime.now().strftime('%Y-%m-%d')
         self.logger = logger
+        self.command_logger = command_logger

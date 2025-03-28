@@ -2,13 +2,16 @@
 Test manager.py, that `dar` catalogs are created correctly
 """
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
 import re
 import dar_backup.config_settings
 import envdata
 import test_bitrot
 
 from datetime import date
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from envdata import EnvData
 from typing import Dict, List
@@ -19,7 +22,9 @@ def test_manager_create_dbs(setup_environment: None, env: EnvData):
     test that generated catalogs are created
     """
     config_settings = ConfigSettings(env.config_file)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
+ 
 
     # remove any existing catalogs
     for root, dirs, files in os.walk(config_settings.backup_dir):
@@ -38,7 +43,7 @@ def test_manager_create_dbs(setup_environment: None, env: EnvData):
 
     # generate databases for catalogs for all backup definitions
     command = ['manager', '--create-db' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -78,8 +83,11 @@ def is_catalog(generated_definition: Dict, config_settings: ConfigSettings, env:
 
 
 def test_manager_version(setup_environment: None, env: envdata.EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+ 
     command = ['manager', '--version']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -88,8 +96,10 @@ def test_manager_version(setup_environment: None, env: envdata.EnvData):
 
 
 def test_manager_help(setup_environment: None, env: envdata.EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     command = ['manager', '--more-help']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -101,12 +111,14 @@ def test_list_catalog(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then list catalogs
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--list-catalogs', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
@@ -124,12 +136,14 @@ def test_list_catalog_short_option(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then list catalogs
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '-l', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
@@ -147,12 +161,13 @@ def test_list_catalog_contents(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then list the contents
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
@@ -173,6 +188,7 @@ def test_find_file(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then find some files in the catalog
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     
     ##
     ### Positive test
@@ -182,7 +198,7 @@ def test_find_file(setup_environment: None, env: EnvData):
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
@@ -197,7 +213,7 @@ def test_find_file(setup_environment: None, env: EnvData):
         file_path = os.path.join(env.data_dir, file_name)[1:]  # the leading / must be dropped
         env.logger.info(f"Find file: '{file_path}' in catalog(s)")
         command = ['manager', '--find-file' , file_path, '-d', 'example' ,'--config-file', env.config_file, '--log-stdout']
-        process = run_command(command)
+        process = runner.run(command)
         if process.returncode != 0:
             env.logger.error(f"stdout: {stdout}")  
             env.logger.error(f"stderr: {stderr}")  
@@ -215,7 +231,7 @@ def test_find_file(setup_environment: None, env: EnvData):
     ##
     non_existing_file = 'non-existing-file in catalogs'
     command = ['manager', '--find-file' , non_existing_file, '-d', 'example' ,'--config-file', env.config_file, '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     print(f"stdout:\n{stdout}")  
     print(f"stderr:\n{stderr}")  
 
@@ -231,6 +247,7 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
     """
     verify deletion of catalog
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     ##
     ### Positive test
     ##
@@ -239,19 +256,19 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         print(f"stdout:\n{process.stdout}")  
         print(f"stderr:\n{process.stderr}")  
         raise Exception(f"Command failed: {command}")
 
     command = ['manager', '--remove-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
 
     assert process.returncode == 0, "Archive was not removed"
 
     command = ['manager', '--list-catalogs' ,'-d', 'example', '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     print(process.stdout)
 
 
@@ -260,7 +277,7 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
     ##
     non_existing_archive = "example_FULL_1970-01-01"
     command = ['manager', '--remove-specific-archive', non_existing_archive, '--config-file', env.config_file, '--log-level', 'trace', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     env.logger.debug(process)
     assert process.returncode == 2, "manager did not return 2 due to removing a non-existing archive"
 
@@ -271,12 +288,13 @@ def test_list_archive_contents(setup_environment: None, env: EnvData):
     """
     verify listing the contents of an archive, given the archive name
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--list-archive-contents', f'example_FULL_{today_date}' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
@@ -296,25 +314,27 @@ def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
     """
     verify failing if params given to the --list-catalog-contents are wrong
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--list-catalog-contents', 'test', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     env.logger.info(f"Return code: {process.returncode}")
     assert process.returncode == 2, "argument to --list-catalog-contents must be an integer"
 
 
     command = ['manager', '--list-catalog-contents', '1', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     env.logger.info(f"Return code: {process.returncode}")
     assert process.returncode == 1, "--list-catalog-contents requires --backup-def  option"
 
     command = ['manager', '--list-catalog-contents', '1', '-d' , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     env.logger.info(f"Return code: {process.returncode}")
     assert process.returncode == 2, "argument to --backup-def must be given"
 
 
 
 def test_add_directory_to_catalog_db(setup_environment: None, env: EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     run_manager_adding(command, env)
 
@@ -324,6 +344,7 @@ def test_add_empty_directory_to_catalog_db(setup_environment: None, env: EnvData
     """
     Verify no error if adding a directory with no dar archives
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     generate_test_data_and_backup = False
     run_manager_adding(command, env, generate_test_data_and_backup)
@@ -331,6 +352,7 @@ def test_add_empty_directory_to_catalog_db(setup_environment: None, env: EnvData
 
 
 def test_add_archive_to_catalog_db(setup_environment: None, env: EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     today_date = date.today().strftime("%Y-%m-%d")
     command = ['manager', '--add-specific-archive' ,f'example_FULL_{today_date}', '--config-file', env.config_file, '--log-level', "trace", "--log-stdout"]
     run_manager_adding(command, env)
@@ -347,13 +369,14 @@ def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
       - env, the EnvData 
       - generate, defaults to True, if False do not generate test data and do not run backup
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     today_date = date.today().strftime("%Y-%m-%d")
     generate_catalog_db(env)
     if generate:
         generate_test_data_and_full_backup(env)
 
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         print(f"stdout: {stdout}")  
@@ -369,7 +392,7 @@ def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
 
     # list catalogs
     command = ['manager', '--list-catalogs' ,'--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         print(f"stdout: {stdout}")  
@@ -390,8 +413,9 @@ def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
 
 def generate_catalog_db(env: envdata.EnvData):
     # generate database for catalogs
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--create-db' ,'--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -403,6 +427,7 @@ def generate_test_data_and_full_backup(env: envdata.EnvData) -> Dict:
     """
     Returns the Dict with file names as keys
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     file_sizes = {
         '1byte': 1,
         '10bytes': 10,
@@ -416,7 +441,7 @@ def generate_test_data_and_full_backup(env: envdata.EnvData) -> Dict:
 
     test_bitrot.generate_datafiles(env, file_sizes)
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         print(f"dar stdout: {stdout}")
@@ -436,6 +461,7 @@ def generate_backup_defs(env, config_settings) -> List[Dict]:
      - A list of dicts with the following keys:
        - definition - name of a backup definition
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     definition_key = 'definition'
     result = []
     for i in range(3):

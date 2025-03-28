@@ -1,15 +1,14 @@
 # modified: 2021-07-25 to be a pytest test
 import re
-import sys
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 # Ensure the test directory is in the Python path
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from tests.envdata import EnvData
-
-
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")
@@ -30,11 +29,12 @@ def create_test_files(env: EnvData) -> dict:
     return test_files
 
 def test_list_dar_archives(setup_environment, env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = create_test_files(env)   
 
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     command = ['dar-backup', '--list', '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         env.logger.error(f"Command failed: {command}")
@@ -63,11 +63,12 @@ def test_list_dar_archives(setup_environment, env):
 
 
 def test_list_dar_archives_short_options(setup_environment, env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = create_test_files(env)   
 
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
     command = ['dar-backup', '-l', '-c', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         env.logger.error(f"Command failed: {command}")

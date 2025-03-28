@@ -1,11 +1,14 @@
 import pytest
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
 import shutil
 import re
 import random
 from pathlib import Path
-from dar_backup.util import run_command
-from dar_backup.util import CommandResult
+from dar_backup.command_runner import CommandRunner
+from dar_backup.command_runner import CommandResult
 from tests.envdata import EnvData
 from tests.conftest import test_files
 from testdata_verification import (
@@ -18,6 +21,7 @@ def test_restore_functionality(setup_environment, env):
     Tests restoring backups and verifying integrity.
     """
     try:
+        runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
         
@@ -29,7 +33,7 @@ def test_restore_functionality(setup_environment, env):
         
         # Restore backup
         restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         
         assert result.returncode == 0, "Restore command failed!"
         
@@ -44,10 +48,11 @@ def test_invalid_backup_handling(setup_environment, env):
     """
     Ensures the system handles invalid backup scenarios properly.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         invalid_backup_name = "nonexistent_backup"
         restore_command = ['dar', '-x', os.path.join(env.backup_dir, invalid_backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         
         assert result.returncode != 0, "Expected failure on restoring nonexistent backup"
         env.logger.info("Handled invalid backup correctly")
@@ -59,6 +64,7 @@ def test_backup_with_large_files(setup_environment, env):
     """
     Tests backup process with large files to ensure stability.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         large_file_path = os.path.join(env.test_dir, 'data', 'large_file.bin')
         with open(large_file_path, 'wb') as f:
@@ -78,6 +84,7 @@ def test_par2_repair_bit_rot(setup_environment, env):
     """
     Tests whether par2 can successfully repair an archive with simulated bit rot using dar-backup's generated PAR2 files.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
@@ -98,12 +105,12 @@ def test_par2_repair_bit_rot(setup_environment, env):
         
         # Attempt repair with PAR2
         repair_command = ['par2', 'repair', par2_file]
-        result = run_command(repair_command)
+        result = runner.run(repair_command)
         assert result.returncode == 0, "PAR2 failed to repair the archive!"
         
         # Verify restoration after repair
         restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         assert result.returncode == 0, "Restore failed after PAR2 repair!"
         
         env.logger.info("PAR2 successfully repaired bit rot corruption using dar-backup's generated files")
@@ -116,6 +123,7 @@ def test_par2_insufficient_redundancy(setup_environment, env):
     """
     Tests if PAR2 fails when bit rot exceeds available redundancy.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
@@ -142,7 +150,7 @@ def test_par2_insufficient_redundancy(setup_environment, env):
         
         # Attempt repair with PAR2
         repair_command = ['par2', 'repair', par2_file]
-        result = run_command(repair_command)
+        result = runner.run(repair_command)
         assert result.returncode != 0, "PAR2 unexpectedly succeeded despite excessive corruption!"
         
         env.logger.info("PAR2 correctly failed due to insufficient redundancy")
@@ -156,6 +164,7 @@ def test_extreme_restore_failure(setup_environment, env):
     """
     Attempts to make dar fail by severely corrupting an archive beyond recovery.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
@@ -167,7 +176,7 @@ def test_extreme_restore_failure(setup_environment, env):
         
         # Attempt to restore
         restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite extreme corruption!"
         env.logger.info("dar correctly failed due to extreme corruption")
@@ -180,6 +189,7 @@ def test_metadata_corruption_failure(setup_environment, env):
     """
     Attempts to make dar fail by corrupting only the metadata portion of the archive.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
@@ -192,7 +202,7 @@ def test_metadata_corruption_failure(setup_environment, env):
         
         # Attempt to restore
         restore_command = ['dar', '-x', backup_file, '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite metadata corruption!"
         env.logger.info("dar correctly failed due to metadata corruption")
@@ -205,6 +215,7 @@ def test_restore_functionality(setup_environment, env):
     """
     Tests restoring backups and verifying integrity.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         run_backup_script("--full-backup", env)
         backup_name = f"example_FULL_{env.datestamp}"
@@ -217,7 +228,7 @@ def test_restore_functionality(setup_environment, env):
         
         # Restore backup
         restore_command = ['dar', '-x', os.path.join(env.backup_dir, backup_name), '-R', env.restore_dir, '-Q', '-B', env.dar_rc,  'restore-options']
-        result = run_command(restore_command)
+        result = runner.run(restore_command)
         
         assert result.returncode == 0, "Restore command failed!"
         

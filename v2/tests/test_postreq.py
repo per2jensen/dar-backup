@@ -1,14 +1,15 @@
 import glob
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+from dar_backup.command_runner import CommandRunner
 
 
-from dar_backup.util import run_command
 from envdata import EnvData
 
 def delete_backups(env: EnvData):
     # Patterns for the file types to delete
     patterns = ["*.dar", "*.par2"]
-
     # Find and delete matching files
     for pattern in patterns:
         glob_pattern = os.path.join(env.backup_dir, pattern)
@@ -26,6 +27,7 @@ def test_postreq(setup_environment, env):
     Test the postreq command in the config file.
     dar-backup must fail when a prereq command fails.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     # Patch config file with a successful command
     with open(env.config_file, 'a') as f:
@@ -35,7 +37,7 @@ def test_postreq(setup_environment, env):
 
     # Run the command
     command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-level', 'debug']
-    process = run_command(command)
+    process = runner.run(command)
     assert process.returncode == 0
 
     # Patch the config file with a failing command
@@ -48,7 +50,7 @@ def test_postreq(setup_environment, env):
     # Run the command
     try:
         command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-stdout' ]
-        process = run_command(command)
+        process = runner.run(command)
         assert process.returncode != 0, "dar-backup must fail when a postreq command fails"    
     except Exception as e:
         env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")

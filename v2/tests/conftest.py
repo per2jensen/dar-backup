@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 # Ensure the test directory is in the Python path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -13,8 +14,8 @@ from dar_backup.util import setup_logging
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.util import setup_logging
-from dar_backup.util import run_command
-
+from dar_backup.command_runner import CommandRunner
+from dar_backup.util import get_logger as get_command_logger
 
 test_files = {
         'file1.txt': 'This is file 1.',
@@ -39,7 +40,9 @@ def logger():
     test_command_output_log = "/tmp/unit-test/test_command_output.log"
 
     logger = setup_logging(test_log, test_command_output_log, "debug", False)
-    return logger
+    command_logger = get_command_logger(command_output_logger=True) 
+    return {"logger" : logger,
+            "command_logger" : command_logger}
 
 
 
@@ -49,7 +52,7 @@ def env(request, logger):
     """
     Setup the EnvData dataclass for each test case before the "yield" statement.
     """
-    env = EnvData(request.node.name, logger) # name of test case
+    env = EnvData(request.node.name, logger["logger"], logger["command_logger"]) # name of test case
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     yield env
@@ -61,7 +64,7 @@ def setup_environment(request, logger):
     Setup the environment for each test case before the "yield" statement.
     Tear down the environment after the "yield" statement.
     """
-    env = EnvData(request.node.name, logger) # name of test case
+    env = EnvData(request.node.name,  logger["logger"], logger["command_logger"]) # name of test case
 
     env.logger.info("================================================================")
     env.logger.info("               Configure test environment")
@@ -174,8 +177,10 @@ def create_directories_from_template(env : EnvData):
 
 
 def create_catalog_db(env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     command = ['manager', '--create-db' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  

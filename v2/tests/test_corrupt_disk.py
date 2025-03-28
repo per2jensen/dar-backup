@@ -2,6 +2,9 @@
 import pytest
 import subprocess
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
 import psutil
 import random
 import time
@@ -9,7 +12,7 @@ import shutil
 import signal
 import tempfile
 
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 from dar_backup.util import CommandResult
 
 from tests.envdata import EnvData
@@ -22,6 +25,7 @@ PID_FILE = "guestmount.pid"
 
 
 def guest_unmount(env: EnvData, pid, img_path):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         unmount_script=f"""
     guestunmount "{env.data_dir}"
@@ -49,40 +53,41 @@ def guest_unmount(env: EnvData, pid, img_path):
         os.chmod(script_path, 0o700)
 
         command = ['ls', '-l', script_path]
-        result: CommandResult =  run_command(command)
+        result: CommandResult =  runner.run(command)
 
         command = ['cat', script_path]
-        result: CommandResult =  run_command(command)
+        result: CommandResult =  runner.run(command)
            
     except:
         assert False, "guest unmount failed"
     finally:
         command = ['bash', '-c', script_path]
-        result: CommandResult =  run_command(command)
+        result: CommandResult =  runner.run(command)
         if result.returncode == 0:
             env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
         else:
             time.sleep(5)
             command = ['bash', '-c', script_path]
-            result: CommandResult =  run_command(command)
+            result: CommandResult =  runner.run(command)
 
             if result.returncode == 0:
                 env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
             else:
                 time.sleep(5)
                 command = ['umount', '-l', env.data_dir]
-                result: CommandResult =  run_command(command)
+                result: CommandResult =  runner.run(command)
 
         #os.remove(img_path)
         os.remove(script_path)
 
 
 def mount(env: EnvData):
+        runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
         pid_path = os.path.join(env.test_dir, PID_FILE)
         img_path = os.path.join(env.test_dir, DISK_IMG)
 
         command = ["guestmount", "-a", f"{img_path}", "--pid-file", f"{pid_path}", "-m", "/dev/sda", f"{env.data_dir}"]
-        result: CommandResult = run_command(command)
+        result: CommandResult = runner.run(command)
         assert result.returncode == 0, "guestmount failed"
 
         with open(pid_path, "r") as f:
@@ -95,6 +100,7 @@ def mount(env: EnvData):
 @pytest.fixture(scope="function")
 def guestmount_disk(env: EnvData):
     try:
+        runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
         
         #pid_path = os.path.join(env.test_dir, PID_FILE)
         img_path = os.path.join(env.test_dir, DISK_IMG)
@@ -105,7 +111,7 @@ def guestmount_disk(env: EnvData):
             script_path = tmpfile.name  
         os.chmod(script_path, 0o700)
         command = ['bash', '-c', script_path]
-        result: CommandResult =  run_command(command)
+        result: CommandResult =  runner.run(command)
         assert not result.returncode == 0, f'an image is already mounted on: f"{img_path}", failing test'
 
         # make sure the directory is empty, otherwise guestmount fails
@@ -113,11 +119,11 @@ def guestmount_disk(env: EnvData):
         os.makedirs(env.data_dir)
 
         command = ['dd', 'if=/dev/zero', f"of={img_path}", 'bs=1M', f"count={DISK_SIZE_MB}"]
-        result:CommandResult = run_command(command)
+        result:CommandResult = runner.run(command)
         assert result.returncode == 0, f'dd: f"{img_path}" failed'
 
         command = ['mkfs.ext4', f"{img_path}"]
-        result:CommandResult = run_command(command)
+        result:CommandResult = runner.run(command)
         assert result.returncode == 0, f'mkfs.ext4 in: f"{img_path}" failed'
         
         pid = mount(env)
@@ -129,7 +135,7 @@ def guestmount_disk(env: EnvData):
                 f.write("Hello pytest!\n" * 5000)
 
         command = ["sync"]
-        result: CommandResult = run_command(command)
+        result: CommandResult = runner.run(command)
         assert result.returncode == 0, "generating test data in guest file system failed"
 
     except Exception as e:
@@ -149,13 +155,14 @@ def guestmount_disk(env: EnvData):
 
     
 def xtest_verify_guestmount_is_working(setup_environment, env: EnvData, guestmount_disk):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     command = ["ls", "-l", f"{env.data_dir}"]
-    run_command(command)
+    runner.run(command)
 
     start = time.perf_counter()
     command = ['dar-backup', '-F', '-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    run_command(command)
+    runner.run(command)
     end = time.perf_counter()
     env.logger.info(f"FULL backup took: {end - start:.4f} seconds")
 
@@ -164,6 +171,7 @@ def xtest_corrupt_unmounted_img_file(setup_environment, env: EnvData, guestmount
     """"
     try to corrupt the img file, while it is unmounted
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     
     pid, img_path = guestmount_disk
 
@@ -176,7 +184,7 @@ def xtest_corrupt_unmounted_img_file(setup_environment, env: EnvData, guestmount
 
     start = time.perf_counter()
     command = ['dar-backup', '-F', '-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    run_command(command)
+    runner.run(command)
     end = time.perf_counter()
     env.logger.info(f"FULL backup took: {end - start:.4f} seconds")
 
@@ -184,6 +192,7 @@ def xtest_corrupt_unmounted_img_file(setup_environment, env: EnvData, guestmount
 
 def calculate_sha256(img_file: str) -> str:
     """Calculate SHA256 of the image file."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     sha256_hash = hashlib.sha256()
     with open(img_file, "rb") as f:
         for byte_block in iter(lambda: f.read(4096), b""):
@@ -195,6 +204,7 @@ def number_of_handles(path: str) -> int:
     """
     Determine the number of file handles on a file
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     count = 0
     for proc in psutil.process_iter(['pid', 'name', 'open_files']):
         try:
@@ -211,6 +221,7 @@ def number_of_handles(path: str) -> int:
 
 def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corruption_size=65536):
     """In-place disk image corruption."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     env.logger.info(f"image file to corrupt: {img_file}")
     if not os.path.exists(img_file):
         assert False, f"image: {img_file} does not exist"
@@ -246,15 +257,16 @@ def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corrupti
 
 
     command = ['sync']
-    run_command(command)
+    runner.run(command)
     time.sleep(2)
-    run_command(command)
+    runner.run(command)
     time.sleep(2)
     
 
 
 def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
     """Specifically corrupts the ext filesystem superblock."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     with open(img_file, 'r+b') as f:
         f.seek(offset)
         f.write(os.urandom(corruption_size))
@@ -265,6 +277,7 @@ def corrupt_superblock(img_file, offset=1024, corruption_size=1024):
 
 def xtest_dar_backup_with_live_corruption(guestmount_disk):
     backup_name = os.path.join(BACKUP_DIR, "test_backup")
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     # Start dar backup as a subprocess
     backup_cmd = f"dar -c {backup_name} -R {guestmount_disk}"
@@ -303,6 +316,7 @@ def xtest_dar_backup_with_live_corruption(guestmount_disk):
 
 
 def xtest_dar_with_superblock_corruption(guestmount_disk):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     backup_name = os.path.join(BACKUP_DIR, "superblock_backup")
 
     # Start dar backup

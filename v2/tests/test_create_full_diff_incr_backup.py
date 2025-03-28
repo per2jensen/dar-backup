@@ -6,19 +6,21 @@ import re
 import shutil
 import sys
 
+# Add src to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+
 from pathlib import Path
 
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
 from tests.conftest import test_files 
 from testdata_verification import verify_backup_contents, verify_restore_contents,run_backup_script
 
-
-
-
-def list_catalog_db(env):    
+def list_catalog_db(env):  
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--list-catalogs' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         stdout, stderr = process.stdout, process.stderr
         print(f"stdout: {stdout}")  
@@ -156,7 +158,8 @@ def test_backup_with_missing_config_file(setup_environment, env):
     assert not os.path.exists(env.config_file)
 
     # Run backup script and capture result
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with missing config file")
 
@@ -184,7 +187,8 @@ def test_backup_with_malformed_config_file(setup_environment, env):
     assert os.path.exists(env.config_file)
 
     # Run the backup script
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with malformed config file")
 
@@ -227,7 +231,8 @@ ENABLED = True
     assert os.path.exists(env.config_file)
 
     # Run the script
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with invalid config value")
 
@@ -281,7 +286,8 @@ ENABLED = maybe  # ← bad value
 
     assert os.path.exists(env.config_file)
 
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with invalid boolean value for PAR2.ENABLED")
 
@@ -327,7 +333,8 @@ ENABLED = true
 
     assert os.path.exists(env.config_file)
 
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with non-integer value for NO_FILES_VERIFICATION")
 
@@ -367,7 +374,8 @@ ENABLED = True
 
     assert os.path.exists(env.config_file)
 
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with config missing [AGE] section")
 
@@ -414,8 +422,8 @@ ENABLED = True
 
     assert os.path.exists(env.config_file)
 
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
-
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
     env.logger.info("Ran dar-backup with config missing DIFF_AGE key in [AGE]")
 
     assert result.returncode != 0
@@ -458,8 +466,8 @@ ENABLED = True
         f.write(config_missing_incr_age)
 
     assert os.path.exists(env.config_file)
-
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
 
     env.logger.info("Ran dar-backup with config missing INCR_AGE")
     

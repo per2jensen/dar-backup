@@ -12,6 +12,7 @@ Github link: [v2-beta-0.6.17](https://github.com/per2jensen/dar-backup/tree/v2-b
 - multiple .info() modified to debug() to keep the log file easily readable.
 - FIX: test case found an error in config_setting init
 - more testcases to expand coverage
+- code reorganization. util.run_command() replaced with CommandRunner class.
 
 ## v2-beta-0.6.16- 2025-03-22
 

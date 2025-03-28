@@ -1,13 +1,13 @@
-
 import logging
 import sys
 import os
 
 # Ensure the test directory is in the Python path
-#sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
 from tests.envdata import EnvData
 from datetime import datetime
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 
 
 def create_random_data_file(env: EnvData, name: str, size: int) -> None:
@@ -62,7 +62,7 @@ def create_backup_definitions(env: EnvData) -> None:
         with open(os.path.join(env.test_dir, 'backup.d', filename), 'w') as f:
             f.write(content)
 
-    
+
 def test_backup_definition_with_space(setup_environment, env):
     """
     Verify that the backups are correct when a backup
@@ -80,16 +80,15 @@ def test_backup_definition_with_space(setup_environment, env):
 
     create_backup_definitions(env)
 
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     # make sure the catalog database is in place
     command = ['manager', '--create-db', '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
         raise Exception(f"Command failed {command}")    
-
 
     command = ['dar-backup', '--full-backup' ,'-d', "example 2", '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     if process.returncode != 0:
-        raise Exception(f"Command failed {command}")    
-
-    
+        raise Exception(f"Command failed {command}")

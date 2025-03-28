@@ -1,6 +1,8 @@
 import os
 import pytest
-from dar_backup.util import run_command
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
 
 
@@ -22,6 +24,8 @@ def test_backup_with_many_small_files(setup_environment, env: EnvData):
     file_count = 5000
     create_many_tiny_files(env, file_count)
 
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
     # Run full backup
     command = [
         'dar-backup',
@@ -31,13 +35,13 @@ def test_backup_with_many_small_files(setup_environment, env: EnvData):
         '--log-level', 'debug',
         '--log-stdout'
     ]
-    result = run_command(command)
+    result = runner.run(command)
     env.logger.info("Ran dar-backup with many tiny files")
     assert result.returncode == 0
 
     # List archive contents
     archive_base = f"example_FULL_{env.datestamp}"
-    list_result = run_command([
+    list_result = runner.run([
         'dar-backup',
         '--list-contents',
         archive_base,
@@ -48,5 +52,3 @@ def test_backup_with_many_small_files(setup_environment, env: EnvData):
     assert file_hits == file_count, f"Expected {file_count} tiny files, found {file_hits}"
 
     env.logger.info(f"Archive contains all {file_count} tiny files.")
-
-

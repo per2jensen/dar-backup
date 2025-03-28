@@ -25,14 +25,17 @@ from typing import List
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
-from dar_backup.util import run_command
 from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 
+from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandResult
+
 
 logger = None
+runner = None
 
 def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace) -> List[str]:
     """
@@ -64,7 +67,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
     try:
-        process = run_command(command, config_settings.command_timeout_secs)
+        process = runner.run(command, timeout = config_settings.command_timeout_secs)
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
         elif process.returncode == 5:
@@ -74,7 +77,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
 
         if process.returncode == 0 or process.returncode == 5:
             add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file]
-            command_result = run_command(add_catalog_command, config_settings.command_timeout_secs)
+            command_result = runner.run(add_catalog_command, timeout = config_settings.command_timeout_secs)
             if command_result.returncode == 0:
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
             else:
@@ -191,7 +194,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     """
     result = True
     command = ['dar', '-t', backup_file, '-Q']
-    process = run_command(command, config_settings.command_timeout_secs)
+    process = runner.run(command, timeout = config_settings.command_timeout_secs)
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
     else:
@@ -233,7 +236,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q', '-B', args.darrc, 'restore-options']
             args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            process = run_command(command, config_settings.command_timeout_secs)    
+            process = runner.run(command, timeout = config_settings.command_timeout_secs)    
             if process.returncode != 0:
                 raise Exception(str(process))
 
@@ -274,7 +277,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             command.extend(selection_criteria)
         command.extend(['-B', darrc,  'restore-options'])  # the .darrc `restore-options` section
         logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
-        process = run_command(command, config_settings.command_timeout_secs)
+        process = runner.run(command, timeout = config_settings.command_timeout_secs)
         if process.returncode == 0:
             logger.info(f"Restore completed successfully to: '{restore_dir}'")
         else:
@@ -307,7 +310,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     try:
         command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
         logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
-        command_result = run_command(command)
+        command_result = runner.run(command)
         # Parse the XML data
         file_paths = find_files_with_paths(command_result.stdout)
         return file_paths
@@ -337,7 +340,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         if selection:
             selection_criteria = shlex.split(selection)
             command.extend(selection_criteria)
-        process = run_command(command)
+        process = runner.run(command)
         stdout,stderr = process.stdout, process.stderr
         if process.returncode != 0:
             logger.error(f"Error listing contents of backup: '{backup_name}'")
@@ -509,7 +512,7 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
 
         # Run the par2 command to generate redundancy files with error correction
         command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
-        process = run_command(command, config_settings.command_timeout_secs)
+        process = runner.run(command, timeout = config_settings.command_timeout_secs)
 
         if process.returncode == 0:
             logger.info(f"{counter}/{number_of_slices}: Done")
@@ -655,7 +658,7 @@ def requirements(type: str, config_setting: ConfigSettings):
 
 
 def main():
-    global logger
+    global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
 
     MIN_PYTHON_VERSION = (3, 9)
@@ -710,6 +713,9 @@ def main():
         print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
 
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+    command_logger = get_logger(command_output_logger = True)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
 
     try:
         if not args.darrc:

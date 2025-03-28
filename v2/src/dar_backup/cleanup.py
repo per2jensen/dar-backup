@@ -29,14 +29,14 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import extract_error_lines
 from dar_backup.util import list_backups
-from dar_backup.util import run_command
 from dar_backup.util import setup_logging
+from dar_backup.util import get_logger
 
-from dar_backup.util import CommandResult   
-
-
+from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandResult
 
 logger = None 
+runner = None
 
 def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None):
     """
@@ -134,7 +134,7 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
     command = [f"manager", "--remove-specific-archive", catalog_name, "--config-file", args.config_file, '--log-level', 'debug', '--log-stdout']
     logger.info(f"Deleting catalog '{catalog_name}' using config file: '{args.config_file}'")
     try:
-        result:CommandResult = run_command(command)
+        result:CommandResult = runner.run(command)
         if result.returncode == 0:
             logger.info(f"Deleted catalog '{catalog_name}', using config file: '{args.config_file}'")
             logger.debug(f"Stdout: manager.py --remove-specific-archive output:\n{result.stdout}")
@@ -159,7 +159,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
 def main():
-    global logger
+    global logger, runner
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
     parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.")
@@ -188,7 +188,8 @@ def main():
 #    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
-
+    command_logger = get_logger(command_output_logger = True)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
 
     logger.info(f"=====================================")
     logger.info(f"cleanup.py started, version: {about.__version__}")
@@ -283,15 +284,6 @@ def main():
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
 
-#    error_lines = extract_error_lines(config_settings.logfile_location, start_time, end_time)
-#    if len(error_lines) > 0:
-#        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
-#        for line in error_lines:
-#            args.verbose and print(line)
-#        sys.exit(1)
-#    else:
-#        args.verbose and print("\033[1m\033[32mSUCCESS\033[0m No errors encountered")
-#        sys.exit(0)
 
 if __name__ == "__main__":
     main()

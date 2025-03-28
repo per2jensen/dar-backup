@@ -1,9 +1,11 @@
 import pytest
 import re
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 import shutil
 from pathlib import Path
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
 
 
@@ -37,6 +39,7 @@ def check_no_compression(list_result, backed_up_files, env):
     Returns:
         bool: True if no compression of files were discovered, False otherwise.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     compression_not_found = True
     env.logger.debug(f"backed_up_files: {backed_up_files}")
     for line in list_result.splitlines():
@@ -59,18 +62,19 @@ def check_no_compression(list_result, backed_up_files, env):
 
 def test_dar_backup_compression_exclusion(setup_environment, env):
     """Tests that dar excludes specified file types from compression and restores them correctly."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     create_test_files(env)
     
     # Run full backup
     backup_name = f"example_FULL_{env.datestamp}"
     backup_file = os.path.join(env.backup_dir, f"{backup_name}.1.dar")
-    run_command(['dar-backup', '-F', '-d', "example", '--verbose', '--log-stdout', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout'], timeout=600)
+    runner.run(['dar-backup', '-F', '-d', "example", '--verbose', '--log-stdout', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout'], timeout=600)
     
     assert os.path.exists(backup_file), "Backup file was not created!"
     
     # Restore backup
     restore_command = ["dar-backup", "--restore", backup_name, '--verbose', '--log-stdout', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    result = run_command(restore_command, timeout=600)
+    result = runner.run(restore_command, timeout=600)
     assert result.returncode == 0, "Restore command failed!"
     
     # Verify restored files
@@ -85,7 +89,7 @@ def test_dar_backup_compression_exclusion(setup_environment, env):
     backed_up_files = {f'test_file.{ext}': False for ext in file_types}
     backed_up_files.update({f'TEST_FILE.{ext.upper()}': False for ext in file_types})
     list_command = ["dar", "-l", backup_file, "-am", "-as", "-Q"]
-    list_result = run_command(list_command)
+    list_result = runner.run(list_command)
     compression_check = check_no_compression(list_result.stdout, backed_up_files, env)
     assert compression_check, "Some files were compressed when they should not have been!"
 

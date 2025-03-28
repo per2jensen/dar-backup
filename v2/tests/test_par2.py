@@ -1,10 +1,12 @@
 import os
 import re
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from dar_backup.util import run_command
 from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
 from tests.envdata import EnvData
+from dar_backup.command_runner import CommandRunner
 
 """
 This module tests the par2 file creation and repair functionality of dar-backup.
@@ -70,6 +72,9 @@ def modify_slice_size(env: EnvData, definition: str, slice_size: str) -> None:
 
 def test_ordered_by_slicenumber(setup_environment, env):
     date = datetime.now().strftime('%Y-%m-%d')
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+
     dummy_dar_files = {f'{date}-1' : 1024,
                         f'{date}-2': 2048,
                         f'{date}-3': 4096,}
@@ -78,7 +83,7 @@ def test_ordered_by_slicenumber(setup_environment, env):
     modify_slice_size(env, 'example', '1k')    
 
     command = ['dar-backup', '-F', '-d', "example", '--verbose', '--log-stdout', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = run_command(command)
+    process = runner.run(command)
     stdout,stderr = process.stdout, process.stderr
     env.logger.info(stdout)
     if process.returncode != 0:

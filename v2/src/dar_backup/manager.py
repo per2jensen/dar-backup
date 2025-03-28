@@ -29,9 +29,12 @@ import sys
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import run_command
 from dar_backup.util import setup_logging
 from dar_backup.util import CommandResult
+from dar_backup.util import get_logger
+
+from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandResult
 
 from datetime import datetime
 from time import time
@@ -44,6 +47,7 @@ SCRIPTDIRPATH = os.path.dirname(SCRIPTPATH)
 DB_SUFFIX = ".db"
 
 logger = None
+runner = None
 
 def show_more_help():
     help_text = f"""
@@ -66,7 +70,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
     else:
         logger.info(f'Create catalog database: "{database_path}"')
         command = ['dar_manager', '--create' , database_path]
-        process = run_command(command)
+        process = runner.run(command)
         logger.debug(f"return code from 'db created': {process.returncode}")
         if process.returncode == 0:
             logger.info(f'Database created: "{database_path}"')
@@ -104,7 +108,7 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTupl
         command=[])
         return commandResult
     command = ['dar_manager', '--base', database_path, '--list']
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
@@ -156,7 +160,7 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int 
         logger.error(f"archive: '{archive}' not found in database: '{database_path}'")
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
@@ -178,7 +182,7 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
         logger.error(f'Catalog database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
@@ -199,7 +203,7 @@ def find_file(file, backup_def, config_settings):
         logger.error(f'Database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error finding file: {file} in: "{database_path}"')
@@ -234,7 +238,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
     
     command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q"]
-    process = run_command(command)
+    process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
 
     if process.returncode == 0:
@@ -338,7 +342,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
-        process: CommandResult = run_command(command)
+        process: CommandResult = runner.run(command)
         logger.info(f"CommandResult: {process}")
     else:
         logger.warning(f"archive: '{archive}' not found in it's catalog database: {database_path}")
@@ -355,7 +359,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
 
 
 def main():
-    global logger 
+    global logger, runner 
 
     MIN_PYTHON_VERSION = (3, 9)
     if sys.version_info < MIN_PYTHON_VERSION:
@@ -404,6 +408,8 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 #    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+    command_logger = get_logger(command_output_logger = True)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
 
 
     start_time=int(time())

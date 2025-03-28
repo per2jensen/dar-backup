@@ -1,11 +1,15 @@
 
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
 import subprocess
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 
 
 def test_backup_with_broken_symlink(setup_environment, env):
     """Ensure that dar-backup handles broken symlinks gracefully during full backup."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     # Setup a broken symlink in the data dir
     broken_link = os.path.join(env.data_dir, "broken_link")
@@ -18,7 +22,7 @@ def test_backup_with_broken_symlink(setup_environment, env):
         f.write("real content\n")
 
     # Run full backup
-    result = run_command(["dar-backup", "--full-backup", "--config-file", env.config_file])
+    result = runner.run(["dar-backup", "--full-backup", "--config-file", env.config_file])
     env.logger.info("Ran dar-backup with a broken symlink in the data directory")
 
     # The backup should either succeed or report non-critical issues (return code 0 or 5)
@@ -31,7 +35,7 @@ def test_backup_with_broken_symlink(setup_environment, env):
 
 
     # Use the dar-backup list-contents to inspect archive contents
-    list_result = run_command([
+    list_result = runner.run([
         "dar-backup",
         "--list-contents", f"{expected_archive_base}_FULL_{env.datestamp}",
         "--config-file", env.config_file

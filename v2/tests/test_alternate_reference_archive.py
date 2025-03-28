@@ -1,7 +1,9 @@
 
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from dar_backup.util import run_command
+from dar_backup.command_runner import CommandRunner
 
 
 test_files = {
@@ -29,17 +31,18 @@ def test_diff_extected_to_work(setup_environment, env):
     """
     Test that a diff backup works as expected without any alternate reference archive.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     create_test_files(env)
 
     # Do a full backup
     command = ['dar-backup', '--full-backup', '-d', "example", '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     assert process.returncode == 0, "dar-backup must succeed"
 
     # Do a DIFF
     command = ['dar-backup', '--differential-backup' ,'-d', "example", '--config-file', env.config_file]
-    process = run_command(command)
+    process = runner.run(command)
     assert process.returncode == 0, "dar-backup must succeed"
 
 
@@ -48,12 +51,13 @@ def test_diff_missing_alternate_reference_archive(setup_environment, env):
     Provide a non-existing alternate archive me.
     dar-backup must fail doing a DIFF.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     create_test_files(env)
 
     # Do a DIFF with a non-existing alternate reference archive
     command = ['dar-backup', '--differential-backup' ,'-d', "example", '--config-file', env.config_file, '--alternate-reference-archive', 'non-existing-archive']
-    process = run_command(command)
+    process = runner.run(command)
     print("return code", process.returncode)
     assert process.returncode != 0, "dar-backup must fail when the alternate reference archive does not exist"
 
@@ -62,12 +66,13 @@ def test_incr_missing_alternate_reference_archive(setup_environment, env):
     Provide a non-existing alternate archive me.
     dar-backup must fail doing an INCR.
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     create_test_files(env)
 
     # Do a INCRIFF with a non-existing alternate reference archive
     command = ['dar-backup', '--incremental-backup' ,'-d', "example", '--config-file', env.config_file, '--alternate-reference-archive', 'non-existing-archive']
-    process = run_command(command)
+    process = runner.run(command)
     print("return code", process.returncode)
     assert process.returncode != 0, "dar-backup must fail when the alternate reference archive does not exist"
 
