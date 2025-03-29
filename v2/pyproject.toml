@@ -9,22 +9,20 @@ addopts = [
     "--import-mode=importlib",
 ]
 
+
 [tool.hatch.build]
 include = [
-    "Changelog.md",
-    "LICENSE",
-    "README.md"
-]
-
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "/src/dar_backup", "/tests"
+  "src/dar_backup/**",
+  "README.md",
+  "Changelog.md",
+  "LICENSE",
+  "verify-signature.sh",
+  "doc/**"
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dar_backup"]
 sources = ["src"]
+
 
 [tool.hatch.version]
 path = "src/dar_backup/__about__.py"
@@ -40,6 +38,8 @@ cleanup = "dar_backup.cleanup:main"
 clean-log = "dar_backup.clean_log:main"
 manager = "dar_backup.manager:main"
 installer = "dar_backup.installer:main"
+verify-signature = "dar_backup.verify_signature:main"
+
 
 [project]
 name = "dar-backup"
@@ -47,7 +47,7 @@ dynamic = [
   "version",
 ]
 authors = [
-  { name="dar-backup", email="per2jensen@gmail.com" },
+  { name="dar-backup", email="dar-backup@pm.me" },
 ]
 description = """A script to do full, differential and incremental backups using dar.
     Some files are restored from the backups during verification, after which par2 redundancy files are created.
@@ -73,4 +73,4 @@ dependencies = [
 "GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
 Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"
 Changelog = "https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md"
-Issues = "https://github.com/per2jense"
+Issues = "https://github.com/per2jensen"

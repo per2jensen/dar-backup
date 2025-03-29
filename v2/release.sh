@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build, sign, verify and upload the dar-backup package to PyPI
+# Build, sign, verify and (optionally) upload the dar-backup package to PyPI
 # Licensed under GNU GPL v3
 
 set -euo pipefail
@@ -14,7 +14,7 @@ if ! command -v pinentry-tty &> /dev/null; then
     echo "💡 You can install it with:"
     echo "    sudo apt install pinentry-tty"
     echo ""
-    echo "Once installed, make sure to configure GnuPG to use it by running:"
+    echo "Then configure GnuPG to use it:"
     echo "    echo 'pinentry-program /usr/bin/pinentry-tty' >> ~/.gnupg/gpg-agent.conf"
     echo "    gpgconf --kill gpg-agent"
     exit 1
@@ -25,6 +25,21 @@ VENV_DIR="./venv"
 DIST_DIR="dist"
 PACKAGE_NAME="dar_backup"
 KEY_ID=dar-backup@pm.me
+UPLOAD=false
+
+# === Parse arguments ===
+for arg in "$@"; do
+    case $arg in
+        --upload-to-pypi)
+            UPLOAD=true
+            ;;
+        *)
+            echo "❌ Unknown option: $arg"
+            echo "Usage: $0 [--upload-to-pypi]"
+            exit 1
+            ;;
+    esac
+done
 
 # === Helpers ===
 red()   { echo -e "\033[1;31m$*\033[0m"; }
@@ -73,10 +88,17 @@ for f in $DIST_DIR/*.{whl,tar.gz}; do
     fi
 done
 
-# === Upload to PyPI ===
-green "📦 Uploading to PyPI..."
-
-
-#twine upload $DIST_DIR/*
-
-#green "🎉 Done: Version $VERSION uploaded successfully"
+# === Upload to PyPI if requested ===
+if $UPLOAD; then
+    green "📦 Uploading to PyPI..."
+    if twine upload "$DIST_DIR"/*; then
+        green "🎉 Done: Version $VERSION uploaded successfully"
+    else
+        red "❌ Upload failed: twine returned non-zero exit code"
+        exit 1
+    fi
+else
+    green "🚫 Dry run: Skipping upload to PyPI"
+    echo "ℹ️  To upload, run:"
+    echo "    ./release.sh --upload-to-pypi"
+fi

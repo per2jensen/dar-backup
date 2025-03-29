@@ -1,14 +1,17 @@
+
+include README.md
+include Changelog.md
+include LICENSE
+include verify-signature.sh
+recursive-include doc *.md *.txt
+
+
 exclude venv/*
 exclude tests/*
 exclude dist/*
 exclude build.sh
 exclude testall.sh
 exclude pytest*
-include README.md
-include Changelog.md
-include LICENSE
-include doc/*
-include verify-signature.sh
 
 
 
