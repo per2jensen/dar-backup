@@ -70,7 +70,7 @@ dependencies = [
 ]
 
 [project.urls]
-GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
+"GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
 Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"
 Changelog = "https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md"
 Issues = "https://github.com/per2jense"
