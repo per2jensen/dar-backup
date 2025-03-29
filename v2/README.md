@@ -100,54 +100,74 @@ To increase the security and authenticity of dar-backup packages, all releases f
 ```` text
 Name:        Per Jensen (author of dar-backup)
 Email:       dar-backup@pm.me
-Fingerprint: 4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
+Primary key: 4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
+Signing key: B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1
 Created:     2025-03-29
 Expires:     2030-03-28
-Key type:    ed25519 (SC) + cv25519 (E)
+Key type:    ed25519 (primary, SC)  
+Subkeys:     ed25519 (S), ed25519 (A), cv25519 (E)
 ````
 
-📦 What This Means for You
+🔏 Where to Find Release Signatures
 
-The releases of dar-backup on PyPI will include a .asc signature file.
-You can use GnuPG to verify that the release is signed by the key above,
-ensuring the package's integrity and authenticity.
+PyPI does *Not* host .asc Signature Files
 
-🧾 How to Import the Public Key
+Although the `dar-backup` packages on PyPI are GPG-signed, PyPI itself does **not support uploading** .asc detached signature files alongside `.whl` and `.tar.gz` artifacts.
 
-You can search for `dar-back@pm.me` on OpenPG using this link:
+Therefore, you will not find `.asc` files on PyPI.
 
-```` url
-https://keys.openpgp.org/search?q=dar-backup@pm.me
-````
+✅ Where to Get `.asc` Signature Files
 
-You can import the public key using the OpenPGP keyserver in this way:
+You can always download the signed release artifacts and their `.asc` files from the official GitHub Releases page:
 
-```` bash
-curl https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E | gpg --import
-````
+📁 GitHub Releases for `dar-backup`
 
-Then verify the fingerprint:
+Each release includes:
 
-```` bash
-gpg --fingerprint dar-backup@pm.me
-````
+- `dar_backup-x.y.z.tar.gz`
 
-It should match:
+- `dar_backup-x.y.z.tar.gz.asc`
+
+- `dar_backup-x.y.z-py3-none-any.whl`
+
+- `dar_backup-x.y.z-py3-none-any.whl.asc`
+
+🔐 How to Verify a Release from GitHub
+
+1. Import the GPG public key:
+
+   ```` bash
+   curl https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E | gpg --import
+   ````
+
+2. Download the wheel or tarball and its .asc signature from the GitHub.
+
+3. Run GPG to verify it:
+
+   ```` bash
+   gpg --verify dar_backup-x.y.z.tar.gz.asc dar_backup-x.y.z.tar.gz
+   # or
+   gpg --verify dar_backup-x.y.z-py3-none-any.whl.asc dar_backup-x.y.z-py3-none-any.whl
+   ````
+
+4. If the signature is valid, you'll see:
+
+   ```` text
+   gpg: Good signature from "Per Jensen (author of dar-backup) <dar-backup@pm.me>"
+   ````
+
+🛡️ Reminder: Verify the signing subkey
+
+Only this subkey is used to sign PyPI packages:
 
 ```` text
-4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
+B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1
 ````
 
-💡 You can run the supplied `verify-signature.sh` script:
+You can view it with:
 
 ```` bash
-veriy-signature.sh <whl file>
-````
-
-or
-
-```` bash
-veriy-signature.sh <tar.gz file>
+gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
 ````
 
 ### Breaking change in version 0.6.0

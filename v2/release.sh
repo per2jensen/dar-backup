@@ -24,7 +24,7 @@ fi
 VENV_DIR="./venv"
 DIST_DIR="dist"
 PACKAGE_NAME="dar_backup"
-KEY_ID=dar-backup@pm.me
+SIGNING_SUBKEY="B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"  # Replace with the correct signing subkey fingerprint
 UPLOAD=false
 
 # === Parse arguments ===
@@ -65,12 +65,9 @@ PACKAGE_FILE="$DIST_DIR/${PACKAGE_NAME}-${VERSION}-py3-none-any.whl"
 rm -rf "$DIST_DIR"
 python3 -m build
 
-# === Sign distributions ===
+# === Sign distributions using specific subkey ===
 for f in $DIST_DIR/*.{whl,tar.gz}; do
-    SIGN_CMD=(gpg --batch --yes --detach-sign -a)
-    [ -n "$KEY_ID" ] && SIGN_CMD+=(--local-user "$KEY_ID")
-
-    if "${SIGN_CMD[@]}" "$f"; then
+    if gpg --batch --yes --detach-sign -a --local-user "$SIGNING_SUBKEY" "$f"; then
         green "✅ Signed: $f"
     else
         red "❌ GPG signing failed for $f"
@@ -86,6 +83,13 @@ for f in $DIST_DIR/*.{whl,tar.gz}; do
         red "❌ Signature verification failed: $f.asc"
         exit 1
     fi
+
+    # Print signing key fingerprint from packet
+    SIGNER_FPR=$(gpg --list-packets "$f.asc" | awk '/signature packet/,/hashed subpkt/ { if ($1 == "issuer-fpr") print $2 }' | head -n1)
+    if [ -n "$SIGNER_FPR" ]; then
+        echo -e "\n📌 Signed by subkey fingerprint: $SIGNER_FPR\n"
+    fi
+
 done
 
 # === Upload to PyPI if requested ===
