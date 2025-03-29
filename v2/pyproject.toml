@@ -29,6 +29,11 @@ sources = ["src"]
 [tool.hatch.version]
 path = "src/dar_backup/__about__.py"
 
+[tool.dar-backup]
+gpg_key_id = "4592D7396DBAEFFD084502B85CCEC7E16814A36E"
+gpg_fingerprint = "4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E"
+gpg_key_url = "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E"
+
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"
 cleanup = "dar_backup.cleanup:main"
@@ -65,6 +70,7 @@ dependencies = [
 ]
 
 [project.urls]
+GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
 Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"
 Changelog = "https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md"
-Issues = "https://github.com/per2jensen/dar-backup/issues"
+Issues = "https://github.com/per2jense"

@@ -12,6 +12,7 @@ This is the `Python` based **version 2** of `dar-backup`.
 - [My use case](#my-use-case)
 - [License](#license)
 - [Status](#status)
+  - [GPG Signing key](#gpg-signing-key)
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
 - [Homepage - Github](#homepage---github)
 - [Requirements](#requirements)
@@ -90,6 +91,65 @@ As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 
 
 As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
 
+### GPG Signing key
+
+To increase the security and authenticity of dar-backup packages, all releases from v2-beta-0.6.18 onwards will be digitally signed using the GPG key below.
+
+🔐 GPG Signing Key Details
+
+```` text
+Name:        Per Jensen (author of dar-backup)
+Email:       dar-backup@pm.me
+Fingerprint: 4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
+Created:     2025-03-29
+Expires:     2030-03-28
+Key type:    ed25519 (SC) + cv25519 (E)
+````
+
+📦 What This Means for You
+
+The releases of dar-backup on PyPI will include a .asc signature file.
+You can use GnuPG to verify that the release is signed by the key above,
+ensuring the package's integrity and authenticity.
+
+🧾 How to Import the Public Key
+
+You can search for `dar-back@pm.me` on OpenPG using this link:
+
+```` url
+https://keys.openpgp.org/search?q=dar-backup@pm.me
+````
+
+You can import the public key using the OpenPGP keyserver in this way:
+
+```` bash
+curl https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E | gpg --import
+````
+
+Then verify the fingerprint:
+
+```` bash
+gpg --fingerprint dar-backup@pm.me
+````
+
+It should match:
+
+```` text
+4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
+````
+
+💡 You can run the supplied `verify-signature.sh` script:
+
+```` bash
+veriy-signature.sh <whl file>
+````
+
+or
+
+```` bash
+veriy-signature.sh <tar.gz file>
+````
+
 ### Breaking change in version 0.6.0
 
 Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* in the config file.
@@ -148,6 +208,14 @@ The `cleanup` application deletes DIFF and INCR if the archives are older than t
 `dar-backup` adds archive catalogs to their databases (using the `manager` script). Should the operation fail, `dar-backup` logs an error and continue with testing and restore validation tests.
 
 ## How to run
+
+📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG. See more [here](#gpg-signing-key).
+
+- Key ID: 4592D7396DBAEFFD084502B85CCEC7E16814A36E
+
+- Fingerprint: 4592 D739 6DBA EFFD 0845 02B8 5CCE C7E1 6814 A36E
+
+- Public key: keys.openpgp.org
 
 ### 1 - installation
 

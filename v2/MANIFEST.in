@@ -8,5 +8,7 @@ include README.md
 include Changelog.md
 include LICENSE
 include doc/*
+include verify-signature.sh
+
 
 
