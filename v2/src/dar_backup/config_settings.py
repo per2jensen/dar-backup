@@ -70,7 +70,6 @@ class ConfigSettings:
                 self.par2_enabled = False
             else:
                 raise ValueError(f"Invalid boolean value for 'ENABLED' in [PAR2]: '{val}'")
-            #self.par2_enabled = self.config['PAR2']['ENABLED'].lower() in ('true', '1', 'yes')
             
             # Ensure the directories exist
             Path(self.backup_dir).mkdir(parents=True, exist_ok=True)

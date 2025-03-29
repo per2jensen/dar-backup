@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.17 - 2025-unknown
+## v2-beta-0.6.17 - 2025-03-29
 
 Github link: [v2-beta-0.6.17](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.17/v2)
 
