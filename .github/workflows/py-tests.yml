@@ -30,6 +30,7 @@ jobs:
           version=$(uname -r)
           sudo dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-\${version}
 
+
       - name: Install virtualenv, build and install the dar-backup package
         run: |
           cd $GITHUB_WORKSPACE/v2
@@ -42,10 +43,31 @@ jobs:
           . venv/bin/activate
           python3 -m pip install --upgrade pip
           python3 -m pip install wheel build pytest hatchling hatch psutil
+
+          # Copy README and Changelog for wheel packaging
+          cp README.md src/dar_backup/
+          cp Changelog.md src/dar_backup/
+
           python3 -m build
-          VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
-          echo "Version: $VERSION"
-          pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
+
+
+
+      # - name: Install virtualenv, build and install the dar-backup package
+      #   run: |
+      #     cd $GITHUB_WORKSPACE/v2
+
+      #     if [[ -d venv ]]; then
+      #        rm -fr venv
+      #     fi  
+
+      #     python3 -m venv venv
+      #     . venv/bin/activate
+      #     python3 -m pip install --upgrade pip
+      #     python3 -m pip install wheel build pytest hatchling hatch psutil
+      #     python3 -m build
+      #     VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
+      #     echo "Version: $VERSION"
+      #     pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
           
 
       - name: Run pytest
