@@ -21,6 +21,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
+packages = ["src/dar_backup"]
 sources = ["src"]
 
 
@@ -28,9 +29,9 @@ sources = ["src"]
 path = "src/dar_backup/__about__.py"
 
 [tool.dar-backup]
-gpg_key_id = "4592D7396DBAEFFD084502B85CCEC7E16814A36E"
-gpg_fingerprint = "4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E"
-gpg_key_url = "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E"
+gpg_key_id =      "B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"
+gpg_fingerprint = "B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1"
+gpg_key_url =     "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E"
 
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"

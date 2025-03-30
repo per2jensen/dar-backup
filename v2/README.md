@@ -229,13 +229,9 @@ The `cleanup` application deletes DIFF and INCR if the archives are older than t
 
 ## How to run
 
-📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG. See more [here](#gpg-signing-key).
+📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG.
 
-- Key ID: 4592D7396DBAEFFD084502B85CCEC7E16814A36E
-
-- Fingerprint: 4592 D739 6DBA EFFD 0845 02B8 5CCE C7E1 6814 A36E
-
-- Public key: keys.openpgp.org
+See more [here](#gpg-signing-key).
 
 ### 1 - installation
 
@@ -890,7 +886,7 @@ If the option is not in the backup definition, the cache directories are backed 
 - `installer` to generate, but not deploy systemd units and timers for:
   - FULL, DIFF and INCR backups.
   - cleanup.
-
+- Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
 
 ## Reference
@@ -903,7 +899,7 @@ Running
 pytest --cov=dar_backup tests/
 ````
 
-gives for version 0.6.17:
+results for version 0.6.17 in this report:
 
 ```` code
 ---------- coverage: platform linux, python 3.12.3-final-0 -----------

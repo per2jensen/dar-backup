@@ -24,7 +24,8 @@ fi
 VENV_DIR="./venv"
 DIST_DIR="dist"
 PACKAGE_NAME="dar_backup"
-SIGNING_SUBKEY="B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"  # Replace with the correct signing subkey fingerprint
+SIGNING_SUBKEY="B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"
+
 UPLOAD=false
 
 # === Parse arguments ===
@@ -61,6 +62,18 @@ fi
 VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' src/dar_backup/__about__.py)
 PACKAGE_FILE="$DIST_DIR/${PACKAGE_NAME}-${VERSION}-py3-none-any.whl"
 
+
+
+# === Temporary copy of README.md & Changelog.md into package for wheel inclusion ===
+TEMP_README="src/dar_backup/README.md"
+cp README.md "$TEMP_README"
+
+TEMP_CHANGELOG="src/dar_backup/Changelog.md"
+cp Changelog.md "$TEMP_CHANGELOG"
+
+trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
+
+
 # === Build the package ===
 rm -rf "$DIST_DIR"
 python3 -m build
@@ -89,12 +102,15 @@ for f in $DIST_DIR/*.{whl,tar.gz}; do
     if [ -n "$SIGNER_FPR" ]; then
         echo -e "\n📌 Signed by subkey fingerprint: $SIGNER_FPR\n"
     fi
-
 done
+
+# === Clean up temp README copy ===
+rm -f "$TEMP_README"
+rm -f "$TEMP_CHANGELOG"
 
 # === Upload to PyPI if requested ===
 if $UPLOAD; then
-    green "📦 Uploading to PyPI..."
+    green "Uploading to PyPI..."
     if twine upload "$DIST_DIR"/*; then
         green "🎉 Done: Version $VERSION uploaded successfully"
     else
@@ -102,7 +118,7 @@ if $UPLOAD; then
         exit 1
     fi
 else
-    green "🚫 Dry run: Skipping upload to PyPI"
-    echo "ℹ️  To upload, run:"
-    echo "    ./release.sh --upload-to-pypi"
+    green "Dry run: Skipping upload to PyPI"
+    echo  "To upload, run:"
+    echo  "  ./release.sh --upload-to-pypi"
 fi
