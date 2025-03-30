@@ -57,8 +57,8 @@ jobs:
           pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
 
           # Patch installed package with needed docs for tests
-          cp README.md venv/lib/python${PYTHON_MAJOR }.${PYTHON_MINOR }/site-packages/dar_backup/
-          cp Changelog.md venv/lib/python${PYTHON_MAJOR }.${PYTHON_MINOR }/site-packages/dar_backup/      
+          cp README.md venv/lib/python${PYTHON_MAJOR}.${PYTHON_MINOR}/site-packages/dar_backup/
+          cp Changelog.md venv/lib/python${PYTHON_MAJOR}.${PYTHON_MINOR}/site-packages/dar_backup/      
 
 
       - name: Run pytest
