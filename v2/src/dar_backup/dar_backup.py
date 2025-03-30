@@ -657,6 +657,55 @@ def requirements(type: str, config_setting: ConfigSettings):
                 raise e
 
 
+def print_markdown(source: str, from_string: bool = False, pretty: bool = True):
+    """
+    Print Markdown content either from a file or directly from a string.
+    
+    Args:
+        source: Path to the file or Markdown string itself.
+        from_string: If True, treat `source` as Markdown string instead of file path.
+        pretty: If True, render with rich formatting if available.
+    """
+    import os
+    import sys
+
+    content = ""
+    if from_string:
+        content = source
+    else:
+        if not os.path.exists(source):
+            print(f"❌ File not found: {source}")
+            sys.exit(1)
+        with open(source, "r", encoding="utf-8") as f:
+            content = f.read()
+
+    if pretty:
+        try:
+            from rich.console import Console
+            from rich.markdown import Markdown
+            console = Console()
+            console.print(Markdown(content))
+        except ImportError:
+            print("⚠️ 'rich' not installed. Falling back to plain text.\n")
+            print(content)
+    else:
+        print(content)
+
+
+
+def print_changelog(path: str = None, pretty: bool = True):
+    if path is None:
+        path = Path(__file__).parent / "Changelog.md"
+    print_markdown(str(path), pretty=pretty)
+
+
+def print_readme(path: str = None, pretty: bool = True):
+    if path is None:
+        path = Path(__file__).parent / "README.md"
+    print_markdown(str(path), pretty=pretty)
+
+
+
 def main():
     global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
@@ -674,7 +723,6 @@ def main():
     parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.")
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
-    parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--list-contents', help="List the contents of the specified archive.")
     parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
@@ -686,6 +734,11 @@ def main():
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
+    parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
+    parser.add_argument("--readme", action="store_true", help="Print README.md to stdout and exit.")
+    parser.add_argument("--readme-pretty", action="store_true", help="Print README.md to stdout with Markdown styling and exit.")
+    parser.add_argument("--changelog", action="store_true", help="Print Changelog.md to stdout and exit.")
+    parser.add_argument("--changelog-pretty", action="store_true", help="Print Changelog.md to stdout with Markdown styling and exit.")
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
     args = parser.parse_args()
 
@@ -695,6 +748,20 @@ def main():
     elif args.examples:
         show_examples()
         exit(0)
+    elif args.readme:
+        print_readme(None, pretty=False)
+        exit(0)
+    elif args.readme_pretty:
+        print_readme(None, pretty=True)
+        exit(0)
+    elif args.changelog:
+        print_changelog(None, pretty=False)
+        exit(0)
+    elif args.changelog_pretty:
+        print_changelog(None, pretty=True)
+        exit(0)
+
+
 
     if not args.config_file:
         print(f"Config file not specified, exiting", file=stderr)

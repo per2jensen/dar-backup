@@ -12,8 +12,9 @@ Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-b
   -- docs updated
   -- release script created
   -- key added top OpenPGP.org key server
-  -- pypi setup modified
+  -- pypi setup modified and set to use the new Signing subkey
 - README.md and Changelog.md now included in the wheel and installed on `pip install dar-backup`
+- new options to make it easy to find docs (--readme, --readme-pretty, --changelog, --changelog-pretty)
 
 ## v2-beta-0.6.17 - 2025-03-29
 

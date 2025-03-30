@@ -24,5 +24,17 @@ fi
 
 VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
 
+TEMP_README="src/dar_backup/README.md"
+cp README.md "$TEMP_README"
+TEMP_CHANGELOG="src/dar_backup/Changelog.md"
+cp Changelog.md "$TEMP_CHANGELOG"
+
+
+trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
 
 python3 -m build && pip install --force-reinstall dist/dar_backup-"${VERSION}"-py3-none-any.whl
+
+# cleanup
+rm -f TEMP_README
+rm -f TEMP_CHANGELOG
+

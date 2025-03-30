@@ -67,6 +67,7 @@ classifiers = [
 ]
 dependencies = [
     "inputimeout>=1.0.4",
+    "rich>=13.0.0",
     # other dependencies
 ]
 
