@@ -17,7 +17,9 @@ include = [
   "Changelog.md",
   "LICENSE",
   "verify-signature.sh",
-  "doc/**"
+  "doc/**",
+  "src/dar_backup/README.md",
+  "src/dar_backup/Changelog.md"
 ]
 
 [tool.hatch.build.targets.wheel]
