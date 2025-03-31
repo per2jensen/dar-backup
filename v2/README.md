@@ -28,6 +28,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [.darrc](#darrc)
   - [Backup definition](#backup-definition-example)
 - [Systemd examples](#systemctl-examples)
+  - [Generate systemd files](#generate-systemd-files)
   - [Service: dar-back --incremental-backup](#service-dar-backup---incremental-backup)
   - [Timer: dar-back --incremental-backup](#timer-dar-backup---incremental-backup)
 - [List contents of an archive](#list-contents-of-an-archive)
@@ -61,6 +62,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [cleanup](#cleanup-options)
   - [clean-log](#clean-log-options)
   - [installer](#installer-options)
+  - [dar-backup-systemd](#dar-backup-systemd)
   
 ## My use case
 
@@ -554,6 +556,26 @@ You can use as many backup definitions as you need.
 --cache-directory-tagging
 ````
 
+## Generate systemd files
+
+The command `dar-backup-systemd` can generate and optionally install systemd units and timers.
+
+The timers are set as the author uses them, modify to your taste and needs.
+
+Example run:
+
+```` bash
+dar-backup-systemd --venv /home/user/tmp/venv --dar-path /home/user/.local/dar/bin
+Generated dar-full-backup.service and dar-full-backup.timer
+  → Fires on: *-12-30 10:03:00
+Generated dar-diff-backup.service and dar-diff-backup.timer
+  → Fires on: *-*-01 19:03:00
+Generated dar-incr-backup.service and dar-incr-backup.timer
+  → Fires on: *-*-04/3 19:03:00
+Generated dar-clean.service and dar-clean.timer
+  → Fires on: *-*-* 21:07:00
+````
+
 ## Systemctl examples
 
 I have dar-backup scheduled to run via systemd --user settings.
@@ -576,27 +598,31 @@ systemctl --user list-timers
 
 ## Service: dar-backup --incremental-backup
 
-File:  dar-inc-backup.service
+This is an exmaple of a systemd user service unit.
+
+File:  dar-incr-backup.service
 
 ```` code
 [Unit]
-Description=dar-backup INC
+Description=dar-backup INCR
 StartLimitIntervalSec=120
 StartLimitBurst=1
 [Service]
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
-ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate && dar-backup --incremental-backup --verbose'
+ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose  --log-stdout'
 ````
 
 ## Timer: dar-backup --incremental-backup
 
-File:  dar-inc-backup.timer
+This is an example of a systemd user timer
+
+File:  dar-incr-backup.timer
 
 ```` code
 [Unit]
-Description=dar-backup INC timer
+Description=dar-backup INCR timer
 
 [Timer]
 OnCalendar=*-*-04/3 19:03:00
@@ -1016,4 +1042,15 @@ Sets up demo config files:
 -i, --install              Sets up `dar-backup`.
 -v, --version              Display version and licensing information.
 -h, --help                 Displays usage info
+```
+
+### dar-backup-systemd
+
+Generates and optionally install systemd user service units and timers
+
+``` code
+-h, --help           Show this help message and exit
+--venv VENV          Path to the Python venv with dar-backup
+--dar-path DAR_PATH  Path to dar binary's directory
+--install            Install the units to ~/.config/systemd/user
 ```

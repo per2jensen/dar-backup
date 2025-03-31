@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
 
+"""
+installer.py source code is here: https://github.com/per2jensen/dar-backup/tree/main/v2/src/dar_backup/installer.py
+This script is part of dar-backup, a backup solution for Linux using dar and systemd.
+
+Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file
+
+This script can be used to control `dar` to backup parts of or the whole system.
+"""
+
+
 import argparse
 import filecmp
 

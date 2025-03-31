@@ -41,6 +41,7 @@ cleanup = "dar_backup.cleanup:main"
 clean-log = "dar_backup.clean_log:main"
 manager = "dar_backup.manager:main"
 installer = "dar_backup.installer:main"
+dar-backup-systemd = "dar_backup.dar_backup_systemd:main"
 verify-signature = "dar_backup.verify_signature:main"
 
 

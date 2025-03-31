@@ -10,7 +10,7 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
-This script can generate systemd service and timer units for dar-backup.
+This script can generate systemd service and timer units for dar-backup and cleanup.
 
 """
 
@@ -45,7 +45,7 @@ WantedBy=timers.target
 TIMINGS = {
     "FULL": "*-12-30 10:03:00",    # Every year on December 30th at 10:03 AM
     "DIFF": "*-*-01 19:03:00",     # Every month on the 1st at 19:03
-    "INCR": "*-*-04/3 19:03:00"    # Every 3 days starting from the 4th of each month at 19:03
+    "INCR": "*-*-04/3 19:03:00"    # Every 3 days starting on the 4th of each month at 19:03
 }
 
 FLAGS = {
@@ -72,10 +72,43 @@ def write_unit_files(venv, dar_path, install=False):
         print(f"Generated {service_name} and {timer_name}")
         print(f"  → Fires on: {TIMINGS[mode]}")
 
+    (output_path / "dar-cleanup.service").write_text(f"""[Unit]
+Description=cleanup up old DIFF & INCR backups
+StartLimitIntervalSec=120
+StartLimitBurst=1
+[Service]
+Type=oneshot
+TimeoutSec=60
+RemainAfterExit=no
+ExecStart=/bin/bash -c 'PATH={dar_path}:$PATH &&  . {venv}/bin/activate && cleanup'
+""")
+
+    (output_path / "dar-cleanup.timer").write_text(f"""[Unit]
+Description=dar-cleanup DIFF & INCR timer
+
+[Timer]
+OnCalendar=*-*-* 21:07:00
+
+[Install]
+WantedBy=timers.target
+""")
+
+    print(f"Generated dar-cleanup.service and dar-cleanup.timer")
+    print(f"  → Fires on: *-*-* 21:07:00")
+
+
     if install:
+        for mode in ["FULL", "DIFF", "INCR"]:
+            subprocess.run(["systemctl", "--user", "enable", f"dar-{mode.lower()}-backup.timer"], check=False)
+            subprocess.run(["systemctl", "--user", "start",  f"dar-{mode.lower()}-backup.timer"], check=False)
+
+        subprocess.run(["systemctl", "--user", "enable", f"dar-cleanup-backup.timer"], check=False)
+        subprocess.run(["systemctl", "--user", "start",  f"dar-cleanup-backup.timer"], check=False)
+
+
         subprocess.run(["systemctl", "--user", "daemon-reexec"], check=False)
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
-        print("Systemd user daemon reloaded.")
+        print("Systemd `dar-backup` units and timers installed and user daemon reloaded.")
 
 def main():
     parser = argparse.ArgumentParser(description="Generate systemd service and timer units for dar-backup.")
