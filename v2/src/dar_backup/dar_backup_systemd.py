@@ -19,7 +19,7 @@ from pathlib import Path
 import argparse
 import subprocess
 
-SERVICE_TEMPLATE = """[Unit]
+SERVICE_TEMPLATE_1 = """[Unit]
 Description=dar-backup {mode}
 StartLimitIntervalSec=120
 StartLimitBurst=1
@@ -28,8 +28,16 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
+"""
+
+SERVICE_TEMPLATE_2_WITH_DAR = """
 ExecStart=/bin/bash -c 'PATH={dar_path}:$PATH && . {venv}/bin/activate && dar-backup {flag} --verbose --log-stdout'
 """
+
+SERVICE_TEMPLATE_2_WITHOUT_DAR = """
+ExecStart=/bin/bash -c '. {venv}/bin/activate && dar-backup {flag} --verbose --log-stdout'
+"""
+
 
 TIMER_TEMPLATE = """[Unit]
 Description=dar-backup {mode} timer
@@ -63,7 +71,13 @@ def write_unit_files(venv, dar_path, install=False):
         service_name = f"dar-{mode.lower()}-backup.service"
         timer_name = f"dar-{mode.lower()}-backup.timer"
 
-        service_content = SERVICE_TEMPLATE.format(mode=mode, flag=FLAGS[mode], venv=venv, dar_path=dar_path)
+        service_content_1 = SERVICE_TEMPLATE_1.format(mode=mode, flag=FLAGS[mode], venv=venv)
+        if dar_path:
+            service_content_2 = SERVICE_TEMPLATE_2_WITH_DAR.format(mode=mode, flag=FLAGS[mode], venv=venv, dar_path=dar_path)
+        else:
+            service_content_2 = SERVICE_TEMPLATE_2_WITHOUT_DAR.format(mode=mode, flag=FLAGS[mode], venv=venv)
+
+        service_content = f"{service_content_1}\n{service_content_2}"    
         timer_content = TIMER_TEMPLATE.format(mode=mode, calendar=TIMINGS[mode])
 
         (output_path / service_name).write_text(service_content)
@@ -72,16 +86,30 @@ def write_unit_files(venv, dar_path, install=False):
         print(f"Generated {service_name} and {timer_name}")
         print(f"  → Fires on: {TIMINGS[mode]}")
 
-    (output_path / "dar-cleanup.service").write_text(f"""[Unit]
-Description=cleanup up old DIFF & INCR backups
-StartLimitIntervalSec=120
-StartLimitBurst=1
-[Service]
-Type=oneshot
-TimeoutSec=60
-RemainAfterExit=no
-ExecStart=/bin/bash -c 'PATH={dar_path}:$PATH &&  . {venv}/bin/activate && cleanup'
-""")
+
+    if dar_path:
+        (output_path / "dar-cleanup.service").write_text(f"""[Unit]
+    Description=cleanup up old DIFF & INCR backups
+    StartLimitIntervalSec=120
+    StartLimitBurst=1
+    [Service]
+    Type=oneshot
+    TimeoutSec=60
+    RemainAfterExit=no
+    ExecStart=/bin/bash -c 'PATH={dar_path}:$PATH &&  . {venv}/bin/activate && cleanup'
+    """)
+    else:
+        (output_path / "dar-cleanup.service").write_text(f"""[Unit]
+    Description=cleanup up old DIFF & INCR backups
+    StartLimitIntervalSec=120
+    StartLimitBurst=1
+    [Service]
+    Type=oneshot
+    TimeoutSec=60
+    RemainAfterExit=no
+    ExecStart=/bin/bash -c '. {venv}/bin/activate && cleanup'
+    """)
+
 
     (output_path / "dar-cleanup.timer").write_text(f"""[Unit]
 Description=dar-cleanup DIFF & INCR timer
@@ -102,8 +130,8 @@ WantedBy=timers.target
             subprocess.run(["systemctl", "--user", "enable", f"dar-{mode.lower()}-backup.timer"], check=False)
             subprocess.run(["systemctl", "--user", "start",  f"dar-{mode.lower()}-backup.timer"], check=False)
 
-        subprocess.run(["systemctl", "--user", "enable", f"dar-cleanup-backup.timer"], check=False)
-        subprocess.run(["systemctl", "--user", "start",  f"dar-cleanup-backup.timer"], check=False)
+        subprocess.run(["systemctl", "--user", "enable", f"dar-cleanup.timer"], check=False)
+        subprocess.run(["systemctl", "--user", "start",  f"dar-cleanup.timer"], check=False)
 
 
         subprocess.run(["systemctl", "--user", "daemon-reexec"], check=False)
@@ -112,9 +140,9 @@ WantedBy=timers.target
 
 def main():
     parser = argparse.ArgumentParser(description="Generate systemd service and timer units for dar-backup.")
-    parser.add_argument("--venv", required=True, help="Path to the Python venv with dar-backup")
-    parser.add_argument("--dar-path", required=True, help="Path to dar binary's directory")
-    parser.add_argument("--install", action="store_true", help="Install the units to ~/.config/systemd/user")
+    parser.add_argument("--venv",     required=True,       help="Path to the Python venv with dar-backup")
+    parser.add_argument("--dar-path",                      help="Optional path to dar binary's directory")
+    parser.add_argument("--install",  action="store_true", help="Install the units to ~/.config/systemd/user")
 
     args = parser.parse_args()
     write_unit_files(args.venv, args.dar_path, install=args.install)

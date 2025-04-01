@@ -602,16 +602,32 @@ This is an exmaple of a systemd user service unit.
 
 File:  dar-incr-backup.service
 
-```` code
+```` bash
+/tmp/test$ dar-backup-systemd --venv '$HOME/programmer/dar-backup.py/venv'  --dar-path '$HOME/.local/dar/bin'
+
+Generated dar-full-backup.service and dar-full-backup.timer
+  → Fires on: *-12-30 10:03:00
+Generated dar-diff-backup.service and dar-diff-backup.timer
+  → Fires on: *-*-01 19:03:00
+Generated dar-incr-backup.service and dar-incr-backup.timer
+  → Fires on: *-*-04/3 19:03:00
+Generated dar-cleanup.service and dar-cleanup.timer
+  → Fires on: *-*-* 21:07:00
+/tmp/test$ 
+(venv) /tmp/test$ 
+(venv) /tmp/test$ cat dar-incr-backup.service 
 [Unit]
 Description=dar-backup INCR
 StartLimitIntervalSec=120
 StartLimitBurst=1
+
 [Service]
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
-ExecStart=/bin/bash -c '. /home/user/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose  --log-stdout'
+
+
+ExecStart=/bin/bash -c 'PATH=$HOME/.local/dar/bin:$PATH && . $HOME/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose --log-stdout'
 ````
 
 ## Timer: dar-backup --incremental-backup
@@ -1051,6 +1067,6 @@ Generates and optionally install systemd user service units and timers
 ``` code
 -h, --help           Show this help message and exit
 --venv VENV          Path to the Python venv with dar-backup
---dar-path DAR_PATH  Path to dar binary's directory
+--dar-path DAR_PATH  Optional path to dar binary's directory
 --install            Install the units to ~/.config/systemd/user
 ```
