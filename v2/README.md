@@ -925,9 +925,6 @@ If the option is not in the backup definition, the cache directories are backed 
 
 ## Todo
 
-- `installer` to generate, but not deploy systemd units and timers for:
-  - FULL, DIFF and INCR backups.
-  - cleanup.
 - Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
 
