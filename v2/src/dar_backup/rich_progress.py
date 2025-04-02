@@ -1,16 +1,18 @@
 import os
 import time
 from threading import Event
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.text import Text
 
 def is_terminal():
     return Console().is_terminal
 
-def tail_log_file(log_path, stop_event):
-    """Yields new lines, safely handling missing/rotated logs."""
+def tail_log_file(log_path, stop_event, session_marker=None):
+    """Yields new lines from the log file, starting only after the session_marker is found."""
     last_size = 0
+    marker_found = session_marker is None
+
     while not stop_event.is_set():
         if not os.path.exists(log_path):
             time.sleep(0.5)
@@ -27,9 +29,16 @@ def tail_log_file(log_path, stop_event):
                     line = f.readline()
                     if not line:
                         break
-                    yield line.strip()
 
-                last_size = f.tell()
+                    line = line.strip()
+                    last_size = f.tell()
+
+                    if not marker_found:
+                        if session_marker in line:
+                            marker_found = True
+                        continue
+
+                    yield line
 
         except Exception as e:
             print(f"[!] Error reading log: {e}")
@@ -43,21 +52,31 @@ def get_green_shade(step, max_width):
     value = int(start - ((start - end) * (step / max_width)))
     return f"rgb(0,{value},0)"
 
-def show_log_driven_bar(log_path: str, stop_event: Event, max_width=50):
+def show_log_driven_bar(log_path: str, stop_event: Event, session_marker: str, max_width=50):
     console = Console()
 
-    # Terminal check – skip if running in systemd etc.
     if not console.is_terminal:
         console.log("[~] Not a terminal — progress bar skipped.")
         return
 
     progress = 0
+    dir_count = 0
+    last_dir = "Waiting for directory..."
 
-    with Live(console=console, refresh_per_second=5):
-        for line in tail_log_file(log_path, stop_event):
-            if "Inspecting directory" in line:
+    with Live(console=console, refresh_per_second=5) as live:
+        for line in tail_log_file(log_path, stop_event, session_marker):
+            lowered = line.lower()
+
+            # Update the last directory we're working on
+            if "inspecting directory" in lowered and "finished" not in lowered:
+                last_dir = line.split("Inspecting directory")[-1].strip()
+
+            # Count completed directories
+            if "finished inspecting directory" in lowered:
+                dir_count += 1
                 progress = (progress + 1) % (max_width + 1)
 
+                # Build the progress bar string
                 bar_text = ""
                 for i in range(max_width):
                     if i < progress:
@@ -66,8 +85,10 @@ def show_log_driven_bar(log_path: str, stop_event: Event, max_width=50):
                     else:
                         bar_text += "-"
 
-                text = Text.from_markup(f"[white][{bar_text}][/white]")
-                console.print(text, end="\r")
+                bar = Text.from_markup(f"[white][{bar_text}][/white] [dim]Dirs: {dir_count}[/dim]")
+                dir_display = Text(f"📂 {last_dir}", style="dim")
+
+                live.update(Group(bar, dir_display))
 
             if stop_event.is_set():
                 break
