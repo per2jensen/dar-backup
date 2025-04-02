@@ -63,20 +63,26 @@ def show_log_driven_bar(log_path: str, stop_event: Event, session_marker: str, m
     dir_count = 0
     last_dir = "Waiting for directory..."
 
+
+
     with Live(console=console, refresh_per_second=5) as live:
         for line in tail_log_file(log_path, stop_event, session_marker):
             lowered = line.lower()
 
-            # Update the last directory we're working on
+            updated = False
+
+            # Update directory name on "Inspecting"
             if "inspecting directory" in lowered and "finished" not in lowered:
                 last_dir = line.split("Inspecting directory")[-1].strip()
+                updated = True
 
-            # Count completed directories
+            # Advance progress on "Finished"
             if "finished inspecting directory" in lowered:
                 dir_count += 1
                 progress = (progress + 1) % (max_width + 1)
+                updated = True
 
-                # Build the progress bar string
+            if updated:
                 bar_text = ""
                 for i in range(max_width):
                     if i < progress:
@@ -92,3 +98,4 @@ def show_log_driven_bar(log_path: str, stop_event: Event, session_marker: str, m
 
             if stop_event.is_set():
                 break
+
