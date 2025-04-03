@@ -1,6 +1,8 @@
 <!-- markdownlint-disable MD024 -->
 # Full, differential or incremental backups using 'dar'
 
+[![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
+
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
 the heavy lifting, together with the par2 suite in these scripts.
 
