@@ -131,49 +131,6 @@ class CommandResult(NamedTuple):
         return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}']"
 
 
-
-
-def extract_error_lines(log_file_path: str, start_time: str, end_time: str):
-    """
-    Extracts error lines from a log file within a specific time range.
-
-    Args:
-        log_file_path (str): The path to the log file.
-        start_time (str): The start time of the desired time range (unixtime).
-        end_time (str): The end time of the desired time range (unixtime).
-
-    Returns:
-        list: A list of error lines within the specified time range.
-
-    Raises:
-        ValueError: If the start or end markers are not found in the log file.
-    """
-    with open(log_file_path, 'r') as log_file:
-        lines = log_file.readlines()
-
-    start_index = None
-    end_index = None
-
-    start_marker = f"START TIME: {start_time}"
-    end_marker = f"END TIME: {end_time}"
-    error_pattern = re.compile(r'ERROR')
-
-    # Find the start and end index for the specific run
-    for i, line in enumerate(lines):
-        if start_marker in line:
-            start_index = i
-        elif end_marker in line and start_index is not None:
-            end_index = i
-            break
-
-    if start_index is None or end_index is None:
-        raise ValueError("Could not find start or end markers in the log file")
-
-    error_lines = [line.rstrip("\n") for line in lines[start_index:end_index + 1] if error_pattern.search(line)]
-
-    return error_lines
-
-
 def list_backups(backup_dir, backup_definition=None):
     """
     List the available backups in the specified directory and their sizes in megabytes, with aligned sizes.
