@@ -1,0 +1,13 @@
+[run]
+source = src/dar_backup
+concurrency = thread
+
+[paths]
+source =
+    src/dar_backup
+    */src/dar_backup  # normalize duplicate paths (helps remove /tmp ones)
+
+[report]
+omit =
+    */site-packages/*
+    /tmp/*

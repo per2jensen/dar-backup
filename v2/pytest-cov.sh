@@ -1,3 +1,3 @@
 #! /bin/bash
-pytest --cov=dar_backup tests/
 
+PYTHONPATH=src pytest --cov=src/dar_backup
