@@ -17,14 +17,17 @@ def mock_config():
     config = MagicMock(spec=ConfigSettings)
     config.backup_root_dir = "/mock/backups"
     config.command_timeout_secs = 60
+    config.logfile_location = "/mock/logs/backup.log"
     return config
 
-@patch("dar_backup.util.get_logger", return_value=MagicMock())
+#@patch("dar_backup.util.get_logger", return_value=MagicMock())
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util", return_value=MagicMock())
 @patch("dar_backup.util.shutil.which", return_value=True)
 @patch("dar_backup.util.subprocess.Popen")
 @patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
 @patch("dar_backup.dar_backup.os.path.exists")
-@patch("dar_backup.dar_backup.runner")  # ✅ Patch the global runner used inside generic_backup
+@patch("dar_backup.dar_backup.runner")
 def test_generic_backup_success(
     mock_runner,
     mock_exists,

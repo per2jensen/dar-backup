@@ -54,6 +54,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
   - [Separate log file for command output](#separate-log-file-for-command-output)
   - [Skipping cache directories](#skipping-cache-directories)
+  - [Progress bar + current directory](#progress-bar-and-current-directory)
 - [Todo](#todo)
 - [Reference](#reference)
   - [Test coverage report](#test-coverage)
@@ -922,6 +923,16 @@ The author uses the `--cache-directory-tagging` option in his [backup definition
 The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cachedir/) file are not backed up. Those directories contain content fetched from the net, which is of an ephemeral nature and probably not what you want to back up.
 
 If the option is not in the backup definition, the cache directories are backed up as any other.
+
+### Progress bar and current directory
+
+If you run dar-backup interactively in a "normal" console on your computer,
+dar-backup displays 2 visual artifacts to show progress.
+
+1. a progress bar that fills up and starts over
+2. a status line showing the directory being backed up. If the directory is big and takes time to backup, the line is not changing, but you will probably know there is a lot to backup.
+
+The indicators are not shown if dar-backup is run from systemd or if it is used in terminal multiplexers like `tmux` or `screen`. So no polluting of journald logs.
 
 ## Todo
 
