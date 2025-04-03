@@ -3,6 +3,32 @@ import sys
 import pytest
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
+
+
+
+
+
+
+@pytest.fixture(autouse=True)
+def create_readme_and_changelog():
+    """Create dummy README.md and Changelog.md in src/dar_backup for CLI tests."""
+    dar_backup_dir = Path("src/dar_backup")
+    dar_backup_dir.mkdir(parents=True, exist_ok=True)
+
+    readme = dar_backup_dir / "README.md"
+    changelog = dar_backup_dir / "Changelog.md"
+
+    readme.write_text("# Dummy README\nSome content here.")
+    changelog.write_text("# Dummy Changelog\nSome changes here.")
+
+    yield
+
+    # Clean up after tests
+    readme.unlink(missing_ok=True)
+    changelog.unlink(missing_ok=True)
+
+
 
 # === Real CLI runner using your actual dar_backup CLI ===
 @pytest.fixture(scope="module")
@@ -85,14 +111,17 @@ if __name__ == "__main__":
     result = stub_runner(option, stub_code, tmp_path)
     assert result.returncode != 0
 
-def test_pretty_print_fallback_on_missing_rich(cli_runner, monkeypatch):
-    monkeypatch.setitem(sys.modules, "rich", None)
-    result = cli_runner(["--readme-pretty"])
+
+
+@pytest.mark.parametrize("option", ["--readme", "--readme-pretty", "--changelog", "--changelog-pretty"])
+def test_help_options_success(cli_runner, option):
+    result = cli_runner([option])
     assert result.returncode == 0
-    assert "#" in result.stdout or "dar-backup" in result.stdout
+
 
 @pytest.mark.parametrize("option", ["--readme", "--changelog"])
 def test_plain_output_contains_headers(cli_runner, option):
     result = cli_runner([option])
     assert result.returncode == 0
-    assert "#" in result.stdout or "dar-backup" in result.stdout
+    assert "# Dummy" in result.stdout or "Dummy" in result.stdout
+

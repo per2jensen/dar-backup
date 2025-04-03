@@ -136,7 +136,7 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
     for line in process.stdout.splitlines():
         #print(f"{line_no}: '{line}'")
         line_no += 1
-        search = re.search(f".*?(\d+)\s+.*?({archive}).*", line)
+        search = re.search(rf".*?(\d+)\s+.*?({archive}).*", line)
         if search:
             #print(f"FOUND: archive: {search.group(2)}, catalog #: '{search.group(1)}'")
             logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
