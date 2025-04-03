@@ -27,7 +27,6 @@ from typing import Dict, List, NamedTuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import extract_error_lines
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
@@ -231,6 +230,8 @@ def main():
             sys.exit(1) 
         config_settings.backup_dir = args.alternate_archive_dir
 
+    if args.cleanup_specific_archives is None and args.test_mode:
+        logger.info("No --cleanup-specific-archives provided; skipping specific archive deletion in test mode.")
 
     if args.cleanup_specific_archives:
         logger.info(f"Cleaning up specific archives: {args.cleanup_specific_archives}")

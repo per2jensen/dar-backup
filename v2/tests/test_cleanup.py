@@ -283,3 +283,69 @@ def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
         assert not os.path.exists(os.path.join(env.test_dir, 'backups', file)), f"File {os.path.join(env.test_dir, 'backups', file)} was not deleted"
     
 
+
+def test_logs_warning_when_no_matching_archives(setup_environment, env, monkeypatch):
+    """
+    Ensure cleanup logs a message when no matching archives are found
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "yes")
+
+    env.logger.info("No files will be created for this test.")
+
+    command = [
+        'cleanup',
+        '--test-mode',
+        '--cleanup-specific-archives',
+        'nonexistent_FULL_2000-01-01',
+        '--config-file', env.config_file,
+        '--log-level', 'debug',
+        '--log-stdout'
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    output = result.stdout + result.stderr
+    assert (
+        "No .dar files matched the regex for deletion." in output
+        and "No .par2 matched the regex for deletion." in output
+    ), f"Expected messages not found in output:\n{output}"
+
+
+
+def test_age_based_cleanup_runs_when_no_specific_archives_given(setup_environment, env):
+    """
+    Ensure the script doesn’t break and logs appropriately when --cleanup-specific-archives is not given.
+    """
+    command = [
+        'cleanup',
+        '--test-mode',
+        '--config-file', env.config_file,
+        '--log-level', 'debug',
+        '--log-stdout'
+    ]
+    env.logger.info(f"Running: {' '.join(command)}")
+    result = subprocess.run(command, capture_output=True, text=True)
+    env.logger.info(result.stdout)
+
+    assert result.returncode == 0  # Should not crash
+    assert "No --cleanup-specific-archives provided" in result.stdout
+
+
+def test_missing_cleanup_specific_archives_argument(setup_environment, env):
+    """
+    Ensure the script doesn’t break and logs appropriately when --cleanup-specific-archives is not given.
+    """
+    command = [
+        'cleanup',
+        '--test-mode',
+        '--config-file', env.config_file,
+        '--log-level', 'debug',
+        '--log-stdout'
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert (
+    "No --cleanup-specific-archives provided" in result.stdout
+)
