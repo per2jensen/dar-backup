@@ -17,6 +17,8 @@ Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-b
 - new options to make it easy to find docs (--readme, --readme-pretty, --changelog, --changelog-pretty)
 - Generate systemd user units, and optionally install them
 - Progress bar and status line showing current directory being backed up (thanks to `rich`)
+- Pytest coverage now computed and displayed on Github
+- 2 code improvements and multiple cleanup tests added
 
 ## v2-beta-0.6.17 - 2025-03-29
 

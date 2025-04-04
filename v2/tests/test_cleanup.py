@@ -7,10 +7,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
-
 from dar_backup.command_runner import CommandRunner
-
 from tests.envdata import EnvData
+from unittest.mock import MagicMock
+from dar_backup.util import requirements
+
+import pytest
+from dar_backup.cleanup import confirm_full_archive_deletion
+from inputimeout import TimeoutOccurred
+
 
 today = datetime.now().strftime('%Y-%m-%d')
 date_10_days_ago = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
@@ -237,7 +242,22 @@ def test_cleanup_alternate_dir(setup_environment, env):
 
 
 
-def test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatch):
+
+def test_confirmation_no_stops_deleting_full(monkeypatch, capsys):
+    os.environ["CLEANUP_TEST_DELETE_FULL"] = "no"
+    monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01", "--test-mode"])
+    monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
+    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."))
+    
+    from dar_backup import cleanup
+    with pytest.raises(SystemExit):
+        cleanup.main()
+
+    captured = capsys.readouterr()
+    assert "Simulated confirmation for FULL archive" in captured.out
+
+
+def _test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatch):
     """
     Verify that the cleanup script does not delete a FULL archive if the user does not confirm the deletion
     """
@@ -349,3 +369,119 @@ def test_missing_cleanup_specific_archives_argument(setup_environment, env):
     assert (
     "No --cleanup-specific-archives provided" in result.stdout
 )
+    
+
+
+def test_prereq_script_success(monkeypatch):
+    config_settings = MagicMock()
+    config_settings.config = {'PREREQ': {'check': 'echo "ok"'}}
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "all good"
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
+
+    # If no exception is raised, it's a pass
+    requirements("PREREQ", config_settings)
+
+
+
+
+def test_cleanup_confirmation_timeout(monkeypatch, caplog):
+    monkeypatch.setattr("dar_backup.cleanup.inputimeout", lambda **kw: (_ for _ in ()).throw(TimeoutOccurred))
+
+    result = confirm_full_archive_deletion("backup_FULL_2024-01-01", test_mode=False)
+
+    assert result is False
+    assert "Timeout waiting for confirmation" in caplog.text
+
+
+
+import logging
+
+def test_cleanup_confirmation_timeout(monkeypatch, caplog):
+    monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01"])
+
+    # Simulate timeout during confirmation
+    monkeypatch.setattr("dar_backup.cleanup.inputimeout", lambda **kwargs: (_ for _ in ()).throw(TimeoutOccurred))
+    monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
+
+    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(
+        backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."
+    ))
+
+    # This is key: capture logs from this logger
+    logger = logging.getLogger("main_logger")
+    logger.setLevel(logging.INFO)
+    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logger)
+    monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logger)
+
+    monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
+
+    # Patch the logger in util module
+    import dar_backup.util
+    dar_backup.util.logger = logger
+
+    with pytest.raises(SystemExit):
+        from dar_backup import cleanup
+        cleanup.main()
+
+    assert "Timeout waiting for confirmation for FULL archive" in caplog.text
+
+
+def test_cleanup_confirmation_keyboard_interrupt(monkeypatch, caplog):
+    monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01"])
+    monkeypatch.setattr("dar_backup.cleanup.inputimeout", lambda **kw: (_ for _ in ()).throw(KeyboardInterrupt))
+    monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
+    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(
+        backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."
+    ))
+    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logging.getLogger("main_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logging.getLogger("command_output_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
+
+    # Patch the global logger used by `util.requirements`
+    import dar_backup.util
+    logger = logging.getLogger("main_logger")
+    logger.setLevel(logging.DEBUG)
+    dar_backup.util.logger = logger
+
+    # Ensure caplog captures from the logger
+    caplog.set_level(logging.INFO, logger="main_logger")
+
+    with pytest.raises(SystemExit):
+        from dar_backup import cleanup
+        cleanup.main()
+
+    assert "User interrupted confirmation for FULL archive" in caplog.text
+
+
+
+
+from datetime import date
+
+def test_cleanup_confirmation_none_response(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    archive_name = f"example_FULL_{today_str}"
+
+    monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", archive_name])
+    monkeypatch.setattr("dar_backup.cleanup.inputimeout", lambda **kw: None)
+    monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
+    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(
+        backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."
+    ))
+    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logging.getLogger("main_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logging.getLogger("command_output_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
+
+    import dar_backup.util
+    dar_backup.util.logger = logging.getLogger("main_logger")
+
+    with pytest.raises(SystemExit):
+        from dar_backup import cleanup
+        cleanup.main()
+
+    assert f"No confirmation received for FULL archive: {archive_name}" in caplog.text
+

@@ -30,6 +30,7 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
+from dar_backup.util import requirements
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -157,6 +158,30 @@ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
+def confirm_full_archive_deletion(archive_name: str, test_mode=False) -> bool:
+    try:
+        if test_mode:
+            confirmation = os.environ.get("CLEANUP_TEST_DELETE_FULL")
+            if confirmation is None:
+                raise RuntimeError("envvar 'CLEANUP_TEST_DELETE_FULL' not set")
+            print(f"Simulated confirmation for FULL archive: {confirmation}")
+        else:
+            confirmation = inputimeout(
+                prompt=f"Are you sure you want to delete the FULL archive '{archive_name}'? (yes/no): ",
+                timeout=30)
+        if confirmation is None:
+            logger.info(f"No confirmation received for FULL archive: {archive_name}. Skipping deletion.")
+            return False
+        return confirmation.strip().lower() == "yes"
+    except TimeoutOccurred:
+        logger.info(f"Timeout waiting for confirmation for FULL archive: {archive_name}. Skipping deletion.")
+        return False
+    except KeyboardInterrupt:
+        logger.info(f"User interrupted confirmation for FULL archive: {archive_name}. Skipping deletion.")
+        return False
+    
+
+
 def main():
     global logger, runner
 
@@ -205,21 +230,9 @@ def main():
     args.verbose and (print(f"--alternate-archive-dir:    {args.alternate_archive_dir}"))
     args.verbose and (print(f"--cleanup-specific-archives:{args.cleanup_specific_archives}")) 
 
-    # run PREREQ scripts
-    if 'PREREQ' in config_settings.config:
-        for key in sorted(config_settings.config['PREREQ'].keys()):
-            script = config_settings.config['PREREQ'][key]
-            try:
-                result = subprocess.run(script, shell=True, check=True)
-                logger.info(f"PREREQ {key}: '{script}' run, return code: {result.returncode}")
-                logger.info(f"PREREQ stdout:\n{result.stdout}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Error executing {key}: '{script}': {e}")
-                if result:
-                    logger.error(f"PREREQ stderr:\n{result.stderr}")
-                print(f"Error executing {script}: {e}") 
-                sys.exit(1)
 
+    # run PREREQ scripts
+    requirements('PREREQ', config_settings)
 
     if args.alternate_archive_dir:
         if not os.path.exists(args.alternate_archive_dir):
@@ -238,31 +251,7 @@ def main():
         archive_names = args.cleanup_specific_archives.split(',')
         for archive_name in archive_names:
             if "_FULL_" in archive_name:
-                try:
-                    try:
-                        # used for pytest cases
-                        if args.test_mode:
-                            confirmation = os.environ.get("CLEANUP_TEST_DELETE_FULL")
-                            if confirmation == None:
-                                raise RuntimeError("envvar 'CLEANUP_TEST_DELETE_FULL' not set")
-                            
-                        else:
-                            confirmation = inputimeout(
-                                prompt=f"Are you sure you want to delete the FULL archive '{archive_name}'? (yes/no): ",
-                                timeout=30)
-                        if confirmation == None:
-                            continue
-                        else:
-                            confirmation = confirmation.strip().lower()
-                    except TimeoutOccurred:
-                        logger.info(f"Timeout waiting for confirmation for FULL archive: {archive_name}. Skipping deletion.")
-                        continue
-                except KeyboardInterrupt:
-                    logger.info(f"User interrupted confirmation for FULL archive: {archive_name}. Skipping deletion.")
-                    continue
-
-                if confirmation != 'yes':
-                    logger.info(f"User did not answer 'yes' to confirm deletion of FULL archive: {archive_name}. Skipping deletion.")
+                if not confirm_full_archive_deletion(archive_name, args.test_mode):
                     continue
             logger.info(f"Deleting archive: {archive_name}")
             delete_archive(config_settings.backup_dir, archive_name.strip(), args)
@@ -281,10 +270,13 @@ def main():
             delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', args, definition)
             delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', args, definition)
 
+    # run POST scripts
+    requirements('POSTREQ', config_settings)
+
 
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
-
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

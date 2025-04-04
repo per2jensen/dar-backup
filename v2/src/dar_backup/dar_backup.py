@@ -45,6 +45,7 @@ from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
+from dar_backup.util import requirements
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -686,43 +687,6 @@ INCR back of a single backup definition in backup.d
 """
     print(examples)
 
-
-
-def requirements(type: str, config_setting: ConfigSettings):
-    """
-    Perform PREREQ or POSTREQ requirements.
-
-    Args:
-        type (str): The type of prereq (PREREQ, POSTREQ).
-        config_settings (ConfigSettings): An instance of the ConfigSettings class.
-
-    Raises:
-        RuntimeError: If a subprocess returns anything but zero.
-
-        subprocess.CalledProcessError: if CalledProcessError is raised in subprocess.run(), let it bobble up.
-    """
-    if type is None or config_setting is None:
-        raise RuntimeError(f"requirements: 'type' or config_setting is None")
-
-    allowed_types = ['PREREQ', 'POSTREQ'] 
-    if type not in allowed_types:
-        raise RuntimeError(f"requirements: {type} not in: {allowed_types}")
-
-
-    logger.debug(f"Performing  {type}")
-    if type in config_setting.config:
-        for key in sorted(config_setting.config[type].keys()):
-            script = config_setting.config[type][key]
-            try:
-                result = subprocess.run(script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-                logger.debug(f"{type} {key}: '{script}' run, return code: {result.returncode}")
-                logger.debug(f"{type} stdout:\n{result.stdout}")
-                if result.returncode != 0:
-                    logger.error(f"{type} stderr:\n{result.stderr}")
-                    raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")    
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Error executing {key}: '{script}': {e}")
-                raise e
 
 
 def print_markdown(source: str, from_string: bool = False, pretty: bool = True):
