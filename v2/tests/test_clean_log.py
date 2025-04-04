@@ -217,3 +217,40 @@ def test_clean_log_dry_run(setup_environment, env: EnvData, sample_log_file):
         new_content = f.read()
 
     assert original_content == new_content, "Dry-run should not modify the file!"
+
+
+def test_clean_log_uses_config_file_when_no_file_provided(setup_environment, env: EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    logfile_path = "/tmp/unit-test/dar-backup.log"
+    os.makedirs(os.path.dirname(logfile_path), exist_ok=True)
+    with open(logfile_path, "w") as f:
+        f.write("INFO - <File should be removed>\nERROR - Keep this\n")
+
+    command = ["clean-log", "-c", env.config_file]
+    process = runner.run(command)
+
+    assert process.returncode == 0
+
+    # ✅ Only inspect the cleaned file content (not stdout)
+    with open(logfile_path) as f:
+        cleaned = f.read()
+
+    assert "ERROR - Keep this" in cleaned
+    assert "<File should be removed>" not in cleaned
+
+
+def test_clean_log_invalid_empty_filename(setup_environment, env: EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ["clean-log", "-f", "", "-c", env.config_file]
+    process = runner.run(command)
+    assert process.returncode != 0
+    assert "does not exist" in process.stdout or process.stderr
+
+
+def test_clean_log_missing_config_file(setup_environment, env: EnvData, sample_log_file):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ["clean-log", "-f", sample_log_file, "-c", "/nonexistent.conf"]
+    process = runner.run(command)
+    assert process.returncode != 0
+    assert "Missing mandatory configuration key" in process.stderr or process.stdout
