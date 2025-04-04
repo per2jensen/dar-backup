@@ -63,6 +63,7 @@ BACKUP_DEFINITION = '''
 --cache-directory-tagging
 '''
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Set up `dar-backup` on your system.",
@@ -72,7 +73,6 @@ def main():
         action="store_true",
         help="Deploy a simple config file, use ~/dar-backup/ for log file, archives and restore tests."
     )
-
     parser.add_argument(
         "-v", "--version",
         action="version",
@@ -85,37 +85,53 @@ def main():
         errors = []
         if os.path.exists(CONFIG_DIR):
             errors.append(f"Config directory '{CONFIG_DIR}' already exists.")
-
         if os.path.exists(DAR_BACKUP_DIR):
             errors.append(f"Directory '{DAR_BACKUP_DIR}' already exists.")
 
-        if len(errors) > 0:
+        if errors:
             for error in errors:
                 print(f"Error: {error}")
-            sys.exit(1) 
+            sys.exit(1)
 
-        os.makedirs(DAR_BACKUP_DIR, exist_ok=False)
-        os.makedirs(os.path.join(DAR_BACKUP_DIR, "backups"), exist_ok=False)
-        os.makedirs(os.path.join(DAR_BACKUP_DIR, "restore"), exist_ok=False)
-        os.makedirs(CONFIG_DIR, exist_ok=False)
-        os.makedirs(os.path.join(CONFIG_DIR, "backup.d"), exist_ok=False)
-        print(f"Directories created: `{DAR_BACKUP_DIR}` and `{CONFIG_DIR}`")
+        try:
+            os.makedirs(DAR_BACKUP_DIR, exist_ok=False)
+            os.makedirs(os.path.join(DAR_BACKUP_DIR, "backups"), exist_ok=False)
+            os.makedirs(os.path.join(DAR_BACKUP_DIR, "restore"), exist_ok=False)
+            os.makedirs(CONFIG_DIR, exist_ok=False)
+            os.makedirs(os.path.join(CONFIG_DIR, "backup.d"), exist_ok=False)
+            print(f"Directories created: `{DAR_BACKUP_DIR}` and `{CONFIG_DIR}`")
 
-        script_dir = Path(__file__).parent
-        source_file = script_dir / "dar-backup.conf"
-        destination_file = Path(CONFIG_DIR) / "dar-backup.conf"
-        shutil.copy(source_file, destination_file)
-        print(f"Config file deployed to {destination_file}")
+            script_dir = Path(__file__).parent
+            source_file = script_dir / "dar-backup.conf"
+            destination_file = Path(CONFIG_DIR) / "dar-backup.conf"
+
+            try:
+                shutil.copy2(source_file, destination_file)
+                print(f"Config file deployed to {destination_file}")
+            except Exception as e:
+                print(f"Error: Could not copy config file: {e}")
+                sys.exit(1)
 
 
-        backup_definition = BACKUP_DEFINITION.replace("@@HOME_DIR@@", os.path.expanduser("~"))
-        with open(os.path.join(CONFIG_DIR, "backup.d", "default"), "w") as f:
-            f.write(backup_definition)
-        print(f"Default backup definition file deployed to {os.path.join(CONFIG_DIR, 'backup.d', 'default')}")
+            backup_definition = BACKUP_DEFINITION.replace("@@HOME_DIR@@", os.path.expanduser("~"))
+
+            try:
+                with open(os.path.join(CONFIG_DIR, "backup.d", "default"), "w") as f:
+                    f.write(backup_definition)
+                print(f"Default backup definition file deployed to {os.path.join(CONFIG_DIR, 'backup.d', 'default')}")
+            except Exception as e:
+                print(f"Error: Could not write default backup definition: {e}")
+                sys.exit(1)
+        except Exception as e:
+            print(f"Installation failed: {e}")
+            sys.exit(1)
+
         print("1. Now run `manager --create` to create the catalog database.")
         print("2. Then you can run `dar-backup --full-backup` to create a backup.")
         print("3. List backups with `dar-backup --list`")
         print("4. List contents of a backup with `dar-backup --list-contents <backup-name>`")
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

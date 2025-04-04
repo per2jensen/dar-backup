@@ -84,6 +84,112 @@ def test_tilde_in_config_file(setup_environment, env: EnvData, modify_config_fil
         for line in f:
             env.logger.info(line.strip())
 
+
+
+def test_clean_log_missing_logfile_location_key(setup_environment, env: EnvData):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    # Manually create a dummy log file (since sample_log_file fixture isn't available here)
+    log_file = os.path.join(env.test_dir, "test.log")
+    with open(log_file, "w") as f:
+        f.write("INFO - <Directory>\nERROR - Something bad happened\n")
+
+    # Now patch the config to remove the logfile location key
+    config_path = env.config_file
+    with open(config_path, "r") as f:
+        lines = f.readlines()
+
+    with open(config_path, "w") as f:
+        for line in lines:
+            if not line.strip().startswith("LOGFILE_LOCATION"):
+                f.write(line)
+
+    command = ["clean-log", "-c", config_path]
+    process = runner.run(command)
+
+    assert process.returncode != 0
+    assert "Missing mandatory configuration key" in process.stderr
+
+
+
+
+def test_clean_log_invalid_backup_dir_path(setup_environment, env: EnvData, sample_log_file):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    broken_config = os.path.join(env.test_dir, "invalid_backup_dir.conf")
+
+    with open(broken_config, "w") as f:
+        f.write("[MISC]\n")
+        f.write(f"LOGFILE_LOCATION = {sample_log_file}\n")
+        f.write("MAX_SIZE_VERIFICATION_MB = 20\n")
+        f.write("MIN_SIZE_VERIFICATION_MB = 0\n")
+        f.write("NO_FILES_VERIFICATION = 5\n")
+        f.write("COMMAND_TIMEOUT_SECS = 30\n")
+
+        f.write("[DIRECTORIES]\n")
+
+        f.write("BACKUP_DIR = /tmp/fake/path/backup/\n")
+        f.write("BACKUP.D_DIR = /tmp/fake/path/backup.d/\n")
+        f.write("DATA_DIR = /tmp/fake/path/data/\n")
+        f.write("TEST_RESTORE_DIR = /tmp/fake/path/restore/\n")
+
+        
+        f.write("[AGE]\n")
+        f.write("DIFF_AGE = 30\n")
+        f.write("INCR_AGE = 15\n")
+        f.write("[PAR2]\n")
+        f.write("ERROR_CORRECTION_PERCENT = 5\n")
+        f.write("ENABLED = True\n")
+
+    command = ["clean-log", "-f", sample_log_file, "-c", broken_config]
+    process = runner.run(command)
+
+    assert process.returncode == 0  # It should still clean the file, BACKUP_DIR is unused in clean-log
+    with open(sample_log_file) as f:
+        content = f.read()
+    assert "Inspecting directory" not in content
+
+
+
+def test_clean_log_missing_directories_section(setup_environment, env: EnvData, sample_log_file):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    broken_config = os.path.join(env.test_dir, "missing_directories_section.conf")
+
+    with open(broken_config, "w") as f:
+        f.write("[MISC]\nLOGFILE_LOCATION = {}\n".format(sample_log_file))
+
+    command = ["clean-log", "-f", sample_log_file, "-c", broken_config]
+    process = runner.run(command)
+
+    assert process.returncode != 0
+    error_output = process.stderr + process.stdout
+    assert "Missing mandatory configuration key" in error_output or "DIRECTORIES" in error_output
+
+
+
+
+def test_config_parsing_missing_misc_section(setup_environment, env: EnvData):
+    """
+    Ensure the tool fails gracefully when the [MISC] section is missing.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    
+    config_path = os.path.join(os.path.dirname(__file__), "../data/config_test_cases/missing_misc_section.conf")
+    log_file = os.path.join(env.test_dir, "test.log")
+    with open(log_file, "w") as f:
+        f.write("INFO - <File dummy>\n")
+
+    command = ["clean-log", "-f", log_file, "-c", config_path]
+    process = runner.run(command)
+
+    assert process.returncode != 0, "Command should fail due to missing [MISC] section"
+    error_output = process.stderr + process.stdout
+    assert "Missing mandatory configuration key" in error_output or "[MISC]" in error_output, \
+        f"Expected config error not found. Output was:\n{error_output}"
+
+
+
 def test_dar_backup_definition_with_underscore(setup_environment, env):
     process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example_2'])
     assert process.returncode != 0

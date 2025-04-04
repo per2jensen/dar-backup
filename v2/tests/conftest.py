@@ -31,6 +31,25 @@ test_files = {
 }
 
 
+@pytest.fixture
+def sample_log_file(env: EnvData):
+    """Creates a sample log file for testing."""
+    log_file_path = os.path.join(env.test_dir, "test.log")
+    sample_content = (
+        "INFO - <File example.txt>\n"
+        "ERROR - Something failed\n"
+        "DEBUG - Internal state\n"
+    )
+    with open(log_file_path, "w") as f:
+        f.write(sample_content)
+
+    yield log_file_path
+
+    if os.path.exists(log_file_path):
+        os.remove(log_file_path)
+
+
+
 # Session-scoped fixture for the logger
 @pytest.fixture(scope='session')
 def logger():
