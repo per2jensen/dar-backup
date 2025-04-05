@@ -538,12 +538,7 @@ def generate_backup_defs(env, config_settings) -> List[Dict]:
 
 def test_manager_more_help(tmp_path, monkeypatch):
     config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-    "manager.py",
-    "--add-specific-archive", "",
-    "--config-file", str(config_path)
-])
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--more-help"])
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--more-help","--config-file", str(config_path)])
     with patch("builtins.print") as mock_print, patch("sys.exit") as mock_exit:
         import dar_backup.manager as mgr
         mgr.main()
@@ -553,12 +548,7 @@ def test_manager_more_help(tmp_path, monkeypatch):
 # --- 2. --version
 def test_manager_version(tmp_path, monkeypatch):
     config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-    "manager.py",
-    "--add-specific-archive", "",
-    "--config-file", str(config_path)
-])
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--version"])
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--version", "--config-file", str(config_path)])
     with patch("builtins.print") as mock_print, patch("sys.exit") as mock_exit:
         import dar_backup.manager as mgr
 
@@ -573,12 +563,7 @@ def test_manager_version(tmp_path, monkeypatch):
 # --- 3. --add-specific-archive with empty value
 def test_manager_add_specific_archive_empty(tmp_path, monkeypatch):
     config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-    "manager.py",
-    "--add-specific-archive", "",
-    "--config-file", str(config_path)
-])
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", ""])
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", "", "--config-file", str(config_path)])
     with patch("sys.exit") as mock_exit:
         import dar_backup.manager as mgr
 
@@ -593,12 +578,7 @@ def test_manager_add_specific_archive_empty(tmp_path, monkeypatch):
 # --- 4. --add-specific-archive and --remove-specific-archive together
 def test_manager_add_and_remove_specific_archive(tmp_path, monkeypatch):
     config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-    "manager.py",
-    "--add-specific-archive", "",
-    "--config-file", str(config_path)
-])
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", "a", "--remove-specific-archive", "b"])
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", "a", "--remove-specific-archive", "b", "--config-file", str(config_path)])
 
     mock_logger = MagicMock()
     with patch("dar_backup.manager.setup_logging", return_value=mock_logger), patch("sys.exit") as mock_exit:
@@ -617,12 +597,7 @@ def test_manager_add_and_remove_specific_archive(tmp_path, monkeypatch):
 # --- 5. --list-catalog-contents without --backup-def
 def test_manager_list_catalog_contents_without_def(tmp_path, monkeypatch):
     config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-    "manager.py",
-    "--add-specific-archive", "",
-    "--config-file", str(config_path)
-])
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--list-catalog-contents", "1"])
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--list-catalog-contents", "1", "--config-file", str(config_path)])
     mock_logger = MagicMock()
 
     with patch("dar_backup.manager.setup_logging", return_value=mock_logger), \
