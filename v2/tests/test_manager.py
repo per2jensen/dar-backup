@@ -481,3 +481,65 @@ def generate_backup_defs(env, config_settings) -> List[Dict]:
     result.append(element)
 
     return result
+
+
+
+
+# tests/test_manager_cli_logic.py
+
+import sys
+from unittest.mock import patch, MagicMock
+import pytest
+
+# --- 1. --more-help
+def test_manager_more_help(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--more-help"])
+    with patch("builtins.print") as mock_print, patch("sys.exit") as mock_exit:
+        import dar_backup.manager as mgr
+        mgr.main()
+        mock_print.assert_called_once()
+        mock_exit.assert_called_once_with(0)
+
+# --- 2. --version
+def test_manager_version(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--version"])
+    with patch("builtins.print") as mock_print, patch("sys.exit") as mock_exit:
+        import dar_backup.manager as mgr
+        mgr.main()
+        mock_print.assert_any_call(f"{mgr.SCRIPTNAME} {mgr.about.__version__}")
+        mock_exit.assert_called_once_with(0)
+
+# --- 3. --add-specific-archive with empty value
+def test_manager_add_specific_archive_empty(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", ""])
+    with patch("sys.exit") as mock_exit:
+        import dar_backup.manager as mgr
+        mgr.main()
+        mock_exit.assert_called_once_with(1)
+
+
+# --- 4. --add-specific-archive and --remove-specific-archive together
+def test_manager_add_and_remove_specific_archive(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", "a", "--remove-specific-archive", "b"])
+
+    mock_logger = MagicMock()
+    with patch("dar_backup.manager.setup_logging", return_value=mock_logger), patch("sys.exit") as mock_exit:
+        import dar_backup.manager as mgr
+        mgr.main()
+
+    mock_logger.error.assert_any_call("you can't add and remove archives in the same operation, exiting")
+    mock_exit.assert_called_once_with(1)
+
+
+# --- 5. --list-catalog-contents without --backup-def
+def test_manager_list_catalog_contents_without_def(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["manager.py", "--list-catalog-contents", "1"])
+    mock_logger = MagicMock()
+
+    with patch("dar_backup.manager.setup_logging", return_value=mock_logger), \
+         patch("sys.exit") as mock_exit:
+        import dar_backup.manager as mgr
+        mgr.main()
+
+    mock_logger.error.assert_any_call("--list-catalog-contents requires the --backup-def, exiting")
+    mock_exit.assert_called_once_with(1)

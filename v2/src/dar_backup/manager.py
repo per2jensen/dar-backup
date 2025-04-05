@@ -360,15 +360,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
         return 1    
 
 
-
-def main():
-    global logger, runner 
-
-    MIN_PYTHON_VERSION = (3, 9)
-    if sys.version_info < MIN_PYTHON_VERSION:
-        sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
-        sys.exit(1)
-
+def build_arg_parser():
     parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--create-db', action='store_true', help='Create missing databases for all backup definitions')
@@ -387,11 +379,30 @@ def main():
     parser.add_argument('--more-help', action='store_true', help='Show extended help message')
     parser.add_argument('--version', action='store_true', help='Show version & license')
 
+    return parser
+
+
+
+
+def main():
+    global logger, runner 
+
+    MIN_PYTHON_VERSION = (3, 9)
+    if sys.version_info < MIN_PYTHON_VERSION:
+        sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
+        sys.exit(1)
+        return
+
+    parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
+    # [parser.add_argument(...) as before...]
+
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     if args.more_help:
         show_more_help()
         sys.exit(0)
+        return
 
     if args.version:
         print(f"{SCRIPTNAME} {about.__version__}")
@@ -400,41 +411,42 @@ def main():
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.''')
         sys.exit(0)
+        return
 
-    # setup logging
     args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
     config_settings = ConfigSettings(args.config_file)
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")
-        sys.exit(1) 
+        sys.exit(1)
+        return
 
-#    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
-    command_logger = get_logger(command_output_logger = True)
+    command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
-
-    start_time=int(time())
+    start_time = int(time())
     logger.info(f"=====================================")
     logger.info(f"{SCRIPTNAME} started, version: {about.__version__}")
     logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
 
-
-    # Sanity checks before starting
+    # --- Sanity checks ---
     if args.add_dir and not args.add_dir.strip():
         logger.error("archive dir not given, exiting")
         sys.exit(1)
+        return
 
     if args.add_specific_archive is not None and not args.add_specific_archive.strip():
         logger.error("specific archive to add not given, exiting")
         sys.exit(1)
+        return
 
     if args.remove_specific_archive and not args.remove_specific_archive.strip():
         logger.error("specific archive to remove not given, exiting")
         sys.exit(1)
+        return
 
     if args.add_specific_archive and args.remove_specific_archive:
         logger.error("you can't add and remove archives in the same operation, exiting")
@@ -444,44 +456,48 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     if args.add_dir and args.add_specific_archive:
         logger.error("you cannot add both a directory and an archive")
         sys.exit(1)
+        return
 
     if args.backup_def and not args.backup_def.strip():
         logger.error(f"No backup definition given to --backup-def")
         sys.exit(1)
+        return
 
     if args.backup_def:
         backup_def_path = os.path.join(config_settings.backup_d_dir, args.backup_def)
         if not os.path.exists(backup_def_path):
             logger.error(f"Backup definition {args.backup_def} does not exist, exiting")
             sys.exit(1)
-
+            return
 
     if args.list_archive_contents and not args.list_archive_contents.strip():
         logger.error(f"--list-archive-contents <param> not given, exiting")
         sys.exit(1)
-
+        return
 
     if args.list_catalog_contents and not args.backup_def:
         logger.error(f"--list-catalog-contents requires the --backup-def, exiting")
         sys.exit(1)
+        return
 
     if args.find_file and not args.backup_def:
         logger.error(f"--find-file requires the --backup-def, exiting")
         sys.exit(1)
-    
+        return
 
-
-    # Modify config settings based on the arguments
+    # --- Modify settings ---
     if args.alternate_archive_dir:
         if not os.path.exists(args.alternate_archive_dir):
             logger.error(f"Alternate archive dir '{args.alternate_archive_dir}' does not exist, exiting")
             sys.exit(1)
+            return
         config_settings.backup_dir = args.alternate_archive_dir
 
-
+    # --- Functional logic ---
     if args.create_db:
         if args.backup_def:
             sys.exit(create_db(args.backup_def, config_settings))
+            return
         else:
             for root, dirs, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
@@ -490,18 +506,18 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
                     result = create_db(current_backupdef, config_settings)
                     if result != 0:
                         sys.exit(result)
+                        return
 
     if args.add_specific_archive:
         sys.exit(add_specific_archive(args.add_specific_archive, config_settings))
+        return
 
     if args.add_dir:
         sys.exit(add_directory(args, config_settings))
-
+        return
 
     if args.remove_specific_archive:
         return remove_specific_archive(args.remove_specific_archive, config_settings)
-
-
 
     if args.list_catalogs:
         if args.backup_def:
@@ -515,19 +531,22 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
                     if list_catalogs(current_backupdef, config_settings).returncode != 0:
                         result = 1
         sys.exit(result)
-
+        return
 
     if args.list_archive_contents:
         result = list_archive_contents(args.list_archive_contents, config_settings)
         sys.exit(result)
+        return
 
     if args.list_catalog_contents:
         result = list_catalog_contents(args.list_catalog_contents, args.backup_def, config_settings)
         sys.exit(result)
+        return
 
     if args.find_file:
         result = find_file(args.find_file, args.backup_def, config_settings)
         sys.exit(result)
+        return
 
 
 if __name__ == "__main__":
