@@ -471,7 +471,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         if '_' in args.backup_definition:
             msg = f"Skipping backup definition: '{args.backup_definition}' due to '_' in name"
             logger.error(msg)
-            return results.append((msg, 1))
+            results.append((msg, 1))
+            return results
         backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(config_settings.backup_d_dir, args.backup_definition)))
     else:
         for root, _, files in os.walk(config_settings.backup_d_dir):
