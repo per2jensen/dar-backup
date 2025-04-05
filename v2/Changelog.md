@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.18 - not released yet
+## v2-beta-0.6.18 - 2025-04-05
 
 Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.18/v2)
 
@@ -19,6 +19,7 @@ Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-b
 - Progress bar and status line showing current directory being backed up (thanks to `rich`)
 - Pytest coverage now computed and displayed on Github
 - 2 code improvements and multiple cleanup tests added
+- Many test cases added, manager now in good pytest shape
 
 ## v2-beta-0.6.17 - 2025-03-29
 
