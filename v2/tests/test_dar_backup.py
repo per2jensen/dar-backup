@@ -200,3 +200,100 @@ def test_perform_backup_skips_files_with_underscore_in_directory(env):
     assert "due to '_' in: name" in results[0][0]
     assert results[0][1] == 1
     mock_logger.error.assert_called_once()
+
+
+
+from types import SimpleNamespace
+from dar_backup.dar_backup import perform_backup
+
+def test_perform_backup_skips_diff_when_no_base_backup(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    # Create a fake backup definition file
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    # Ensure backup_dir is empty (no .1.dar base backups)
+    os.makedirs(config.backup_dir, exist_ok=True)
+
+    with patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "DIFF")
+
+    assert len(results) == 1
+    assert "No FULL backup found" in results[0][0]
+    assert results[0][1] == 1
+
+
+
+
+def test_perform_backup_handles_failed_verification(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    # Fake backup definition
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    # Fake FULL backup exists to pass DIFF check
+    backup_file_path = os.path.join(config.backup_dir, "test_FULL_2000-01-01.1.dar")
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(backup_file_path, "w") as f:
+        f.write("DAR FILE")
+
+    with patch("dar_backup.dar_backup.verify", return_value=False), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=[]), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL")
+
+    assert any("Verification of" in r[0] for r in results)
+
+
+
+
+
+def test_perform_backup_handles_exception_during_processing(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    with patch("dar_backup.dar_backup.generic_backup", side_effect=RuntimeError("Boom")), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.verify", return_value=True), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL")
+
+    assert len(results) == 1
+    assert "Boom" in results[0][0]
+    mock_logger.exception.assert_called_once()
