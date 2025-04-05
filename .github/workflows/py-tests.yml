@@ -75,7 +75,10 @@ jobs:
           fi
           coverage erase
           ./pytest-cov.sh 
-          
+
+      - name: Move coverage report to root
+        run: mv ./v2/coverage.xml .
+   
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
