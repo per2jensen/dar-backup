@@ -55,5 +55,34 @@ class TestDarBackupUnitGenerator(unittest.TestCase):
         mock_write.assert_called_once()
         mock_print.assert_called_once_with("Generated test.service")
 
+
+
+
+from dar_backup.dar_backup_systemd import write_unit_files
+from unittest.mock import MagicMock
+
+def test_write_unit_files_triggers_enable_and_start(monkeypatch, tmp_path):
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    dar_path = "/usr/local/bin"
+
+    mock_run = MagicMock()
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.subprocess.run", mock_run)
+
+    # Optional: override Path.home() to avoid writing into ~/.config
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.Path.home", lambda: tmp_path)
+
+    write_unit_files(str(venv), dar_path, install=True)
+
+    calls = [call.args[0] for call in mock_run.call_args_list]
+
+    assert ["systemctl", "--user", "enable", "dar-full-backup.timer"] in calls
+    assert ["systemctl", "--user", "start", "dar-cleanup.timer"] in calls
+    assert ["systemctl", "--user", "daemon-reexec"] in calls
+    assert ["systemctl", "--user", "daemon-reload"] in calls
+
+
+
+
 if __name__ == '__main__':
     unittest.main()
