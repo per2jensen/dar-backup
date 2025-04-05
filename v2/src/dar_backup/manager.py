@@ -99,14 +99,17 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTupl
     if not os.path.exists(database_path):
         error_msg = f'Database not found: "{database_path}"'
         logger.error(error_msg)
-        commandResult = CommandResult(
-        process=None,
-        stdout='',
-        stderr=error_msg,
-        returncode=1,
-        timeout=1,
-        command=[])
-        return commandResult
+        return CommandResult(1, '', error_msg)
+
+        # commandResult = CommandResult(
+        # process=None,
+        # stdout='',
+        # stderr=error_msg,
+        # returncode=1,
+        # timeout=1,
+        # command=[])
+
+        # return commandResult
     command = ['dar_manager', '--base', database_path, '--list']
     process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr 
@@ -425,7 +428,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         logger.error("archive dir not given, exiting")
         sys.exit(1)
 
-    if args.add_specific_archive and not args.add_specific_archive.strip():
+    if args.add_specific_archive is not None and not args.add_specific_archive.strip():
         logger.error("specific archive to add not given, exiting")
         sys.exit(1)
 
@@ -436,6 +439,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     if args.add_specific_archive and args.remove_specific_archive:
         logger.error("you can't add and remove archives in the same operation, exiting")
         sys.exit(1)
+        return
 
     if args.add_dir and args.add_specific_archive:
         logger.error("you cannot add both a directory and an archive")
@@ -443,6 +447,7 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
 
     if args.backup_def and not args.backup_def.strip():
         logger.error(f"No backup definition given to --backup-def")
+        sys.exit(1)
 
     if args.backup_def:
         backup_def_path = os.path.join(config_settings.backup_d_dir, args.backup_def)
