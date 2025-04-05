@@ -494,33 +494,49 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 
-
-
 def create_test_config_file(tmp_path: Path) -> Path:
     config_content = """
 [MISC]
-logfile_location = {logfile}
+LOGFILE_LOCATION = {logfile}
 
-[PATHS]
-backup_dir = {backup_dir}
-backup_d_dir = {backup_d_dir}
+[DIRECTORIES]
+BACKUP_DIR = {backup_dir}
+BACKUP.D_DIR = {backup_d_dir}
+TEST_RESTORE_DIR = {restore_dir}
+
+[AGE]
+DIFF_AGE = 30
+INCR_AGE = 15
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+ENABLED = True
+
+[MISC]
+MAX_SIZE_VERIFICATION_MB = 20
+MIN_SIZE_VERIFICATION_MB = 0
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 86400
 """
+
     logfile = tmp_path / "dar-backup.log"
     backup_dir = tmp_path / "backups"
     backup_d_dir = tmp_path / "backup.d"
+    restore_dir = tmp_path / "restore"
 
     backup_dir.mkdir()
     backup_d_dir.mkdir()
+    restore_dir.mkdir()
 
     config_path = tmp_path / "dar-backup.conf"
     config_path.write_text(config_content.format(
         logfile=logfile,
         backup_dir=backup_dir,
         backup_d_dir=backup_d_dir,
+        restore_dir=restore_dir
     ))
 
     return config_path
-
 
 
 

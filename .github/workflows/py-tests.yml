@@ -73,6 +73,7 @@ jobs:
           if [[ -z "$VIRTUAL_ENV" ]]; then
           . venv/bin/activate
           fi
+          coverage erase
           PYTHONPATH=src pytest --cov=src/dar_backuk  --cov-report=xml
           
 
