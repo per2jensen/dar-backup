@@ -81,4 +81,4 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos
-          files: ./coverage.xml
+          files: ./v2/coverage.xml
