@@ -29,6 +29,10 @@ def create_test_config_file(tmp_path: Path) -> Path:
     config_content = """
 [MISC]
 LOGFILE_LOCATION = {logfile}
+MAX_SIZE_VERIFICATION_MB = 20
+MIN_SIZE_VERIFICATION_MB = 0
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 86400
 
 [DIRECTORIES]
 BACKUP_DIR = {backup_dir}
@@ -42,12 +46,6 @@ INCR_AGE = 15
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
-
-[MISC]
-MAX_SIZE_VERIFICATION_MB = 20
-MIN_SIZE_VERIFICATION_MB = 0
-NO_FILES_VERIFICATION = 5
-COMMAND_TIMEOUT_SECS = 86400
 """
 
     logfile = tmp_path / "dar-backup.log"
