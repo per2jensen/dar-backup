@@ -64,7 +64,7 @@ jobs:
       - name: Run pytest
         run: |
           cd $GITHUB_WORKSPACE/v2
-          export PYTHONPATH=$GITHUB_WORKSPACE/v2
+          export PYTHONPATH=$GITHUB_WORKSPACE/v2/src
 
           if [[ "$VIRTUAL_ENV" ]]; then
              deactivate
@@ -74,7 +74,7 @@ jobs:
           . venv/bin/activate
           fi
           coverage erase
-          PYTHONPATH=src pytest --cov=src/dar_backuk  --cov-report=xml
+          PYTHONPATH=src pytest --cov=dar_backup  --cov-report=xml
           
 
       - name: Upload coverage reports to Codecov
