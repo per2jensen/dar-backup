@@ -297,3 +297,72 @@ def test_perform_backup_handles_exception_during_processing(env):
     assert len(results) == 1
     assert "Boom" in results[0][0]
     mock_logger.exception.assert_called_once()
+
+## ==================================================
+
+from dar_backup.dar_backup import list_contents
+
+
+def test_list_contents_with_selection_parses_and_extends_command(env, capsys):
+    backup_name = "dummy_backup"
+    backup_dir = env.backup_dir
+    selection = "--selections somefile.txt"
+
+    mock_process = SimpleNamespace(stdout="[Saved] somefile.txt", stderr="", returncode=0)
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = mock_process
+
+    with patch("dar_backup.dar_backup.runner", mock_runner):
+        list_contents(backup_name, backup_dir, selection)
+
+    captured = capsys.readouterr()
+    assert "[Saved]" in captured.out
+    mock_runner.run.assert_called_once()
+
+def test_list_contents_handles_nonzero_returncode(env):
+    backup_name = "fail_backup"
+    backup_dir = env.backup_dir
+
+    mock_process = SimpleNamespace(stdout="", stderr="err", returncode=1)
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = mock_process
+
+    with patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        with pytest.raises(RuntimeError):
+            list_contents(backup_name, backup_dir)
+
+    mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
+
+
+import subprocess
+
+def test_list_contents_raises_backup_error_on_called_process_error(env):
+    backup_name = "error_backup"
+    backup_dir = env.backup_dir
+
+    mock_runner = MagicMock()
+    mock_runner.run.side_effect = subprocess.CalledProcessError(1, "dar")
+
+    with patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        with pytest.raises(BackupError):
+            list_contents(backup_name, backup_dir)
+
+    mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
+
+
+
+def test_list_contents_raises_runtime_error_on_generic_exception(env):
+    backup_name = "broken_backup"
+    backup_dir = env.backup_dir
+
+    mock_runner = MagicMock()
+    mock_runner.run.side_effect = Exception("Unexpected!")
+
+    with patch("dar_backup.dar_backup.runner", mock_runner):
+        with pytest.raises(RuntimeError) as excinfo:
+            list_contents(backup_name, backup_dir)
+
+    assert f"Unexpected error listing contents of backup: '{backup_name}'" in str(excinfo.value)
