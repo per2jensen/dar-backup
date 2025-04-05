@@ -7,7 +7,14 @@ build-backend = "hatchling.build"
 pythonpath = "venv/lib/python3.12/site-packages"
 addopts = [
     "--import-mode=importlib",
+    "--cov=dar_backup",
+    "--cov-report=xml",
+    "--no-cov-on-fail"
 ]
+
+#addopts = [
+#    "--import-mode=importlib",
+#]
 
 
 [tool.hatch.build]

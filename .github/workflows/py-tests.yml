@@ -74,7 +74,7 @@ jobs:
           . venv/bin/activate
           fi
           coverage erase
-          PYTHONPATH=src pytest --cov=dar_backup  --cov-report=xml
+          ./pytest-cov.sh 
           
 
       - name: Upload coverage reports to Codecov
