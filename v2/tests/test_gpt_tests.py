@@ -60,6 +60,7 @@ def test_invalid_backup_handling(setup_environment, env):
         env.logger.exception("Invalid backup handling test failed")
         pytest.fail("Invalid backup test encountered an exception")
 
+@pytest.mark.timeout(300)  # 5 minutes, hope Github manages to run this
 def test_backup_with_large_files(setup_environment, env):
     """
     Tests backup process with large files to ensure stability.
