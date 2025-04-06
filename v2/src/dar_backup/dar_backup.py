@@ -312,7 +312,8 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
                 args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
-                raise BackupError(f"Failure: file '{restored_file_path}' did not match the original")
+                result = False
+                logger.error(f"Failure: file '{restored_file_path}' did not match the original")
         except PermissionError:
             result = False
             logger.exception(f"Permission error while comparing files, continuing....")

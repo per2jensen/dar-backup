@@ -10,6 +10,7 @@ import dar_backup.config_settings
 import envdata
 import test_bitrot
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 import pytest
 
@@ -20,7 +21,7 @@ from dar_backup.config_settings import ConfigSettings
 from envdata import EnvData
 from typing import Dict, List
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
 
 
 
@@ -612,3 +613,331 @@ def test_manager_list_catalog_contents_without_def(tmp_path, monkeypatch):
 
     mock_logger.error.assert_any_call("--list-catalog-contents requires the --backup-def, exiting")
     mock_exit.assert_called_once_with(1)
+
+
+
+def test_manager_with_alternate_archive_dir(tmp_path, monkeypatch):
+    """
+    Test --alternate-archive-dir to ensure it overrides the default BACKUP_DIR.
+    """
+    # Create an alternate archive directory with dummy .1.dar file
+    alternate_backup_dir = tmp_path / "alternate_backups"
+    alternate_backup_dir.mkdir()
+    dummy_dar_file = alternate_backup_dir / "example_FULL_2025-04-06.1.dar"
+    dummy_dar_file.touch()
+
+    # Create minimal config with dummy BACKUP_DIR
+    config_path = create_test_config_file(tmp_path)
+
+    # Use --create-db to trigger database creation from existing backup defs
+    monkeypatch.setattr(sys, "argv", [
+        "manager.py",
+        "--add-dir", str(alternate_backup_dir),
+        "--alternate-archive-dir", str(alternate_backup_dir),
+        "--create-db",
+        "--config-file", str(config_path),
+        "--log-level", "debug",
+        "--log-stdout"
+    ])
+
+    # Patch logger, CommandRunner and create_db
+    with patch("dar_backup.manager.setup_logging") as mock_logger_setup, \
+         patch("dar_backup.manager.CommandRunner") as mock_runner_class, \
+         patch("dar_backup.manager.create_db") as mock_db_creator, \
+         patch("sys.exit") as mock_exit:
+
+        mock_logger = MagicMock()
+        mock_logger_setup.return_value = mock_logger
+        mock_runner = MagicMock()
+        mock_runner_class.return_value = mock_runner
+        mock_runner.run.return_value.returncode = 0
+
+        # Create a valid backup definition (no underscores)
+        backup_d_file = tmp_path / "backup.d" / "exampledef"
+        backup_d_file.parent.mkdir(exist_ok=True)
+        backup_d_file.write_text("-R /example\n")
+
+
+        import dar_backup.manager as mgr
+        mgr.main()
+
+        # Assert that create_db was called at least once
+        mock_db_creator.assert_called()
+
+
+
+def test_create_db_handles_dar_manager_failure(tmp_path, monkeypatch):
+    from dar_backup.manager import create_db
+
+    dummy_def = "testdef"
+    dummy_db_path = tmp_path / f"{dummy_def}.db"
+    config = SimpleNamespace(
+        backup_dir=tmp_path
+    )
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 1
+    mock_runner.run.return_value.stdout = "some stdout"
+    mock_runner.run.return_value.stderr = "some stderr"
+
+    with patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger") as mock_logger:
+        result = create_db(dummy_def, config)
+
+        # It should log the error and return non-zero
+        assert result == 1
+        mock_logger.error.assert_any_call(f"Something went wrong creating the database: \"{dummy_db_path}\"")
+        mock_logger.error.assert_any_call("stderr: some stderr")
+        mock_logger.error.assert_any_call("stdout: some stdout")
+
+
+
+
+def test_list_catalogs_db_missing(tmp_path):
+    from dar_backup.manager import list_catalogs
+
+    config = SimpleNamespace(backup_dir=tmp_path)
+    backup_def = "nonexistent_def"
+
+    with patch("dar_backup.manager.logger") as mock_logger:
+        result = list_catalogs(backup_def, config)
+
+        expected_path = tmp_path / f"{backup_def}.db"
+        mock_logger.error.assert_called_once_with(f'Database not found: "{expected_path}"')
+        assert result.returncode == 1
+        assert result.stderr == f'Database not found: "{expected_path}"'
+
+
+
+def test_list_catalogs_command_failure(tmp_path):
+    from dar_backup.manager import list_catalogs
+
+    backup_def = "exampledef"
+    db_path = tmp_path / f"{backup_def}.db"
+    db_path.touch()  # simulate database presence
+
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    mock_process = MagicMock()
+    mock_process.returncode = 1
+    mock_process.stdout = "failure output"
+    mock_process.stderr = "failure error"
+
+    with patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))), \
+         patch("dar_backup.manager.logger") as mock_logger:
+        result = list_catalogs(backup_def, config)
+
+        assert result.returncode == 1
+        mock_logger.error.assert_any_call(f'Error listing catalogs for: "{db_path}"')
+        mock_logger.error.assert_any_call("stderr: failure error")
+        mock_logger.error.assert_any_call("stdout: failure output")
+
+
+def test_cat_no_for_name_list_catalogs_fails(tmp_path):
+    from dar_backup.manager import cat_no_for_name
+
+    archive = "somearchive_FULL_2025-04-06"
+    backup_def = "somearchive"  # what backup_def_from_archive() returns
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    mock_process = SimpleNamespace(
+        returncode=1,  # Simulate failure
+        stdout="",
+        stderr="error"
+    )
+
+    with patch("dar_backup.manager.list_catalogs", return_value=mock_process), \
+         patch("dar_backup.manager.logger") as mock_logger:
+        result = cat_no_for_name(archive, config)
+
+    assert result == -1
+    mock_logger.error.assert_called_with(f"Error listing catalogs for backup def: '{backup_def}'")
+
+
+def test_list_archive_contents_runner_fails(tmp_path):
+    from dar_backup.manager import list_archive_contents
+
+    archive = "example_FULL_2025-04-06"
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    # Simulate database file existing
+    db_path = tmp_path / "example.db"
+    db_path.touch()
+
+    # Mock the process result
+    mock_process = SimpleNamespace(
+        returncode=1,
+        stdout="mocked stdout",
+        stderr="mocked stderr"
+    )
+
+    # Patch the entire runner object used inside manager.py
+    with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
+         patch("dar_backup.manager.logger") as mock_logger, \
+         patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))):
+        
+        result = list_archive_contents(archive, config)
+
+    assert result == 1
+    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{str(db_path)}"')
+    mock_logger.error.assert_any_call("stderr: mocked stderr")
+    mock_logger.error.assert_any_call("stdout: mocked stdout")
+
+
+def test_list_archive_contents_cat_not_found(tmp_path):
+    from dar_backup.manager import list_archive_contents
+
+    archive = "example_FULL_2025-04-06"
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    db_path = tmp_path / "example.db"
+    db_path.touch()
+
+    with patch("dar_backup.manager.cat_no_for_name", return_value=-1), \
+         patch("dar_backup.manager.logger") as mock_logger:
+        
+        result = list_archive_contents(archive, config)
+
+    assert result == 1
+    mock_logger.error.assert_called_with(
+        f"archive: '{archive}' not found in database: '{db_path}'"
+    )
+
+
+def test_list_archive_contents_runner_fails_isolated(tmp_path):
+    from dar_backup.manager import list_archive_contents
+
+    archive = "example_FULL_2025-04-06"
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    db_path = tmp_path / "example.db"
+    db_path.touch()
+
+    mock_process = SimpleNamespace(
+        returncode=1,
+        stdout="mocked stdout",
+        stderr="mocked stderr"
+    )
+
+    with patch("dar_backup.manager.cat_no_for_name", return_value=5), \
+         patch("dar_backup.manager.logger") as mock_logger, \
+         patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))):
+        
+        result = list_archive_contents(archive, config)
+
+    assert result == 1
+    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{str(db_path)}"')
+    mock_logger.error.assert_any_call("stderr: mocked stderr")
+    mock_logger.error.assert_any_call("stdout: mocked stdout")
+
+
+def test_find_file_db_missing(tmp_path):
+    from dar_backup.manager import find_file
+
+    backup_def = "exampledef"
+    fake_file = "some/path/to/file.txt"
+    config = SimpleNamespace(backup_dir=tmp_path)
+
+    with patch("dar_backup.manager.logger") as mock_logger:
+        result = find_file(fake_file, backup_def, config)
+
+    expected_db_path = tmp_path / f"{backup_def}.db"
+    mock_logger.error.assert_called_once_with(f'Database not found: "{expected_db_path}"')
+    assert result == 1
+
+
+def test_add_specific_archive_dar_not_found(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        backup_d_dir=tmp_path
+    )
+
+    archive_name = "example_FULL_2025-04-06"
+    # Ensure the required dar file is missing
+    archive_test_path = tmp_path / f"{archive_name}.1.dar"
+
+    with patch("dar_backup.manager.logger") as mock_logger:
+        result = add_specific_archive(str(archive_name), config)
+
+    mock_logger.error.assert_called_once_with(f'dar backup: "{archive_test_path}" not found, exiting')
+    assert result == 1
+
+#====================
+def test_add_specific_archive_success(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive_name = "example_FULL_2025-04-06"
+    archive_path = tmp_path / f"{archive_name}.1.dar"
+    archive_path.touch()
+
+    backup_def = "example"
+    (tmp_path / backup_def).touch()
+
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        backup_d_dir=tmp_path
+    )
+
+    mock_process = SimpleNamespace(returncode=0, stdout="success", stderr="")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = mock_process
+        result = add_specific_archive(archive_name, config)
+
+    mock_logger.info.assert_any_call(f'"{tmp_path / archive_name}" added to it\'s catalog')
+    assert result == 0
+
+
+def test_add_specific_archive_warning(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive_name = "example_FULL_2025-04-06"
+    (tmp_path / f"{archive_name}.1.dar").touch()
+    (tmp_path / "example").touch()
+
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        backup_d_dir=tmp_path
+    )
+
+    mock_process = SimpleNamespace(returncode=5, stdout="some warning", stderr="")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = mock_process
+        result = add_specific_archive(archive_name, config)
+
+    mock_logger.warning.assert_called_with(
+        f'Something did not go completely right adding "{tmp_path / archive_name}" to it\'s catalog, dar_manager error: "5"'
+    )
+    assert result == 5
+
+
+
+def test_add_specific_archive_failure(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive_name = "example_FULL_2025-04-06"
+    (tmp_path / f"{archive_name}.1.dar").touch()
+    (tmp_path / "example").touch()
+
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        backup_d_dir=tmp_path
+    )
+
+    mock_process = SimpleNamespace(returncode=42, stdout="error out", stderr="error err")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = mock_process
+
+        result = add_specific_archive(archive_name, config)
+
+    mock_logger.error.assert_any_call(f'something went wrong adding "{tmp_path / archive_name}" to it\'s catalog, dar_manager error: "42"')
+    mock_logger.error.assert_any_call("stderr: error err")
+    mock_logger.error.assert_any_call("stdout: error out")
+    assert result == 42

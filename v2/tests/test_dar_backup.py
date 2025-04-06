@@ -4,14 +4,18 @@ from unittest.mock import patch
 from types import SimpleNamespace
 from dar_backup.util import BackupError
 from dar_backup.dar_backup import verify
+import dar_backup.dar_backup as db
 from unittest.mock import patch, MagicMock, mock_open
+import subprocess
+from dar_backup.dar_backup import restore_backup, RestoreError
+import dar_backup.dar_backup as db
 
 
-def test_verify_filecmp_mismatch_raises_backup_error(env):
+def test_verify_filecmp_mismatch_returns_false(env):
     args = SimpleNamespace(
         verbose=False,
         do_not_compare=False,
-        darrc=env.dar_rc  # ← This fixes the final crash
+        darrc=env.dar_rc
     )
 
     config = SimpleNamespace(
@@ -36,9 +40,9 @@ def test_verify_filecmp_mismatch_raises_backup_error(env):
          patch("dar_backup.dar_backup.logger"), \
          patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
-        with pytest.raises(BackupError, match="did not match the original"):
-            verify(args, "mock-backup", env.config_file, config)
-
+        
+        result = verify(args, "mock-backup", env.config_file, config)
+        assert result is False
 
 
 def test_verify_filecmp_permission_error_logged(env):
@@ -366,3 +370,76 @@ def test_list_contents_raises_runtime_error_on_generic_exception(env):
             list_contents(backup_name, backup_dir)
 
     assert f"Unexpected error listing contents of backup: '{backup_name}'" in str(excinfo.value)
+
+#===================
+
+
+def test_restore_backup_process_fails(tmp_path):
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        command_timeout_secs=10
+    )
+    backup_name = "backup"
+    darrc = "dummy_darrc"
+    restore_dir = tmp_path / "restore"
+
+    # Create dummy backup file
+    (tmp_path / backup_name).touch()
+
+    # Inject a mock CommandRunner instance
+    db.runner = MagicMock()
+    db.logger = MagicMock()
+
+    # Configure runner.run() to simulate a failure
+    db.runner.run.return_value = SimpleNamespace(
+        returncode=1,
+        stdout="mock stdout",
+        stderr="mock stderr"
+    )
+
+    with pytest.raises(RestoreError, match="mock stderr"):
+        restore_backup(backup_name, config, str(restore_dir), darrc)
+
+    db.logger.error.assert_any_call(
+        "Restore command failed: \n ==> stdout: mock stdout, \n ==> stderr: mock stderr"
+    )
+
+
+
+def test_restore_backup_calledprocesserror(tmp_path):
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        command_timeout_secs=10
+    )
+    backup_name = "backup"
+    darrc = "dummy_darrc"
+    restore_dir = tmp_path / "restore"
+
+    # Touch dummy backup file
+    (tmp_path / backup_name).touch()
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        # Raise the expected exception from the runner
+        mock_runner.run.side_effect = subprocess.CalledProcessError(1, "cmd")
+
+        # Now test
+        with pytest.raises(RestoreError, match="Restore command failed"):
+            restore_backup(backup_name, config, str(restore_dir), darrc)
+
+
+
+def test_restore_backup_oserror(tmp_path):
+    config = SimpleNamespace(
+        backup_dir=tmp_path,
+        command_timeout_secs=10
+    )
+    backup_name = "backup"
+    darrc = "dummy_darrc"
+    restore_dir = tmp_path / "restore"
+
+    with patch("os.makedirs", side_effect=OSError("Permission denied")), \
+         patch.object(db, "runner", new=MagicMock()), \
+         patch.object(db, "logger", new=MagicMock()):
+        with pytest.raises(RestoreError, match="Could not create restore directory"):
+            restore_backup(backup_name, config, str(restore_dir), darrc)

@@ -1,6 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.19 - not released
+
+Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.19/v2)
+
+### Added
+
+- removed a BackupError in the verify() to reduce noise in logs and let the rest of "compares" run.
+
 ## v2-beta-0.6.18 - 2025-04-05
 
 Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.18/v2)

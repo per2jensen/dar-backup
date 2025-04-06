@@ -19,7 +19,7 @@ import re
 import os
 import sys 
 
-from . import __about__ as about
+from dar_backup import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 
 LICENSE = '''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.

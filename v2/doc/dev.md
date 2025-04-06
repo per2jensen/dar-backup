@@ -32,19 +32,19 @@ A pytest.ini is located in the v2 directory, so that pytest writes out captures 
 That is useful when working with a single test and is the default
 
 ```` bash
-pytest -c pytest-minimal.ini tests/test_verbose.py::test_verbose_error_reporting
+PYTHONPATH=src  pytest -c pytest-minimal.ini tests/test_verbose.py::test_verbose_error_reporting
 ````
 
 Use  to get the minimal info on successful test cases
 
 ```` bash
-pytest -c pytest-minimal.ini
+PYTHONPATH=src pytest -c pytest-minimal.ini
 ````
 
 or for specific file with test cases
 
 ```` bash
-pytest -c pytest-minimal.ini tests/test_verbose.py
+PYTHONPATH=src pytest -c pytest-minimal.ini tests/test_verbose.py
 ````
 
 ## Upload to PyPI
