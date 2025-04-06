@@ -426,7 +426,6 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
     start_time = int(time())
-    logger.info(f"=====================================")
     logger.info(f"{SCRIPTNAME} started, version: {about.__version__}")
     logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
