@@ -50,7 +50,7 @@ jobs:
           python3 -m venv venv
           . venv/bin/activate
           python3 -m pip install --upgrade pip
-          python3 -m pip install wheel build pytest hatchling hatch psutil pytest-cov coverage pytest-html pytest-mock pytest-asyncio pytest-timeout pytest-xdist
+          python3 -m pip install wheel build pytest hatchling hatch psutil pytest-cov coverage pytest-html pytest-mock pytest-asyncio pytest-timeout pytest-xdist pytest-timeout
           python3 -m build
           VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
           echo "Version: $VERSION"

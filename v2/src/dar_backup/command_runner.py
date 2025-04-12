@@ -3,8 +3,11 @@ import logging
 import threading
 import os
 import sys
+import tempfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 from typing import List, Optional
+from dar_backup.util import get_logger
+
 
 class CommandResult:
     def __init__(self, returncode: int, stdout: str, stderr: str):
@@ -15,6 +18,7 @@ class CommandResult:
     def __repr__(self):
         return f"<CommandResult returncode={self.returncode}>"
 
+
 class CommandRunner:
     def __init__(
         self,
@@ -22,9 +26,37 @@ class CommandRunner:
         command_logger: Optional[logging.Logger] = None,
         default_timeout: int = 30
     ):
-        self.logger = logger or logging.getLogger(__name__)
-        self.command_logger = command_logger or self.logger
+        self.logger = logger or get_logger()
+        self.command_logger = command_logger or get_logger(command_output_logger=True)
         self.default_timeout = default_timeout
+
+        if not self.logger or not self.command_logger:
+            self.logger_fallback()
+
+    def logger_fallback(self):
+        """
+        Setup temporary log files
+        """
+        main_log = tempfile.NamedTemporaryFile(delete=False)
+        command_log = tempfile.NamedTemporaryFile(delete=False)
+
+        logger = logging.getLogger("command_runner_fallbakc_main_logger")
+        command_logger = logging.getLogger("command_runner_fallbakc_command_logger")
+        logger.setLevel(logging.DEBUG)
+        command_logger.setLevel(logging.DEBUG)
+
+        main_handler = logging.FileHandler(main_log.name)
+        command_handler = logging.FileHandler(command_log.name)
+
+        logger.addHandler(main_handler)
+        command_logger.addHandler(command_handler)
+
+        self.logger = logger
+        self.command_logger = command_logger
+        self.default_timeout = 30
+        self.logger.info("CommandRunner initialized with fallback loggers")
+        self.command_logger.info("CommandRunner initialized with fallback loggers")
+
 
     def run(
         self,
@@ -36,7 +68,11 @@ class CommandRunner:
         text: bool = True
     ) -> CommandResult:
         timeout = timeout or self.default_timeout
-        self.logger.debug(f"Executing command: {' '.join(cmd)} (timeout={timeout}s)")
+
+        #log the command to be executed
+        command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
+        self.command_logger.info(command) # log to command logger
+        self.logger.debug(command)        # log to main logger if "--log-level debug"
 
         process = subprocess.Popen(
             cmd,
@@ -50,10 +86,18 @@ class CommandRunner:
         stderr_lines = []
 
         def stream_output(stream, lines, level):
+            """
+            Streams the output of a subprocess (stdout or stderr) to a list and logs it.
+            Args:
+                stream: The stream to read from (e.g., process.stdout or process.stderr).
+                lines (List[str]): A list to store the lines read from the stream.
+                level (int): The logging level (e.g., logging.INFO or logging.ERROR).
+            """
             for line in iter(stream.readline, ''):
                 lines.append(line)
                 self.command_logger.log(level, line.strip())
             stream.close()
+
 
         threads = []
         if capture_output and process.stdout:

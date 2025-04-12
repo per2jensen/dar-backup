@@ -16,4 +16,4 @@ v2/dist
 v2/build
 v2/.coverage
 v2/dar-backup.tar
-
+v2/coverage.xml

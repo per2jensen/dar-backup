@@ -27,18 +27,20 @@ def test_command_runner_executes_successfully():
     # Validate the result
     assert result.returncode == 0
     assert "Hello, world!" in result.stdout
-
+    
     # Check that log files captured the output
     with open(command_log.name) as f:
         command_log_output = f.read()
+        print("\n===== command log  ======\n", command_log_output)
+        assert "Executing command: "in command_log_output
         assert "Hello, world!" in command_log_output
 
     with open(main_log.name) as f:
         main_log_output = f.read()
+        print("\n===== main log  ======\n", main_log_output)
         assert "Executing command" in main_log_output
 
     # Clean up
     os.unlink(main_log.name)
     os.unlink(command_log.name)
-
 

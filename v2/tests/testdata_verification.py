@@ -9,6 +9,7 @@ import re
 import sys
 from typing import Dict
 
+
 # Add src directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -17,10 +18,9 @@ from dar_backup.command_runner import CommandRunner, CommandResult
 from tests.conftest import test_files
 
 
-runner = CommandRunner()
-
 def run_backup_script(type: str, env: EnvData) -> CommandResult:
     command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug', '--log-stdout', '--config-file', env.config_file]
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     result: CommandResult = runner.run(command)
     stdout, stderr = result.stdout, result.stderr
     if result.returncode != 0:
@@ -46,6 +46,7 @@ def verify_backup_contents(expected_files: Dict[str, str], archive: str, env: En
     env.logger.info(f"Verifying archive '{archive}' contains expected files")
     command = ['dar-backup', '--list-contents', archive, '--config-file', env.config_file, '--verbose', '--log-stdout', '--log-level', 'debug']
     env.logger.info(command)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(stdout)
@@ -77,6 +78,7 @@ def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: E
         RuntimeError: If expected content is not found in expected restored files.
 
     """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     env.logger.info(f"Restore and verify archive '{archive}', check for expected files and content")
     command = ['dar-backup', '--restore', archive, '--config-file', env.config_file, '--verbose', '--log-stdout', '--log-level', 'debug']
     if restore_dir:
