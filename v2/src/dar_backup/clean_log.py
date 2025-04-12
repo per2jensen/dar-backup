@@ -11,6 +11,8 @@ See section 15 and section 16 in the supplied "LICENSE" file
 
 This script can be used to remove (much of) the logged output from `dar`.
 When `dar` verbose options are enabled, quite a lot of information is emitted.
+
+If a rerex is matched, the entire line is removed (change in v2-beta-0.6.19).
 """
 
 
@@ -32,7 +34,7 @@ def clean_log_file(log_file_path, dry_run=False):
 
     if not os.path.isfile(log_file_path):
         print(f"File '{log_file_path}' not found!")
-        sys.exit(1)
+        sys.exit(127)
 
     if not os.access(log_file_path, os.R_OK):
         print(f"No read permission for '{log_file_path}'")
@@ -49,15 +51,18 @@ def clean_log_file(log_file_path, dry_run=False):
     temp_file_path = log_file_path + ".tmp"
     
     patterns = [
-        r"INFO\s*-\s*<File",
-        r"INFO\s*-\s*<Attributes",
-        r"INFO\s*-\s*</Directory",
-        r"INFO\s*-\s*<Directory",
-        r"INFO\s*-\s*</File",
         r"INFO\s*-\s*Inspecting\s*directory",
         r"INFO\s*-\s*Finished\s*Inspecting",
-        r'data=".*?metadata=".*?user=".*?group="',
-        r'name=".*?size=".*?stored=".*?crc=".*?dirty="',
+        r"INFO\s*-\s*<File",
+        r"INFO\s*-\s*</File",
+        r"INFO\s*-\s*<Attributes",
+        r"INFO\s*-\s*</Attributes",
+        r"INFO\s*-\s*</Directory",
+        r"INFO\s*-\s*<Directory",
+        r"INFO\s*-\s*<Catalog",
+        r"INFO\s*-\s*</Catalog",
+        r"INFO\s*-\s*<Symlink",
+        r"INFO\s*-\s*</Symlink",
     ]
 
     try:
@@ -72,9 +77,9 @@ def clean_log_file(log_file_path, dry_run=False):
                         if dry_run:
                             print(f"Would remove: {original_line.strip()}")  # Print full line for dry-run
                         matched = True  # Mark that a pattern matched
-                        line = re.sub(pattern, "", line).strip()  # Remove only matched part
+                        break  # No need to check other patterns if one matches
 
-                if not dry_run and line:  # In normal mode, only write non-empty lines
+                if not dry_run and not matched:  # In normal mode, only write non-empty lines
                     outfile.write(line.rstrip() + "\n")
 
                 if dry_run and matched:
