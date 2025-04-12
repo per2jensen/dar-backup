@@ -18,7 +18,9 @@ LOG_ENTRIES_TO_REMOVE = [
     "INFO - <Directory",
     "INFO - </File",
     "INFO - Inspecting directory",
-    "INFO - Finished Inspecting"
+    "INFO - Finished Inspecting",
+    '2025-04-12 10:22:43,291 -  name=".pcloudicon.png" size="5 kio" stored="5 kio" crc="2bbe0379" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">',
+    '2025-04-12 10:22:43,291 -  data="saved" metadata="absent" user="user" group="user" permissions=" -rw-r--r--" atime="1744432911" mtime="1744432911" ctime="1744432911" />'
 ]
 
 
@@ -38,6 +40,8 @@ def sample_log_file(env: EnvData):
     WARNING - Something happened
     ERROR - Failed operation
     DEBUG - This is a debug log
+    2025-04-12 10:22:43,291 -  name=".pcloudicon.png" size="5 kio" stored="5 kio" crc="2bbe0379" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+    2025-04-12 10:22:43,291 -  data="saved" metadata="absent" user="user" group="user" permissions=" -rw-r--r--" atime="1744432911" mtime="1744432911" ctime="1744432911" />
     """
     
     with open(log_file_path, "w") as f:

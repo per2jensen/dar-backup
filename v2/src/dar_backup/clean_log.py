@@ -55,7 +55,9 @@ def clean_log_file(log_file_path, dry_run=False):
         r"INFO\s*-\s*<Directory",
         r"INFO\s*-\s*</File",
         r"INFO\s*-\s*Inspecting\s*directory",
-        r"INFO\s*-\s*Finished\s*Inspecting"
+        r"INFO\s*-\s*Finished\s*Inspecting",
+        r'data=".*?metadata=".*?user=".*?group="',
+        r'name=".*?size=".*?stored=".*?crc=".*?dirty="',
     ]
 
     try:
