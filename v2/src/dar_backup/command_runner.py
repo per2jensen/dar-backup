@@ -40,8 +40,8 @@ class CommandRunner:
         main_log = tempfile.NamedTemporaryFile(delete=False)
         command_log = tempfile.NamedTemporaryFile(delete=False)
 
-        logger = logging.getLogger("command_runner_fallbakc_main_logger")
-        command_logger = logging.getLogger("command_runner_fallbakc_command_logger")
+        logger = logging.getLogger("command_runner_fallback_main_logger")
+        command_logger = logging.getLogger("command_runner_fallback_command_logger")
         logger.setLevel(logging.DEBUG)
         command_logger.setLevel(logging.DEBUG)
 
@@ -56,6 +56,9 @@ class CommandRunner:
         self.default_timeout = 30
         self.logger.info("CommandRunner initialized with fallback loggers")
         self.command_logger.info("CommandRunner initialized with fallback loggers")
+
+        print(f"[WARN] Using fallback loggers:\n  Main log: {main_log.name}\n  Command log: {command_log.name}", file=sys.stderr)
+
 
 
     def run(

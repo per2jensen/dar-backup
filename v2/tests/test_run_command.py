@@ -86,3 +86,4 @@ def test_binary_output_mode(setup_environment, env):
     This test is intentionally skipped because CommandRunner is designed for text mode only.
     """
     pass
+

@@ -1,7 +1,15 @@
 import logging
 import tempfile
 import os
+import pytest
+import sys
+import re
+import tempfile
 from dar_backup.command_runner import CommandRunner
+from io import StringIO
+from dar_backup.command_runner import CommandRunner
+from unittest.mock import patch, MagicMock
+
 
 
 def test_command_runner_executes_successfully():
@@ -44,3 +52,72 @@ def test_command_runner_executes_successfully():
     os.unlink(main_log.name)
     os.unlink(command_log.name)
 
+
+
+def test_logger_fallback_creates_loggers_and_files(tmp_path):
+    runner = CommandRunner()
+    
+    with patch("tempfile.NamedTemporaryFile") as mock_tmp:
+        # Setup two temp files (main log, command log)
+        main_log_path = tmp_path / "main.log"
+        command_log_path = tmp_path / "command.log"
+        
+        mock_tmp.side_effect = [
+            type("MockFile", (), {"name": str(main_log_path), "close": lambda self: None})(),
+            type("MockFile", (), {"name": str(command_log_path), "close": lambda self: None})(),
+        ]
+
+        runner.logger_fallback()
+
+        # Log something to both
+        runner.logger.info("Testing main log")
+        runner.command_logger.info("Testing command log")
+
+        # Make sure log files were written to
+        with open(main_log_path) as f:
+            main_log_content = f.read()
+        with open(command_log_path) as f:
+            command_log_content = f.read()
+
+        assert "Testing main log" in main_log_content
+        assert "Testing command log" in command_log_content
+
+
+
+def test_logger_fallback_raises_on_filehandler_failure():
+    runner = CommandRunner()
+
+    with patch("tempfile.NamedTemporaryFile", side_effect=IOError("tempfile fail")):
+        with pytest.raises(IOError, match="tempfile fail"):
+            runner.logger_fallback()
+
+
+
+def test_logger_fallback_logger_names():
+    runner = CommandRunner()
+    runner.logger_fallback()
+
+    assert runner.logger.name == "command_runner_fallback_main_logger"
+    assert runner.command_logger.name == "command_runner_fallback_command_logger"
+
+
+
+
+def test_logger_fallback_warns_to_stderr():
+    runner = CommandRunner.__new__(CommandRunner)  # bypass __init__
+
+    with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+        runner.logger_fallback()
+
+        output = mock_stderr.getvalue()
+        assert "[WARN] Using fallback loggers:" in output
+
+        # Match and verify both log file paths
+        match = re.search(r"Main log: (.+)\n  Command log: (.+)", output)
+        assert match, "Expected log file paths not found in stderr"
+        main_log_path = match.group(1)
+        command_log_path = match.group(2)
+
+        # Confirm those files actually exist
+        assert tempfile.gettempdir() in main_log_path
+        assert tempfile.gettempdir() in command_log_path
