@@ -46,6 +46,7 @@ from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 from dar_backup.util import requirements
+from dar_backup.util import get_binary_info
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -841,6 +842,9 @@ def main():
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"`args`:\n{args}")
         logger.debug(f"`config_settings`:\n{config_settings}")
+        dar_manager_properties = get_binary_info(command='dar')
+        logger.debug(f"dar path: {dar_manager_properties['path']}")
+        logger.debug(f"dar version: {dar_manager_properties['version']}")
 
         file_dir =  os.path.normpath(os.path.dirname(__file__))
         args.verbose and (print(f"Script directory:  {file_dir}"))
