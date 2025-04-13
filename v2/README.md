@@ -8,6 +8,10 @@ the heavy lifting, together with the par2 suite in these scripts.
 
 This is the `Python` based **version 2** of `dar-backup`.
 
+## TL;DR
+
+`dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using dar and par2. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
+
 ## Table of Contents
 
 - [Full, differential or incremental backups using 'dar'](#full-differential-or-incremental-backups-using-dar)
@@ -33,6 +37,7 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [Generate systemd files](#generate-systemd-files)
   - [Service: dar-back --incremental-backup](#service-dar-backup---incremental-backup)
   - [Timer: dar-back --incremental-backup](#timer-dar-backup---incremental-backup)
+  - [Systemd timer note](#systemd-timer-note)
 - [List contents of an archive](#list-contents-of-an-archive)
 - [dar file selection examples](#dar-file-selection-examples)
   - [Select a directory](#select-a-directory)
@@ -58,7 +63,9 @@ This is the `Python` based **version 2** of `dar-backup`.
   - [Skipping cache directories](#skipping-cache-directories)
   - [Progress bar + current directory](#progress-bar-and-current-directory)
 - [Todo](#todo)
+- [Known Limitations / Edge Cases](#known-limitations--edge-cases)
 - [Reference](#reference)
+  - [CLI Tools Overview](#cli-tools-overview)
   - [Test coverage report](#test-coverage)
   - [dar-backup](#dar-backup-options)
   - [manager](#manager-options)
@@ -651,6 +658,10 @@ Persistent=true
 WantedBy=timers.target
 ````
 
+## systemd timer note
+
+📅 OnCalendar syntax is flexible — you can tweak backup schedules easily. Run systemd-analyze calendar to preview timers.
+
 ## list contents of an archive
 
 ```` bash
@@ -941,7 +952,26 @@ The indicators are not shown if dar-backup is run from systemd or if it is used 
 - Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
 
+## Known Limitations / Edge Cases
+
+Does not currently encrypt data (by design — relies on encrypted storage)
+
+One backup definition per file
+
+.par2 files created for each slice (may be moved in future)
+
 ## Reference
+
+### CLI Tools Overview
+
+| Command               | Description                               |
+|-----------------------|-------------------------------------------|
+| `dar-backup`          | Perform full, differential, or incremental backups with verification and restore testing |
+| `manager`             | Maintain and query catalog databases for archives |
+| `cleanup`             | Remove outdated DIFF/INCR archives (and optionally FULLs) |
+| `clean-log`           | Clean up excessive log output from dar command logs |
+| `installer`           | Set up required directories and default config files |
+| `dar-backup-systemd`  | Generate (and optionally install) systemd timers and services for automated backups |
 
 ### test coverage
 
@@ -951,23 +981,26 @@ Running
 pytest --cov=dar_backup tests/
 ````
 
-results for version 0.6.17 in this report:
+results for a dev version 0.6.19 in this report:
 
 ```` code
 ---------- coverage: platform linux, python 3.12.3-final-0 -----------
-Name                                                              Stmts   Miss  Cover
--------------------------------------------------------------------------------------
-venv/lib/python3.12/site-packages/dar_backup/__about__.py             1      0   100%
-venv/lib/python3.12/site-packages/dar_backup/__init__.py              0      0   100%
-venv/lib/python3.12/site-packages/dar_backup/clean_log.py            68     14    79%
-venv/lib/python3.12/site-packages/dar_backup/cleanup.py             196     53    73%
-venv/lib/python3.12/site-packages/dar_backup/config_settings.py      66      8    88%
-venv/lib/python3.12/site-packages/dar_backup/dar_backup.py          464     99    79%
-venv/lib/python3.12/site-packages/dar_backup/installer.py            46     46     0%
-venv/lib/python3.12/site-packages/dar_backup/manager.py             316     72    77%
-venv/lib/python3.12/site-packages/dar_backup/util.py                162     34    79%
--------------------------------------------------------------------------------------
-TOTAL                                                              1319    326    75%
+Name                                   Stmts   Miss  Cover
+----------------------------------------------------------
+src/dar_backup/__about__.py                1      0   100%
+src/dar_backup/__init__.py                 0      0   100%
+src/dar_backup/clean_log.py               68     13    81%
+src/dar_backup/cleanup.py                193     17    91%
+src/dar_backup/command_runner.py          73      1    99%
+src/dar_backup/config_settings.py         66      8    88%
+src/dar_backup/dar_backup.py             535     56    90%
+src/dar_backup/dar_backup_systemd.py      56      7    88%
+src/dar_backup/installer.py               59      6    90%
+src/dar_backup/manager.py                351     56    84%
+src/dar_backup/rich_progress.py           70      7    90%
+src/dar_backup/util.py                   130     15    88%
+----------------------------------------------------------
+TOTAL                                   1602    186    88%
 ````
 
 ### dar-backup options
