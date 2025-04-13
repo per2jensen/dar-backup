@@ -11,6 +11,7 @@ class EnvData():
     test_case_name: str
     test_dir: str
     backup_dir: str
+    backup_d_dir: str
     data_dir: str
     restore_dir: str
     template_config_file: str
@@ -26,6 +27,7 @@ class EnvData():
         self.test_case_name = test_case_name
         self.test_dir = f"/tmp/unit-test/{test_case_name.lower()}"
         self.backup_dir = os.path.join(self.test_dir, "backups")
+        self.backup_d_dir = os.path.join(self.test_dir, "backup.d")
         self.restore_dir = os.path.join(self.test_dir, "restore")
         self.data_dir = os.path.join(self.test_dir, "data")
         self.template_config_file = os.path.abspath(os.path.join(os.path.dirname(__file__),"../template/dar-backup.conf.template"))
