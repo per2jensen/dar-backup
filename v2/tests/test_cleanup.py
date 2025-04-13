@@ -485,3 +485,116 @@ def test_cleanup_confirmation_none_response(monkeypatch, caplog):
 
     assert f"No confirmation received for FULL archive: {archive_name}" in caplog.text
 
+
+def test_show_version_flag_exits(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["cleanup", "--version"])
+    with pytest.raises(SystemExit):
+        from dar_backup import cleanup
+        cleanup.main()
+
+
+def test_invalid_date_in_filename(monkeypatch, tmp_path, env):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    bad_file = backups / "example_DIFF_invalid-date.1.dar"
+    bad_file.write_text("dummy")
+
+    config_settings = MagicMock()
+    config_settings.backup_dir = str(backups)
+    config_settings.diff_age = 30
+    config_settings.incr_age = 30
+    config_settings.config = {}
+
+    monkeypatch.setattr("dar_backup.cleanup.logger", env.logger)
+
+    from dar_backup.cleanup import delete_old_backups
+
+    with pytest.raises(Exception) as exc_info:
+        delete_old_backups(str(backups), config_settings.diff_age, "DIFF", args=MagicMock(), backup_definition="example")
+
+    # ✅ Match the actual ValueError message raised by datetime.strptime()
+    assert "does not match format '%Y-%m-%d'" in str(exc_info.value)
+
+def test_delete_file_permission_error(monkeypatch, tmp_path):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    filename = backups / f"example_DIFF_{date_100_days_ago}.1.dar"
+    filename.write_text("dummy")
+
+    # Simulate os.remove throwing an exception
+    monkeypatch.setattr("os.remove", lambda path: (_ for _ in ()).throw(PermissionError("Mock permission denied")))
+
+    monkeypatch.setattr("dar_backup.cleanup.delete_catalog", lambda *a, **kw: True)
+    monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
+
+    from dar_backup.cleanup import delete_old_backups
+    delete_old_backups(str(backups), 30, "DIFF", args=MagicMock(), backup_definition="example")
+
+
+
+def test_delete_catalog_failure(monkeypatch):
+    monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
+    monkeypatch.setattr("dar_backup.cleanup.runner", MagicMock(run=lambda x: MagicMock(returncode=1, stderr="Failure")))
+
+    from dar_backup.cleanup import delete_catalog
+    result = delete_catalog("bad_catalog", args=MagicMock(config_file="/dev/null"))
+    assert result is False
+
+
+def test_invalid_backup_type(monkeypatch, tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
+    from dar_backup.cleanup import delete_old_backups
+    # Should log error and return early
+    delete_old_backups(str(backup_dir), 30, "INVALID_TYPE", args=MagicMock())
+
+
+
+
+def test_postreq_script_success(monkeypatch, env, caplog):
+    config_settings = MagicMock()
+    config_settings.config = {'POSTREQ': {'check': 'echo "post check ok"'}}
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "post check ok"
+    mock_result.stderr = ""
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
+
+    # Use the env's logger to patch util.logger
+    import dar_backup.util
+    monkeypatch.setattr(dar_backup.util, "logger", env.logger)
+
+    caplog.set_level(logging.DEBUG)
+
+    from dar_backup.util import requirements
+    requirements("POSTREQ", config_settings)
+
+    assert "post check ok" in caplog.text or "POSTREQ" in caplog.text
+
+
+def test_postreq_script_failure(monkeypatch, env, caplog):
+    config_settings = MagicMock()
+    config_settings.config = {'POSTREQ': {'check': 'exit 1'}}
+
+    mock_result = MagicMock()
+    mock_result.returncode = 1
+    mock_result.stdout = ""
+    mock_result.stderr = "mocked failure"
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
+
+    import dar_backup.util
+    monkeypatch.setattr(dar_backup.util, "logger", env.logger)
+
+    caplog.set_level(logging.DEBUG)
+
+    from dar_backup.util import requirements
+
+    with pytest.raises(RuntimeError) as exc_info:
+        requirements("POSTREQ", config_settings)
+
+    assert "POSTREQ check: 'exit 1' failed" in str(exc_info.value)
+    assert "mocked failure" in caplog.text
+
