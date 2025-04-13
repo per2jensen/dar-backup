@@ -20,6 +20,7 @@ import threading
 import traceback
 from datetime import datetime
 from dar_backup.config_settings import ConfigSettings
+import dar_backup.__about__ as about
 
 from typing import NamedTuple, List
 
@@ -72,7 +73,6 @@ def setup_logging(log_file: str, command_output_log_file: str, log_level: str = 
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setFormatter(formatter)
             logger.addHandler(stdout_handler)
-            #secondary_logger.addHandler(stdout_handler)
 
         return logger
     except Exception as e:
@@ -96,6 +96,66 @@ def get_logger(command_output_logger: bool = False) -> logging.Logger:
 
     return secondary_logger if command_output_logger else logger
 
+
+
+def extract_version(output):
+    match = re.search(r'(\d+\.\d+(\.\d+)?)', output)
+    return match.group(1) if match else "unknown"
+
+def get_binary_info(command):
+    """
+    Return information about a binary command.
+    Args:
+        command (str): The command to check.
+    Returns:
+        dict: A dictionary containing the command, path, version, and full output.
+        Dict structure:
+            {
+                "command": str,
+                "path": str,
+                "version": str,
+                "full_output": str
+            }
+    Raises:
+        Exception: If there is an error running the command.
+    """
+    path = shutil.which(command)
+    if path is None:
+        return {
+            "command": command,
+            "path": "Not found",
+            "version": "unknown",
+            "full_output": ""
+        }
+
+    try:
+        result = subprocess.run(
+            [path, '--version'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Combine output regardless of return code
+        combined_output = (result.stdout + result.stderr).strip()
+
+        # Even if returncode != 0, the version info may still be valid
+        version = extract_version(combined_output)
+
+        return {
+            "command": command,
+            "path": path,
+            "version": version if version else "unknown",
+            "full_output": combined_output
+        }
+
+    except Exception as e:
+        return {
+            "command": command,
+            "path": path,
+            "version": "error",
+            "full_output": str(e)
+        }
 
 
 def requirements(type: str, config_setting: ConfigSettings):
