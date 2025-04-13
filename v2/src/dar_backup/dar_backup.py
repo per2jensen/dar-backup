@@ -525,6 +525,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
             # Perform backup
             backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
+            if not isinstance(backup_result, list) or not all(isinstance(i, tuple) and len(i) == 2 for i in backup_result):
+                logger.error("Unexpected return format from generic_backup")
+                backup_result = [("Unexpected return format from generic_backup", 1)]
+
             results.extend(backup_result)
 
             logger.info("Starting verification...")
