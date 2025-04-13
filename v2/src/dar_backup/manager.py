@@ -32,6 +32,7 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging
 from dar_backup.util import CommandResult
 from dar_backup.util import get_logger
+from dar_backup.util import get_binary_info
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -240,7 +241,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
     
-    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q"]
+    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q", "--alter=ignore-order"]
     process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
 
@@ -430,6 +431,10 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
     logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
+    dar_manager_properties = get_binary_info(command='dar_manager')
+    logger.debug(f"dar_manager location: {dar_manager_properties['path']}")
+    logger.debug(f"dar_manager version: {dar_manager_properties['version']}")
+    
 
     # --- Sanity checks ---
     if args.add_dir and not args.add_dir.strip():
