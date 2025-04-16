@@ -3,7 +3,7 @@
 
 [![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
 [![PyPI monthly downloads](https://img.shields.io/pypi/dm/dar-backup)](https://pypi.org/project/dar-backup/)
-<!--TOTAL_DOWNLOADS-->
+[![Total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
 the heavy lifting, together with the par2 suite in these scripts.
