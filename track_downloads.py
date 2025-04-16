@@ -1,6 +1,6 @@
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 PACKAGE_NAME = "dar-backup"
 DATA_FILE = "downloads.json"
@@ -8,12 +8,12 @@ README_FILE = "README.md"
 MARKER = "<!--TOTAL_DOWNLOADS-->"
 
 # Initial total downloads up to today (manual seed from pepy or Shields)
-INITIAL_TOTAL = 12500  # change this to your actual known number
+INITIAL_TOTAL = 5202  # Per's best guess
 
-def get_today_downloads(package: str) -> int:
+def get_yesterday_downloads(package: str) -> int:
     try:
         result = subprocess.run(
-            ["pypistats", "python_minor", package, "--last-day", "--json"],
+            ["pypistats", "python_minor", package, "--last-day", "--days-back=1", "--json"],
             capture_output=True, text=True, check=True
         )
         data = json.loads(result.stdout)
@@ -48,19 +48,19 @@ def update_readme(total_downloads: int):
         print("Could not update README:", e)
 
 def main():
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    downloads_today = get_today_downloads(PACKAGE_NAME)
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    downloads = get_yesterday_downloads(PACKAGE_NAME)
 
     data = load_data()
-    if data["history"] and data["history"][-1]["date"] == today:
-        print("Already updated for today.")
+    if data["history"] and data["history"][-1]["date"] == yesterday:
+        print("Already updated for yesterday.")
         return
 
-    data["total"] += downloads_today
-    data["history"].append({"date": today, "downloads": downloads_today})
+    data["total"] += downloads
+    data["history"].append({"date": yesterday, "downloads": downloads})
     save_data(data)
     update_readme(data["total"])
-    print(f"Recorded {downloads_today} downloads for {today}. Total: {data['total']}")
+    print(f"Recorded {downloads} downloads for {yesterday}. Total: {data['total']}")
 
 if __name__ == "__main__":
     main()

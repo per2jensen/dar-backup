@@ -2,7 +2,7 @@ name: Update PyPI Downloads
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Every day at 00:00 UTC
+    - cron: '1 0 * * *'  # Every day at 01:00 UTC
   workflow_dispatch:      # Allow manual runs
 
 jobs:
