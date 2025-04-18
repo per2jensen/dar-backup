@@ -2,15 +2,8 @@
 source code is here: https://github.com/per2jensen/dar-backup/blob/main/track_downloads.py
 
 
-LICENSE:
-===========
-Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
-not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file
+LICENSE:  MIT License
 """
-
 
 import json
 import subprocess
@@ -18,10 +11,9 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 
-
 # --- CONFIGURATION ---
-PACKAGE_NAME = "dar-backup"
-SEED_TOTAL = 5200  # 👈 Change this to your known historical total
+PACKAGE_NAME = "pypi-package"
+SEED_TOTAL = 1234  # 👈 Change this to your known historical total
 JSON_FILE = Path("downloads.json")
 README_FILE = Path("README.md")
 MARKER = "<!--TOTAL_DOWNLOADS-->"
@@ -63,8 +55,14 @@ def save_download_data(data: dict):
         json.dump(data, f, indent=2)
 
 
-def update_readme(total: int):
-    """Update the README with the total downloads."""
+def update_readme(total: int, flagged: bool = False):
+    """
+    Update the README with the total downloads.
+    
+    Arguments:
+      total -- Total download count to be inserted.
+      flagged -- Boolean indicating if the count is repeated.
+    """
     if not README_FILE.exists():
         print("README.md not found.")
         return
@@ -73,8 +71,11 @@ def update_readme(total: int):
     updated = False
 
     for i, line in enumerate(lines):
-        if line.strip().startswith(MARKER):
-            lines[i] = f"{MARKER} 📦 Total PyPI downloads: {total}"
+        if MARKER in line:
+            lines[i] = line.replace(
+                MARKER,
+                f"{MARKER} 📦 Total PyPI downloads: {total}" + (" ⚠️ Repeated count" if flagged else "")
+            )
             updated = True
             break
 
@@ -97,10 +98,16 @@ def main():
         print(f"Already recorded downloads for {yesterday}. Skipping.")
         return
 
+    flagged = False
+    entry = {"date": yesterday, "count": count}
+    if len(data["history"]) >= 1 and data["history"][-1]["count"] == count:
+        flagged = True
+        entry["flagged"] = True
+        print(f"⚠️ Warning: Download count repeated ({count}) on {yesterday}")
     data["total"] += count
-    data["history"].append({"date": yesterday, "count": count})
+    data["history"].append(entry)
     save_download_data(data)
-    update_readme(data["total"])
+    update_readme(data["total"], flagged=flagged)
     print(f"Recorded {count} downloads for {yesterday}. Total: {data['total']}")
 
 
