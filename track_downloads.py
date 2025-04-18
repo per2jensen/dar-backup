@@ -1,8 +1,8 @@
 """
-PyPI Total Downloads Tracker (Simplified)
+PyPI Total Downloads Tracker (Block Marker Edition)
 
 Fetches total downloads without mirrors from PyPIStats
-and updates downloads.json and README.md accordingly.
+and replaces a block in README.md marked by custom START/END markers.
 
 LICENSE: MIT
 """
@@ -16,11 +16,11 @@ from pathlib import Path
 PACKAGE_NAME = "dar-backup"
 JSON_FILE = Path("downloads.json")
 README_FILE = Path("README.md")
-MARKER = "<!--TOTAL_DOWNLOADS-->"
+START_MARKER = "<!--PYPI_TOTAL_START-->"
+END_MARKER = "<!--PYPI_TOTAL_END-->"
 
 
 def fetch_total_downloads_without_mirrors(package: str) -> int:
-    """Fetch total downloads without mirrors using pypistats overall --json."""
     try:
         result = subprocess.run(
             ["pypistats", "overall", package, "--json"],
@@ -38,7 +38,6 @@ def fetch_total_downloads_without_mirrors(package: str) -> int:
 
 
 def save_download_data(total: int):
-    """Save total download count with the fetch date."""
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     data = {"total": total, "fetched": today}
     with open(JSON_FILE, "w") as f:
@@ -47,28 +46,26 @@ def save_download_data(total: int):
 
 
 def update_readme(total: int):
-    """Replace marker in README with total download count."""
     if not README_FILE.exists():
         print("README.md not found.")
         return
 
-    lines = README_FILE.read_text().splitlines()
-    updated = False
+    content = README_FILE.read_text()
+    start = content.find(START_MARKER)
+    end = content.find(END_MARKER)
 
-    for i, line in enumerate(lines):
-        if MARKER in line:
-            lines[i] = line.replace(
-                MARKER,
-                f"{MARKER} 📦 Total PyPI downloads: {total}"
-            )
-            updated = True
-            break
+    if start == -1 or end == -1 or start >= end:
+        print("Start or end marker not found or malformed.")
+        return
 
-    if updated:
-        README_FILE.write_text("\n".join(lines) + "\n")
-        print("README.md updated.")
-    else:
-        print("Marker not found in README.md.")
+    before = content[:start + len(START_MARKER)]
+    after = content[end:]
+
+    insert_block = f"\n📦 Total PyPI downloads: {total}\n"
+
+    updated_content = before + insert_block + after
+    README_FILE.write_text(updated_content)
+    print("README.md updated between markers.")
 
 
 def main():
