@@ -969,6 +969,7 @@ One backup definition per file
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)
  5. [PyPI](https://pypi.org/)
+ 6. Tracking PyPI downloads with [pypi-total-downloads-tracker](https://github.com/per2jensen/pypi-total-downloads-tracker)
 
 ## Reference
 
