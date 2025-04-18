@@ -1,68 +1,53 @@
 """
-source code is here: https://github.com/per2jensen/dar-backup/blob/main/track_downloads.py
+PyPI Total Downloads Tracker (Simplified)
 
+Fetches total downloads without mirrors from PyPIStats
+and updates downloads.json and README.md accordingly.
 
-LICENSE:  MIT License
+LICENSE: MIT
 """
 
 import json
 import subprocess
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 from pathlib import Path
 
-
 # --- CONFIGURATION ---
-PACKAGE_NAME = "pypi-package"
-SEED_TOTAL = 1234  # 👈 Change this to your known historical total
+PACKAGE_NAME = "dar-backup"
 JSON_FILE = Path("downloads.json")
 README_FILE = Path("README.md")
 MARKER = "<!--TOTAL_DOWNLOADS-->"
 
 
-def get_yesterday_date() -> str:
-    """Return yesterday's date in ISO format (UTC)."""
-    return (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
-
-
-def fetch_downloads_last_day(package: str) -> int:
-    """Run `pypistats recent <package> --json` and return last_day count."""
+def fetch_total_downloads_without_mirrors(package: str) -> int:
+    """Fetch total downloads without mirrors using pypistats overall --json."""
     try:
         result = subprocess.run(
-            ["pypistats", "recent", package, "--json"],
+            ["pypistats", "overall", package, "--json"],
             check=True,
             capture_output=True,
             text=True,
         )
         data = json.loads(result.stdout)
-        return data["data"]["last_day"]
+        for entry in data["data"]:
+            if entry["category"] == "without_mirrors":
+                return entry["downloads"]
     except Exception as e:
         print(f"Error fetching download data: {e}")
-        return 0
+    return 0
 
 
-def load_download_data() -> dict:
-    """Load or initialize the download JSON with a seed value."""
-    if JSON_FILE.exists():
-        with open(JSON_FILE, "r") as f:
-            return json.load(f)
-    print(f"{JSON_FILE} not found. Starting with seed total: {SEED_TOTAL}")
-    return {"total": SEED_TOTAL, "history": []}
-
-
-def save_download_data(data: dict):
-    """Save the updated download data to disk."""
+def save_download_data(total: int):
+    """Save total download count with the fetch date."""
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    data = {"total": total, "fetched": today}
     with open(JSON_FILE, "w") as f:
         json.dump(data, f, indent=2)
+    print(f"Saved total: {total} (as of {today})")
 
 
-def update_readme(total: int, flagged: bool = False):
-    """
-    Update the README with the total downloads.
-    
-    Arguments:
-      total -- Total download count to be inserted.
-      flagged -- Boolean indicating if the count is repeated.
-    """
+def update_readme(total: int):
+    """Replace marker in README with total download count."""
     if not README_FILE.exists():
         print("README.md not found.")
         return
@@ -74,7 +59,7 @@ def update_readme(total: int, flagged: bool = False):
         if MARKER in line:
             lines[i] = line.replace(
                 MARKER,
-                f"{MARKER} 📦 Total PyPI downloads: {total}" + (" ⚠️ Repeated count" if flagged else "")
+                f"{MARKER} 📦 Total PyPI downloads: {total}"
             )
             updated = True
             break
@@ -87,28 +72,13 @@ def update_readme(total: int, flagged: bool = False):
 
 
 def main():
-    yesterday = get_yesterday_date()
-    count = fetch_downloads_last_day(PACKAGE_NAME)
-    print(f"Fetched {count} downloads for {yesterday}.")
-
-    data = load_download_data()
-
-    # Avoid duplicate entries
-    if any(entry["date"] == yesterday for entry in data["history"]):
-        print(f"Already recorded downloads for {yesterday}. Skipping.")
-        return
-
-    flagged = False
-    entry = {"date": yesterday, "count": count}
-    if len(data["history"]) >= 1 and data["history"][-1]["count"] == count:
-        flagged = True
-        entry["flagged"] = True
-        print(f"⚠️ Warning: Download count repeated ({count}) on {yesterday}")
-    data["total"] += count
-    data["history"].append(entry)
-    save_download_data(data)
-    update_readme(data["total"], flagged=flagged)
-    print(f"Recorded {count} downloads for {yesterday}. Total: {data['total']}")
+    total = fetch_total_downloads_without_mirrors(PACKAGE_NAME)
+    print(f"Fetched total downloads (without mirrors): {total}")
+    if total > 0:
+        save_download_data(total)
+        update_readme(total)
+    else:
+        print("No valid download count received. Skipping update.")
 
 
 if __name__ == "__main__":
