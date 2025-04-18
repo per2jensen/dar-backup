@@ -2,8 +2,8 @@ name: Update PyPI Downloads
 
 on:
   schedule:
-    - cron: '15 3 * * *'  # Every day at 02:15 UTC
-  workflow_dispatch:      # Allow manual runs
+    - cron: '15 20 * * *'  # 20:15 PDT = 03:15 UTC next day
+  workflow_dispatch:       # Allow manual runs
 
 jobs:
   update:
