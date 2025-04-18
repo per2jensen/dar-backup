@@ -64,7 +64,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [Separate log file for command output](#separate-log-file-for-command-output)
   - [Skipping cache directories](#skipping-cache-directories)
   - [Progress bar + current directory](#progress-bar-and-current-directory)
-  - [Shell Autocompletion (Bash / Zsh)](#shell-Autocompletion--bash---zsh)
+  - [Shell Autocompletion](#shell-autocompletion)
 - [Todo](#todo)
 - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
 - [Reference](#reference)
@@ -948,7 +948,7 @@ dar-backup displays 2 visual artifacts to show progress.
 
 The indicators are not shown if dar-backup is run from systemd or if it is used in terminal multiplexers like `tmux` or `screen`. So no polluting of journald logs.
 
-### Shell Autocompletion (Bash / Zsh)
+### Shell autocompletion
 
 The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-completion, making them easier and faster to use.
 
