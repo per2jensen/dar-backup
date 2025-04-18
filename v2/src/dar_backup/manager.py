@@ -20,7 +20,7 @@
    This script creates and maintains `dar` databases with catalogs.
 """
 
-
+import argcomplete
 import argparse
 import os
 import re
@@ -36,6 +36,7 @@ from dar_backup.util import get_binary_info
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
+from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from datetime import datetime
 from time import time
@@ -367,9 +368,9 @@ def build_arg_parser():
     parser.add_argument('--create-db', action='store_true', help='Create missing databases for all backup definitions')
     parser.add_argument('--alternate-archive-dir', type=str, help='Use this directory instead of BACKUP_DIR in config file')
     parser.add_argument('--add-dir', type=str, help='Add all archive catalogs in this directory to databases')
-    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition')
-    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database')
-    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database')
+    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer
+    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = list_archive_completer
+    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = list_archive_completer
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
     parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
     parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog.")
@@ -395,9 +396,10 @@ def main():
         return
 
     parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
-    # [parser.add_argument(...) as before...]
-
     parser = build_arg_parser()
+
+    argcomplete.autocomplete(parser)
+
     args = parser.parse_args()
 
     if args.more_help:

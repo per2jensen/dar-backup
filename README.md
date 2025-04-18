@@ -64,6 +64,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [Separate log file for command output](#separate-log-file-for-command-output)
   - [Skipping cache directories](#skipping-cache-directories)
   - [Progress bar + current directory](#progress-bar-and-current-directory)
+  - [Shell Autocompletion (Bash / Zsh)](#shell-Autocompletion--bash---zsh)
 - [Todo](#todo)
 - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
 - [Reference](#reference)
@@ -810,7 +811,6 @@ When restoring and using `/tmp` for --restore-dir, the restored files can be fou
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name> --selection "-g path/to/file"
 deactivate
-
 ```
 
 ### a directory
@@ -900,7 +900,6 @@ dar -t pj-homedir_FULL_2021-09-12
 for file in pj-homedir_FULL_yyyy-mm-dd.*.dar; do
   par2 c -r5 -n1 "$file"
 done
-
 ````
 
 ### dar manager databases
@@ -948,6 +947,88 @@ dar-backup displays 2 visual artifacts to show progress.
 2. a status line showing the directory being backed up. If the directory is big and takes time to backup, the line is not changing, but you will probably know there is a lot to backup.
 
 The indicators are not shown if dar-backup is run from systemd or if it is used in terminal multiplexers like `tmux` or `screen`. So no polluting of journald logs.
+
+### Shell Autocompletion (Bash / Zsh)
+
+The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-completion, making them easier and faster to use.
+
+✅ Features
+
+- Autocomplete for all long options (--config-file, --restore, etc.)
+
+- Dynamic suggestions based on your config:
+
+- --backup-definition shows available definitions from backup.d/
+
+- show relevant archives when a backup definition has been chosen:
+
+  dar-backup: --restore, --list-contents, and --alternate-reference-archive
+
+  cleanup: --cleanup-specific-archives
+
+  manager:  --add-specific-archive, --remove-specific-archive
+  
+- Supports paths like ~ and $HOME correctly
+
+#### Use it
+
+Try typing:
+
+```bash
+dar-backup --<TAB>
+```
+
+You should see all available flags like --full-backup, --restore, etc.
+
+Try completion of backup definition and then list contents:
+
+```bash
+    dar-backup --backup-definition <TAB>
+    dar-backup -d <the chosen backup-definition> --list-contents <TAB>
+```
+
+#### Enabling Bash completion
+
+Try auto completion in your session:
+
+```bash
+eval "$(register-python-argcomplete dar-backup)"
+eval "$(register-python-argcomplete cleanup)"
+eval "$(register-python-argcomplete manager)"
+```
+
+To make it persistent across sessions, add this to your ~/.bashrc:
+
+```bash
+# Enable autocompletion for dar-backup
+eval "$(register-python-argcomplete dar-backup)"
+eval "$(register-python-argcomplete cleanup)"
+eval "$(register-python-argcomplete manager)"
+```
+
+Then reload your shell:
+
+```bash
+source ~/.bashrc
+```
+
+#### Enable Zsh Completion
+
+If you're using Zsh, add this to your .zshrc:
+
+```zsh
+autoload -U bashcompinit
+bashcompinit
+eval "$(register-python-argcomplete dar-backup)"
+eval "$(register-python-argcomplete cleanup)"
+eval "$(register-python-argcomplete manager)"
+```
+
+Then reload Zsh:
+
+```zsh
+source ~/.zshrc
+```
 
 ## Todo
 

@@ -6,7 +6,7 @@
 cd <path/to/dar-backup/v2>
 python3 -m venv venv
 . venv/bin/activate
-pip install inputimeout build hatch hatchling pytest pytest-cov twine wheel psutil pytest-timeout
+pip install inputimeout build hatch hatchling pytest pytest-cov twine wheel psutil pytest-timeout argcomplete
 ````
 
 ## Activate the venv

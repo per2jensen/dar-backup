@@ -13,6 +13,7 @@ This script removes old DIFF and INCR archives + accompanying .par2 files accord
 [AGE] settings in the configuration file.
 """
 
+import argcomplete
 import argparse
 import logging
 import os
@@ -31,6 +32,7 @@ from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
+from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -186,16 +188,19 @@ def main():
     global logger, runner
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
-    parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.")
+    parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer
     parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
-    parser.add_argument('--cleanup-specific-archives', type=str, help="Comma separated list of archives to cleanup") 
+    parser.add_argument('--cleanup-specific-archives', type=str, help="Comma separated list of archives to cleanup").completer = list_archive_completer 
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--test-mode', action='store_true', help='Read envvars in order to run some pytest cases')
+
+    argcomplete.autocomplete(parser)
+
     args = parser.parse_args()
 
     args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))

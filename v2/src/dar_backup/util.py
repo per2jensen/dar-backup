@@ -9,6 +9,7 @@ See section 15 and section 16 in the supplied "LICENSE" file
 """
 import typing
 import locale
+import configparser
 import logging
 import os
 import re
@@ -23,6 +24,7 @@ from dar_backup.config_settings import ConfigSettings
 import dar_backup.__about__ as about
 
 from typing import NamedTuple, List
+
 
 logger=None
 secondary_logger=None   
@@ -297,5 +299,99 @@ def list_backups(backup_dir, backup_definition=None):
         formatted_size = locale.format_string("%d", int(size), grouping=True)
         print(f"{backup.ljust(max_name_length)} : {formatted_size.rjust(max_size_length)} MB")
 
+
+def expand_path(path: str) -> str:
+    """
+    Expand ~ and environment variables like $HOME in a path.
+    """
+    return os.path.expanduser(os.path.expandvars(path))
+
+
+
+def backup_definition_completer(prefix, parsed_args, **kwargs):
+    config_path = getattr(parsed_args, 'config_file', '~/.config/dar-backup/dar-backup.conf')
+    config_path = expand_path(config_path)
+    config_file = os.path.expanduser(config_path)
+    try:
+        config = ConfigSettings(config_file)
+        backup_d_dir = os.path.expanduser(config.backup_d_dir)
+        return [f for f in os.listdir(backup_d_dir) if f.startswith(prefix)]
+    except Exception:
+        return []
+
+
+def extract_backup_definition_fallback() -> str:
+    """
+    Extracts --backup-definition or -d value directly from COMP_LINE.
+    This is needed because argcomplete doesn't always populate parsed_args fully.
+
+    Returns:
+        str: The value of the --backup-definition argument if found, else an empty string.
+    """
+    comp_line = os.environ.get("COMP_LINE", "")
+    # Match both "--backup-definition VALUE" and "-d VALUE"
+    match = re.search(r"(--backup-definition|-d)\s+([^\s]+)", comp_line)
+    if match:
+        return match.group(2)
+    return ""
+
+
+
+def list_archive_completer(prefix, parsed_args, **kwargs):
+    import os
+    import configparser
+    from dar_backup.util import extract_backup_definition_fallback
+
+    backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
+    config_path = getattr(parsed_args, "config_file", None) or "~/.config/dar-backup/dar-backup.conf"
+
+    config_path = os.path.expanduser(os.path.expandvars(config_path))
+    if not os.path.exists(config_path):
+        return []
+
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    backup_dir = config.get("DIRECTORIES", "BACKUP_DIR", fallback="")
+    backup_dir = os.path.expanduser(os.path.expandvars(backup_dir))
+
+    if not os.path.isdir(backup_dir):
+        return []
+
+    files = os.listdir(backup_dir)
+    archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
+
+    return [
+        f.rsplit(".1.dar", 1)[0]
+        for f in files
+        if archive_re.match(f)
+    ]
+
+def _list_archive_completer(prefix, parsed_args, **kwargs):
+    import os
+    import configparser
+    from dar_backup.util import extract_backup_definition_fallback
+
+    backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
+    config_path = getattr(parsed_args, "config_file", None) or "~/.config/dar-backup/dar-backup.conf"
+
+    config_path = os.path.expanduser(os.path.expandvars(config_path))
+    if not os.path.exists(config_path):
+        return []
+
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    backup_dir = config.get("DIRECTORIES", "BACKUP_DIR", fallback="")
+    backup_dir = os.path.expanduser(os.path.expandvars(backup_dir))
+
+    if not os.path.isdir(backup_dir):
+        return []
+
+    files = os.listdir(backup_dir)
+    
+    if backup_def:
+        prefix_match = f"{backup_def}_"
+        return [f for f in files if f.startswith(prefix_match) and f.endswith(".1.dar")]
+    else:
+        return [f for f in files if f.endswith(".1.dar")]
 
 

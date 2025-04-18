@@ -14,6 +14,8 @@ This script can be used to control `dar` to backup parts of or the whole system.
 """
 
 
+
+import argcomplete
 import argparse
 import filecmp
 
@@ -47,12 +49,14 @@ from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 from dar_backup.util import requirements
 from dar_backup.util import get_binary_info
+from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
 
 from dar_backup.rich_progress import show_log_driven_bar
 
+from argcomplete.completers import FilesCompleter
 
 logger = None
 runner = None
@@ -758,15 +762,15 @@ def main():
     parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
     parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
-    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.")
-    parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.")
+    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer
+    parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
-    parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
-    parser.add_argument('--list-contents', help="List the contents of the specified archive.")
+    parser.add_argument('-l', '--list', action='store_true', help="List available archives.").completer = list_archive_completer
+    parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
     parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
-    parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.")
+    parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--suppress-dar-msg', action='store_true', help="cancel dar options in .darrc: -vt, -vs, -vd, -vf and -va")
@@ -779,6 +783,8 @@ def main():
     parser.add_argument("--changelog", action="store_true", help="Print Changelog.md to stdout and exit.")
     parser.add_argument("--changelog-pretty", action="store_true", help="Print Changelog.md to stdout with Markdown styling and exit.")
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
+    
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     if args.version:
