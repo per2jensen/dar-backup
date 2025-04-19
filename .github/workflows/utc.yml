@@ -1,0 +1,16 @@
+name: UTC
+
+on:
+  schedule:
+    - cron: '15 7 * * *'  # Runs every day at 07:15 UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Log current UTC time
+        run: |
+          echo Time of workflow run:
+          date -u
