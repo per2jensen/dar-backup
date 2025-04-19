@@ -2,7 +2,7 @@ name: UTC
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Runs every day at 08:00 UTC
+    - cron: '15 7 * * *'  # Runs every day at 07:15 UTC
   workflow_dispatch:       # Allow manual trigger
 
 jobs:
