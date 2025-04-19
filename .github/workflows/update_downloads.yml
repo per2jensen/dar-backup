@@ -2,7 +2,8 @@ name: Update PyPI Downloads
 
 on:
   schedule:
-    - cron: '3 6 * * *'  # 20:15 PDT = 03:15 UTC next day
+# 3:15 UTC according to https://docs.github.com/en/actions/use-cases-and-examples/project-management/scheduling-issue-creation 
+    - cron: */5 * * * *
   workflow_dispatch:       # Allow manual runs
 
 jobs:
@@ -13,6 +14,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Log current UTC time
+        run: |
+          echo Time of workflow run:
+          date -u
+          
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
