@@ -19,7 +19,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 - [Full, differential or incremental backups using 'dar'](#full-differential-or-incremental-backups-using-dar)
 - [My use case](#my-use-case)
 - [License](#license)
-- [Changelog](#changelog)
+- [Changelog version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
 - [Status](#status)
   - [GPG Signing key](#gpg-signing-key)
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
@@ -100,10 +100,6 @@ I have cloud storage mounted on a directory within my home dir. The filesystem i
 
   These scripts are licensed under the GPLv3 license.
   Read more here: [GNU CPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
-
-## Changelog
-
-Here is the link to the [Changelog of version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
 
 ## Status
 
