@@ -368,71 +368,119 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
     ]
 
 
-
-import os
-import subprocess
-import re
-from datetime import datetime
-from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import expand_path
-
 def archive_content_completer(prefix, parsed_args, **kwargs):
     """
-    Completes archive names from catalog databases.
-    - If --backup-def is given, only search its .db.
-    - Otherwise, scan all *.db files in backup_dir.
-    - Filters by prefix and sorts by name + date.
+    Completes archive names from all available *.db files.
+    If --backup-def is given, only that one is used.
+    Only entries found in the catalog database (via `dar_manager --list`) are shown.
     """
 
-    config_file = getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf")
-    config_file = expand_path(config_file)
+    from dar_backup.config_settings import ConfigSettings
+    import subprocess
+    import re
+    import os
+    from datetime import datetime
 
-    backup_def = getattr(parsed_args, "backup_def", None)
-
+    # Expand config path
+    config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
     config = ConfigSettings(config_file=config_file)
     backup_dir = config.backup_dir
 
+    # Which db files to inspect?
+    backup_def = getattr(parsed_args, "backup_def", None)
+    db_files = (
+        [os.path.join(backup_dir, f"{backup_def}.db")]
+        if backup_def
+        else [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith(".db")]
+    )
+
     completions = []
 
-    db_paths = []
-    if backup_def:
-        db_path = os.path.join(backup_dir, f"{backup_def}.db")
+    for db_path in db_files:
         if not os.path.exists(db_path):
-            return [f"[missing: {db_path}]"]
-        db_paths.append(db_path)
-    else:
-        db_paths = [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith(".db")]
+            continue
 
-    for db_path in db_paths:
         try:
             result = subprocess.run(
                 ["dar_manager", "--base", db_path, "--list"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
-                check=True,
+                check=True
             )
-
-            for line in result.stdout.splitlines():
-                line = line.strip()
-                if not line or "archive #" in line or "dar path" in line or line.startswith("compression"):
-                    continue
-                parts = line.split("\t")
-                if len(parts) >= 3:
-                    archive = parts[2].strip()
-                    if archive.startswith(prefix):
-                        completions.append(archive)
-
         except subprocess.CalledProcessError:
             continue
 
-    # Sort: by archive base name (before first "_") then by date in name
-    def sort_key(arch):
-        prefix = arch.split("_")[0]
-        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", arch)
-        date = datetime.strptime(date_match.group(1), "%Y-%m-%d") if date_match else datetime.min
-        return (prefix, date)
+        for line in result.stdout.splitlines():
+            parts = line.strip().split("\t")
+            if len(parts) >= 3:
+                archive = parts[2].strip()
+                if archive.startswith(prefix):
+                    completions.append(archive)
+
+    # Sort: first by name (before first '_'), then by date (YYYY-MM-DD)
+    def sort_key(archive):
+        name_part = archive.split("_")[0]
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", archive)
+        date = datetime.strptime(date_match.group(0), "%Y-%m-%d") if date_match else datetime.min
+        return (name_part, date)
 
     completions = sorted(set(completions), key=sort_key)
-    return completions if completions else ["[no matching archives]"]
+    return completions or ["[no matching archives]"]
+
+
+
+def add_specific_archive_completer(prefix, parsed_args, **kwargs):
+    """
+    Autocompletes archives that are present in the BACKUP_DIR
+    but not yet present in the <backup_def>.db catalog.
+    If --backup-def is provided, restrict suggestions to that.
+    """
+    from dar_backup.config_settings import ConfigSettings
+    import subprocess
+    import re
+    import os
+    from datetime import datetime
+
+    config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
+    config = ConfigSettings(config_file=config_file)
+    backup_dir = config.backup_dir
+    backup_def = getattr(parsed_args, "backup_def", None)
+
+    # Match pattern for archive base names: e.g. test_FULL_2025-04-01
+    dar_pattern = re.compile(r"^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1\.dar$")
+
+    # Step 1: scan backup_dir for .1.dar files
+    all_archives = set()
+    for fname in os.listdir(backup_dir):
+        match = dar_pattern.match(fname)
+        if match:
+            base = match.group(1)
+            if base.startswith(prefix):
+                if not backup_def or base.startswith(f"{backup_def}_"):
+                    all_archives.add(base)
+
+    # Step 2: exclude ones already present in the .db
+    db_path = os.path.join(backup_dir, f"{backup_def}.db") if backup_def else None
+    existing = set()
+
+    if db_path and os.path.exists(db_path):
+        try:
+            result = subprocess.run(
+                ["dar_manager", "--base", db_path, "--list"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True
+            )
+            for line in result.stdout.splitlines():
+                parts = line.strip().split("\t")
+                if len(parts) >= 3:
+                    existing.add(parts[2].strip())
+        except subprocess.CalledProcessError:
+            pass
+
+    # Step 3: return filtered list
+    candidates = sorted(archive for archive in all_archives if archive not in existing)
+    return candidates or ["[no new archives]"]
 

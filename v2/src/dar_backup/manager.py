@@ -25,6 +25,9 @@ import argparse
 import os
 import re
 import sys
+import subprocess
+
+from inputimeout import inputimeout, TimeoutOccurred
 
 
 from . import __about__ as about
@@ -36,7 +39,7 @@ from dar_backup.util import get_binary_info
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
-from dar_backup.util import backup_definition_completer, list_archive_completer, archive_content_completer
+from dar_backup.util import backup_definition_completer, list_archive_completer, archive_content_completer, add_specific_archive_completer
 
 from datetime import datetime
 from time import time
@@ -84,8 +87,62 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
 
     return process.returncode
 
+def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> CommandResult:
+    """
+    List catalogs from the database for the given backup definition.
 
-def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> NamedTuple:
+    Returns:
+        A CommandResult containing the raw stdout/stderr and return code.
+    """
+    database = f"{backup_def}{DB_SUFFIX}"
+    database_path = os.path.join(config_settings.backup_dir, database)
+
+    if not os.path.exists(database_path):
+        error_msg = f'Database not found: "{database_path}"'
+        logger.error(error_msg)
+        return CommandResult(1, '', error_msg)
+
+    command = ['dar_manager', '--base', database_path, '--list']
+    process = runner.run(command)
+    stdout, stderr = process.stdout, process.stderr
+
+    if process.returncode != 0:
+        logger.error(f'Error listing catalogs for: "{database_path}"')
+        logger.error(f"stderr: {stderr}")
+        logger.error(f"stdout: {stdout}")
+        return process
+
+    # Extract only archive basenames from stdout
+    archive_names = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line or "archive #" in line or "dar path" in line or "compression" in line:
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            archive_names.append(parts[2].strip())
+
+    # Sort by prefix and date
+    def extract_date(arch_name):
+        match = re.search(r"(\d{4}-\d{2}-\d{2})", arch_name)
+        if match:
+            return datetime.strptime(match.group(1), "%Y-%m-%d")
+        return datetime.min
+
+    def sort_key(name):
+        prefix = name.split("_", 1)[0]
+        return (prefix, extract_date(name))
+
+    archive_names = sorted(archive_names, key=sort_key)
+
+    if not suppress_output:
+        for name in archive_names:
+            print(name)
+
+    return process
+
+
+def _list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> NamedTuple:
     """
     Returns:
        a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
@@ -98,30 +155,27 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
+
     if not os.path.exists(database_path):
         error_msg = f'Database not found: "{database_path}"'
         logger.error(error_msg)
         return CommandResult(1, '', error_msg)
 
-        # commandResult = CommandResult(
-        # process=None,
-        # stdout='',
-        # stderr=error_msg,
-        # returncode=1,
-        # timeout=1,
-        # command=[])
-
-        # return commandResult
     command = ['dar_manager', '--base', database_path, '--list']
     process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr 
+    stdout, stderr = process.stdout, process.stderr
+
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
         logger.error(f"stderr: {stderr}")  
         logger.error(f"stdout: {stdout}")
     else:
         if not suppress_output:
-            print(stdout)
+            for line in stdout.splitlines():
+                parts = line.strip().split("\t")
+                if len(parts) >= 3 and parts[2]:
+                    print(parts[2].strip())
+
     return process
 
 
@@ -238,7 +292,86 @@ def find_file(file, backup_def, config_settings):
     return process.returncode
 
 
-def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
+def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str = None) -> int:
+    """
+    Adds the specified archive to its catalog database. Prompts for confirmation if it's older than existing entries.
+
+    Returns:
+        0 on success
+        1 on failure
+    """
+    # Determine archive path
+    if not directory:
+        directory = config_settings.backup_dir
+    archive = os.path.basename(archive)  # strip path if present
+    archive_path = os.path.join(directory, archive)
+    archive_test_path = os.path.join(directory, f'{archive}.1.dar')
+
+    if not os.path.exists(archive_test_path):
+        logger.error(f'dar backup: "{archive_test_path}" not found, exiting')
+        return 1
+
+    # Validate backup definition
+    backup_definition = archive.split('_')[0]
+    backup_def_path = os.path.join(config_settings.backup_d_dir, backup_definition)
+    if not os.path.exists(backup_def_path):
+        logger.error(f'backup definition "{backup_definition}" not found (--add-specific-archive option probably not correct), exiting')
+        return 1
+
+    # Determine catalog DB path
+    database = f"{backup_definition}{DB_SUFFIX}"
+    database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
+
+    # Safety check: is archive older than latest in catalog?
+    try:
+        result = subprocess.run(
+            ["dar_manager", "--base", database_path, "--list"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True
+        )
+        all_lines = result.stdout.splitlines()
+        date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+        catalog_dates = [
+            datetime.strptime(date_match.group(), "%Y-%m-%d")
+            for line in all_lines
+            if (date_match := date_pattern.search(line))
+        ]
+
+        if catalog_dates:
+            latest_date = max(catalog_dates)
+            archive_date_match = date_pattern.search(archive)
+            if archive_date_match:
+                archive_date = datetime.strptime(archive_date_match.group(), "%Y-%m-%d")
+                if archive_date < latest_date:
+                    if not confirm_add_old_archive(archive, latest_date.strftime("%Y-%m-%d")):
+                        logger.info(f"Archive {archive} skipped due to user declining to add older archive.")
+                        return 1
+
+    except subprocess.CalledProcessError:
+        logger.warning("Could not determine latest catalog date for chronological check.")
+
+    logger.info(f'Add "{archive_path}" to catalog: "{database}"')
+
+    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q", "--alter=ignore-order"]
+    process = runner.run(command)
+    stdout, stderr = process.stdout, process.stderr
+
+    if process.returncode == 0:
+        logger.info(f'"{archive_path}" added to its catalog')
+    elif process.returncode == 5:
+        logger.warning(f'Something did not go completely right adding "{archive_path}" to its catalog, dar_manager error: "{process.returncode}"')
+    else:
+        logger.error(f'something went wrong adding "{archive_path}" to its catalog, dar_manager error: "{process.returncode}"')
+        logger.error(f"stderr: {stderr}")
+        logger.error(f"stdout: {stdout}")
+
+    return process.returncode
+
+
+def _add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
     # sanity check - does dar backup exist?
     if not directory:
         directory = config_settings.backup_dir
@@ -351,6 +484,31 @@ def backup_def_from_archive(archive: str) -> str:
     return None
 
 
+def confirm_add_old_archive(archive_name: str, latest_known_date: str, timeout_secs: int = 20) -> bool:
+    """
+    Confirm with the user if they want to proceed with adding an archive older than the most recent in the catalog.
+    Returns True if the user confirms with "yes", False otherwise.
+    """
+    try:
+        prompt = (
+            f"⚠️ Archive '{archive_name}' is older than the latest in the catalog ({latest_known_date}).\n"
+            f"Adding older archives may lead to inconsistent restore chains.\n"
+            f"Are you sure you want to continue? (yes/no): "
+        )
+        confirmation = inputimeout(prompt=prompt, timeout=timeout_secs)
+
+        if confirmation is None:
+            logger.info(f"No confirmation received for old archive: {archive_name}. Skipping.")
+            return False
+        return confirmation.strip().lower() == "yes"
+
+    except TimeoutOccurred:
+        logger.info(f"Timeout waiting for confirmation for old archive: {archive_name}. Skipping.")
+        return False
+    except KeyboardInterrupt:
+        logger.info(f"User interrupted confirmation for old archive: {archive_name}. Skipping.")
+        return False
+
 
 def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> int:
     """
@@ -388,10 +546,10 @@ def build_arg_parser():
     parser.add_argument('--alternate-archive-dir', type=str, help='Use this directory instead of BACKUP_DIR in config file')
     parser.add_argument('--add-dir', type=str, help='Add all archive catalogs in this directory to databases')
     parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer
-    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = list_archive_completer
-    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = list_archive_completer
+    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = add_specific_archive_completer
+    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = archive_content_completer
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
-    parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
+#    parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
     parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
@@ -500,11 +658,6 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         sys.exit(1)
         return
 
-    if args.list_catalog_contents and not args.backup_def:
-        logger.error(f"--list-catalog-contents requires the --backup-def, exiting")
-        sys.exit(1)
-        return
-
     if args.find_file and not args.backup_def:
         logger.error(f"--find-file requires the --backup-def, exiting")
         sys.exit(1)
@@ -563,10 +716,6 @@ See section 15 and section 16 in the supplied "LICENSE" file.''')
         sys.exit(result)
         return
 
-    if args.list_catalog_contents:
-        result = list_catalog_contents(args.list_catalog_contents, args.backup_def, config_settings)
-        sys.exit(result)
-        return
 
     if args.find_file:
         result = find_file(args.find_file, args.backup_def, config_settings)

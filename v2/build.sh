@@ -32,7 +32,10 @@ cp Changelog.md "$TEMP_CHANGELOG"
 
 trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
 
-python3 -m build && pip install --force-reinstall dist/dar_backup-"${VERSION}"-py3-none-any.whl
+#python3 -m build && pip install --force-reinstall dist/dar_backup-"${VERSION}"-py3-none-any.whl
+
+python3 -m build
+pip install -e .
 
 # cleanup
 rm -f TEMP_README

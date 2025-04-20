@@ -967,7 +967,7 @@ The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-
 
   cleanup: --cleanup-specific-archives
 
-  manager:  --list-archive-contents, --add-specific-archive, --remove-specific-archive
+  manager:  --list-archive-contents, --add-specific-archive (autocomplete those **not* in the catalog database), --remove-specific-archive
   
 - Supports paths like ~ and $HOME correctly
 

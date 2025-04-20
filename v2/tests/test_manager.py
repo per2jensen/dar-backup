@@ -209,33 +209,6 @@ def test_list_catalog_short_option(setup_environment: None, env: EnvData):
 
 
 
-def test_list_catalog_contents(setup_environment: None, env: EnvData):
-    """
-    Add a backup to it's catalog database, then list the contents
-    """
-    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    today_date = date.today().strftime("%Y-%m-%d")
-    generate_catalog_db(env)
-    files = generate_test_data_and_full_backup(env)
-
-    command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr
-    env.logger.info(f"stdout:\n{stdout}")
-    if process.returncode != 0:
-        print(f"stderr: {stderr}")  
-        raise Exception(f"Command failed: {command}")
-
-
-    # Loop over the file names in the 'files' dictionary and verify they are present in stdout
-    for file_name in files.keys():
-        if file_name not in stdout:
-            raise Exception(f"File name '{file_name}' not found in stdout")
-
-    print("All file names are present in stdout")
-
-
-
 def test_find_file(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then find some files in the catalog
@@ -249,7 +222,9 @@ def test_find_file(setup_environment: None, env: EnvData):
     generate_catalog_db(env)
     files = generate_test_data_and_full_backup(env)
 
-    command = ['manager', '--list-catalog-contents', '1', '-d', 'example', '--config-file', env.config_file]
+    archive_name = f"example_FULL_{today_date}"
+    command = ['manager', '--list-archive-contents', archive_name, '--config-file', env.config_file]
+
     process = runner.run(command)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
@@ -359,29 +334,6 @@ def test_list_archive_contents(setup_environment: None, env: EnvData):
             raise Exception(f"File name '{file_name}' not found in stdout")
 
     print("All file names are present in stdout")
-
-
-
-def test_list_catalog_contents_fail(setup_environment: None, env: EnvData):
-    """
-    verify failing if params given to the --list-catalog-contents are wrong
-    """
-    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    command = ['manager', '--list-catalog-contents', 'test', '-d', 'example', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = runner.run(command)
-    env.logger.info(f"Return code: {process.returncode}")
-    assert process.returncode == 2, "argument to --list-catalog-contents must be an integer"
-
-
-    command = ['manager', '--list-catalog-contents', '1', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = runner.run(command)
-    env.logger.info(f"Return code: {process.returncode}")
-    assert process.returncode == 1, "--list-catalog-contents requires --backup-def  option"
-
-    command = ['manager', '--list-catalog-contents', '1', '-d' , '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = runner.run(command)
-    env.logger.info(f"Return code: {process.returncode}")
-    assert process.returncode == 2, "argument to --backup-def must be given"
 
 
 
@@ -593,27 +545,6 @@ def test_manager_add_and_remove_specific_archive(tmp_path, monkeypatch):
 
     mock_logger.error.assert_any_call("you can't add and remove archives in the same operation, exiting")
     mock_exit.assert_called_once_with(1)
-
-
-# --- 5. --list-catalog-contents without --backup-def
-def test_manager_list_catalog_contents_without_def(tmp_path, monkeypatch):
-    config_path = create_test_config_file(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["manager.py", "--list-catalog-contents", "1", "--config-file", str(config_path)])
-    mock_logger = MagicMock()
-
-    with patch("dar_backup.manager.setup_logging", return_value=mock_logger), \
-         patch("sys.exit") as mock_exit:
-        import dar_backup.manager as mgr
-
-        print("=== DEBUG CONFIG FILE ===")
-        print(config_path.read_text())
-        print("=========================")
-
-        mgr.main()
-
-    mock_logger.error.assert_any_call("--list-catalog-contents requires the --backup-def, exiting")
-    mock_exit.assert_called_once_with(1)
-
 
 
 def test_manager_with_alternate_archive_dir(tmp_path, monkeypatch):
@@ -887,7 +818,8 @@ def test_add_specific_archive_success(tmp_path):
         mock_runner.run.return_value = mock_process
         result = add_specific_archive(archive_name, config)
 
-    mock_logger.info.assert_any_call(f'"{tmp_path / archive_name}" added to it\'s catalog')
+    mock_logger.info.assert_any_call(f'"{tmp_path / archive_name}" added to its catalog')
+    #mock_logger.info.assert_any_call(f'"{tmp_path / archive_name}" added to it\'s catalog')
     assert result == 0
 
 
@@ -911,7 +843,7 @@ def test_add_specific_archive_warning(tmp_path):
         result = add_specific_archive(archive_name, config)
 
     mock_logger.warning.assert_called_with(
-        f'Something did not go completely right adding "{tmp_path / archive_name}" to it\'s catalog, dar_manager error: "5"'
+    f'Something did not go completely right adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "5"'
     )
     assert result == 5
 
@@ -937,7 +869,7 @@ def test_add_specific_archive_failure(tmp_path):
 
         result = add_specific_archive(archive_name, config)
 
-    mock_logger.error.assert_any_call(f'something went wrong adding "{tmp_path / archive_name}" to it\'s catalog, dar_manager error: "42"')
+    mock_logger.error.assert_any_call(f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"')
     mock_logger.error.assert_any_call("stderr: error err")
     mock_logger.error.assert_any_call("stdout: error out")
     assert result == 42

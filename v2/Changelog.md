@@ -14,6 +14,8 @@ Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-b
 
 - Improvement to command_runner.run(), more robust decoding
 
+- Manager --add-specific-archive now gives a warning if user attempts to add a catalog that breaks chronology. The user is allowed to go forward and ignore the warning. The program times out after a little time and discards the operation.
+
 ## v2-beta-0.6.18 - 2025-04-05
 
 Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.18/v2)

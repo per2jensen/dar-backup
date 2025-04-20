@@ -120,20 +120,42 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
     assert sorted(result) == sorted(expected)
     
 
-
 def test_archive_content_completer_global_prefix_match(tmp_path):
     from dar_backup.util import archive_content_completer
 
-    # Create dummy databases
+    # -- 1. Create dummy config file with required sections
+    dummy_config = tmp_path / "dummy.conf"
+    dummy_config.write_text(f"""\
+[MISC]
+LOGFILE_LOCATION = /tmp/test.log
+MAX_SIZE_VERIFICATION_MB = 100
+MIN_SIZE_VERIFICATION_MB = 1
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 5
+
+[DIRECTORIES]
+BACKUP_DIR = {tmp_path}
+TEST_RESTORE_DIR = /tmp/restore
+BACKUP.D_DIR = /tmp/backup.d
+
+[AGE]
+DIFF_AGE = 3
+INCR_AGE = 1
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 10
+ENABLED = false
+""")
+
+    # -- 2. Create dummy databases
     db_path1 = tmp_path / "pCloudDrive.db"
     db_path2 = tmp_path / "testBackup.db"
     db_path1.touch()
     db_path2.touch()
 
     class Args:
-        config_file = str(tmp_path / "dummy.conf")
+        config_file = str(dummy_config)
         backup_def = None
-
 
     def fake_run(cmd, **kwargs):
         if any("pCloudDrive.db" in part for part in cmd):
@@ -155,48 +177,69 @@ def test_archive_content_completer_global_prefix_match(tmp_path):
             )
         return SimpleNamespace(stdout="", returncode=1)
 
-
-    with patch("dar_backup.util.ConfigSettings") as MockConfig, \
-         patch("dar_backup.util.subprocess.run", side_effect=fake_run):
-        MockConfig.return_value.backup_dir = str(tmp_path)
-
+    with patch("subprocess.run", side_effect=fake_run):
         result = archive_content_completer("p", Args())
 
-        assert set(result) == {
-            "pCloudDrive_FULL_2024-01-01",
-            "pCloudDrive_DIFF_2024-01-02",
-            "pCloudDrive_INCR_2024-01-03",
-        }
-        assert all(r.startswith("pCloudDrive") for r in result)
+    assert "pCloudDrive_FULL_2024-01-01" in result
+    assert "pCloudDrive_DIFF_2024-01-02" in result
+    assert "pCloudDrive_INCR_2024-01-03" in result
+    assert all("testBackup" not in r for r in result)
+
 
 
 def test_archive_content_completer_sorting(tmp_path):
     from dar_backup.util import archive_content_completer
+    from types import SimpleNamespace
+    from unittest.mock import patch
 
-    db_names = ["dbA.db", "dbB.db"]
-    for db in db_names:
-        (tmp_path / db).touch()
+    # Write valid dummy config
+    dummy_config = tmp_path / "dummy.conf"
+    dummy_config.write_text(f"""\
+[MISC]
+LOGFILE_LOCATION = /tmp/test.log
+MAX_SIZE_VERIFICATION_MB = 100
+MIN_SIZE_VERIFICATION_MB = 1
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 5
+
+[DIRECTORIES]
+BACKUP_DIR = {tmp_path}
+TEST_RESTORE_DIR = /tmp/restore
+BACKUP.D_DIR = /tmp/backup.d
+
+[AGE]
+DIFF_AGE = 3
+INCR_AGE = 1
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 10
+ENABLED = false
+""")
+
+    db1 = tmp_path / "alpha.db"
+    db2 = tmp_path / "beta.db"
+    db1.touch()
+    db2.touch()
 
     class Args:
-        config_file = str(tmp_path / "dummy.conf")
+        config_file = str(dummy_config)
         backup_def = None
 
-    fake_output = """\
-\t1\t/tmp/dbA\talpha_FULL_2024-01-01
-\t2\t/tmp/dbA\talpha_INCR_2024-01-03
-\t3\t/tmp/dbB\tbeta_FULL_2024-01-01
-\t4\t/tmp/dbB\tbeta_INCR_2024-01-02
-"""
+    fake_output = "\n".join([
+        "\t1\t/tmp/alpha\talpha_FULL_2024-01-01",
+        "\t2\t/tmp/alpha\talpha_INCR_2024-01-03",
+        "\t3\t/tmp/beta\tbeta_FULL_2024-01-01",
+        "\t4\t/tmp/beta\tbeta_INCR_2024-01-02",
+    ])
 
-    with patch("dar_backup.util.ConfigSettings") as MockConfig, \
-         patch("dar_backup.util.subprocess.run") as mock_run:
-        MockConfig.return_value.backup_dir = str(tmp_path)
+    with patch("subprocess.run") as mock_run:
         mock_run.return_value = SimpleNamespace(stdout=fake_output, returncode=0)
-
         result = archive_content_completer("", Args())
-        assert result == [
-            "alpha_FULL_2024-01-01",
-            "alpha_INCR_2024-01-03",
-            "beta_FULL_2024-01-01",
-            "beta_INCR_2024-01-02"
-        ]
+
+    expected_order = [
+        "alpha_FULL_2024-01-01",
+        "alpha_INCR_2024-01-03",
+        "beta_FULL_2024-01-01",
+        "beta_INCR_2024-01-02"
+    ]
+    assert result == expected_order
