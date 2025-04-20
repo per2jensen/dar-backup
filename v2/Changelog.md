@@ -9,6 +9,8 @@ Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-b
 
 - removed a BackupError in the verify() to reduce noise in logs and let the rest of "compares" run.
 - Added bash and zsh auto completion for a nicer CLI experience.
+  
+  -- See [README for details](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#shell-autocompletion)  
 
 ## v2-beta-0.6.18 - 2025-04-05
 
