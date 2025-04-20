@@ -81,25 +81,28 @@ class CommandRunner:
             cmd,
             stdout=subprocess.PIPE if capture_output else None,
             stderr=subprocess.PIPE if capture_output else None,
-            text=text,
-            bufsize=1
+            text=False,
+            bufsize=-1
         )
 
         stdout_lines = []
         stderr_lines = []
 
+
         def stream_output(stream, lines, level):
-            """
-            Streams the output of a subprocess (stdout or stderr) to a list and logs it.
-            Args:
-                stream: The stream to read from (e.g., process.stdout or process.stderr).
-                lines (List[str]): A list to store the lines read from the stream.
-                level (int): The logging level (e.g., logging.INFO or logging.ERROR).
-            """
-            for line in iter(stream.readline, ''):
-                lines.append(line)
-                self.command_logger.log(level, line.strip())
-            stream.close()
+            try:
+                while True:
+                    chunk = stream.read(1024)
+                    if not chunk:
+                        break
+                    decoded = chunk.decode('utf-8', errors='replace')
+                    lines.append(decoded)
+                    self.command_logger.log(level, decoded.strip())
+            except Exception as e:
+                self.logger.warning(f"stream_output decode error: {e}")
+            finally:
+                stream.close()
+
 
 
         threads = []

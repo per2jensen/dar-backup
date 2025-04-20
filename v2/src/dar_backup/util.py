@@ -368,6 +368,77 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
     ]
 
 
+
+import os
+import subprocess
+import re
+from datetime import datetime
+from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import expand_path
+
+def archive_content_completer(prefix, parsed_args, **kwargs):
+    """
+    Completes archive names from catalog databases.
+    - If --backup-def is given, only search its .db.
+    - Otherwise, scan all *.db files in backup_dir.
+    - Filters by prefix and sorts by name + date.
+    """
+
+    config_file = getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf")
+    config_file = expand_path(config_file)
+
+    backup_def = getattr(parsed_args, "backup_def", None)
+
+    config = ConfigSettings(config_file=config_file)
+    backup_dir = config.backup_dir
+
+    completions = []
+
+    db_paths = []
+    if backup_def:
+        db_path = os.path.join(backup_dir, f"{backup_def}.db")
+        if not os.path.exists(db_path):
+            return [f"[missing: {db_path}]"]
+        db_paths.append(db_path)
+    else:
+        db_paths = [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith(".db")]
+
+    for db_path in db_paths:
+        try:
+            result = subprocess.run(
+                ["dar_manager", "--base", db_path, "--list"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True,
+            )
+
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if not line or "archive #" in line or "dar path" in line or line.startswith("compression"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 3:
+                    archive = parts[2].strip()
+                    if archive.startswith(prefix):
+                        completions.append(archive)
+
+        except subprocess.CalledProcessError:
+            continue
+
+    # Sort: by archive base name (before first "_") then by date in name
+    def sort_key(arch):
+        prefix = arch.split("_")[0]
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", arch)
+        date = datetime.strptime(date_match.group(1), "%Y-%m-%d") if date_match else datetime.min
+        return (prefix, date)
+
+    completions = sorted(set(completions), key=sort_key)
+    return completions if completions else ["[no matching archives]"]
+
+
+
+
 import os
 import subprocess
 import re
@@ -376,7 +447,7 @@ from collections import defaultdict
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import expand_path
 
-def archive_content_completer(prefix, parsed_args, **kwargs):
+def _archive_content_completer(prefix, parsed_args, **kwargs):
     """
     Completes archive names from one or all .db files, depending on whether -d is provided.
     - Groups by prefix (before first "_"), then sorts by date inside each group.
@@ -444,68 +515,3 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
     sorted_archives = sorted(set(archive_entries), key=sort_key)
     return sorted_archives
 
-
-
-import os
-import subprocess
-import re
-from datetime import datetime
-from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import expand_path
-
-def _archive_content_completer(prefix, parsed_args, **kwargs):
-    """
-    Completes archive names from a specific backup definition's .db file.
-    Filters by --backup-def (-d) and returns sorted archive names (by date).
-    """
-
-    # Use config file from --config-file or default
-    config_file = getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf")
-    config_file = expand_path(config_file)
-
-    # Backup definition (-d)
-    backup_def = getattr(parsed_args, "backup_def", None)
-    if not backup_def:
-        return ["[use -d <backup-definition>]"]
-
-    config = ConfigSettings(config_file=config_file)
-    db_path = os.path.join(config.backup_dir, f"{backup_def}.db")
-
-    if not os.path.exists(db_path):
-        return [f"[missing: {db_path}]"]
-
-    completions = []
-
-    try:
-        result = subprocess.run(
-            ["dar_manager", "--base", db_path, "--list"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            check=True,
-        )
-
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            # Skip non-data lines (headers, empty, etc.)
-            if not line or "archive #" in line or "dar path" in line or line.startswith("compression"):
-                continue
-
-            parts = line.split("\t")
-            if len(parts) >= 3:
-                archive = parts[2].strip()
-                if archive.startswith(prefix):
-                    completions.append(archive)
-
-    except subprocess.CalledProcessError:
-        return ["[dar_manager failed]"]
-
-    # Sort by date inside archive name
-    def extract_date(arch_name):
-        match = re.search(r"(\d{4}-\d{2}-\d{2})", arch_name)
-        if match:
-            return datetime.strptime(match.group(1), "%Y-%m-%d")
-        return datetime.min  # fallback
-
-    completions = sorted(set(completions), key=extract_date)
-    return completions if completions else ["[no matching archives]"]

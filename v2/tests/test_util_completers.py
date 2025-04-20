@@ -109,7 +109,7 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
             returncode=0
         )
 
-        results = archive_content_completer("example", args)
+        result = archive_content_completer("example", args)
 
     expected = [
         "example_FULL_2024-01-01",
@@ -117,7 +117,8 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
         "example_INCR_2024-01-03"
     ]
     
-    assert results == expected
+    assert sorted(result) == sorted(expected)
+    
 
 
 def test_archive_content_completer_global_prefix_match(tmp_path):
@@ -133,9 +134,9 @@ def test_archive_content_completer_global_prefix_match(tmp_path):
         config_file = str(tmp_path / "dummy.conf")
         backup_def = None
 
-    # Conditional fake outputs based on db
+
     def fake_run(cmd, **kwargs):
-        if "pCloudDrive.db" in cmd:
+        if any("pCloudDrive.db" in part for part in cmd):
             return SimpleNamespace(
                 stdout="\n".join([
                     "\t1\t/tmp/pCloudDrive\tpCloudDrive_FULL_2024-01-01",
@@ -144,7 +145,7 @@ def test_archive_content_completer_global_prefix_match(tmp_path):
                 ]),
                 returncode=0
             )
-        elif "testBackup.db" in cmd:
+        elif any("testBackup.db" in part for part in cmd):
             return SimpleNamespace(
                 stdout="\n".join([
                     "\t4\t/tmp/testBackup\ttestBackup_FULL_2024-01-04",
@@ -154,12 +155,19 @@ def test_archive_content_completer_global_prefix_match(tmp_path):
             )
         return SimpleNamespace(stdout="", returncode=1)
 
+
     with patch("dar_backup.util.ConfigSettings") as MockConfig, \
          patch("dar_backup.util.subprocess.run", side_effect=fake_run):
         MockConfig.return_value.backup_dir = str(tmp_path)
 
-        result = archive_content_completer
+        result = archive_content_completer("p", Args())
 
+        assert set(result) == {
+            "pCloudDrive_FULL_2024-01-01",
+            "pCloudDrive_DIFF_2024-01-02",
+            "pCloudDrive_INCR_2024-01-03",
+        }
+        assert all(r.startswith("pCloudDrive") for r in result)
 
 
 def test_archive_content_completer_sorting(tmp_path):

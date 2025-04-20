@@ -12,6 +12,8 @@ Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-b
   
   -- See [README for details](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#shell-autocompletion)  
 
+- Improvement to command_runner.run(), more robust decoding
+
 ## v2-beta-0.6.18 - 2025-04-05
 
 Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.18/v2)

@@ -988,6 +988,43 @@ Try completion of backup definition and then list contents:
     dar-backup -d <the chosen backup-definition> --list-contents <TAB>
 ```
 
+#### Archive name completion (smart, context-aware)
+
+When using `manager`--list-archive-contents, the tab-completer suggests valid archive names.
+
+The behavior is smart and context-aware:
+
+- If a --backup-definition (-d) is provided, archive suggestions are restricted to that .db catalog.
+
+- If no backup definition is given, the completer will:
+
+  - Scan all .db files in the backup_dir
+
+  - Aggregate archive names across all catalogs
+
+  - Sort results by:
+
+    - Backup name (e.g. pCloudDrive, media-files)
+
+    - Date inside the archive name (e.g. 2025-04-19)
+
+It’s blazing fast and designed for large backup sets.
+
+```bash
+# With a backup definition
+manager -d pCloudDrive --list-archive-contents <TAB>
+# ⤷ Suggests: pCloudDrive_FULL_2025-03-04, pCloudDrive_INCR_2025-04-19, ...
+
+# Without a backup definition
+manager --list-archive-contents <TAB>
+# ⤷ Suggests: all archives across all known backup definitions
+# ⤷ Example: media-files_FULL_2025-01-04, pCloudDrive_INCR_2025-04-19, ...
+
+# Filter by prefix
+manager --list-archive-contents media-<TAB>
+# ⤷ Suggests: media-files_FULL_2025-01-04, media-files_INCR_2025-02-20, ...
+```
+
 #### Enabling Bash completion
 
 Try auto completion in your session:
