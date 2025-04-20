@@ -118,3 +118,77 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
     ]
     
     assert results == expected
+
+
+def test_archive_content_completer_global_prefix_match(tmp_path):
+    from dar_backup.util import archive_content_completer
+
+    # Create dummy databases
+    db_path1 = tmp_path / "pCloudDrive.db"
+    db_path2 = tmp_path / "testBackup.db"
+    db_path1.touch()
+    db_path2.touch()
+
+    class Args:
+        config_file = str(tmp_path / "dummy.conf")
+        backup_def = None
+
+    # Conditional fake outputs based on db
+    def fake_run(cmd, **kwargs):
+        if "pCloudDrive.db" in cmd:
+            return SimpleNamespace(
+                stdout="\n".join([
+                    "\t1\t/tmp/pCloudDrive\tpCloudDrive_FULL_2024-01-01",
+                    "\t2\t/tmp/pCloudDrive\tpCloudDrive_DIFF_2024-01-02",
+                    "\t3\t/tmp/pCloudDrive\tpCloudDrive_INCR_2024-01-03"
+                ]),
+                returncode=0
+            )
+        elif "testBackup.db" in cmd:
+            return SimpleNamespace(
+                stdout="\n".join([
+                    "\t4\t/tmp/testBackup\ttestBackup_FULL_2024-01-04",
+                    "\t5\t/tmp/testBackup\ttestBackup_INCR_2024-01-05"
+                ]),
+                returncode=0
+            )
+        return SimpleNamespace(stdout="", returncode=1)
+
+    with patch("dar_backup.util.ConfigSettings") as MockConfig, \
+         patch("dar_backup.util.subprocess.run", side_effect=fake_run):
+        MockConfig.return_value.backup_dir = str(tmp_path)
+
+        result = archive_content_completer
+
+
+
+def test_archive_content_completer_sorting(tmp_path):
+    from dar_backup.util import archive_content_completer
+
+    db_names = ["dbA.db", "dbB.db"]
+    for db in db_names:
+        (tmp_path / db).touch()
+
+    class Args:
+        config_file = str(tmp_path / "dummy.conf")
+        backup_def = None
+
+    fake_output = """\
+\t1\t/tmp/dbA\talpha_FULL_2024-01-01
+\t2\t/tmp/dbA\talpha_INCR_2024-01-03
+\t3\t/tmp/dbB\tbeta_FULL_2024-01-01
+\t4\t/tmp/dbB\tbeta_INCR_2024-01-02
+"""
+
+    with patch("dar_backup.util.ConfigSettings") as MockConfig, \
+         patch("dar_backup.util.subprocess.run") as mock_run:
+        MockConfig.return_value.backup_dir = str(tmp_path)
+        mock_run.return_value = SimpleNamespace(stdout=fake_output, returncode=0)
+
+        result = archive_content_completer("", Args())
+        assert result == [
+            "alpha_FULL_2024-01-01",
+            "alpha_INCR_2024-01-03",
+            "beta_FULL_2024-01-01",
+            "beta_INCR_2024-01-02"
+        ]

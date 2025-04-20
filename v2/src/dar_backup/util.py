@@ -372,10 +372,88 @@ import os
 import subprocess
 import re
 from datetime import datetime
+from collections import defaultdict
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import expand_path
 
 def archive_content_completer(prefix, parsed_args, **kwargs):
+    """
+    Completes archive names from one or all .db files, depending on whether -d is provided.
+    - Groups by prefix (before first "_"), then sorts by date inside each group.
+    - If -d is not provided, all .dbs in BACKUP_DIR are scanned.
+    """
+
+    config_file = getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf")
+    config_file = expand_path(config_file)
+
+    config = ConfigSettings(config_file=config_file)
+    backup_def = getattr(parsed_args, "backup_def", None)
+
+    completions = set()
+    db_paths = []
+
+    if backup_def:
+        db_path = os.path.join(config.backup_dir, f"{backup_def}.db")
+        if not os.path.exists(db_path):
+            return [f"[missing: {db_path}]"]
+        db_paths.append(db_path)
+    else:
+        db_paths = [
+            os.path.join(config.backup_dir, fname)
+            for fname in os.listdir(config.backup_dir)
+            if fname.endswith(".db") and os.path.isfile(os.path.join(config.backup_dir, fname))
+        ]
+        if not db_paths:
+            return ["[no .db files found in BACKUP_DIR]"]
+
+    archive_entries = []
+
+    for db_path in db_paths:
+        try:
+            result = subprocess.run(
+                ["dar_manager", "--base", db_path, "--list"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            continue  # Skip this db if it fails
+
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or "archive #" in line or line.startswith(("dar path", "compression", "database version")):
+                continue
+
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                archive = parts[2].strip()
+                if prefix.lower() in archive.lower():
+                    archive_entries.append(archive)
+
+    if not archive_entries:
+        return ["[no matching archives]"]
+
+    # Sort by: name prefix (before _) then date
+    def sort_key(name):
+        prefix_match = name.split("_")[0]
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", name)
+        date = datetime.strptime(date_match.group(), "%Y-%m-%d") if date_match else datetime.min
+        return (prefix_match, date)
+
+    sorted_archives = sorted(set(archive_entries), key=sort_key)
+    return sorted_archives
+
+
+
+import os
+import subprocess
+import re
+from datetime import datetime
+from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import expand_path
+
+def _archive_content_completer(prefix, parsed_args, **kwargs):
     """
     Completes archive names from a specific backup definition's .db file.
     Filters by --backup-def (-d) and returns sorted archive names (by date).
