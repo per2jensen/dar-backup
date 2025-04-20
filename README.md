@@ -12,7 +12,6 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 
 ## TL;DR
 
-
 `dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using dar and par2. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
 
 ## Table of Contents
@@ -967,7 +966,7 @@ The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-
 
   cleanup: --cleanup-specific-archives
 
-  manager:  --add-specific-archive, --remove-specific-archive
+  manager:  --list-archive-contents, --add-specific-archive, --remove-specific-archive
   
 - Supports paths like ~ and $HOME correctly
 

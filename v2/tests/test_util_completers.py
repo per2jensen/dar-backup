@@ -3,13 +3,22 @@ import pytest
 import configparser
 import re
 
+
+from types import SimpleNamespace
+from unittest.mock import patch, MagicMock
+
 from pathlib import Path
 
 from dar_backup.util import (
     expand_path,
     backup_definition_completer,
-    list_archive_completer
+    list_archive_completer,
+    archive_content_completer
 )
+
+
+
+
 
 def test_expand_path(monkeypatch):
     monkeypatch.setenv("TEST_VAR", "expanded")
@@ -70,4 +79,42 @@ def test_list_archive_completer_all_archives(tmp_path,setup_environment, env):
     results = list_archive_completer("", Args())
     env.logger.debug(f"list_archive_completer() -> {results}")
     assert set(results) == set(f.replace(".1.dar", "") for f in expected_files)
+
+
+
+def test_archive_content_completer_with_mocked_db(setup_environment, env):
+    from dar_backup.util import archive_content_completer
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    # Use existing backup definition created by setup_environment
+    backup_def = "example"
+
+    args = SimpleNamespace(
+        config_file=env.config_file,
+        backup_def=backup_def
+    )
+
+    # Simulated output from `dar_manager --list`
+    mock_dar_output = "\n".join([
+        "\t1\t/home/pj/mnt/dar\texample_FULL_2024-01-01",
+        "\t2\t/home/pj/mnt/dar\texample_DIFF_2024-01-02",
+        "\t3\t/home/pj/mnt/dar\texample_INCR_2024-01-03"
+    ])
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = SimpleNamespace(
+            stdout=mock_dar_output,
+            stderr="",
+            returncode=0
+        )
+
+        results = archive_content_completer("example", args)
+
+    expected = [
+        "example_FULL_2024-01-01",
+        "example_DIFF_2024-01-02",
+        "example_INCR_2024-01-03"
+    ]
     
+    assert results == expected

@@ -36,7 +36,7 @@ from dar_backup.util import get_binary_info
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
-from dar_backup.util import backup_definition_completer, list_archive_completer
+from dar_backup.util import backup_definition_completer, list_archive_completer, archive_content_completer
 
 from datetime import datetime
 from time import time
@@ -85,7 +85,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings):
     return process.returncode
 
 
-def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTuple:
+def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> NamedTuple:
     """
     Returns:
        a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
@@ -120,7 +120,8 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings) -> NamedTupl
         logger.error(f"stderr: {stderr}")  
         logger.error(f"stdout: {stdout}")
     else:
-        print(stdout)
+        if not suppress_output:
+            print(stdout)
     return process
 
 
@@ -132,47 +133,65 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
       - the found number, if the archive catalog is present in the database
       - "-1" if the archive is not found
     """
+    
     backup_def = backup_def_from_archive(archive)
-    process = list_catalogs(backup_def, config_settings)
+    process = list_catalogs(backup_def, config_settings, suppress_output=True)
     if process.returncode != 0:
         logger.error(f"Error listing catalogs for backup def: '{backup_def}'")
         return -1
     line_no = 1
     for line in process.stdout.splitlines():
-        #print(f"{line_no}: '{line}'")
         line_no += 1
         search = re.search(rf".*?(\d+)\s+.*?({archive}).*", line)
         if search:
-            #print(f"FOUND: archive: {search.group(2)}, catalog #: '{search.group(1)}'")
             logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
             return int(search.group(1))
     return -1
 
 
-
-def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int :
+def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
     """
-    List the contents of a specific archive, given the archive name
+    List the contents of a specific archive, given the archive name.
+    Prints only actual file entries (lines beginning with '[ Saved ]').
+    If none are found, a notice is printed instead.
     """
     backup_def = backup_def_from_archive(archive)
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
+
     if not os.path.exists(database_path):
         logger.error(f'Database not found: "{database_path}"')
         return 1
+
     cat_no = cat_no_for_name(archive, config_settings)
     if cat_no < 0:
         logger.error(f"archive: '{archive}' not found in database: '{database_path}'")
         return 1
+
+
     command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
-    process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr 
+    process = runner.run(command, timeout = 10)
+
+
+    stdout = process.stdout or ""
+    stderr = process.stderr or ""
+
+
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stderr: {stderr}")
         logger.error(f"stdout: {stdout}")
+
+
+    combined_lines = (stdout + "\n" + stderr).splitlines()
+    file_lines = [line for line in combined_lines if line.strip().startswith("[ Saved ]")]
+
+    if file_lines:
+        for line in file_lines:
+            print(line)
     else:
-        print(stdout)
+        print(f"[info] Archive '{archive}' is empty.")
+
     return process.returncode
 
 
@@ -373,7 +392,7 @@ def build_arg_parser():
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = list_archive_completer
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
     parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
-    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog.")
+    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
