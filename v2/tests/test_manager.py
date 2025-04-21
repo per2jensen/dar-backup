@@ -3,25 +3,27 @@ Test manager.py, that `dar` catalogs are created correctly
 """
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import re
 import dar_backup.config_settings
 import envdata
 import test_bitrot
 import tempfile
-from types import SimpleNamespace
-from pathlib import Path
 import pytest
 
 
 from datetime import date
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
-from envdata import EnvData
-from typing import Dict, List
+from dar_backup.manager import list_catalog_contents
 
+from envdata import EnvData
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Dict, List
 from unittest.mock import patch, MagicMock, mock_open
+
 
 
 
@@ -913,7 +915,7 @@ def test_list_archive_contents_arg(monkeypatch):
         manager_main()
 
 
-#================
+
 import pytest
 import sys
 from dar_backup import manager
@@ -940,3 +942,84 @@ def test_manager_sanity_checks_exit(setup_environment, env, monkeypatch, caplog,
 
     assert e.value.code == 1
     assert any(expected_error in record.message for record in caplog.records)
+
+
+
+
+import pytest
+from unittest.mock import patch, MagicMock
+from dar_backup.manager import list_catalog_contents
+from dar_backup.config_settings import ConfigSettings  # Corrected import
+
+
+from unittest.mock import patch, MagicMock
+import pytest
+from dar_backup.manager import list_catalog_contents
+from dar_backup.config_settings import ConfigSettings
+
+@pytest.fixture
+def mock_config(tmp_path):
+    config_file = tmp_path / "mock_config.ini"
+    config_file.write_text(r"""[MISC]
+LOGFILE_LOCATION = /tmp/mock.log
+MAX_SIZE_VERIFICATION_MB = 100
+MIN_SIZE_VERIFICATION_MB = 10
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 60
+[DIRECTORIES]
+BACKUP_DIR = /tmp/mock_backups
+TEST_RESTORE_DIR = /tmp/mock_restore
+BACKUP.D_DIR = /tmp/mock_backup.d
+[AGE]
+DIFF_AGE = 30
+INCR_AGE = 7
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+ENABLED = true
+""")
+    return ConfigSettings(config_file=str(config_file))
+
+
+def test_catalog_file_not_found(env, setup_environment, caplog):
+    caplog.set_level("ERROR")
+    result = list_catalog_contents(1, "backup01", env)
+    assert result == 1
+    assert 'Catalog database not found' in caplog.text
+
+
+def test_catalog_command_success(env, setup_environment, capsys):
+    mock_process = MagicMock()
+    mock_process.stdout = "catalog contents"
+    mock_process.stderr = ""
+    mock_process.returncode = 0
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = mock_process
+
+    with patch("dar_backup.manager.runner", mock_runner), \
+         patch("os.path.exists", return_value=True):
+        result = list_catalog_contents(2, "backup01", env)
+        captured = capsys.readouterr()
+        assert result == 0
+        assert "catalog contents" in captured.out
+
+
+
+def test_catalog_command_failure(env, setup_environment, caplog):
+    mock_process = MagicMock()
+    mock_process.stdout = "stdout message"
+    mock_process.stderr = "stderr message"
+    mock_process.returncode = 2
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = mock_process
+
+    caplog.set_level("ERROR")
+
+    with patch("dar_backup.manager.runner", mock_runner), \
+         patch("os.path.exists", return_value=True):
+        result = list_catalog_contents(3, "backup01", env)
+        assert result == 2
+        assert "Error listing catalogs" in caplog.text
+        assert "stderr message" in caplog.text
+        assert "stdout message" in caplog.text

@@ -36,6 +36,7 @@ from dar_backup.util import setup_logging
 from dar_backup.util import CommandResult
 from dar_backup.util import get_logger
 from dar_backup.util import get_binary_info
+from dar_backup.util import show_version
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -217,6 +218,7 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
     """
     List the contents of catalog # in catalog database for given backup definition
     """
+    logger = get_logger()
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(config_settings.backup_dir, database)
     if not os.path.exists(database_path):
@@ -484,8 +486,6 @@ def build_arg_parser():
     return parser
 
 
-
-
 def main():
     global logger, runner 
 
@@ -508,13 +508,8 @@ def main():
         return
 
     if args.version:
-        print(f"{SCRIPTNAME} {about.__version__}")
-        print(f"Source code is here: https://github.com/per2jensen/dar-backup")
-        print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.''')
+        show_version()
         sys.exit(0)
-        return
 
     args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
     config_settings = ConfigSettings(args.config_file)

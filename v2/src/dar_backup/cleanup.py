@@ -20,11 +20,15 @@ import os
 import re
 import subprocess
 import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+
 
 from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
 from time import time
 from typing import Dict, List, NamedTuple
+
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -32,6 +36,7 @@ from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
+from dar_backup.util import show_version
 from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from dar_backup.command_runner import CommandRunner   
@@ -152,14 +157,6 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
         return False
 
 
-def show_version():
-    script_name = os.path.basename(sys.argv[0])
-    print(f"{script_name} {about.__version__}")
-    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.''')
-
-
 def confirm_full_archive_deletion(archive_name: str, test_mode=False) -> bool:
     try:
         if test_mode:
@@ -207,6 +204,7 @@ def main():
     
 
     if args.version:
+        print(f"calling show_version()")
         show_version()
         sys.exit(0)
 

@@ -4,6 +4,7 @@ import os
 import pytest
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from time import time
@@ -309,3 +310,36 @@ def test_duplicate_full_backup_fails(setup_environment, env: EnvData):
     second = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
     assert second.returncode != 0
     assert "already exists" in second.stderr or "already exists" in second.stdout
+
+
+
+# Map script names to relative paths
+SCRIPTS = {
+    "dar_backup.py": "src/dar_backup/dar_backup.py",
+    "manager.py": "src/dar_backup/manager.py",
+    "cleanup.py": "src/dar_backup/cleanup.py",
+}
+
+@pytest.mark.parametrize("script_name, script_path", SCRIPTS.items())
+def test_script_shows_version(script_name, script_path):
+    full_path = os.path.abspath(script_path)
+
+    result = subprocess.run(
+        [sys.executable, "-m", f"dar_backup.{script_name.replace('.py', '')}", "--version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=5,
+    )
+
+    print(f"\n=== {script_name} ===")
+    print(f"Return code: {result.returncode}")
+    print(f"STDOUT:\n{result.stdout}")
+    print(f"STDERR:\n{result.stderr}")
+
+    output = result.stdout.strip()
+    assert f"{script_name} source code is here: https://github.com/per2jensen/dar-backup" in output
+
+    assert "Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file \"LICENSE\" for details." in output
+    assert "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE." in output
+    assert "See section 15 and section 16 in the supplied \"LICENSE\" file." in output

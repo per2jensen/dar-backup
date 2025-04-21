@@ -1,6 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.20 - not releases
+
+Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20/v2)
+
+### Added
+
+- show_version() moved to util and tests for dar-backup, manager and cleanup
+
 ## v2-beta-0.6.19 - 2025-04-21
 
 Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.19/v2)

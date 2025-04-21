@@ -48,6 +48,7 @@ from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 from dar_backup.util import requirements
+from dar_backup.util import show_version
 from dar_backup.util import get_binary_info
 from dar_backup.util import backup_definition_completer, list_archive_completer
 
@@ -646,14 +647,6 @@ def filter_darrc_file(darrc_path):
         raise RuntimeError(f"Error filtering .darrc file: {e}")
 
 
-
-def show_version():
-    script_name = os.path.basename(argv[0])
-    print(f"{script_name} {about.__version__}") 
-    print(f"dar-backup.py source code is here: https://github.com/per2jensen/dar-backup")
-    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.''')
 
 
 def show_examples():
