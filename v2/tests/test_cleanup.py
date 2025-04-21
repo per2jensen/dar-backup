@@ -11,6 +11,7 @@ from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
 from unittest.mock import MagicMock
 from dar_backup.util import requirements
+from typing import NamedTuple
 
 import pytest
 from dar_backup.cleanup import confirm_full_archive_deletion
@@ -597,4 +598,24 @@ def test_postreq_script_failure(monkeypatch, env, caplog):
 
     assert "POSTREQ check: 'exit 1' failed" in str(exc_info.value)
     assert "mocked failure" in caplog.text
+
+
+import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
+from dar_backup.cleanup import delete_catalog
+
+def test_cleanup_invalid_symlink(tmp_path):
+    broken_link = tmp_path / "broken_symlink"
+    broken_link.symlink_to("/nonexistent/target")
+
+    dummy_args = SimpleNamespace(config_file=str(tmp_path / "dummy.conf"))
+
+    with patch("dar_backup.cleanup.runner") as mock_runner, \
+         patch("dar_backup.cleanup.logger") as mock_logger:
+        mock_runner.run.return_value = SimpleNamespace(returncode=2, stdout="", stderr="")
+        result = delete_catalog("example", dummy_args)
+
+        assert result is True
+        mock_logger.warning.assert_called_once_with("catalog 'example' not found in the database, skipping deletion")
 

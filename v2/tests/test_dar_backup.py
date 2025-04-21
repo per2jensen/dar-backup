@@ -674,3 +674,51 @@ def test_main_defensive_check_invalid_result_format(env, setup_environment):
             # Verify that the logger caught the defensive error message
             mock_logger.error.assert_any_call("Unexpected return format from generic_backup")
 
+
+
+from dar_backup.dar_backup import main as dar_main
+
+def test_test_restore_cli(monkeypatch):
+    args = ["dar-backup", "--test-restore", "-d", "example", "--config-file", "dummy.conf"]
+    monkeypatch.setattr(sys, "argv", args)
+
+    with patch("dar_backup.command_runner.CommandRunner.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        with pytest.raises(SystemExit):
+            dar_main()
+
+
+
+from types import SimpleNamespace
+from dar_backup.dar_backup import find_files_between_min_and_max_size
+
+def test_find_files_within_min_max_range(env):
+    files = [
+        ("tiny.txt", "0 o"),
+        ("small.txt", "512 kio"),
+        ("valid1.txt", "1 Mio"),
+        ("valid2.txt", "5 Mio"),
+        ("large.txt", "20 Mio"),
+        ("huge.txt", "2 Gio"),
+    ]
+
+    config = SimpleNamespace(
+        min_size_verification_mb=1,
+        max_size_verification_mb=10,
+        logger=env.logger
+    )
+
+    # Monkey patch the logger inside dar_backup
+    import dar_backup.dar_backup as dar_module
+    dar_module.logger = env.logger
+
+    result = find_files_between_min_and_max_size(files, config)
+
+    assert "valid1.txt" in result
+    assert "valid2.txt" in result
+    assert "tiny.txt" not in result
+    assert "small.txt" not in result
+    assert "large.txt" not in result
+    assert "huge.txt" not in result
+    assert len(result) == 2
+

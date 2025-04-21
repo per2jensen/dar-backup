@@ -334,45 +334,6 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     return process.returncode
 
 
-def _add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str =None) -> int:    
-    # sanity check - does dar backup exist?
-    if not directory:
-        directory = config_settings.backup_dir
-    archive = os.path.basename(archive)  # remove path if it was given
-    archive_path = os.path.join(directory, f'{archive}')
-
-    archive_test_path =  os.path.join(directory, f'{archive}.1.dar')
-    if not os.path.exists(archive_test_path):
-        logger.error(f'dar backup: "{archive_test_path}" not found, exiting')
-        return 1
-        
-    # sanity check - does backup definition exist?
-    backup_definition = archive.split('_')[0]
-    backup_def_path = os.path.join(config_settings.backup_d_dir, backup_definition)
-    if not os.path.exists(backup_def_path):
-        logger.error(f'backup definition "{backup_definition}" not found (--add-specific-archive option probably not correct), exiting')
-        return 1
-    
-    database = f"{backup_definition}{DB_SUFFIX}"
-    database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
-    logger.info(f'Add "{archive_path}" to catalog: "{database}"')
-    
-    command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q", "--alter=ignore-order"]
-    process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr
-
-    if process.returncode == 0:
-        logger.info(f'"{archive_path}" added to it\'s catalog')
-    elif process.returncode == 5:
-        logger.warning(f'Something did not go completely right adding "{archive_path}" to it\'s catalog, dar_manager error: "{process.returncode}"')
-    else: 
-        logger.error(f'something went wrong adding "{archive_path}" to it\'s catalog, dar_manager error: "{process.returncode}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
-     
-    return process.returncode
-
-
 
 def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings) -> None:
     """

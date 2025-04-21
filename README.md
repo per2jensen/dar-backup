@@ -1141,9 +1141,11 @@ TOTAL                                   1602    186    88%
 
 ### dar-backup options
 
-This script does backups, validation and restoring. It has the following options:
+This script does backups including par2 redundancy, validation and restoring.
 
-``` code
+Available options:
+
+```bash
 -F, --full-backup                    Perform a full backup.
 -D, --differential-backup            Perform a differential backup.
 -I, --incremental-backup             Perform an incremental backup.
@@ -1162,34 +1164,39 @@ This script does backups, validation and restoring. It has the following options
 --log-level <level>                  `debug` or `trace`, default is `info`.
 --log-stdout                         Also print log messages to stdout.
 --do-not-compare                     Do not compare restores to file system.
--v --version                         Show version and license information.
+-v, --version                         Show version and license information.
 ```
 
-### manager options
+### Manager Options
 
-This script manages `dar` databases and catalogs. Available options:
+This script manages `dar` databases and catalogs.
 
-``` code
--c, --config-file                    Path to dar-backup.conf
+Available options:
+
+```bash
+-c, --config-file <path>             Path to dar-backup.conf.
 --create-db                          Create missing databases for all backup definitions.
 --alternate-archive-dir <path>       Use this directory instead of BACKUP_DIR in the config file.
 --add-dir <path>                     Add all archive catalogs in this directory to databases.
--d, --backup-def <name>              Restrict to work only on this backup definition.
---add-specific-archive <archive>     Add this archive to the catalog database.
---remove-specific-archive <archive>  Remove this archive from the catalog database.
+-d, --backup-def <name>              Restrict operations to this backup definition.
+--add-specific-archive <archive>     Add a specific archive to the catalog database.
+--remove-specific-archive <archive>  Remove a specific archive from the catalog database.
 -l, --list-catalogs                  List catalogs in databases for all backup definitions.
---list-catalog-contents <num>        List contents of a catalog by catalog number.
---list-archive-contents <archive>    List contents of an archive’s catalog, given the archive name.
+--list-archive-contents <archive>    List the contents of an archive’s catalog by archive name.
 --find-file <file>                   Search catalogs for a specific file.
 --verbose                            Enable verbose output.
---log-level <level>                  `debug` or `trace`, default is `info`", default="info".
+--log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
 ```
 
 ### cleanup options
 
-This script cleans up old backups and par2 files. Supported options:
+This script removes old backups and par2 files according to `[AGE]` settings in config file.
 
-``` code
+Catalogs in catalog databases are also removed.
+
+Supported options:
+
+```bash
 -d, --backup-definition                           Backup definition to cleanup.
 -c, --config-file                                 Path to 'dar-backup.conf'
 -v, --version                                     Show version & license information.
@@ -1206,7 +1213,7 @@ This script cleans up old backups and par2 files. Supported options:
 
 This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
 
-``` code
+```bash
 -f, --file <path>          Specify the log file(s) to be cleaned.
 -c, --config-file <path>   Path to dar-backup.conf.
 --dry-run                  Show which lines would be removed without modifying the file.
@@ -1233,7 +1240,7 @@ Sets up demo config files:
 - ~/.config/dar-backup/dar-backup.conf
 - ~/.config/dar-backup/backup.d/default
 
-``` code
+```bash
 -i, --install              Sets up `dar-backup`.
 -v, --version              Display version and licensing information.
 -h, --help                 Displays usage info
@@ -1241,9 +1248,9 @@ Sets up demo config files:
 
 ### dar-backup-systemd
 
-Generates and optionally install systemd user service units and timers
+Generates and optionally install systemd user service units and timers.
 
-``` code
+```bash
 -h, --help           Show this help message and exit
 --venv VENV          Path to the Python venv with dar-backup
 --dar-path DAR_PATH  Optional path to dar binary's directory

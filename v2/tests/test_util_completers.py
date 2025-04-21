@@ -242,4 +242,51 @@ ENABLED = false
         "beta_FULL_2024-01-01",
         "beta_INCR_2024-01-02"
     ]
+
     assert result == expected_order
+
+import os
+import shutil
+import subprocess
+import unittest.mock
+from dar_backup.util import add_specific_archive_completer
+
+def test_add_specific_archive_completer_full_coverage(setup_environment, env):
+    # Setup
+    backup_def = "example"
+    backup_dir = env.backup_dir
+    archive_prefix = f"{backup_def}_FULL_2025-01-01"
+    archive_filename = f"{archive_prefix}.1.dar"
+    archive_path = os.path.join(backup_dir, archive_filename)
+    open(archive_path, "w").close()
+
+    # Confirm file exists and matches pattern
+    assert os.path.exists(archive_path)
+
+    class Args:
+        def __init__(self, config_file, backup_def):
+            self.config_file = config_file
+            self.backup_def = backup_def
+
+    args = Args(env.config_file, backup_def)
+
+    # Test: archive should appear since it's not in the DB yet
+    result = add_specific_archive_completer(prefix=archive_prefix[:3], parsed_args=args)
+    assert archive_prefix in result
+
+    # Simulate it being listed in the DB by mocking subprocess output
+    subprocess_output = f"0\tINFO\t{archive_prefix}\n"
+    def fake_run(*_, **__):
+        class R:
+            stdout = subprocess_output
+            returncode = 0
+        return R()
+    
+    subprocess_path = "dar_backup.util.subprocess.run"
+    with unittest.mock.patch(subprocess_path, side_effect=fake_run):
+        result = add_specific_archive_completer(prefix=archive_prefix[:3], parsed_args=args)
+        assert result == ['[no new archives]']
+
+    # Clean up
+    if os.path.exists(archive_path):
+        os.remove(archive_path)

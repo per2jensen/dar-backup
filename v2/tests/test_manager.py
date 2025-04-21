@@ -873,3 +873,70 @@ def test_add_specific_archive_failure(tmp_path):
     mock_logger.error.assert_any_call("stderr: error err")
     mock_logger.error.assert_any_call("stdout: error out")
     assert result == 42
+
+
+# =================00
+
+import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
+from dar_backup.manager import add_specific_archive
+
+def test_add_specific_archive_unexpected_error(tmp_path):
+    archive_name = "test_FULL_2025-04-01"
+    (tmp_path / f"{archive_name}.1.dar").touch()
+    (tmp_path / "test").touch()
+
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+    process = SimpleNamespace(returncode=42, stdout="weird error", stderr="unexpected failure")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = process
+        result = add_specific_archive(archive_name, config)
+        assert result == 42
+        mock_logger.error.assert_any_call(
+            f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"'
+        )
+
+
+
+
+import pytest
+from dar_backup.manager import main as manager_main
+import sys
+
+def test_list_archive_contents_arg(monkeypatch):
+    test_args = ["manager", "--list-archive-contents", "1", "-d", "example", "--config-file", "dummy.conf"]
+    monkeypatch.setattr(sys, "argv", test_args)
+    with pytest.raises(SystemExit):
+        manager_main()
+
+
+#================
+import pytest
+import sys
+from dar_backup import manager
+
+@pytest.mark.parametrize("cli_args, expected_error", [
+    (["prog", "--add-dir", " "], "archive dir not given"),
+    (["prog", "--add-specific-archive", " "], "specific archive to add not given"),
+    (["prog", "--remove-specific-archive", " "], "specific archive to remove not given"),
+    (["prog", "--add-specific-archive", "arc", "--remove-specific-archive", "arc"], "you can't add and remove archives"),
+    (["prog", "--add-dir", "foo", "--add-specific-archive", "arc"], "you cannot add both a directory and an archive"),
+    (["prog", "-d", " "], "No backup definition given"),
+    (["prog", "-d", "nonexistent"], "does not exist"),
+    (["prog", "--list-archive-contents", " "], "--list-archive-contents <param> not given"),
+    (["prog", "--find-file", "somefile"], "--find-file requires the --backup-def"),
+    (["prog", "--alternate-archive-dir", "/nonexistent"], "Alternate archive dir '/nonexistent' does not exist"),
+])
+def test_manager_sanity_checks_exit(setup_environment, env, monkeypatch, caplog, cli_args, expected_error):
+    # Use actual test config file provided by the fixture
+    cli = cli_args + ["--config-file", env.config_file]
+    monkeypatch.setattr(sys, "argv", cli)
+
+    with pytest.raises(SystemExit) as e:
+        manager.main()
+
+    assert e.value.code == 1
+    assert any(expected_error in record.message for record in caplog.records)
