@@ -24,6 +24,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [GPG Signing key](#gpg-signing-key)
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
 - [Homepage - Github](#homepage---github)
+- [Community](#community)
 - [Requirements](#requirements)
 - [Principles](#dar-backup-principles)
 - [How to run](#how-to-run)
@@ -195,6 +196,10 @@ Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* i
 'dar-backup' package lives here: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
 
 This python version is v2 of dar-backup, v1 is made in bash.
+
+## Community
+
+Please review the [Code of Conduct](./CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
 
 ## Requirements
 
