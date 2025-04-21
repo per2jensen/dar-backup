@@ -142,43 +142,6 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
     return process
 
 
-def _list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> NamedTuple:
-    """
-    Returns:
-       a typing.NamedTuple of class dar-backup.util.CommandResult with the following properties:
-        - process: of type subprocess.CompletedProcess: The result of the command execution.
-        - stdout: of type str: The standard output of the command.
-        - stderr: of type str: The standard error of the command.
-        - returncode: of type int: The return code of the command.
-        - timeout: of type int: The timeout value in seconds used to run the command.
-        - command: of type list[str): The command executed.
-    """
-    database = f"{backup_def}{DB_SUFFIX}"
-    database_path = os.path.join(config_settings.backup_dir, database)
-
-    if not os.path.exists(database_path):
-        error_msg = f'Database not found: "{database_path}"'
-        logger.error(error_msg)
-        return CommandResult(1, '', error_msg)
-
-    command = ['dar_manager', '--base', database_path, '--list']
-    process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr
-
-    if process.returncode != 0:
-        logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")  
-        logger.error(f"stdout: {stdout}")
-    else:
-        if not suppress_output:
-            for line in stdout.splitlines():
-                parts = line.strip().split("\t")
-                if len(parts) >= 3 and parts[2]:
-                    print(parts[2].strip())
-
-    return process
-
-
 def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
     """
     Find the catalog number for the given archive name
@@ -549,7 +512,6 @@ def build_arg_parser():
     parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = add_specific_archive_completer
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = archive_content_completer
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
-#    parser.add_argument('--list-catalog-contents', type=int, help="List contents of a catalog. Argument is the 'archive #', '-d <definition>' argument is also required")
     parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
