@@ -1117,26 +1117,26 @@ Running
 pytest --cov=dar_backup tests/
 ````
 
-results for a dev version 0.6.19 in this report:
+Results for a version 0.6.19 in this report:
 
-```` code
----------- coverage: platform linux, python 3.12.3-final-0 -----------
+````bash
 Name                                   Stmts   Miss  Cover
 ----------------------------------------------------------
 src/dar_backup/__about__.py                1      0   100%
 src/dar_backup/__init__.py                 0      0   100%
 src/dar_backup/clean_log.py               68     13    81%
-src/dar_backup/cleanup.py                193     17    91%
-src/dar_backup/command_runner.py          73      1    99%
-src/dar_backup/config_settings.py         66      8    88%
-src/dar_backup/dar_backup.py             535     56    90%
+src/dar_backup/cleanup.py                196     17    91%
+src/dar_backup/command_runner.py          80      3    96%
+src/dar_backup/config_settings.py         66      7    89%
+src/dar_backup/dar_backup.py             539     56    90%
 src/dar_backup/dar_backup_systemd.py      56      7    88%
 src/dar_backup/installer.py               59      6    90%
-src/dar_backup/manager.py                351     56    84%
+src/dar_backup/manager.py                403     54    87%
 src/dar_backup/rich_progress.py           70      7    90%
-src/dar_backup/util.py                   130     15    88%
+src/dar_backup/util.py                   231     24    90%
 ----------------------------------------------------------
-TOTAL                                   1602    186    88%
+TOTAL                                   1769    194    89%
+
 ````
 
 ### dar-backup options
