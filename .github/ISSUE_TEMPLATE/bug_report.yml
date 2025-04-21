@@ -1,0 +1,62 @@
+name: Bug Report
+description: Report something not working as expected in dar-backup version 2
+title: "[Bug] <short description>"
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to help improve `dar-backup`!
+        Please provide as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `dar --version` and `dar-backup --version`
+      placeholder: e.g., dar 2.7.12, dar-backup 1.4.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the issue and expected behavior.
+      placeholder: Tell us what you see vs. what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Help us reproduce the issue step-by-step.
+      placeholder: |
+        1. Run `dar-backup ...`
+        2. Use this config ...
+        3. Observe this output ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Output
+      description: Paste logs or command output (redact sensitive info).
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Which OS are you running on?
+      options:
+        - Linux (Debian/Ubuntu)
+        - Linux (Arch/Fedora)
+        - macOS
+        - Other (please describe)
+    validations:
+      required: true
