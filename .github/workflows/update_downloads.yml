@@ -1,5 +1,8 @@
 name: Update PyPI Downloads
-
+permissions:
+  contents: read
+  pull-requests: write
+  
 on:
   schedule:
 # 3:15 UTC according to https://docs.github.com/en/actions/use-cases-and-examples/project-management/scheduling-issue-creation 

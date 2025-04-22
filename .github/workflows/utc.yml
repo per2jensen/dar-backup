@@ -1,5 +1,8 @@
 name: UTC
-
+permissions:
+  contents: read
+  pull-requests: write
+  
 on:
   schedule:
     - cron: '15 7 * * *'  # Runs every day at 07:15 UTC
