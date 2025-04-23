@@ -10,8 +10,12 @@ on:
   workflow_dispatch:       # Allow manual runs
 
 jobs:
-  update:
+  update-downloads:
+    
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # Required to push changes to the repository
 
     steps:
       - name: Checkout repository
