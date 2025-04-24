@@ -38,10 +38,17 @@ jobs:
       - name: Run download tracker
         run: python track_downloads.py
 
+      - name: Verify changes
+        run: |
+          if git diff --name-only | grep -v "downloads.json"; then
+            echo "Unauthorized file modification detected!"
+            exit 1
+          fi   
+
       - name: Commit and push changes
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          git add downloads.json README.md
+          git add downloads.json
           git commit -m 'chore: update total downloads' || echo "No changes to commit"
           git push
