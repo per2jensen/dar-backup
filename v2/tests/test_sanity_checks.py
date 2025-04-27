@@ -343,3 +343,78 @@ def test_script_shows_version(script_name, script_path):
     assert "Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file \"LICENSE\" for details." in output
     assert "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE." in output
     assert "See section 15 and section 16 in the supplied \"LICENSE\" file." in output
+
+
+
+import io
+import sys
+import pytest
+from dar_backup.util import print_aligned_settings
+from tests.envdata import EnvData
+
+@pytest.fixture(autouse=True)
+def setup_env(env: EnvData):
+    """Auto-use the env fixture to prepare environment."""
+    pass
+
+import io
+import sys
+import pytest
+from dar_backup.util import print_aligned_settings
+from tests.envdata import EnvData
+
+def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
+    """Test that labels and texts are trimmed correctly, printed, and logged, with dangerous highlighting."""
+
+    settings = [
+        ("short", "a simple short value"),
+        ("this_is_a_very_long_label_that_will_need_trimming_because_it_is_too_big", "short"),
+        ("normal_label", "this is a very long text that should be trimmed to not exceed 80 characters in total line length"),
+        ("delete_operation", "delete full backup now"),  # <-- Danger keyword test
+    ]
+
+    highlight_keywords = ["delete", "danger", "full backup"]
+
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+
+    try:
+        with caplog.at_level(env.logger.level):
+            print_aligned_settings(settings, log=True, highlight_keywords=highlight_keywords)
+    finally:
+        sys.stdout = sys.__stdout__
+
+    # Capture printed output (optional verification)
+    output_lines = captured_output.getvalue().strip().split("\n")
+
+    # ===== Log Verification (PRIMARY) =====
+    log_lines = [record.message for record in caplog.records]
+
+    # First log is header, last log is footer, settings are between
+    assert log_lines[0].startswith("=========="), "First log line should be header"
+    assert log_lines[-1].startswith("="), "Last log line should be footer"
+
+    # Extract the setting lines only
+    setting_log_lines = log_lines[1:-1]
+
+    assert len(setting_log_lines) == len(settings), f"Expected {len(settings)} logged settings, got {len(setting_log_lines)}"
+
+    # Each setting must match the order
+    for (label, text), log_line in zip(settings, setting_log_lines):
+        clean_label = str(label)
+        clean_text = str(text)
+        assert clean_label in log_line, f"Label '{clean_label}' missing in log '{log_line}'"
+        assert clean_text in log_line, f"Text '{clean_text}' missing in log '{log_line}'"
+
+    # ===== Dangerous Line Check =====
+    # Look for the dangerous keyword manually
+    dangerous_found = False
+    for log_line in setting_log_lines:
+        if "delete full backup" in log_line.lower():
+            dangerous_found = True
+    assert dangerous_found, "Dangerous setting line not found in logs"
+
+    # ===== Printed Output (Secondary Check) =====
+    # Cannot assert strict line counts because rich wraps, but can still sanity check
+    assert "Startup Settings" in captured_output.getvalue(), "Header not printed"
+    assert "delete full backup" in captured_output.getvalue(), "Dangerous text not printed"

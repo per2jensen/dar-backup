@@ -38,7 +38,7 @@ from sys import argv
 from sys import version_info
 from time import time
 from threading import Event
-from typing import List
+from typing import List, Tuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -50,6 +50,7 @@ from dar_backup.util import RestoreError
 from dar_backup.util import requirements
 from dar_backup.util import show_version
 from dar_backup.util import get_binary_info
+from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from dar_backup.command_runner import CommandRunner   
@@ -839,35 +840,41 @@ def main():
             args.darrc = filter_darrc_file(args.darrc)
             logger.debug(f"Filtered .darrc file: {args.darrc}")
 
+        start_msgs: List[Tuple[str, str]] = []
+
         start_time=int(time())
-        logger.info(f"=====================================")
-        logger.info(f"dar-backup.py started, version: {about.__version__}")
-        logger.info(f"START TIME: {start_time}")
-        logger.debug(f"`args`:\n{args}")
-        logger.debug(f"`config_settings`:\n{config_settings}")
+        start_msgs.append(('dar-backup.py started, version:', about.__version__))
+        start_msgs.append(('START TIME', start_time))
+        logger.debug(f"{'`Args`:\n'}{args}")
+        logger.debug(f"{'`Config_settings`:\n'}{config_settings}")
         dar_manager_properties = get_binary_info(command='dar')
-        logger.debug(f"dar path: {dar_manager_properties['path']}")
-        logger.debug(f"dar version: {dar_manager_properties['version']}")
+        start_msgs.append(('dar path:', dar_manager_properties['path']))
+        start_msgs.append(('dar version:', dar_manager_properties['version']))
 
         file_dir =  os.path.normpath(os.path.dirname(__file__))
-        args.verbose and (print(f"Script directory:  {file_dir}"))
-        args.verbose and (print(f"Config file:       {args.config_file}"))
-        args.verbose and args.full_backup         and (print(f"Type of backup:    FULL"))
-        args.verbose and args.differential_backup and (print(f"Type of backup:    DIFF"))
-        args.verbose and args.incremental_backup  and (print(f"Type of backup:    INCR"))
-        args.verbose and args.backup_definition   and (print(f"Backup definition: '{args.backup_definition}'"))
+        start_msgs.append(('Script directory:', os.path.abspath(file_dir)))
+                
+        start_msgs.append(('Config file:', os.path.abspath(args.config_file)))
+
+
+        args.verbose and args.full_backup         and start_msgs.append(("Type of backup:", "FULL"))
+        args.verbose and args.differential_backup and start_msgs.append(("Type of backup:", "DIFF"))
+        args.verbose and args.incremental_backup  and start_msgs.append(("Type of backup:", "INCR"))
+        args.verbose and args.backup_definition   and start_msgs.append(("Backup definition:", args.backup_definition))
         if args.alternate_reference_archive:
-            args.verbose and (print(f"Alternate ref archive: {args.alternate_reference_archive}"))
-        args.verbose and (print(f"Backup.d dir:      {config_settings.backup_d_dir}"))
-        args.verbose and (print(f"Backup dir:        {config_settings.backup_dir}"))
+            args.verbose and start_msgs.append(("Alternate ref archive:", args.alternate_reference_archive))
+        args.verbose and start_msgs.append(("Backup.d dir:", config_settings.backup_d_dir))
+        args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
 
         restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
-        args.verbose and (print(f"Restore dir:       {restore_dir}"))
+        args.verbose and start_msgs.append(("Restore dir:", restore_dir))
 
-        args.verbose and (print(f"Logfile location:  {config_settings.logfile_location}"))
-        args.verbose and (print(f".darrc location:   {args.darrc}"))
-        args.verbose and (print(f"PAR2 enabled:      {config_settings.par2_enabled}"))
-        args.verbose and (print(f"--do-not-compare:  {args.do_not_compare}"))
+        args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
+        args.verbose and start_msgs.append((".darrc location:", args.darrc))
+        args.verbose and start_msgs.append(("PAR2 enabled:", config_settings.par2_enabled))
+        args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))
+
+        print_aligned_settings(start_msgs)
 
         # sanity check
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):

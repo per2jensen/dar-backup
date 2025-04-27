@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
 from time import time
-from typing import Dict, List, NamedTuple
+from typing import Dict, List, NamedTuple, Tuple
 
 
 from . import __about__ as about
@@ -37,6 +37,7 @@ from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
 from dar_backup.util import show_version
+from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 
 from dar_backup.command_runner import CommandRunner   
@@ -204,7 +205,6 @@ def main():
     
 
     if args.version:
-        print(f"calling show_version()")
         show_version()
         sys.exit(0)
 
@@ -218,21 +218,24 @@ def main():
     command_logger = get_logger(command_output_logger = True)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
-    logger.info(f"=====================================")
-    logger.info(f"cleanup.py started, version: {about.__version__}")
+    start_msgs: List[Tuple[str, str]] = []
 
-    logger.info(f"START TIME: {start_time}")
+    start_msgs.append(("cleanup.py started, version:", about.__version__))
+
+    start_msgs.append(("START TIME:", start_time))
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
 
     file_dir =  os.path.normpath(os.path.dirname(__file__))
-    args.verbose and (print(f"Script directory:           {file_dir}"))
-    args.verbose and (print(f"Config file:                {args.config_file}"))
-    args.verbose and (print(f"Backup dir:                 {config_settings.backup_dir}"))
-    args.verbose and (print(f"Logfile location:           {config_settings.logfile_location}"))
-    args.verbose and (print(f"--alternate-archive-dir:    {args.alternate_archive_dir}"))
-    args.verbose and (print(f"--cleanup-specific-archives:{args.cleanup_specific_archives}")) 
+    args.verbose and start_msgs.append(("Script directory:", file_dir))
+    args.verbose and start_msgs.append(("Config file:", args.config_file))
+    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
+    args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
+    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
+    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
 
+    dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
+    print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords)
 
     # run PREREQ scripts
     requirements('PREREQ', config_settings)

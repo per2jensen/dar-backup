@@ -37,6 +37,7 @@ from dar_backup.util import CommandResult
 from dar_backup.util import get_logger
 from dar_backup.util import get_binary_info
 from dar_backup.util import show_version
+from dar_backup.util import print_aligned_settings
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -44,7 +45,7 @@ from dar_backup.util import backup_definition_completer, list_archive_completer,
 
 from datetime import datetime
 from time import time
-from typing import Dict, List, NamedTuple
+from typing import Dict, List, NamedTuple, Tuple
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -523,15 +524,18 @@ def main():
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
+    start_msgs: List[Tuple[str, str]] = []
+
     start_time = int(time())
-    logger.info(f"{SCRIPTNAME} started, version: {about.__version__}")
-    logger.info(f"START TIME: {start_time}")
+    start_msgs.append((f"{SCRIPTNAME} started:", about.__version__))
+    start_msgs.append(("START TIME:", start_time))
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
     dar_manager_properties = get_binary_info(command='dar_manager')
-    logger.debug(f"dar_manager location: {dar_manager_properties['path']}")
-    logger.debug(f"dar_manager version: {dar_manager_properties['version']}")
+    start_msgs.append(("dar_manager location:", dar_manager_properties['path']))
+    start_msgs.append(("dar_manager version:", dar_manager_properties['version']))
     
+    print_aligned_settings(start_msgs)
 
     # --- Sanity checks ---
     if args.add_dir and not args.add_dir.strip():

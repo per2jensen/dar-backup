@@ -24,8 +24,11 @@ from datetime import datetime
 from dar_backup.config_settings import ConfigSettings
 import dar_backup.__about__ as about
 
-from typing import NamedTuple, List
+from rich.console import Console
+from rich.text import Text
 
+from typing import NamedTuple, List
+from typing import Tuple
 
 
 logger=None
@@ -490,3 +493,72 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
     candidates = sorted(archive for archive in all_archives if archive not in existing)
     return candidates or ["[no new archives]"]
 
+
+
+
+
+
+console = Console()
+
+def print_aligned_settings(
+    settings: List[Tuple[str, str]],
+    log: bool = True,
+    header: str = "Startup Settings",
+    highlight_keywords: List[str] = None
+) -> None:
+    """
+    Print and optionally log settings nicely, using rich for color.
+    Highlights settings if dangerous keywords are found inside label or text,
+    but only if text is not None or empty.
+    """
+    if not settings:
+        return
+
+    settings = [(str(label), "" if text is None else str(text)) for label, text in settings]
+    logger = get_logger()
+
+    max_label_length = max(len(label) for label, _ in settings)
+
+    header_line = f"========== {header} =========="
+    footer_line = "=" * len(header_line)
+
+    console.print(f"[bold cyan]{header_line}[/bold cyan]")
+    if log and logger:
+        logger.info(header_line)
+
+    for label, text in settings:
+        padded_label = f"{label:<{max_label_length}}"
+
+        label_clean = label.rstrip(":").lower()
+        text_clean = text.lower()
+
+        # Skip highlighting if text is empty
+        if not text_clean.strip():
+            danger = False
+        else:
+            danger = False
+            if highlight_keywords:
+                combined_text = f"{label_clean} {text_clean}"
+                danger = any(keyword.lower() in combined_text for keyword in highlight_keywords)
+
+        # Build the line
+        line_text = Text()
+        line_text.append(padded_label, style="bold")
+        line_text.append(" ", style="none")
+
+        if danger:
+            line_text.append("[!]", style="bold red")
+            line_text.append(" ", style="none")
+
+        line_text.append(text, style="white")
+
+        console.print(line_text)
+
+        # Always log clean text (no [!] in log)
+        final_line_for_log = f"{padded_label} {text}"
+        if log and logger:
+            logger.info(final_line_for_log)
+
+    console.print(f"[bold cyan]{footer_line}[/bold cyan]")
+    if log and logger:
+        logger.info(footer_line)
