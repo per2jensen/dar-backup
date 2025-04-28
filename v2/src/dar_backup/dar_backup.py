@@ -37,6 +37,8 @@ from sys import stderr
 from sys import argv
 from sys import version_info
 from time import time
+from rich.console import Console
+from rich.text import Text
 from threading import Event
 from typing import List, Tuple
 
@@ -844,7 +846,7 @@ def main():
 
         start_time=int(time())
         start_msgs.append(('dar-backup.py started, version:', about.__version__))
-        start_msgs.append(('START TIME', start_time))
+        logger.info(('START TIME', start_time))
         logger.debug(f"{'`Args`:\n'}{args}")
         logger.debug(f"{'`Config_settings`:\n'}{config_settings}")
         dar_manager_properties = get_binary_info(command='dar')
@@ -853,9 +855,8 @@ def main():
 
         file_dir =  os.path.normpath(os.path.dirname(__file__))
         start_msgs.append(('Script directory:', os.path.abspath(file_dir)))
-                
         start_msgs.append(('Config file:', os.path.abspath(args.config_file)))
-
+        start_msgs.append((".darrc location:", args.darrc))
 
         args.verbose and args.full_backup         and start_msgs.append(("Type of backup:", "FULL"))
         args.verbose and args.differential_backup and start_msgs.append(("Type of backup:", "DIFF"))
@@ -870,10 +871,10 @@ def main():
         args.verbose and start_msgs.append(("Restore dir:", restore_dir))
 
         args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
-        args.verbose and start_msgs.append((".darrc location:", args.darrc))
         args.verbose and start_msgs.append(("PAR2 enabled:", config_settings.par2_enabled))
         args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))
 
+        dangerous_keywords = ["--do-not", "alternate"] # TODO: add more dangerous keywords
         print_aligned_settings(start_msgs)
 
         # sanity check
@@ -936,12 +937,17 @@ def main():
             else:
                 logger.error(f"not correct result type: {result}, which must be a tuple (<msg>, <exit_code>)")
             i=i+1
+            
+    console = Console()
     if error:
-        args.verbose and print("\033[1m\033[31mErrors\033[0m encountered")
+        if args.verbose:
+            console.print(Text("Errors encountered", style="bold red"))
         exit(1)
     else:
-        args.verbose and print("\033[1m\033[32mSuccess\033[0m all backups completed") 
+        if args.verbose:
+            console.print(Text("Success: all backups completed", style="bold green"))
         exit(0)
+
     
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-b
 ### Added
 
 - show_version() moved to util and tests for dar-backup, manager and cleanup
+- startup informational messages now works the same across the scripts
 
 ## v2-beta-0.6.19 - 2025-04-21
 
