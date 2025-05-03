@@ -161,10 +161,9 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
 def confirm_full_archive_deletion(archive_name: str, test_mode=False) -> bool:
     try:
         if test_mode:
-            confirmation = os.environ.get("CLEANUP_TEST_DELETE_FULL")
-            if confirmation is None:
-                raise RuntimeError("envvar 'CLEANUP_TEST_DELETE_FULL' not set")
-            print(f"Simulated confirmation for FULL archive: {confirmation}")
+            answer = os.getenv("CLEANUP_TEST_DELETE_FULL", "").lower()
+            print(f"Simulated confirmation for FULL archive '{archive_name}': {answer}")
+            return answer == "yes"
         else:
             confirmation = inputimeout(
                 prompt=f"Are you sure you want to delete the FULL archive '{archive_name}'? (yes/no): ",
