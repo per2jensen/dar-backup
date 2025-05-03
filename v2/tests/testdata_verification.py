@@ -21,7 +21,7 @@ from tests.conftest import test_files
 def run_backup_script(type: str, env: EnvData) -> CommandResult:
     command = ['dar-backup', type, '-d', "example", '--verbose', '--log-level', 'debug', '--log-stdout', '--config-file', env.config_file]
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    result: CommandResult = runner.run(command)
+    result: CommandResult = runner.run(command, timeout=300)
     stdout, stderr = result.stdout, result.stderr
     if result.returncode != 0:
         env.logger.error(f"Error running backup command: {command}")

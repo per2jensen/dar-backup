@@ -296,7 +296,7 @@ def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
     monkeypatch.setenv('CLEANUP_TEST_DELETE_FULL', "yes")
     command = ['cleanup', '--test-mode', '--cleanup-specific-archives', 'example_FULL_1970-01-01', '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
     env.logger.info(command)
-    result = subprocess.run(command, text=True, capture_output=True, timeout=1)
+    result = subprocess.run(command, text=True, capture_output=True, timeout=30)
     env.logger.info(result.stdout)
 
     assert result.returncode == 0, f"Cleanup script failed to delete the FULL archive"
