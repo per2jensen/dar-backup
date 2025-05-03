@@ -58,8 +58,8 @@ def test_verbose_cleanup(setup_environment, env):
         'Script directory:',
         'Config file:',
         'Backup dir:',
-        'Logfile location:',
-        '--cleanup-specific-archive',
+        'Logfile:',
+        '--cleanup-specific-archives:',
         '--alternate-archive-dir:'
     ]
 

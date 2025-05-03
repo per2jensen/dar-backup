@@ -6,7 +6,7 @@
 [![Total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
-the heavy lifting, together with the par2 suite in these scripts.
+the heavy lifting, together with the [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
 
 This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-backup/tree/main/v2) of `dar-backup`.
 
@@ -76,7 +76,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [manager](#manager-options)
   - [cleanup](#cleanup-options)
   - [clean-log](#clean-log-options)
-  - [installer](#installer-options)
+  - [demo](#demo-options)
   - [dar-backup-systemd](#dar-backup-systemd)
   
 ## My use case
@@ -90,7 +90,7 @@ I have cloud storage mounted on a directory within my home dir. The filesystem i
 
 - Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
 - Backup primarily photos, video and different types of documents
-- Have a simple non-complicated way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
+- Have a simple way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
 - During backup archives must be tested and a restore test (however small) performed
 - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
 - Easy to verify archive's integrity, after being moved around.
@@ -297,12 +297,12 @@ See section 15 and section 16 in the supplied "LICENSE" file.
 
 ### 2 - configuration
 
-The dar-backup installer is non-destructive and stops if some of the default directories exist.
+The dar-backup `demo` is non-destructive and stops if some of the default directories exist.
 
-Run the installer
+Run `demo`
 
 ```` bash
-installer --install
+demo --install
 ````
 
 The output is
@@ -381,6 +381,9 @@ COMMAND_TIMEOUT_SECS = 86400
 BACKUP_DIR = /some/where/dar-backup/backups/
 BACKUP.D_DIR = /some/where/dar-backup/backup.d
 TEST_RESTORE_DIR = /tmp/dar-backup/restore/
+# Optional parameter
+# If you want to store the catalog databases away from the BACKUP_DIR, use the MANAGER_DB_DIR variable.
+#MANAGER_DB_DIR = /some/where/else/
 
 [AGE]
 # age settings are in days
@@ -1100,14 +1103,14 @@ One backup definition per file
 
 ### CLI Tools Overview
 
-| Command               | Description                               |
-|-----------------------|-------------------------------------------|
-| `dar-backup`          | Perform full, differential, or incremental backups with verification and restore testing |
-| `manager`             | Maintain and query catalog databases for archives |
-| `cleanup`             | Remove outdated DIFF/INCR archives (and optionally FULLs) |
-| `clean-log`           | Clean up excessive log output from dar command logs |
-| `installer`           | Set up required directories and default config files |
-| `dar-backup-systemd`  | Generate (and optionally install) systemd timers and services for automated backups |
+| Command              | Description                               |
+|----------------------|-------------------------------------------|
+| `dar-backup`         | Perform full, differential, or incremental backups with verification and restore testing |
+| `manager`            | Maintain and query catalog databases for archives |
+| `cleanup`            | Remove outdated DIFF/INCR archives (and optionally FULLs) |
+| `clean-log`          | Clean up excessive log output from dar command logs |
+| `demo`               | Set up required directories and default config files |
+| `dar-backup-systemd` | Generate (and optionally install) systemd timers and services for automated backups |
 
 ### test coverage
 
@@ -1221,9 +1224,9 @@ This script removes excessive logging output from `dar` logs, improving readabil
 -h, --help                 Displays usage info
 ```
 
-### installer options
+### demo options
 
-Sets up `dar-backup`for a user.
+Sets up `dar-backup` to demo it.
 
 It is non-destructive and stops if directories are already in place.
 

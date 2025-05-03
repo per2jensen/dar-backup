@@ -56,6 +56,15 @@ DB_SUFFIX = ".db"
 logger = None
 runner = None
 
+
+def get_db_dir(config_settings: ConfigSettings) -> str:
+    """
+    Return the correct directory for storing catalog databases.
+    Uses manager_db_dir if set, otherwise falls back to backup_dir.
+    """
+    return getattr(config_settings, "manager_db_dir", None) or config_settings.backup_dir
+
+
 def show_more_help():
     help_text = f"""
 NAME
@@ -64,30 +73,42 @@ NAME
     print(help_text)
 
 
-def create_db(backup_def: str, config_settings: ConfigSettings):
+def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) -> int:
+    db_dir = get_db_dir(config_settings)
+
+    if not os.path.exists(db_dir):
+        logger.error(f"DB dir does not exist: {db_dir}")
+        return 1
+    if not os.path.isdir(db_dir):
+        logger.error(f"DB path exists but is not a directory: {db_dir}")
+        return 1
+    if not os.access(db_dir, os.W_OK):
+        logger.error(f"DB dir is not writable: {db_dir}")
+        return 1
+
     database = f"{backup_def}{DB_SUFFIX}"
-    
-    database_path = os.path.join(config_settings.backup_dir, database)
-    
-    logger.debug(f"BACKUP_DIR: {config_settings.backup_dir}")
+    database_path = os.path.join(db_dir, database)
+
+    logger.debug(f"DB directory: {db_dir}")
 
     if os.path.exists(database_path):
-        logger.warning(f'"{database_path}" already exists, skipping creation')
+        logger.info(f'"{database_path}" already exists, skipping creation')
         return 0
     else:
         logger.info(f'Create catalog database: "{database_path}"')
-        command = ['dar_manager', '--create' , database_path]
+        command = ['dar_manager', '--create', database_path]
         process = runner.run(command)
         logger.debug(f"return code from 'db created': {process.returncode}")
         if process.returncode == 0:
             logger.info(f'Database created: "{database_path}"')
         else:
             logger.error(f'Something went wrong creating the database: "{database_path}"')
-            stdout, stderr = process.stdout, process.stderr 
+            stdout, stderr = process.stdout, process.stderr
             logger.error(f"stderr: {stderr}")
             logger.error(f"stdout: {stdout}")
 
     return process.returncode
+
 
 def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> CommandResult:
     """
@@ -97,7 +118,7 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
         A CommandResult containing the raw stdout/stderr and return code.
     """
     database = f"{backup_def}{DB_SUFFIX}"
-    database_path = os.path.join(config_settings.backup_dir, database)
+    database_path = os.path.join(get_db_dir(config_settings), database)
 
     if not os.path.exists(database_path):
         error_msg = f'Database not found: "{database_path}"'
@@ -176,7 +197,7 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
     """
     backup_def = backup_def_from_archive(archive)
     database = f"{backup_def}{DB_SUFFIX}"
-    database_path = os.path.join(config_settings.backup_dir, database)
+    database_path = os.path.join(get_db_dir(config_settings), database)
 
     if not os.path.exists(database_path):
         logger.error(f'Database not found: "{database_path}"')
@@ -221,7 +242,7 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
     """
     logger = get_logger()
     database = f"{backup_def}{DB_SUFFIX}"
-    database_path = os.path.join(config_settings.backup_dir, database)
+    database_path = os.path.join(get_db_dir(config_settings), database)
     if not os.path.exists(database_path):
         logger.error(f'Catalog database not found: "{database_path}"')
         return 1
@@ -242,7 +263,7 @@ def find_file(file, backup_def, config_settings):
     Find a specific file
     """
     database = f"{backup_def}{DB_SUFFIX}"
-    database_path = os.path.join(config_settings.backup_dir, database)
+    database_path = os.path.join(get_db_dir(config_settings), database)
     if not os.path.exists(database_path):
         logger.error(f'Database not found: "{database_path}"')
         return 1
@@ -286,7 +307,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
 
     # Determine catalog DB path
     database = f"{backup_definition}{DB_SUFFIX}"
-    database_path = os.path.realpath(os.path.join(config_settings.backup_dir, database))
+    database_path = os.path.realpath(os.path.join(get_db_dir(config_settings), database))
 
     # Safety check: is archive older than latest in catalog?
     try:
@@ -447,7 +468,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
 
     """
     backup_def = backup_def_from_archive(archive)
-    database_path = os.path.join(config_settings.backup_dir, f"{backup_def}{DB_SUFFIX}")
+    database_path = os.path.join(get_db_dir(config_settings), f"{backup_def}{DB_SUFFIX}")
     cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
@@ -514,6 +535,8 @@ def main():
 
     args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
     config_settings = ConfigSettings(args.config_file)
+    print(f"Config settings: {config_settings}")
+
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")
         sys.exit(1)
@@ -527,13 +550,18 @@ def main():
     start_msgs: List[Tuple[str, str]] = []
 
     start_time = int(time())
-    start_msgs.append((f"{SCRIPTNAME} started:", about.__version__))
-    start_msgs.append(("START TIME:", start_time))
+    start_msgs.append((f"{SCRIPTNAME}:", about.__version__))
+    logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
+    start_msgs.append(("Config file:", args.config_file))
+    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
+    start_msgs.append(("Logfile:", config_settings.logfile_location))
+    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
+    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
     dar_manager_properties = get_binary_info(command='dar_manager')
-    start_msgs.append(("dar_manager location:", dar_manager_properties['path']))
-    start_msgs.append(("dar_manager version:", dar_manager_properties['version']))
+    start_msgs.append(("dar_manager:", dar_manager_properties['path']))
+    start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
     
     print_aligned_settings(start_msgs)
 
@@ -596,14 +624,14 @@ def main():
     # --- Functional logic ---
     if args.create_db:
         if args.backup_def:
-            sys.exit(create_db(args.backup_def, config_settings))
+            sys.exit(create_db(args.backup_def, config_settings, logger, runner))
             return
         else:
             for root, dirs, files in os.walk(config_settings.backup_d_dir):
                 for file in files:
                     current_backupdef = os.path.basename(file)
                     logger.debug(f"Create catalog db for backup definition: '{current_backupdef}'")
-                    result = create_db(current_backupdef, config_settings)
+                    result = create_db(current_backupdef, config_settings, logger, runner)
                     if result != 0:
                         sys.exit(result)
                         return

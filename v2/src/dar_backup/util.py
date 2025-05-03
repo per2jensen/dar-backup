@@ -227,7 +227,6 @@ class RestoreError(Exception):
     pass
 
 
-
 class CommandResult(NamedTuple):
     """
     The reult of the run_command() function.
@@ -494,6 +493,26 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
     return candidates or ["[no new archives]"]
 
 
+
+
+def patch_config_file(path: str, replacements: dict) -> None:
+    """
+    Replace specific key values in a config file in-place.
+
+    Args:
+        path: Path to the config file.
+        replacements: Dictionary of keys to new values, e.g., {"LOGFILE_LOCATION": "/tmp/logfile.log"}.
+    """
+    with open(path, 'r') as f:
+        lines = f.readlines()
+
+    with open(path, 'w') as f:
+        for line in lines:
+            key = line.split('=')[0].strip()
+            if key in replacements:
+                f.write(f"{key} = {replacements[key]}\n")
+            else:
+                f.write(line)
 
 
 

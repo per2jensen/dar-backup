@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.20 - not releases
+## v2-beta-0.6.20 - 2025-05-03
 
 Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20/v2)
 
@@ -9,6 +9,13 @@ Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-b
 
 - show_version() moved to util and tests for dar-backup, manager and cleanup
 - startup informational messages now works the same across the scripts
+- Improved ConfigSettings class to handle optional configuration keys
+
+  -- test cases added
+
+- Optional config parameter: MANAGER_DB_DIR, ideally to point to another disk for safe keeping backup catalogs
+
+  -- test cases added
 
 ## v2-beta-0.6.19 - 2025-04-21
 

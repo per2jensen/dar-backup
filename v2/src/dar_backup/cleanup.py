@@ -220,17 +220,17 @@ def main():
 
     start_msgs: List[Tuple[str, str]] = []
 
-    start_msgs.append(("cleanup.py started, version:", about.__version__))
+    start_msgs.append(("cleanup.py:", about.__version__))
 
-    start_msgs.append(("START TIME:", start_time))
+    logger.info(f"START TIME: {start_time}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
 
     file_dir =  os.path.normpath(os.path.dirname(__file__))
     args.verbose and start_msgs.append(("Script directory:", file_dir))
-    args.verbose and start_msgs.append(("Config file:", args.config_file))
+    start_msgs.append(("Config file:", args.config_file))
     args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
-    args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
+    start_msgs.append(("Logfile:", config_settings.logfile_location))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
     args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
 

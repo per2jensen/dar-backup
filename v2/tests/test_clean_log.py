@@ -253,4 +253,4 @@ def test_clean_log_missing_config_file(setup_environment, env: EnvData, sample_l
     command = ["clean-log", "-f", sample_log_file, "-c", "/nonexistent.conf"]
     process = runner.run(command)
     assert process.returncode != 0
-    assert "Missing mandatory configuration key" in process.stderr or process.stdout
+    assert "Configuration file not found or unreadable:" in process.stderr or process.stdout

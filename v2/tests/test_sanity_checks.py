@@ -24,6 +24,7 @@ def setup_runner(env: EnvData):
     global runner
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
+
 @pytest.fixture
 def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
     unix_time = int(time())
@@ -43,6 +44,7 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
     if os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
         os.remove(os.path.expanduser(LOGFILE_LOCATION))
         env.logger.info(f"Removed: {LOGFILE_LOCATION}")
+
 
 @pytest.fixture
 def modify_config_file_env_vars(env: EnvData) -> Generator[dict, None, None]:
@@ -65,23 +67,53 @@ def modify_config_file_env_vars(env: EnvData) -> Generator[dict, None, None]:
     if os.path.exists(LOG_DIR):
         shutil.rmtree(LOG_DIR)
 
-def test_env_vars_in_config_file(setup_environment, env: EnvData, modify_config_file_env_vars: dict):
-    os.environ['BACKUP_DIR'] = modify_config_file_env_vars['BACKUP_DIR']
-    os.environ['LOG_DIR'] = modify_config_file_env_vars['LOG_DIR']
-    process = runner.run(['manager', '--create-db', '--config-file', env.config_file])
-    assert process.returncode == 0
-    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout'])
-    assert process.returncode == 0
-    assert os.path.exists(os.path.join(os.environ['BACKUP_DIR'], f'example_FULL_{env.datestamp}.1.dar'))
-    assert os.path.exists(os.path.join(os.environ['LOG_DIR'], 'dar-backup.log'))
 
-def test_tilde_in_config_file(setup_environment, env: EnvData, modify_config_file_tilde: dict):
-    logfile = os.path.expanduser(modify_config_file_tilde['LOGFILE_LOCATION'])
-    process = runner.run(['dar-backup', '--full-backup', '--config-file', env.config_file, '-d', 'example', '--log-level', 'debug', '--log-stdout'])
+def test_env_vars_in_config_file(
+    setup_environment,
+    env: EnvData,
+    modify_config_file_env_vars: dict,
+    setup_runner: CommandRunner
+):
+    os.environ["BACKUP_DIR"] = modify_config_file_env_vars["BACKUP_DIR"]
+    os.environ["LOG_DIR"] = modify_config_file_env_vars["LOG_DIR"]
+
+    process = runner.run(["manager", "--create-db", "--config-file", env.config_file])
     assert process.returncode == 0
+
+    process = runner.run([
+        "dar-backup", "--full-backup", "--config-file", env.config_file,
+        "-d", "example", "--log-level", "debug", "--log-stdout"
+    ])
+    assert process.returncode == 0
+
+    expected_backup = os.path.join(os.environ["BACKUP_DIR"], f'example_FULL_{env.datestamp}.1.dar')
+    expected_log = os.path.join(os.environ["LOG_DIR"], "dar-backup.log")
+
+    assert os.path.exists(expected_backup)
+    assert os.path.exists(expected_log)
+
+
+
+
+def test_tilde_in_config_file(
+    setup_environment,
+    env: EnvData,
+    modify_config_file_tilde: dict,
+    setup_runner: CommandRunner
+):
+    env.logger.info(f"LOGFILE_LOCATION: {modify_config_file_tilde['LOGFILE_LOCATION']}")
+    logfile = os.path.expanduser(modify_config_file_tilde["LOGFILE_LOCATION"])
+
+    process = runner.run([
+        "dar-backup", "--full-backup", "--config-file", env.config_file,
+        "-d", "example", "--log-level", "debug", "--log-stdout"
+    ])
+    assert process.returncode == 0
+
     assert os.path.exists(logfile)
     assert os.path.getsize(logfile) > 0
-    with open(logfile, 'r') as f:
+
+    with open(logfile, "r") as f:
         for line in f:
             env.logger.info(line.strip())
 
@@ -109,7 +141,9 @@ def test_clean_log_missing_logfile_location_key(setup_environment, env: EnvData)
     process = runner.run(command)
 
     assert process.returncode != 0
-    assert "Missing mandatory configuration key" in process.stderr
+
+    error_output = process.stderr + process.stdout
+    assert "Missing mandatory configuration key" in error_output
 
 
 
@@ -169,25 +203,46 @@ def test_clean_log_missing_directories_section(setup_environment, env: EnvData, 
 
 
 
-
 def test_config_parsing_missing_misc_section(setup_environment, env: EnvData):
     """
-    Ensure the tool fails gracefully when the [MISC] section is missing.
+    Ensure the tool fails gracefully when the [MISC] section is missing from the config file.
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    
-    config_path = os.path.join(os.path.dirname(__file__), "../data/config_test_cases/missing_misc_section.conf")
+
+    # Write broken config (missing [MISC]) to env.config_file
+    broken_config = """\
+[DIRECTORIES]
+BACKUP_DIR = /tmp/fake/backup
+BACKUP.D_DIR = /tmp/fake/backup.d
+TEST_RESTORE_DIR = /tmp/fake/restore
+
+[AGE]
+DIFF_AGE = 30
+INCR_AGE = 15
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+ENABLED = True
+"""
+    with open(env.config_file, "w") as f:
+        f.write(broken_config)
+    env.logger.debug("Written broken config without [MISC] to %s", env.config_file)
+
+    # Write a dummy log file to clean
     log_file = os.path.join(env.test_dir, "test.log")
     with open(log_file, "w") as f:
-        f.write("INFO - <File dummy>\n")
+        f.write("INFO - Dummy log line\n")
 
-    command = ["clean-log", "-f", log_file, "-c", config_path]
+    # Run the tool with the bad config
+    command = ["clean-log", "-f", log_file, "-c", env.config_file]
     process = runner.run(command)
 
     assert process.returncode != 0, "Command should fail due to missing [MISC] section"
+
     error_output = process.stderr + process.stdout
-    assert "Missing mandatory configuration key" in error_output or "[MISC]" in error_output, \
-        f"Expected config error not found. Output was:\n{error_output}"
+    assert "Missing mandatory configuration key" in error_output or "[MISC]" in error_output, (
+        f"Expected error about missing [MISC] section. Output was:\n{error_output}"
+    )
 
 
 

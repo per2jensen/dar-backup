@@ -599,29 +599,28 @@ def test_manager_with_alternate_archive_dir(tmp_path, monkeypatch):
 
 
 
-def test_create_db_handles_dar_manager_failure(tmp_path, monkeypatch):
+def test_create_db_handles_dar_manager_failure(tmp_path):
+    from types import SimpleNamespace
     from dar_backup.manager import create_db
 
     dummy_def = "testdef"
     dummy_db_path = tmp_path / f"{dummy_def}.db"
-    config = SimpleNamespace(
-        backup_dir=tmp_path
-    )
+    config = SimpleNamespace(backup_dir=tmp_path)
 
     mock_runner = MagicMock()
     mock_runner.run.return_value.returncode = 1
     mock_runner.run.return_value.stdout = "some stdout"
     mock_runner.run.return_value.stderr = "some stderr"
 
-    with patch("dar_backup.manager.runner", mock_runner), \
-         patch("dar_backup.manager.logger") as mock_logger:
-        result = create_db(dummy_def, config)
+    mock_logger = MagicMock()
 
-        # It should log the error and return non-zero
-        assert result == 1
-        mock_logger.error.assert_any_call(f"Something went wrong creating the database: \"{dummy_db_path}\"")
-        mock_logger.error.assert_any_call("stderr: some stderr")
-        mock_logger.error.assert_any_call("stdout: some stdout")
+    result = create_db(dummy_def, config, mock_logger, mock_runner)
+
+    # It should log the error and return non-zero
+    assert result == 1
+    mock_logger.error.assert_any_call(f'Something went wrong creating the database: "{dummy_db_path}"')
+    mock_logger.error.assert_any_call("stderr: some stderr")
+    mock_logger.error.assert_any_call("stdout: some stdout")
 
 
 
@@ -903,12 +902,65 @@ def test_add_specific_archive_unexpected_error(tmp_path):
 
 
 
+import pytest
+from dar_backup.manager import main as manager_main
+import sys
+import os
+
+def test_list_archive_contents_arg(monkeypatch, tmp_path):
+    """
+    Test that the manager CLI exits cleanly when passed --list-archive-contents.
+
+    This test simulates CLI invocation by setting sys.argv with a valid config file,
+    and providing the --list-archive-contents option. It asserts that the tool exits
+    via SystemExit (as expected for CLI behavior), regardless of whether the archive
+    exists or not.
+
+    The purpose is to validate argument parsing and early termination behavior,
+    not functional success of listing contents.
+    """
+    # Create a minimal valid config file
+    config_file = tmp_path / "dummy.conf"
+    config_file.write_text("""\
+[MISC]
+LOGFILE_LOCATION = /tmp/test.log
+MAX_SIZE_VERIFICATION_MB = 10
+MIN_SIZE_VERIFICATION_MB = 1
+NO_FILES_VERIFICATION = 5
+COMMAND_TIMEOUT_SECS = 30
+
+[DIRECTORIES]
+BACKUP_DIR = /tmp
+BACKUP.D_DIR = /tmp
+TEST_RESTORE_DIR = /tmp
+
+[AGE]
+DIFF_AGE = 30
+INCR_AGE = 15
+
+[PAR2]
+ERROR_CORRECTION_PERCENT = 5
+ENABLED = true
+""")
+
+    test_args = [
+        "manager",
+        "--list-archive-contents", "1",
+        "-d", "example",
+        "--config-file", str(config_file)
+    ]
+    monkeypatch.setattr(sys, "argv", test_args)
+
+    with pytest.raises(SystemExit):
+        manager_main()
+
+
 
 import pytest
 from dar_backup.manager import main as manager_main
 import sys
 
-def test_list_archive_contents_arg(monkeypatch):
+def _test_list_archive_contents_arg(monkeypatch):
     test_args = ["manager", "--list-archive-contents", "1", "-d", "example", "--config-file", "dummy.conf"]
     monkeypatch.setattr(sys, "argv", test_args)
     with pytest.raises(SystemExit):
@@ -1023,3 +1075,270 @@ def test_catalog_command_failure(env, setup_environment, caplog):
         assert "Error listing catalogs" in caplog.text
         assert "stderr message" in caplog.text
         assert "stdout message" in caplog.text
+
+
+
+def test_manager_db_dir_respected_by_dar_backup(env, setup_environment, tmp_path):
+    """
+    Verify that if MANAGER_DB_DIR is specified, the catalog database is created there by dar-backup during full backup.
+    """
+    manager_db_dir = tmp_path / "custom_catalogs"
+    manager_db_dir.mkdir()
+
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {manager_db_dir}\n")
+            break
+
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+    assert config_settings.manager_db_dir == str(manager_db_dir)
+
+    generate_catalog_db(env)
+    test_files = generate_test_data_and_full_backup(env)
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = [
+        "manager", "--list-catalogs", "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout"
+    ]
+    process = runner.run(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info("=== list-catalogs stdout ===\n" + stdout)
+    if process.returncode != 0:
+        env.logger.error("=== list-catalogs stderr ===\n" + stderr)
+        raise RuntimeError("manager --list-catalogs failed")
+
+    expected_db = manager_db_dir / "example.db"
+    assert expected_db.exists(), f"Catalog DB not found at expected path: {expected_db}"
+    env.logger.info(f"✅ Catalog successfully created in MANAGER_DB_DIR: {expected_db}")
+
+    today = date.today().strftime("%Y-%m-%d")
+    archive_name = f"example_FULL_{today}"
+    command = [
+        "manager", "--list-archive-contents", archive_name,
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout"
+    ]
+    process = runner.run(command)
+    stdout, stderr = process.stdout, process.stderr
+    env.logger.info("=== list-archive-contents stdout ===\n" + stdout)
+    if process.returncode != 0:
+        env.logger.error("=== list-archive-contents stderr ===\n" + stderr)
+        raise RuntimeError("manager --list-archive-contents failed")
+
+    for base in test_files:
+        expected = f"random-{base}.dat"
+        if expected not in stdout:
+            raise AssertionError(f"Expected file '{expected}' not found in archive contents")
+
+    env.logger.info("✅ All expected files are present in archive contents")
+
+
+
+
+def get_db_dir(config_settings: ConfigSettings) -> str:
+    """
+    Return the correct directory for storing catalog databases.
+    Uses manager_db_dir if set, otherwise falls back to backup_dir.
+    """
+    return config_settings.manager_db_dir or config_settings.backup_dir
+
+
+def test_manager_db_dir_invalid_path_raises(env, setup_environment, tmp_path):
+    """
+    Negative test: if MANAGER_DB_DIR points to a non-writable or invalid directory, catalog creation should fail.
+    """
+    import shutil
+
+    # Use a bogus or protected path
+    invalid_db_dir = tmp_path / "nonexistent" / "bad_dir"
+
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {invalid_db_dir}\n")
+            break
+
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+    assert config_settings.manager_db_dir == str(invalid_db_dir)
+
+    # Remove directory to ensure it doesn't exist at runtime
+    shutil.rmtree(invalid_db_dir, ignore_errors=True)
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '--backup-def', 'example', '--config-file', env.config_file]
+    process = runner.run(command)
+
+    env.logger.debug(f"return code from 'db created': {process.returncode}")
+    database = "example.db"
+    database_path = os.path.join(get_db_dir(config_settings), database)
+
+    if process.returncode == 0:
+        env.logger.info(f'Database created: "{database_path}"')
+    else:
+        env.logger.error(f'Something went wrong creating the database: "{database_path}"')
+        stdout, stderr = process.stdout, process.stderr
+        env.logger.error(f"stderr: {stderr}")
+        env.logger.error(f"stdout: {stdout}")
+
+    assert process.returncode != 0, "Expected failure due to invalid MANAGER_DB_DIR path"
+    env.logger.info("✅ Catalog creation failed as expected due to invalid MANAGER_DB_DIR")
+
+
+
+def test_manager_db_dir_invalid_path_without_backup_def(env, setup_environment, tmp_path):
+    """
+    Negative test: MANAGER_DB_DIR is invalid and --backup-def is omitted; catalog creation should fail.
+    """
+    import shutil
+
+    invalid_db_dir = tmp_path / "nonexistent" / "unwritable"
+
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {invalid_db_dir}\n")
+            break
+
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+    assert config_settings.manager_db_dir == str(invalid_db_dir)
+
+    # Ensure directory is gone
+    shutil.rmtree(invalid_db_dir, ignore_errors=True)
+
+    # Create one dummy backup def
+    backup_def_file = Path(config_settings.backup_d_dir) / "example"
+    Path(config_settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+    backup_def_file.touch()
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '--config-file', env.config_file]
+    process = runner.run(command)
+
+    env.logger.debug(f"return code from 'db created': {process.returncode}")
+    assert process.returncode != 0, "Expected failure due to invalid MANAGER_DB_DIR with no backup-def"
+    env.logger.info("✅ Batch catalog creation failed as expected due to invalid MANAGER_DB_DIR")
+
+
+
+def test_manager_creates_all_catalogs(env, setup_environment, tmp_path):
+    """
+    Positive test: When MANAGER_DB_DIR is valid, and multiple backup definitions exist,
+    manager should create all catalogs successfully.
+    """
+    valid_db_dir = tmp_path / "valid_catalogs"
+    valid_db_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {valid_db_dir}\n")
+            break
+
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+
+    backup_defs = ["example1", "example2", "example3"]
+    for name in backup_defs:
+        Path(config_settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+        (Path(config_settings.backup_d_dir) / name).touch()
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '--config-file', env.config_file]
+    process = runner.run(command)
+
+    env.logger.debug(f"return code from batch create-db: {process.returncode}")
+    assert process.returncode == 0, "Expected successful creation of all catalogs"
+
+    for name in backup_defs:
+        db_file = valid_db_dir / f"{name}.db"
+        assert db_file.exists(), f"Expected catalog DB to exist: {
+            
+            
+            db_file}"
+        env.logger.info(f"✅ Found created catalog DB: {db_file}")
+
+
+
+def test_manager_skips_existing_catalogs(env, setup_environment, tmp_path):
+    """
+    Test that manager skips existing catalog databases and only creates missing ones.
+    """
+    import shutil
+
+    valid_db_dir = tmp_path / "valid_db_dir"
+    valid_db_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {valid_db_dir}\n")
+            break
+
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+
+    Path(config_settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+    backup_defs = ["alpha", "beta", "gamma"]
+    for name in backup_defs:
+        (Path(config_settings.backup_d_dir) / name).touch()
+
+    # Pre-create one DB file to simulate prior successful creation
+    pre_existing_db = valid_db_dir / "beta.db"
+    pre_existing_db.touch()
+    pre_mtime = pre_existing_db.stat().st_mtime
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '--config-file', env.config_file]
+    process = runner.run(command)
+
+    assert process.returncode == 0, "Expected successful catalog creation"
+
+    for name in backup_defs:
+        db_file = valid_db_dir / f"{name}.db"
+        assert db_file.exists(), f"Expected DB to exist: {db_file}"
+        env.logger.info(f"✅ Verified DB file: {db_file}")
+
+    post_mtime = pre_existing_db.stat().st_mtime
+    assert pre_mtime == post_mtime, "Pre-existing DB should not be overwritten"
+    env.logger.info(f"✅ Pre-existing DB '{pre_existing_db}' was preserved as expected")

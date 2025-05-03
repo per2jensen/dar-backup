@@ -845,13 +845,13 @@ def main():
         start_msgs: List[Tuple[str, str]] = []
 
         start_time=int(time())
-        start_msgs.append(('dar-backup.py started, version:', about.__version__))
-        logger.info(('START TIME', start_time))
+        start_msgs.append(('dar-backup.py:', about.__version__))
+        logger.info(f"START TIME: {start_time}")
         logger.debug(f"{'`Args`:\n'}{args}")
         logger.debug(f"{'`Config_settings`:\n'}{config_settings}")
-        dar_manager_properties = get_binary_info(command='dar')
-        start_msgs.append(('dar path:', dar_manager_properties['path']))
-        start_msgs.append(('dar version:', dar_manager_properties['version']))
+        dar_properties = get_binary_info(command='dar')
+        start_msgs.append(('dar path:', dar_properties['path']))
+        start_msgs.append(('dar version:', dar_properties['version']))
 
         file_dir =  os.path.normpath(os.path.dirname(__file__))
         start_msgs.append(('Script directory:', os.path.abspath(file_dir)))
