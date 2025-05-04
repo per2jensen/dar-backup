@@ -70,6 +70,7 @@ tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     pyproject.toml \
     testall.sh \
     build.sh \
+    release.sh \
     pytest.ini \
     MANIFEST.in
 ````

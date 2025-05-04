@@ -78,8 +78,10 @@ jobs:
           . venv/bin/activate
           fi
           coverage erase
-          ./pytest-cov.sh 
-
+          PYTHONPATH=src pytest --rootdir=.
+      - name: Run coverage measurement
+        run: |
+          coverage xml -o coverage.xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
