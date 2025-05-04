@@ -81,6 +81,16 @@ jobs:
           PYTHONPATH=src pytest --rootdir=.
       - name: Run coverage measurement
         run: |
+          cd $GITHUB_WORKSPACE/v2
+          export PYTHONPATH=$GITHUB_WORKSPACE/v2/src
+
+          if [[ "$VIRTUAL_ENV" ]]; then
+             deactivate
+          fi
+        
+          if [[ -z "$VIRTUAL_ENV" ]]; then
+          . venv/bin/activate
+          fi
           coverage xml -o coverage.xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
