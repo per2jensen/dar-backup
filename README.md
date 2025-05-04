@@ -1,7 +1,11 @@
 <!-- markdownlint-disable MD024 -->
-# Full, differential or incremental backups using 'dar'
+# `dar-backup`
+
+**Reliable DAR backups, automated in clean Python**
 
 [![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
+![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg)
+[![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/)
 [![PyPI monthly downloads](https://img.shields.io/pypi/dm/dar-backup)](https://pypi.org/project/dar-backup/)
 [![Total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 
