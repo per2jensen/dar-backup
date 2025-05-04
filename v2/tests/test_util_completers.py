@@ -90,10 +90,15 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
     # Use existing backup definition created by setup_environment
     backup_def = "example"
 
+    test_path = Path(env.test_dir)
+
     args = SimpleNamespace(
         config_file=env.config_file,
-        backup_def=backup_def
+        backup_def=backup_def,
+        manager_db_dir=str(test_path / "backups"),
+        backup_dir=str(test_path / "backups")
     )
+
 
     # Simulated output from `dar_manager --list`
     mock_dar_output = "\n".join([
@@ -263,13 +268,18 @@ def test_add_specific_archive_completer_full_coverage(setup_environment, env):
     # Confirm file exists and matches pattern
     assert os.path.exists(archive_path)
 
-    class Args:
-        def __init__(self, config_file, backup_def):
-            self.config_file = config_file
-            self.backup_def = backup_def
 
-    args = Args(env.config_file, backup_def)
+    from types import SimpleNamespace
+    from pathlib import Path
 
+    test_backups_dir = str(Path(env.test_dir) / "backups")
+
+    args = SimpleNamespace(
+        config_file=env.config_file,
+        backup_def=backup_def,
+        manager_db_dir=test_backups_dir,
+        backup_dir=test_backups_dir,
+)
     # Test: archive should appear since it's not in the DB yet
     result = add_specific_archive_completer(prefix=archive_prefix[:3], parsed_args=args)
     assert archive_prefix in result

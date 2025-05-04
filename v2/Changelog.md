@@ -1,6 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.20.1 - 2025-05-04
+
+Github link: [v2-beta-0.6.20.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20.1/v2)
+
+### Added
+
+- FIX: bash/zsh completers fixed to support MANAGER_DB_DIR config if set
+- `cleanup` and `manager` completer now sorts archives by \<backup-definition> and \<archive date> (so not using \<type>)
+
 ## v2-beta-0.6.20 - 2025-05-03
 
 Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20/v2)

@@ -998,7 +998,7 @@ Try completion of backup definition and then list contents:
 
 #### Archive name completion (smart, context-aware)
 
-When using `manager`--list-archive-contents, the tab-completer suggests valid archive names.
+When using `manager--list-archive-contents`, the tab-completer suggests valid archive names.
 
 The behavior is smart and context-aware:
 
@@ -1041,6 +1041,8 @@ Try auto completion in your session:
 eval "$(register-python-argcomplete dar-backup)"
 eval "$(register-python-argcomplete cleanup)"
 eval "$(register-python-argcomplete manager)"
+complete -o nosort -C 'python -m argcomplete cleanup' cleanup
+complete -o nosort -C 'python -m argcomplete manager' manager
 ```
 
 To make it persistent across sessions, add this to your ~/.bashrc:
@@ -1050,6 +1052,20 @@ To make it persistent across sessions, add this to your ~/.bashrc:
 eval "$(register-python-argcomplete dar-backup)"
 eval "$(register-python-argcomplete cleanup)"
 eval "$(register-python-argcomplete manager)"
+# This disables bash sorting, so sorting is by <backup definition> and <date>
+complete -o nosort -C 'python -m argcomplete cleanup' cleanup
+complete -o nosort -C 'python -m argcomplete manager' manager
+```
+
+If you're using a virtual environment and register-python-argcomplete isn't in your global PATH, use:
+
+```bash
+# Enable autocompletion for dar-backup
+eval "$($(which register-python-argcomplete) dar-backup)"
+eval "$($(which register-python-argcomplete) cleanup)"
+eval "$($(which register-python-argcomplete) manager)"
+
+# If it's not working, try reactivating your virtualenv and restarting your terminal.
 ```
 
 Then reload your shell:

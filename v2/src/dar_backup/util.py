@@ -102,6 +102,24 @@ def get_logger(command_output_logger: bool = False) -> logging.Logger:
 
     return secondary_logger if command_output_logger else logger
 
+
+# Setup completer logger only once
+def _setup_completer_logger(logfile="/tmp/dar_backup_completer.log"):
+    logger = logging.getLogger("completer")
+    if not logger.handlers:
+        handler = logging.FileHandler(logfile)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+    return logger
+
+# Singleton logger for completer debugging
+completer_logger = _setup_completer_logger()
+completer_logger.debug("Completer logger initialized.")
+
+
+
 def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {about.__version__}")
@@ -346,6 +364,7 @@ def extract_backup_definition_fallback() -> str:
 
 
 
+
 def list_archive_completer(prefix, parsed_args, **kwargs):
     import os
     import configparser
@@ -369,11 +388,38 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
     files = os.listdir(backup_dir)
     archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
 
-    return [
+    completions = [
         f.rsplit(".1.dar", 1)[0]
         for f in files
         if archive_re.match(f)
     ]
+
+    completions = sorted(set(completions), key=sort_key)
+    return completions or ["[no matching archives]"]
+
+
+
+def sort_key(archive_name: str):
+    """
+    Sort by backup definition and then by date extracted from the archive name.
+    Handles formats like: <def>_<TYPE>_<YYYY-MM-DD>.<N>.dar
+    """
+    try:
+        base = archive_name.split('.')[0]  # remove .1.dar
+        parts = base.split('_')
+        if len(parts) < 3:
+            return (archive_name, datetime.min)  # fallback for non-matching formats
+
+        # Correct assumption: last two parts are TYPE and DATE
+        def_name = '_'.join(parts[:-2])  # everything before _TYPE_DATE
+        date_str = parts[-1]
+        date = datetime.strptime(date_str, "%Y-%m-%d")
+        completer_logger.debug(f"Archive: {archive_name}, Def: {def_name}, Date: {date}")
+        return (def_name, date)
+    except Exception:
+        return (archive_name, datetime.min)
+
+
 
 
 def archive_content_completer(prefix, parsed_args, **kwargs):
@@ -392,14 +438,15 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
     # Expand config path
     config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
     config = ConfigSettings(config_file=config_file)
-    backup_dir = config.backup_dir
+    #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
+    db_dir = expand_path(getattr(config, 'manager_db_dir', None) or config.backup_dir)
 
     # Which db files to inspect?
     backup_def = getattr(parsed_args, "backup_def", None)
     db_files = (
-        [os.path.join(backup_dir, f"{backup_def}.db")]
+        [os.path.join( db_dir, f"{backup_def}.db")]
         if backup_def
-        else [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith(".db")]
+        else [os.path.join( db_dir, f) for f in os.listdir( db_dir) if f.endswith(".db")]
     )
 
     completions = []
@@ -426,13 +473,6 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
                 if archive.startswith(prefix):
                     completions.append(archive)
 
-    # Sort: first by name (before first '_'), then by date (YYYY-MM-DD)
-    def sort_key(archive):
-        name_part = archive.split("_")[0]
-        date_match = re.search(r"\d{4}-\d{2}-\d{2}", archive)
-        date = datetime.strptime(date_match.group(0), "%Y-%m-%d") if date_match else datetime.min
-        return (name_part, date)
-
     completions = sorted(set(completions), key=sort_key)
     return completions or ["[no matching archives]"]
 
@@ -452,6 +492,8 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
 
     config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
     config = ConfigSettings(config_file=config_file)
+    #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
+    db_dir = expand_path(getattr(config, 'manager_db_dir') or config.backup_dir)
     backup_dir = config.backup_dir
     backup_def = getattr(parsed_args, "backup_def", None)
 
@@ -469,7 +511,7 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
                     all_archives.add(base)
 
     # Step 2: exclude ones already present in the .db
-    db_path = os.path.join(backup_dir, f"{backup_def}.db") if backup_def else None
+    db_path = os.path.join(db_dir, f"{backup_def}.db") if backup_def else None
     existing = set()
 
     if db_path and os.path.exists(db_path):
