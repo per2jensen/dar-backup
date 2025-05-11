@@ -14,6 +14,11 @@ BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/
 BACKUP.D_DIR = /tmp/unit-test/@@test-case-name@@/backup.d/
 DATA_DIR = /tmp/unit-test/@@test-case-name@@/data/
 TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
+# Optional parameter
+# If you want to store the catalog database away from the BACKUP_DIR,  use the MANAGER_DB_DIR variable.
+#MANAGER_DB_DIR = /some/where/else/
+
+
 
 [AGE]
 DIFF_AGE = 30

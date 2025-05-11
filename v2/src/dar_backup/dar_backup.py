@@ -51,6 +51,7 @@ from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 from dar_backup.util import requirements
 from dar_backup.util import show_version
+from dar_backup.util import get_invocation_command_line
 from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
@@ -847,6 +848,7 @@ def main():
         start_time=int(time())
         start_msgs.append(('dar-backup.py:', about.__version__))
         logger.info(f"START TIME: {start_time}")
+        logger.debug(f"Command line: {get_invocation_command_line()}")
         logger.debug(f"{'`Args`:\n'}{args}")
         logger.debug(f"{'`Config_settings`:\n'}{config_settings}")
         dar_properties = get_binary_info(command='dar')

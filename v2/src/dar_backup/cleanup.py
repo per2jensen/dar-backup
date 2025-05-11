@@ -37,6 +37,7 @@ from dar_backup.util import setup_logging
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
 from dar_backup.util import show_version
+from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 
@@ -222,6 +223,7 @@ def main():
     start_msgs.append(("cleanup.py:", about.__version__))
 
     logger.info(f"START TIME: {start_time}")
+    logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
 

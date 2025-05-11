@@ -37,6 +37,7 @@ from dar_backup.util import CommandResult
 from dar_backup.util import get_logger
 from dar_backup.util import get_binary_info
 from dar_backup.util import show_version
+from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 
 from dar_backup.command_runner import CommandRunner   
@@ -551,6 +552,7 @@ def main():
     start_time = int(time())
     start_msgs.append((f"{SCRIPTNAME}:", about.__version__))
     logger.info(f"START TIME: {start_time}")
+    logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
     start_msgs.append(("Config file:", args.config_file))

@@ -119,6 +119,27 @@ completer_logger = _setup_completer_logger()
 completer_logger.debug("Completer logger initialized.")
 
 
+def get_invocation_command_line() -> str:
+    """
+    Safely retrieves the exact command line used to invoke the current Python process.
+
+    On Unix-like systems, this reads from /proc/[pid]/cmdline to reconstruct the
+    command with interpreter and arguments. If any error occurs (e.g., file not found,
+    permission denied, non-Unix platform), it returns a descriptive error message.
+
+    Returns:
+        str: The full command line string, or an error description if it cannot be retrieved.
+    """
+    try:
+        cmdline_path = f"/proc/{os.getpid()}/cmdline"
+        with open(cmdline_path, "rb") as f:
+            content = f.read()
+            if not content:
+                return "[error: /proc/cmdline is empty]"
+            return content.replace(b'\x00', b' ').decode().strip()
+    except Exception as e:
+        return f"[error: could not read /proc/[pid]/cmdline: {e}]"
+
 
 def show_version():
     script_name = os.path.basename(sys.argv[0])
@@ -263,6 +284,28 @@ class CommandResult(NamedTuple):
 
 def list_backups(backup_dir, backup_definition=None):
     """
+    Lists the available backup files in the specified directory along with their total sizes in megabytes. 
+    The function filters and processes `.dar` files, grouping them by their base names and ensuring proper 
+    alignment of the displayed sizes.
+    Args:
+        backup_dir (str): The directory containing the backup files.
+        backup_definition (str, optional): A prefix to filter backups by their base name. Only backups 
+                                           starting with this prefix will be included. Defaults to None.
+    Raises:
+        locale.Error: If setting the locale fails and the fallback to the 'C' locale is unsuccessful.
+    Behavior:
+        - Attempts to set the locale based on the environment for proper formatting of numbers.
+        - Filters `.dar` files in the specified directory based on the following criteria:
+            - The file name must contain one of the substrings: "_FULL_", "_DIFF_", or "_INCR_".
+            - The file name must include a date in the format "_YYYY-MM-DD".
+        - Groups files by their base name (excluding slice numbers and extensions) and calculates 
+          the total size for each group in megabytes.
+        - Sorts the backups by their base name and date (if included in the name).
+        - Prints the backup names and their sizes in a formatted and aligned manner.
+    Returns:
+        None: The function prints the results directly to the console. If no backups are found, 
+              it prints "No backups available.".
+
     List the available backups in the specified directory and their sizes in megabytes, with aligned sizes.
     """
     # Attempt to set locale from the environment or fall back to the default locale

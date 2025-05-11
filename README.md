@@ -20,7 +20,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 
 ## Table of Contents
 
-- [Full, differential or incremental backups using 'dar'](#full-differential-or-incremental-backups-using-dar)
+- [Reliable `dar` backups wrapped in Python](#dar-backup)
 - [My use case](#my-use-case)
 - [License](#license)
 - [Changelog version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
@@ -80,8 +80,9 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [manager](#manager-options)
   - [cleanup](#cleanup-options)
   - [clean-log](#clean-log-options)
-  - [demo](#demo-options)
   - [dar-backup-systemd](#dar-backup-systemd)
+  - [Installer](#installer)
+  - [demo](#demo)
   
 ## My use case
 
@@ -1244,7 +1245,29 @@ This script removes excessive logging output from `dar` logs, improving readabil
 -h, --help                 Displays usage info
 ```
 
-### demo options
+### dar-backup-systemd
+
+Generates and optionally install systemd user service units and timers.
+
+```bash
+-h, --help           Show this help message and exit
+--venv VENV          Path to the Python venv with dar-backup
+--dar-path DAR_PATH  Optional path to dar binary's directory
+--install            Install the units to ~/.config/systemd/user
+```
+
+### installer
+
+Sets up `dar-backup` according to provided config file.
+
+The installer creates the necessary backup catalog databases if `--create-db` is given.
+
+```bash
+--config             Sets up `dar-backup`.
+--create-db          Create backup catalog databases.
+```
+
+### demo
 
 Sets up `dar-backup` to demo it.
 
@@ -1267,15 +1290,4 @@ Sets up demo config files:
 -i, --install              Sets up `dar-backup`.
 -v, --version              Display version and licensing information.
 -h, --help                 Displays usage info
-```
-
-### dar-backup-systemd
-
-Generates and optionally install systemd user service units and timers.
-
-```bash
--h, --help           Show this help message and exit
---venv VENV          Path to the Python venv with dar-backup
---dar-path DAR_PATH  Optional path to dar binary's directory
---install            Install the units to ~/.config/systemd/user
 ```

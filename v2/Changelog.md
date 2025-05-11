@@ -1,6 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.6.21 - not yet released
+
+Github link: [v2-beta-0.6.21](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.21/v2)
+
+### Added
+
+- util.get_invocation_command_line() used to print command line
+- installer to setup directories and catalog databases as prescribed in config file
+
 ## v2-beta-0.6.20.1 - 2025-05-04
 
 Github link: [v2-beta-0.6.20.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20.1/v2)
