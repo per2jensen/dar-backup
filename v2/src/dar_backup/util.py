@@ -145,9 +145,7 @@ def show_version():
     script_name = os.path.basename(sys.argv[0])
     print(f"{script_name} {about.__version__}")
     print(f"{script_name} source code is here: https://github.com/per2jensen/dar-backup")
-    print('''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.''')
+    print(about.__license__)
 
 def extract_version(output):
     match = re.search(r'(\d+\.\d+(\.\d+)?)', output)

@@ -1,5 +1,6 @@
 import argparse
 import os
+from . import __about__ as about
 from pathlib import Path
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging, get_logger
@@ -66,14 +67,17 @@ def run_installer(config_file: str, create_db_flag: bool):
                 print(f"❌ Failed to create catalog: {backup_def}")
 
 
-def installer_main():
+def main():
     parser = argparse.ArgumentParser(description="dar-backup installer")
     parser.add_argument("--config", required=True, help="Path to config file")
     parser.add_argument("--create-db", action="store_true", help="Create catalog databases")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s version {about.__version__}, {about.__license__}"
+    )
+
     args = parser.parse_args()
 
     run_installer(args.config, args.create_db)
 
 
 if __name__ == "__main__":
-    installer_main()
+    main()

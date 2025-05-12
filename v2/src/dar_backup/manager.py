@@ -504,7 +504,7 @@ def build_arg_parser():
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--more-help', action='store_true', help='Show extended help message')
-    parser.add_argument('--version', action='store_true', help='Show version & license')
+    parser.add_argument('-v', '--version', action='store_true', help='Show version & license')
 
     return parser
 
