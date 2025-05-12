@@ -684,12 +684,29 @@ INCR back of a single backup definition in backup.d
 
 
 --selection
-    --selection takes dar selection parameters between a pair of `"`. 
 
-    Example: select file names with this date in file names "2024-07-01" in the
-    directory "path/to/a/dir" where the path is relative to root of the backup.
+    --selection takes dar file selection options inside a quoted string.
+    
+    💡 Shell quoting matters! Always wrap the entire selection string in double quotes to avoid shell splitting. 
 
-    python3 dar-backup.py --restore <name of dar archive>  --selection "-I '*2024-07-01*' -g path/to/a/dir"
+    ✅ Use:   --selection="-I '*.NEF'"
+    ❌ Avoid: --selection "-I '*.NEF'" → may break due to how your shell parses it.
+
+    Examples:
+    1)
+    select file names with "Z50_" in file names:
+        python3 dar-backup.py --restore <name of dar archive>  --selection="-I '*Z50_*'"
+    2)
+    Filter out *.xmp files:
+        python3 dar-backup.py --restore <name of dar archive>  --selection="-X '*.xmp'"
+    
+    3)
+    Include all files in a directory:
+        python3 dar-backup.py --restore <name of dar archive>  --selection="-g 'path/to/a/dir'"
+
+    4)
+    Exclude a directory:
+        python3 dar-backup.py --restore <name of dar archive>  --selection="-P 'path/to/a/dir'"
 
     See dar documentation on file selection: http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS
 """
@@ -765,7 +782,7 @@ def main():
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.").completer = list_archive_completer
     parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
-    parser.add_argument('--selection', help="dar file selection for listing/restoring specific files/directories.")
+    parser.add_argument('--selection', type=str, help="Selection string to pass to 'dar', e.g. --selection=\"-I '*.NEF'\"")
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")

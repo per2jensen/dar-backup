@@ -681,118 +681,94 @@ WantedBy=timers.target
 
 ## list contents of an archive
 
-```` bash
-. <the virtual evn>/bin/activate
-dar-backup --list-contents example_FULL_2024-06-23 --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+```bash
+# Activate your virtual environment
+source <the virtual evn>/bin/activate
+dar-backup --list-contents media-files_INCR_2025-05-10
+# Deactivate when done
 deactivate
-````
+```
 
-gives
+gives something like
 
-``` code
-[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
---------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
+```text
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj  2 Gio   Sat May 10 14:15:07 2025  home/pj
+[Saved][ ]       [-L-][  93%][ ]  -rw-rw-r--   pj pj  29 kio  Fri May  9 16:45:38 2025  home/pj/data/2023/2023-02-11-Udstilling-Fredericia/DSC_0568.NEF.xmp
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj  2 Gio   Fri May  9 12:49:04 2025  home/pj/data/2025
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj  193 Mio Thu May  8 15:59:17 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  15 Mio  Thu May  8 15:52:27 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  10 Mio  Thu May  8 15:52:27 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  9 Mio   Thu May  8 15:51:53 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0559.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  16 Mio  Thu May  8 15:51:45 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  12 Mio  Thu May  8 15:51:45 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  16 Mio  Thu May  8 15:51:24 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  12 Mio  Thu May  8 15:51:23 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG
+[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   pj pj  22 kio  Thu May  8 15:59:58 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj pj  30 kio  Thu May  8 16:00:36 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF.xmp
+[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   pj pj  22 kio  Thu May  8 16:00:29 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG.xmp
 ```
 
 ## dar file selection examples
 
+> ⚠️ **Quoting matters**
+>
+> Always pass `--selection` as `--selection="-I '*.NEF'"` to ensure it’s treated as a single argument.
+>
+> Avoid splitting `--selection` and the string into separate tokens.
+
+**Why does --selection give “expected one argument” error?**
+
+This happens when the shell splits the quoted string or interprets globs before `dar-backup` sees them.  
+✅ Use:   `--selection="-I '*.NEF'"`  
+❌ Avoid: `--selection "-I '*.NEF'"`  
+
+> 💡 **Tip:** See [dar's documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS)
+
 ### select a directory
 
-``` bash
-dar -l /tmp/example_FULL_2024-06-23  -g home/pj/tmp/LUT-play
+Select files and sub directories in `home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling`
+
+```bash
+dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-g 'home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling'"
 ```
 
 gives
 
-```` code
-[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
---------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      48 kio    Sat Jun 22 21:51:24 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      50 kio    Sat Jun 22 21:51:25 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:26 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
-[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj     pj      77 kio    Sat Jun 22 21:50:16 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      52 kio    Sat Jun 22 21:49:37 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:47 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:39 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:36 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:35 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
-[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj     pj      15 kio    Sat Jun 22 21:51:11 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      84 kio    Sat Jun 22 21:51:09 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      90 kio    Sat Jun 22 21:51:04 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:15 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:48 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:19 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
-````
-
-### select file dates in the directory
-
-``` bash
-dar -l /tmp/example_FULL_2024-06-23  -I '*2024-06-16*' -g home/pj/tmp/LUT-play
+```text
+...
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 10:33:42 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0572.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 28  Mio Fri May  9 10:33:12 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0571.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 25  Mio Fri May  9 10:33:08 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0570.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 27  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0569.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 27  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0568.NEF
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj 833 Mio Fri May  9 12:49:57 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 11  Mio Fri May  9 10:32:45 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0568.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 11  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0569.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 9   Mio Fri May  9 10:33:08 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0570.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 13  Mio Fri May  9 10:33:12 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0571.JPG
+...
 ```
 
-gives
+### select files with "Z50" in the file name and exclude .xmp files
 
-``` code
-[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
---------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ] drwxr-xr-x   root    root    113 Mio   Sat May 11 16:16:48 2024        home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        home/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Sed Jun 19 20:52:13 2024        home/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      48 kio    Sat Jun 22 21:51:24 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      50 kio    Sat Jun 22 21:51:25 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_01.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:26 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_02.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_03.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      51 kio    Sat Jun 22 21:51:27 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_04.NEF.xmp
-[Saved][ ]       [-L-][  97%][ ]  -rw-rw-r--   pj     pj      77 kio    Sat Jun 22 21:50:16 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_05.NEF.xmp
-[Saved][ ]       [-L-][  95%][ ]  -rw-rw-r--   pj     pj      52 kio    Sat Jun 22 21:49:37 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_06.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:47 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_07.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_08.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:12 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_09.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:39 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_10.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:36 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_11.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:35 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_12.NEF.xmp
-[Saved][ ]       [-L-][  88%][ ]  -rw-rw-r--   pj     pj      15 kio    Sat Jun 22 21:51:11 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_13.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      84 kio    Sat Jun 22 21:51:09 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_14.NEF.xmp
-[Saved][ ]       [-L-][  96%][ ]  -rw-rw-r--   pj     pj      90 kio    Sat Jun 22 21:51:04 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_15.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:51:15 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_16.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:48 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_17.NEF.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj     pj      24 kio    Sat Jun 22 21:50:19 2024        home/pj/tmp/LUT-play/2024-06-16_12:52:22,15_18.NEF.xmp
+```bash
+dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -X '*.xmp'"
 ```
 
-### exclude .xmp files from that date
+gives something like
 
-``` bash
-dar -l /tmp/example_FULL_2024-06-23 -X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play
-
+```text
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Sat May 10 14:15:07 2025 home/pj
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Fri May  9 12:49:04 2025 home/pj/data/2025
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj 193 Mio Thu May  8 15:59:17 2025 home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Fri May  9 16:47:37 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 26  Mio Fri May  9 11:26:16 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 26  Mio Fri May  9 11:26:16 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 28  Mio Fri May  9 11:09:04 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 11:09:03 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 11:09:03 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
+...
 ```
-
-gives
-
-```` code
-[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size    |          Date                 |    filename
---------------------------------+------------+-------+-------+---------+-------------------------------+------------
-[Saved][-]       [-L-][   0%][ ]  drwxr-xr-x   root   root    113 Mio   Sat May 11 16:16:48 2024        home
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 10:46:30 2024        ome/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj     pj      113 Mio   Sun Jun 23 09:17:42 2024        ome/pj/tmp
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj     pj      50 Mio    Wed Jun 19 20:52:13 2024      ` ome/pj/tmp/LUT-play
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj     pj      49 Mio    Sun Jun 16 12:52:22 2024      ` home/pj/tmp/LUT-play/2024-06-16_12:52:22,15.NEF
-````
 
 ## Restoring
 
