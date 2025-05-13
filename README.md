@@ -49,8 +49,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 - [List contents of an archive](#list-contents-of-an-archive)
 - [dar file selection examples](#dar-file-selection-examples)
   - [Select a directory](#select-a-directory)
-  - [Select file dates in the directory](#select-file-dates-in-the-directory)
-  - [Exclude .xmp files from that date](#exclude-xmp-files-from-that-date)
+  - [Include and exclude some file](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
 - [Restoring](#restoring)
   - [Default location for restores](#default-location-for-restores)
   - [--restore-dir option](#--restore-dir-option)
@@ -105,7 +104,7 @@ I have cloud storage mounted on a directory within my home dir. The filesystem i
 ## License
 
   These scripts are licensed under the GPLv3 license.
-  Read more here: [GNU CPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
 
 ## Status
 
@@ -117,9 +116,13 @@ As of February 13, 2025, I have changed the status from alpha --> beta, as the f
 
 To increase the security and authenticity of dar-backup packages, all releases from v2-beta-0.6.18 onwards will be digitally signed using the GPG key below.
 
-🔐 GPG Signing Key Details
+<br>
 
-```` text
+<details>
+
+<summary>🎯 GPG Signing Key Details</summary>
+
+```text
 Name:        Per Jensen (author of dar-backup)
 Email:       dar-backup@pm.me
 Primary key: 4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
@@ -128,9 +131,13 @@ Created:     2025-03-29
 Expires:     2030-03-28
 Key type:    ed25519 (primary, SC)  
 Subkeys:     ed25519 (S), ed25519 (A), cv25519 (E)
-````
+```
 
-🔏 Where to Find Release Signatures
+<br>
+
+<details>
+
+<summary>🎯 Where to Find Release Signatures</summary>
 
 PyPI does *Not* host .asc Signature Files
 
@@ -138,7 +145,7 @@ Although the `dar-backup` packages on PyPI are GPG-signed, PyPI itself does **no
 
 Therefore, you will not find `.asc` files on PyPI.
 
-✅ Where to Get `.asc` Signature Files
+**Where to Get `.asc` Signature Files**
 
 You can always download the signed release artifacts and their `.asc` files from the official GitHub Releases page:
 
@@ -154,43 +161,55 @@ Each release includes:
 
 - `dar_backup-x.y.z-py3-none-any.whl.asc`
 
-🔐 How to Verify a Release from GitHub
+</details>
+
+<br>
+
+<details>
+
+<summary>🎯 How to Verify a Release from GitHub</summary>
 
 1. Import the GPG public key:
 
-   ```` bash
+   ```bash
    curl https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E | gpg --import
-   ````
+   ```
 
 2. Download the wheel or tarball and its .asc signature from the GitHub.
 
 3. Run GPG to verify it:
 
-   ```` bash
+   ```bash
    gpg --verify dar_backup-x.y.z.tar.gz.asc dar_backup-x.y.z.tar.gz
    # or
    gpg --verify dar_backup-x.y.z-py3-none-any.whl.asc dar_backup-x.y.z-py3-none-any.whl
-   ````
+   ```
 
 4. If the signature is valid, you'll see:
 
-   ```` text
+   ```text
    gpg: Good signature from "Per Jensen (author of dar-backup) <dar-backup@pm.me>"
-   ````
+   ```
 
 🛡️ Reminder: Verify the signing subkey
 
 Only this subkey is used to sign PyPI packages:
 
-```` text
+```text
 B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1
-````
+```
 
 You can view it with:
 
-```` bash
+```bash
 gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
-````
+```
+
+</details>
+
+</details>
+
+<br>
 
 ### Breaking change in version 0.6.0
 
@@ -204,7 +223,7 @@ This python version is v2 of dar-backup, v1 is made in bash.
 
 ## Community
 
-Please review the [Code of Conduct](./CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
+Please review the [Code of Conduct](https://github.com/per2jensen/dar-backup/blob/main/CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
 
 ## Requirements
 
@@ -214,9 +233,9 @@ Please review the [Code of Conduct](./CODE_OF_CONDUCT.md) to help keep this proj
 
 On Ubuntu, install the requirements this way:
 
-```` bash
+```bash
     sudo apt install dar par2 python3
-````
+```
 
 ## dar-backup principles
 
@@ -275,30 +294,30 @@ The module `inputimeout` is installed into the venv and used for the confirmatio
 
 To install, create a venv and run pip:
 
-```` bash
+```bash
 mkdir $HOME/tmp
 cd $HOME/tmp
 python3 -m venv venv    # create the virtual environment 
 . venv/bin/activate     # activate the virtual env
 pip install dar-backup  # run pip to install `dar-backup`
-````
+```
 
 I have an alias in ~/.bashrc pointing to my venv:
 
-```` bash
+```bash
 alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
-````
+```
 
 Typing `db` at the command line gives this
 
-```` bash
+```bash
 (venv) user@machine:~$ db
 dar-backup 0.6.12
 dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.
-````
+```
 
 ### 2 - configuration
 
@@ -306,13 +325,13 @@ The dar-backup `demo` is non-destructive and stops if some of the default direct
 
 Run `demo`
 
-```` bash
+```bash
 demo --install
-````
+```
 
 The output is
 
-```` text
+```text
 Directories created: `/home/user/dar-backup/` and `/home/user/.config/dar-backup`
 Config file deployed to /home/user/.config/dar-backup/dar-backup.conf
 Default backup definition deployed to /home/user/.config/dar-backup/backup.d/default
@@ -320,7 +339,7 @@ Default backup definition deployed to /home/user/.config/dar-backup/backup.d/def
 2. Then you can run `dar-backup --full-backup` to create a backup.
 3. List backups with `dar-backup --list`
 4. List contents of a backup with `dar-backup --list-contents <backup-name>`
-````
+```
 
 ### 3 - generate catalog databases
 
@@ -328,9 +347,9 @@ Generate the archive catalog database(s).
 
 `dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
 
-```` bash
+```bash
 manager --create-db
-````
+```
 
 ### 4 - do FULL backups
 
@@ -339,9 +358,9 @@ Prereq:
 
 You are ready to do backups of all your backup definitions.
 
-```` bash
+```bash
 dar-backup --full-backup 
-````
+```
 
 If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This can be useful if dar-backup is started by systemd.
 
@@ -349,17 +368,17 @@ If you want more log messages, use the `--verbose` or `--log-level debug` for ev
 
 If you want a backup of a single definition, use the `-d <backup definition>` option. The definition's name is the filename of the definition in the `backup.d` config directory.
 
-```` bash
+```bash
 dar-backup --full-backup -d <your backup definition>
-````
+```
 
 ### 5 - deactivate venv
 
 Deactivate the virtual environment (venv)
 
-```` bash
+```bash
 deactivate
-````
+```
 
 ## Config
 
@@ -371,7 +390,7 @@ If you have your config file somewhere else, use the `--config` option to point 
 
 Tilde `~` and environment variables can be used in the paths for various file locations.
 
-```` code
+```text
 [MISC]
 LOGFILE_LOCATION=~/.dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20
@@ -407,7 +426,7 @@ SCRIPT_1 = ls -l /tmp
 [POSTREQ]
 SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
-````
+```
 
 ### .darrc
 
@@ -417,7 +436,7 @@ You can override the default `.darrc` using the `--darrc` option.
 
 The default `.darrc` contents are as follows:
 
-```` code
+```text
 #  .darrc configuration file for `dar` as used by the `dar-backup` script.
 #  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
 
@@ -538,7 +557,7 @@ compress-exclusion:
 # Now we swap back to case sensitive mode for masks which is the default
 #mode:
 -acase
-````
+```
 
 ### Backup definition example
 
@@ -547,7 +566,7 @@ The name of the file is the name of the backup definition.
 
 You can use as many backup definitions as you need.
 
-```` code
+```text
  # Switch to ordered selection mode, which means that the following
  # options will be considered top to bottom
  -am
@@ -581,7 +600,7 @@ You can use as many backup definitions as you need.
 # http://dar.linux.free.fr/doc/Features.html
 # https://bford.info/cachedir/
 --cache-directory-tagging
-````
+```
 
 ## Generate systemd files
 
@@ -591,7 +610,7 @@ The timers are set as the author uses them, modify to your taste and needs.
 
 Example run:
 
-```` bash
+```bash
 dar-backup-systemd --venv /home/user/tmp/venv --dar-path /home/user/.local/dar/bin
 Generated dar-full-backup.service and dar-full-backup.timer
   → Fires on: *-12-30 10:03:00
@@ -601,7 +620,7 @@ Generated dar-incr-backup.service and dar-incr-backup.timer
   → Fires on: *-*-04/3 19:03:00
 Generated dar-clean.service and dar-clean.timer
   → Fires on: *-*-* 21:07:00
-````
+```
 
 ## Systemctl examples
 
@@ -619,17 +638,17 @@ systemctl --user daemon-reload
 
 Verify your timers are set up as you want:
 
-```` bash
+```bash
 systemctl --user list-timers
-````
+```
 
 ## Service: dar-backup --incremental-backup
 
-This is an exmaple of a systemd user service unit.
+This is an example of a systemd user service unit.
 
 File:  dar-incr-backup.service
 
-```` bash
+```bash
 /tmp/test$ dar-backup-systemd --venv '$HOME/programmer/dar-backup.py/venv'  --dar-path '$HOME/.local/dar/bin'
 
 Generated dar-full-backup.service and dar-full-backup.timer
@@ -655,7 +674,7 @@ RemainAfterExit=no
 
 
 ExecStart=/bin/bash -c 'PATH=$HOME/.local/dar/bin:$PATH && . $HOME/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose --log-stdout'
-````
+```
 
 ## Timer: dar-backup --incremental-backup
 
@@ -663,7 +682,7 @@ This is an example of a systemd user timer
 
 File:  dar-incr-backup.timer
 
-```` code
+```text
 [Unit]
 Description=dar-backup INCR timer
 
@@ -673,7 +692,7 @@ Persistent=true
 
 [Install]
 WantedBy=timers.target
-````
+```
 
 ## systemd timer note
 
@@ -788,7 +807,7 @@ The directory supplied functions as the Root of the restore operation.
 
 A backup has been taken using this backup definition:
 
-``` code
+```text
 -R /
 -g home/user/Documents
 ```
@@ -797,7 +816,7 @@ When restoring and using `/tmp` for --restore-dir, the restored files can be fou
 
 ### a single file
 
-``` code
+```text
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name> --selection "-g path/to/file"
 deactivate
@@ -805,7 +824,7 @@ deactivate
 
 ### a directory
 
-``` bash
+```bash
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name> --selection "-g path/to/directory"
 deactivate
@@ -813,7 +832,7 @@ deactivate
 
 ### .NEF from a specific date
 
-``` bash
+```bash
 . <the virtual env>/bin/activate
 dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
 deactivate
@@ -821,9 +840,9 @@ deactivate
 
 ### restore test fails with exit code 4
 
-"dar" in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
+`dar` in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
 
-Thus the dar option "--comparison-field=ignore-owner" has been placed in the supplied [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed).
+Thus the dar option `--comparison-field=ignore-owner` has been placed in the supplied [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed).
 
 This causes dar to restore without an error.
 
@@ -836,7 +855,7 @@ If exit code 5 is emitted on the restore test, FSA (File System specific Attribu
 That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
 My home directory is on a btrfs filesystem, while /tmp (for the restore test) is on zfs.
 
-The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the "option "--fsa-scope none" can be used. That will restult in FSA's not being restored.
+The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the option `--fsa-scope none` can be used. That will restult in FSA's not being restored.
 
 If you need to use this option, un-comment it in the [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed)
 
@@ -846,28 +865,28 @@ If you need to use this option, un-comment it in the [.darrc](#darrc) file (loca
 
 You can run a par2 verification on an archive like this:
 
-```` bash
+```bash
 for file in <archive>*.dar.par2; do
   par2 verify "$file"
 done
-````
+```
 
 if there are problems with a slice, try to repair it like this:
 
-```` bash
+```bash
   par2 repair <archive>.<slice number>.dar.par2
-````
+```
 
 ### Par2 create redundancy files
 
 If you have merged archives, you will need to create the .par2 redundency files manually.
 Here is an example
 
-```` bash
+```bash
 for file in <some-archive>_FULL_yyyy-mm-dd.*; do
   par2 c -r5 -n1 "$file"
 done
-````
+```
 
 where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
 
@@ -880,7 +899,7 @@ One way to do that, is to let dar create a FULL archive from scratch, another is
 
 I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
 
-```` bash
+```bash
 dar --merge pj-homedir_FULL_2021-09-12  -A pj-homedir_FULL_2021-06-06  -@pj-homedir_DIFF_2021-08-29 -s 12G
 
 # test the new FULL archive
@@ -890,7 +909,7 @@ dar -t pj-homedir_FULL_2021-09-12
 for file in pj-homedir_FULL_yyyy-mm-dd.*.dar; do
   par2 c -r5 -n1 "$file"
 done
-````
+```
 
 ### dar manager databases
 
@@ -1113,13 +1132,13 @@ One backup definition per file
 
 Running
 
-```` bash
+```bash
 pytest --cov=dar_backup tests/
-````
+```
 
 Results for a version 0.6.19 in this report:
 
-````bash
+```text
 Name                                   Stmts   Miss  Cover
 ----------------------------------------------------------
 src/dar_backup/__about__.py                1      0   100%
@@ -1136,8 +1155,7 @@ src/dar_backup/rich_progress.py           70      7    90%
 src/dar_backup/util.py                   231     24    90%
 ----------------------------------------------------------
 TOTAL                                   1769    194    89%
-
-````
+```
 
 ### dar-backup options
 
@@ -1241,6 +1259,8 @@ The installer creates the necessary backup catalog databases if `--create-db` is
 ```bash
 --config             Sets up `dar-backup`.
 --create-db          Create backup catalog databases.
+-v, --version        Display version and licensing information.
+-h, --help           Displays usage info
 ```
 
 ### demo

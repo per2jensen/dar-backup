@@ -1,4 +1,5 @@
 *.pyc
+v2/README.md
 v2/conf/dar-backup.conf
 v2/backup.d/pj-homedir
 v2/dar_backup.egg-info

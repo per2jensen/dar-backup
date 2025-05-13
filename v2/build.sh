@@ -24,6 +24,9 @@ fi
 
 VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
 
+# the top level README.md is the maintained one. Copy it to this directory
+cp ../README.md "${PWD}/README.md"
+
 TEMP_README="src/dar_backup/README.md"
 cp README.md "$TEMP_README"
 TEMP_CHANGELOG="src/dar_backup/Changelog.md"
