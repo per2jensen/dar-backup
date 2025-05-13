@@ -60,22 +60,26 @@ fi
 
 # === Extract version from __about__.py ===
 VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' src/dar_backup/__about__.py)
-PACKAGE_FILE="$DIST_DIR/${PACKAGE_NAME}-${VERSION}-py3-none-any.whl"
 
 
+# the top level README.md is the maintained one. Copy it to this directory
+cp ../README.md "${PWD}/README.md"
 
 # === Temporary copy of README.md & Changelog.md into package for wheel inclusion ===
 TEMP_README="src/dar_backup/README.md"
-cp README.md "$TEMP_README"
+cp README.md "$TEMP_README"  ||
+    { red "❌ Error: Failed to copy README.md to $TEMP_README"; exit 1; }
 
 TEMP_CHANGELOG="src/dar_backup/Changelog.md"
-cp Changelog.md "$TEMP_CHANGELOG"
+cp Changelog.md "$TEMP_CHANGELOG"  ||
+    { red "❌ Error: Failed to copy Changelog.md to $TEMP_CHANGELOG"; exit 1; }
 
 trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
 
 
 # === Build the package ===
-rm -rf "$DIST_DIR"
+rm -rf "$DIST_DIR"  ||
+    { red "❌ Error: Failed to remove $DIST_DIR"; exit 1; }
 python3 -m build
 
 # === Sign distributions using specific subkey ===
