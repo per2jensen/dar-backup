@@ -828,9 +828,9 @@ When restoring and using `/tmp` for --restore-dir, the restored files can be fou
 
 ### a single file
 
-```text
+```bash
 . <the virtual env>/bin/activate
-dar-backup --restore <archive_name> --selection "-g path/to/file"
+dar-backup --restore <archive_name> --selection="-g path/to/file"
 deactivate
 ```
 
@@ -838,15 +838,23 @@ deactivate
 
 ```bash
 . <the virtual env>/bin/activate
-dar-backup --restore <archive_name> --selection "-g path/to/directory"
+dar-backup --restore <archive_name> --selection="-g path/to/directory"
 deactivate
 ```
 
 ### .NEF from a specific date
 
+The backed up directory contains \*.NEF and \*.xmp files.
+
+Filtering:
+
+- Include files with "2024-06-16" in file name
+- Exclude files with file names ending in ".xmp"
+- Files must be in directory "home/pj/tmp/LUT-play", compared to the file root (`-R`option) in the backup.
+
 ```bash
 . <the virtual env>/bin/activate
-dar-backup --restore <archive_name>  --selection "-X '*.xmp' -I '*2024-06-16*' -g home/pj/tmp/LUT-play"
+dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/pj/tmp/LUT-play"
 deactivate
 ```
 
