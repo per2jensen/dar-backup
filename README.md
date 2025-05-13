@@ -1121,12 +1121,13 @@ One backup definition per file
 
 | Command              | Description                               |
 |----------------------|-------------------------------------------|
-| `dar-backup`         | Perform full, differential, or incremental backups with verification and restore testing |
-| `manager`            | Maintain and query catalog databases for archives |
-| `cleanup`            | Remove outdated DIFF/INCR archives (and optionally FULLs) |
-| `clean-log`          | Clean up excessive log output from dar command logs |
-| `demo`               | Set up required directories and default config files |
-| `dar-backup-systemd` | Generate (and optionally install) systemd timers and services for automated backups |
+| [dar-backup](#dar-backup-options)| Perform full, differential, or incremental backups with verification and restore testing |
+| [manager](#manager-options)      | Maintain and query catalog databases for archives |
+| [cleanup](#cleanup-options)      | Remove outdated DIFF/INCR archives (and optionally FULLs) |
+| [clean-log](#clean-log-options)  | Clean up excessive log output from dar command logs |
+| [dar-backup-systemd](#dar-backup-systemd-options) | Generate (and optionally install) systemd timers and services for automated backups |
+| [installer](#installer-options)  | Set up directories and optionally create catalog databases according to a config file |
+| [demo](#demo-options)            | Set up required directories and default config files |
 
 ### test coverage
 
@@ -1157,7 +1158,7 @@ src/dar_backup/util.py                   231     24    90%
 TOTAL                                   1769    194    89%
 ```
 
-### dar-backup options
+### Dar-backup options
 
 This script does backups including par2 redundancy, validation and restoring.
 
@@ -1206,7 +1207,7 @@ Available options:
 --log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
 ```
 
-### cleanup options
+### Cleanup options
 
 This script removes old backups and par2 files according to `[AGE]` settings in config file.
 
@@ -1227,7 +1228,7 @@ Supported options:
 --test-mode                                       This is used when running pytest test cases
 ```
 
-### clean-log options
+### Clean-log options
 
 This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
 
@@ -1239,7 +1240,7 @@ This script removes excessive logging output from `dar` logs, improving readabil
 -h, --help                 Displays usage info
 ```
 
-### dar-backup-systemd
+### Dar-backup-systemd options
 
 Generates and optionally install systemd user service units and timers.
 
@@ -1250,7 +1251,7 @@ Generates and optionally install systemd user service units and timers.
 --install            Install the units to ~/.config/systemd/user
 ```
 
-### installer
+### Installer options
 
 Sets up `dar-backup` according to provided config file.
 
@@ -1263,9 +1264,9 @@ The installer creates the necessary backup catalog databases if `--create-db` is
 -h, --help           Displays usage info
 ```
 
-### demo
+### Demo options
 
-Sets up `dar-backup` to demo it.
+Sets up `dar-backup` in a demo configuration.
 
 It is non-destructive and stops if directories are already in place.
 
