@@ -230,11 +230,12 @@ Please review the [Code of Conduct](https://github.com/per2jensen/dar-backup/blo
 - dar
 - par2
 - python3
+- python3-venv
 
 On Ubuntu, install the requirements this way:
 
 ```bash
-    sudo apt install dar par2 python3
+    sudo apt install dar par2 python3 python3-venv
 ```
 
 ## dar-backup principles
@@ -286,7 +287,9 @@ Installation is currently in a venv. These commands are installed in the venv:
 - cleanup
 - manager
 - clean-log
+- dar-backup-systemd
 - installer
+- demo
 
 Note:
 
@@ -308,7 +311,16 @@ I have an alias in ~/.bashrc pointing to my venv:
 alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 ```
 
-Typing `db` at the command line gives this
+drop the alias into ~/.bashrc like this:
+
+```bash
+grep -qxF 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' ~/.bashrc \
+  || echo 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' >> ~/.bashrc
+
+source ~/.bashrc
+```
+
+Typing `db` at the command line gives something like this:
 
 ```bash
 (venv) user@machine:~$ db
