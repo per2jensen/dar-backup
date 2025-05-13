@@ -41,8 +41,9 @@ jobs:
           PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
           echo "PYTHON_MAJOR=$PYTHON_MAJOR" >> $GITHUB_ENV
           echo "PYTHON_MINOR=$PYTHON_MINOR" >> $GITHUB_ENV
-
-
+      - name: Copy README into v2 to make build work
+        run: cp README.md v2/README.md
+          
       - name: Install virtualenv, build and install the dar-backup package
         run: |
           cd $GITHUB_WORKSPACE/v2
