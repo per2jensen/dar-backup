@@ -281,7 +281,7 @@ See more [here](#gpg-signing-key).
 
 ### 1 - installation
 
-Installation is currently in a venv. These commands are installed in the venv:
+Installation is currently in a [virtual environment](https://csguide.cs.princeton.edu/software/virtualenv) (commonly called a `venv`). These commands are installed in the venv:
 
 - dar-back
 - cleanup
@@ -293,15 +293,15 @@ Installation is currently in a venv. These commands are installed in the venv:
 
 Note:
 
-The module `inputimeout` is installed into the venv and used for the confirmation input (with a 30 second timeout)
+The modules `inputimeout`, `rich`and `argcomplete` are installed into the venv and used by `dar-backup`
 
-To install, create a venv and run pip:
+To install `dar-backup`, create a venv and run pip:
 
 ```bash
 mkdir $HOME/tmp
 cd $HOME/tmp
 python3 -m venv venv    # create the virtual environment 
-. venv/bin/activate     # activate the virtual env
+. venv/bin/activate     # activate the virtual environment
 pip install dar-backup  # run pip to install `dar-backup`
 ```
 
@@ -314,7 +314,7 @@ alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
 drop the alias into ~/.bashrc like this:
 
 ```bash
-grep -qxF 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' ~/.bashrc \
+grep -qxF 'alias db="' ~/.bashrc \
   || echo 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' >> ~/.bashrc
 
 source ~/.bashrc
@@ -333,7 +333,10 @@ See section 15 and section 16 in the supplied "LICENSE" file.
 
 ### 2 - configuration
 
-The dar-backup `demo` is non-destructive and stops if some of the default directories exist.
+The dar-backup [demo](#demo-options) application can be used to demo how `dar-backup` works.
+It creates some directories, installs a demo configuration file and puts a demo backup definition in place.
+
+`demo` is non-destructive and stops if some of the default directories exist.
 
 Run `demo`
 
@@ -365,20 +368,30 @@ manager --create-db
 
 ### 4 - do FULL backups
 
-Prereq:
-[Backup definitions](#backup-definition-example) are in place in BACKUP.D_DIR (see [config file](#config-file)).
+The `demo` application has put a demo [backup definition](#backup-definition-example) in place in BACKUP.D_DIR (see [config file](#config-file)).
 
-You are ready to do backups of all your backup definitions.
+You are now ready to do backups as configured in the backup definition.
+
+Give `dar-backup`a spin:
 
 ```bash
-dar-backup --full-backup 
+dar-backup --full-backup --verbose
+
+# list backups
+dar-backup --list
+
+# see some examples on usage
+dar-backup --examples
+
+# see the log file
+cat "$HOME/dar-backup/dar-backup.log"
 ```
 
-If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option. This can be useful if dar-backup is started by systemd.
+If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option.
 
 If you want more log messages, use the `--verbose` or `--log-level debug` for even more.
 
-If you want a backup of a single definition, use the `-d <backup definition>` option. The definition's name is the filename of the definition in the `backup.d` config directory.
+If you want to take a backup using a single backup definition, use the `-d <backup definition>` option. The backup definition's name is the filename of the definition in the BACKUP.D_DIR (see [config file](#config-file)).
 
 ```bash
 dar-backup --full-backup -d <your backup definition>
@@ -386,7 +399,7 @@ dar-backup --full-backup -d <your backup definition>
 
 ### 5 - deactivate venv
 
-Deactivate the virtual environment (venv)
+Deactivate the virtual environment (venv).
 
 ```bash
 deactivate
