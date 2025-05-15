@@ -10,18 +10,19 @@
 [![Total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
-the heavy lifting, together with the [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
+the heavy lifting, together with the [parchive (redundancy to patch bitrot)](https://github.com/Parchive/par2cmdline) suite in these scripts.
 
 This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-backup/tree/main/v2) of `dar-backup`.
 
 ## TL;DR
 
-`dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using dar and par2. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
+`dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using `dar` and `par2`. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
 
 ## Table of Contents
 
 - [Reliable `dar` backups wrapped in Python](#dar-backup)
 - [My use case](#my-use-case)
+- [Features](#features)
 - [License](#license)
 - [Changelog version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
 - [Status](#status)
@@ -35,7 +36,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [1 - installation](#1---installation)
   - [2 - configuration](#2---configuration)
   - [3 - generate catalog databases](#3---generate-catalog-databases)
-  - [4 - do FULL backups](#4---do-full-backups)
+  - [4 - give `dar-backup` a spin](#4---give-dar-backup-a-spin)
   - [5 - deactivate venv](#5---deactivate-venv)
 - [Config](#config)
   - [Config file](#config-file)
@@ -79,27 +80,46 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [manager](#manager-options)
   - [cleanup](#cleanup-options)
   - [clean-log](#clean-log-options)
-  - [dar-backup-systemd](#dar-backup-systemd)
-  - [Installer](#installer)
-  - [demo](#demo)
+  - [dar-backup-systemd](#dar-backup-systemd-options)
+  - [Installer](#installer-options)
+  - [demo](#demo-options)
   
 ## My use case
 
-I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
+I needed the following:
 
-- a non-privileged user can perform a mount
-- a privileged user cannot look into the filesystem --> a backup script running as root is not suitable
+- Backup my workstation to a remote server
+- Backup primarily photos, home made video and different types of documents
+- I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
 
- I needed the following:
+  - Backup cloud storage (cloud is convenient, but I want control over my backups)
+  - A non-privileged user can perform a mount
+  - A privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
-- Backup my cloud storage to something local (cloud is convenient, but I want control over my backups)
-- Backup primarily photos, video and different types of documents
 - Have a simple way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
 - During backup archives must be tested and a restore test (however small) performed
 - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
 - Easy to verify archive's integrity, after being moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
+
+## Features
+
+- Backup with test of backup and (configurable) restore tests of files with comparison to source
+- [Redundancy files](#par2) created for patching bitrot of the archives (size configurable)
+- Simple [backup definitions](#backup-definition-example) defining what to backup (as many as you need)
+- [Backup catalogs](#dar-manager-databases) in databases, optionally on a disk different from the backups
+- Flexible and precise logging
+- Bash and zsh shell autocompletion for a nice CLI experience, [available completions](#shell-autocompletion):
+  
+  - Options for `dar-backup`, `cleanup`, `manager`
+  - Backup definitions
+  - Archives - filtered to backup definition if given
+  - Catalogs - filtered to backup definition if given
+
+- Easy to install
+
+- ✅ This backup solution is by the author since > 4 years. It has saved me multiple times.
 
 ## License
 
@@ -366,7 +386,7 @@ Generate the archive catalog database(s).
 manager --create-db
 ```
 
-### 4 - do FULL backups
+### 4 - give dar-backup a spin
 
 The `demo` application has put a demo [backup definition](#backup-definition-example) in place in BACKUP.D_DIR (see [config file](#config-file)).
 
