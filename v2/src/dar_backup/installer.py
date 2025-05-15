@@ -10,9 +10,93 @@ from dar_backup.manager import create_db
 from dar_backup.manager import get_db_dir
 from dar_backup.util import expand_path
 
+def install_autocompletion():
+    """Detect user shell, choose RC file, and idempotently append autocompletion."""
+    shell = Path(os.environ.get("SHELL", "")).name
+    home = Path.home()
+
+    # pick RC file based on shell
+    if shell == "zsh":
+        rc_file = home / ".zshrc"
+    elif shell == "bash":
+        # prefer ~/.bash_profile on macOS if present
+        rc_file = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".bashrc"
+    else:
+        rc_file = home / ".bashrc"
+
+    marker = "# >>> dar-backup autocompletion >>>"
+    end_marker = "# <<< dar-backup autocompletion <<<"
+
+    block = "\n".join([
+        marker,
+        'eval "$(register-python-argcomplete dar-backup)"',
+        'eval "$(register-python-argcomplete cleanup)"',
+        'eval "$(register-python-argcomplete manager)"',
+        "complete -o nosort -C 'python -m argcomplete cleanup' cleanup",
+        "complete -o nosort -C 'python -m argcomplete manager' manager",
+        end_marker,
+    ]) + "\n"
+
+    # ensure RC file and parent directory exist
+    rc_file.parent.mkdir(parents=True, exist_ok=True)
+    if not rc_file.exists():
+        rc_file.touch()
+
+    content = rc_file.read_text()
+    if marker in content:
+        print(f"Autocompletion already installed in {rc_file}")
+        return
+
+    # append the autocompletion block
+    rc_file.open("a").write("\n" + block)
+    print(f"✔️ Appended autocompletion block to {rc_file}")
 
 
-def run_installer(config_file: str, create_db_flag: bool):
+
+def uninstall_autocompletion() -> str:
+    """Remove previously installed autocompletion block from shell RC file."""
+    shell = Path(os.environ.get("SHELL", "")).name
+    home = Path.home()
+
+    # pick RC file based on shell
+    if shell == "zsh":
+        rc_file = home / ".zshrc"
+    elif shell == "bash":
+        rc_file = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".bashrc"
+    else:
+        rc_file = home / ".bashrc"
+
+    marker = "# >>> dar-backup autocompletion >>>"
+    end_marker = "# <<< dar-backup autocompletion <<<"
+
+    if not rc_file.exists():
+        print(f"❌ RC file not found: {rc_file}")
+        return
+
+    content = rc_file.read_text()
+    if marker not in content:
+        print(f"No autocompletion block found in {rc_file}")
+        return f"No autocompletion block found in {rc_file}"  # for unit test
+
+    lines = content.splitlines(keepends=True)
+    new_lines = []
+    skipping = False
+    for line in lines:
+        if marker in line:
+            skipping = True
+            continue
+        if end_marker in line and skipping:
+            skipping = False
+            continue
+        if not skipping:
+            new_lines.append(line)
+
+    rc_file.write_text(''.join(new_lines))
+    print(f"✔️ Removed autocompletion block from {rc_file}")
+
+
+
+def run_installer(config_file: str, create_db_flag: bool, install_ac_flag: bool):
     """
     Run the installation process for dar-backup using the given config file.
 
@@ -67,16 +151,34 @@ def run_installer(config_file: str, create_db_flag: bool):
                 print(f"❌ Failed to create catalog: {backup_def}")
 
 
+
 def main():
     parser = argparse.ArgumentParser(description="dar-backup installer")
-    parser.add_argument("--config", required=True, help="Path to config file")
+    parser.add_argument("--config", required=False, help="Path to config file")
     parser.add_argument("--create-db", action="store_true", help="Create catalog databases")
-    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s version {about.__version__}, {about.__license__}"
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--install-autocompletion", action="store_true",
+        help="Append shell-completion setup to your shell RC"
+    )
+    group.add_argument(
+        "--remove-autocompletion", action="store_true",
+        help="Remove shell-completion setup from your shell RC"
+    )
+    parser.add_argument(
+        "-v", "--version", action="version",
+        version=f"%(prog)s version {about.__version__}, {about.__license__}"
     )
 
     args = parser.parse_args()
 
-    run_installer(args.config, args.create_db)
+
+    if args.config:
+        run_installer(args.config, args.create_db)
+    elif args.install_autocompletion:
+        install_autocompletion()
+    elif args.remove_autocompletion:
+        uninstall_autocompletion()  
 
 
 if __name__ == "__main__":
