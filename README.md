@@ -25,6 +25,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 - [Features](#features)
 - [License](#license)
 - [Changelog version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
+- [Quick Guide](#quick-guide)
 - [Status](#status)
   - [GPG Signing key](#gpg-signing-key)
   - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
@@ -105,6 +106,7 @@ I needed the following:
 
 ## Features
 
+- The battle tested [dar](https://github.com/Edrusb/DAR) Disk Archiver is used for the actual backups - it comes highly recommended.
 - Backup with test of backup and (configurable) restore tests of files with comparison to source
 - [Redundancy files](#par2) created for patching bitrot of the archives (size configurable)
 - Simple [backup definitions](#backup-definition-example) defining what to backup (as many as you need)
@@ -117,14 +119,221 @@ I needed the following:
   - Archives - filtered to backup definition if given
   - Catalogs - filtered to backup definition if given
 
-- Easy to install
+- `dar-backup` is easy to install and configure.
 
-- ✅ This backup solution is by the author since > 4 years. It has saved me multiple times.
+- ✅ The author has used dar-backup since > 4 years, and has been saved multiple times.
 
 ## License
 
   These scripts are licensed under the GPLv3 license.
   Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+
+## Quick Guide
+
+This purpose of this quick guide is to show how `dar-backup` works in a few simple steps.
+
+The package include a `demo`application, that can help you set up `dar-backup` quickly.
+
+> ⚠️ **Assumption**
+>
+> The demo program uses these directories in your home directory:
+>
+> - $HOME/dar-backup
+> - $HOME/.config/dar-backup
+>
+> It is assumed they **do not exist** before running the demo.
+>
+> Python **>= 3.9** is required
+
+<br>
+
+**Let's roll** with installation, backup, list backup content, restore & restore check
+
+```bash
+INSTALL_DIR=/tmp/dar-backup
+mkdir "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+python3 -m venv venv    # create the virtual environment 
+. venv/bin/activate     # activate the virtual environment
+pip install dar-backup  # run pip to install `dar-backup`
+```
+
+<details>
+
+<summary>🎯 Install details</summary>
+
+```bash
+(venv) $ INSTALL_DIR=/tmp/dar-backup
+mkdir "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+python3 -m venv venv    # create the virtual environment 
+. venv/bin/activate     # activate the virtual environment
+pip install dar-backup  # run pip to install `dar-backup`
+Collecting dar-backup
+  Downloading dar_backup-0.6.21-py3-none-any.whl.metadata (88 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 88.5/88.5 kB 3.7 MB/s eta 0:00:00
+Collecting argcomplete>=3.6.2 (from dar-backup)
+  Using cached argcomplete-3.6.2-py3-none-any.whl.metadata (16 kB)
+Collecting inputimeout>=1.0.4 (from dar-backup)
+  Using cached inputimeout-1.0.4-py3-none-any.whl.metadata (2.2 kB)
+Collecting rich>=13.0.0 (from dar-backup)
+  Using cached rich-14.0.0-py3-none-any.whl.metadata (18 kB)
+Collecting markdown-it-py>=2.2.0 (from rich>=13.0.0->dar-backup)
+  Using cached markdown_it_py-3.0.0-py3-none-any.whl.metadata (6.9 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.0.0->dar-backup)
+  Using cached pygments-2.19.1-py3-none-any.whl.metadata (2.5 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.0.0->dar-backup)
+  Using cached mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Downloading dar_backup-0.6.21-py3-none-any.whl (101 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 101.9/101.9 kB 16.2 MB/s eta 0:00:00
+Using cached argcomplete-3.6.2-py3-none-any.whl (43 kB)
+Using cached inputimeout-1.0.4-py3-none-any.whl (4.6 kB)
+Using cached rich-14.0.0-py3-none-any.whl (243 kB)
+Using cached markdown_it_py-3.0.0-py3-none-any.whl (87 kB)
+Using cached pygments-2.19.1-py3-none-any.whl (1.2 MB)
+Using cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Installing collected packages: pygments, mdurl, inputimeout, argcomplete, markdown-it-py, rich, dar-backup
+Successfully installed argcomplete-3.6.2 dar-backup-0.6.21 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
+```
+
+</details>
+
+<br>
+
+```bash
+demo --install          # you can modify some of the settings, see the reference section
+
+manager --create-db
+
+dar-backup -d demo --full-backup
+
+dar-backup --list-contents $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+```
+
+<details>
+
+<summary>🎯 --list details</summary>
+
+```bash
+(venv) $ demo --install
+Directories created.
+File generated at '/home/user/.config/dar-backup/backup.d/demo'
+File generated at '/home/user/.config/dar-backup/dar-backup.conf'
+1. Now run `manager --create-db` to create the catalog database.
+2. Then you can run `dar-backup --full-backup` to create a backup.
+3. List backups with `dar-backup --list`
+4. List contents of a backup with `dar-backup --list-contents <backup-name>`
+
+
+
+(venv) $ manager --create-db 
+========== Startup Settings ==========
+manager.py:     0.7.1
+Config file:    /home/user/.config/dar-backup/dar-backup.conf
+Logfile:        /home/user/dar-backup/dar-backup.log
+dar_manager:    /home/user/.local/dar/bin/dar_manager
+dar_manager v.: 1.9.0
+======================================
+
+
+
+(venv) $ dar-backup -d demo --full-backup
+========== Startup Settings ==========
+dar-backup.py:    0.7.1
+dar path:         /home/user/.local/dar/bin/dar
+dar version:      2.7.17
+Script directory: /home/user/git/dar-backup/v2/src/dar_backup
+Config file:      /home/user/.config/dar-backup/dar-backup.conf
+.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
+======================================
+
+
+
+(venv) $ dar-backup --list-contents $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+========== Startup Settings ==========
+dar-backup.py:    0.7.1
+dar path:         /home/user/.local/dar/bin/dar
+dar version:      2.7.17
+Script directory: /home/user/git/dar-backup/v2/src/dar_backup
+Config file:      /home/user/.config/dar-backup/dar-backup.conf
+.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
+======================================
+[Saved][-]       [-L-][  49%][ ]  drwx------   user user  8 kio Sat May 17 13:13:59 2025  .config
+[Saved][-]       [-L-][  49%][ ]  drwxrwxr-x   user user  8 kio Tue May  6 20:55:40 2025  .config/dar-backup
+[Saved][-]       [-L-][  48%][ ]  drwxrwxr-x   user user  6 kio Sat May 17 13:26:21 2025  .config/dar-backup/backup.d
+[Saved][ ]       [-L-][  40%][ ]  -rw-rw-r--   user user  764 o Sun Feb 23 21:23:01 2025  .config/dar-backup/backup.d/media-files
+[Saved][ ]       [-L-][  41%][ ]  -rw-rw-r--   user user  933 o Sun Feb 23 21:23:15 2025  .config/dar-backup/backup.d/pCloudDrive
+[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sun Mar 16 10:40:29 2025  .config/dar-backup/backup.d/test
+[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  824 o Tue May 13 17:00:52 2025  .config/dar-backup/backup.d/default
+[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sat May  3 10:40:33 2025  .config/dar-backup/backup.d/user-homedir
+[Saved][ ]       [-L-][  54%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/backup.d/demo
+[Saved][ ]       [-L-][  55%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/dar-backup.conf
+```
+
+</details>
+
+<br>
+
+```bash
+dar-backup --restore $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)  --verbose
+
+find $HOME/dar-backup/restore
+```
+
+<details>
+
+<summary>🎯 --restore details</summary>
+
+```bash
+(venv) $ dar-backup --verbose --restore $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+========== Startup Settings ==========
+dar-backup.py:    0.7.1
+dar path:         /home/user/.local/dar/bin/dar
+dar version:      2.7.17
+Script directory: /home/user/git/dar-backup/v2/src/dar_backup
+Config file:      /home/user/.config/dar-backup/dar-backup.conf
+.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
+Backup.d dir:     /home/user/.config/dar-backup/backup.d
+Backup dir:       /home/user/dar-backup/backups
+Restore dir:      /home/user/dar-backup/restore
+Logfile location: /home/user/dar-backup/dar-backup.log
+PAR2 enabled:     True
+--do-not-compare: False
+======================================
+
+
+
+(venv) $ find ~/dar-backup/restore/
+/home/user/dar-backup/restore/
+/home/user/dar-backup/restore/.config
+/home/user/dar-backup/restore/.config/dar-backup
+/home/user/dar-backup/restore/.config/dar-backup/backup.d
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/media-files
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/pCloudDrive
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/test
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/default
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/user-homedir
+/home/user/dar-backup/restore/.config/dar-backup/backup.d/demo
+/home/user/dar-backup/restore/.config/dar-backup/dar-backup.conf
+```
+
+</details>
+
+<br>
+
+> ✅ **Next steps**
+>
+> Tinker with `demo's` options:
+>
+> - --root-dir      (perhaps $HOME)
+> - --dir-to-backup (perhaps Pictures)
+> - --backup-dir    (perhaps /media/user/big-disk)
+>
+> Checkout [systemd timers and services](#generate-systemd-files)
+>
+> Checkout [shell autocompletion (very nice !)](#shell-autocompletion)
+>
+> Checkout the [reference section](#reference)
 
 ## Status
 
@@ -756,20 +965,20 @@ deactivate
 gives something like
 
 ```text
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj  2 Gio   Sat May 10 14:15:07 2025  home/pj
-[Saved][ ]       [-L-][  93%][ ]  -rw-rw-r--   pj pj  29 kio  Fri May  9 16:45:38 2025  home/pj/data/2023/2023-02-11-Udstilling-Fredericia/DSC_0568.NEF.xmp
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj  2 Gio   Fri May  9 12:49:04 2025  home/pj/data/2025
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj  193 Mio Thu May  8 15:59:17 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  15 Mio  Thu May  8 15:52:27 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  10 Mio  Thu May  8 15:52:27 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  9 Mio   Thu May  8 15:51:53 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0559.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  16 Mio  Thu May  8 15:51:45 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  12 Mio  Thu May  8 15:51:45 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  16 Mio  Thu May  8 15:51:24 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj  12 Mio  Thu May  8 15:51:23 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG
-[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   pj pj  22 kio  Thu May  8 15:59:58 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   pj pj  30 kio  Thu May  8 16:00:36 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF.xmp
-[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   pj pj  22 kio  Thu May  8 16:00:29 2025  home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG.xmp
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user  2 Gio   Sat May 10 14:15:07 2025  home/user
+[Saved][ ]       [-L-][  93%][ ]  -rw-rw-r--   user user  29 kio  Fri May  9 16:45:38 2025  home/user/data/2023/2023-02-11-Udstilling-Fredericia/DSC_0568.NEF.xmp
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user  2 Gio   Fri May  9 12:49:04 2025  home/user/data/2025
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user  193 Mio Thu May  8 15:59:17 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  15 Mio  Thu May  8 15:52:27 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  10 Mio  Thu May  8 15:52:27 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  9 Mio   Thu May  8 15:51:53 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0559.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  16 Mio  Thu May  8 15:51:45 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  12 Mio  Thu May  8 15:51:45 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  16 Mio  Thu May  8 15:51:24 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  12 Mio  Thu May  8 15:51:23 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG
+[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   user user  22 kio  Thu May  8 15:59:58 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG.xmp
+[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   user user  30 kio  Thu May  8 16:00:36 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF.xmp
+[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   user user  22 kio  Thu May  8 16:00:29 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG.xmp
 ```
 
 ## dar file selection examples
@@ -790,26 +999,26 @@ This happens when the shell splits the quoted string or interprets globs before 
 
 ### select a directory
 
-Select files and sub directories in `home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling`
+Select files and sub directories in `home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling`
 
 ```bash
-dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-g 'home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling'"
+dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-g 'home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling'"
 ```
 
 gives
 
 ```text
 ...
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 10:33:42 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0572.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 28  Mio Fri May  9 10:33:12 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0571.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 25  Mio Fri May  9 10:33:08 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0570.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 27  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0569.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 27  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0568.NEF
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj 833 Mio Fri May  9 12:49:57 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 11  Mio Fri May  9 10:32:45 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0568.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 11  Mio Fri May  9 10:32:46 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0569.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 9   Mio Fri May  9 10:33:08 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0570.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   pj pj 13  Mio Fri May  9 10:33:12 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0571.JPG
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 10:33:42 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0572.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 10:33:12 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0571.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 25  Mio Fri May  9 10:33:08 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0570.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 27  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0569.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 27  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0568.NEF
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user 833 Mio Fri May  9 12:49:57 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 11  Mio Fri May  9 10:32:45 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0568.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 11  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0569.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 9   Mio Fri May  9 10:33:08 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0570.JPG
+[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 13  Mio Fri May  9 10:33:12 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0571.JPG
 ...
 ```
 
@@ -822,15 +1031,15 @@ dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -
 gives something like
 
 ```text
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Sat May 10 14:15:07 2025 home/pj
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Fri May  9 12:49:04 2025 home/pj/data/2025
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   pj pj 193 Mio Thu May  8 15:59:17 2025 home/pj/data/2025/2025-05-09-Viltrox-25mm-AIR
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   pj pj 2   Gio Fri May  9 16:47:37 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 26  Mio Fri May  9 11:26:16 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 26  Mio Fri May  9 11:26:16 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 28  Mio Fri May  9 11:09:04 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 11:09:03 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   pj pj 29  Mio Fri May  9 11:09:03 2025 home/pj/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Sat May 10 14:15:07 2025 home/user
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Fri May  9 12:49:04 2025 home/user/data/2025
+[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user 193 Mio Thu May  8 15:59:17 2025 home/user/data/2025/2025-05-09-Viltrox-25mm-AIR
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Fri May  9 16:47:37 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 11:09:04 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
+[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
 ...
 ```
 
@@ -883,11 +1092,11 @@ Filtering:
 
 - Include files with "2024-06-16" in file name
 - Exclude files with file names ending in ".xmp"
-- Files must be in directory "home/pj/tmp/LUT-play", compared to the file root (`-R`option) in the backup.
+- Files must be in directory "home/user/tmp/LUT-play", compared to the file root (`-R`option) in the backup.
 
 ```bash
 . <the virtual env>/bin/activate
-dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/pj/tmp/LUT-play"
+dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/user/tmp/LUT-play"
 deactivate
 ```
 
@@ -953,13 +1162,13 @@ One way to do that, is to let dar create a FULL archive from scratch, another is
 I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
 
 ```bash
-dar --merge pj-homedir_FULL_2021-09-12  -A pj-homedir_FULL_2021-06-06  -@pj-homedir_DIFF_2021-08-29 -s 12G
+dar --merge user-homedir_FULL_2021-09-12  -A user-homedir_FULL_2021-06-06  -@user-homedir_DIFF_2021-08-29 -s 12G
 
 # test the new FULL archive
-dar -t pj-homedir_FULL_2021-09-12
+dar -t user-homedir_FULL_2021-09-12
 
 # create Par2 redundancy files
-for file in pj-homedir_FULL_yyyy-mm-dd.*.dar; do
+for file in user-homedir_FULL_yyyy-mm-dd.*.dar; do
   par2 c -r5 -n1 "$file"
 done
 ```
@@ -1180,7 +1389,7 @@ One backup definition per file
 | [clean-log](#clean-log-options)  | Clean up excessive log output from dar command logs |
 | [dar-backup-systemd](#dar-backup-systemd-options) | Generate (and optionally install) systemd timers and services for automated backups |
 | [installer](#installer-options)  | Set up directories and optionally create catalog databases according to a config file |
-| [demo](#demo-options)            | Set up required directories and default config files |
+| [demo](#demo-options)            | Set up required directories and config files for a demo|
 
 ### test coverage
 
@@ -1311,10 +1520,12 @@ Sets up `dar-backup` according to provided config file.
 The installer creates the necessary backup catalog databases if `--create-db` is given.
 
 ```bash
---config             Sets up `dar-backup`.
---create-db          Create backup catalog databases.
--v, --version        Display version and licensing information.
--h, --help           Displays usage info
+--config                 Sets up `dar-backup`.
+--create-db              Create backup catalog databases. Add it to --config
+--install-autocompletion Add bash or zsh auto completion - idempotent
+--remove-autocompletion  Remove the auto completion from bash or zsh
+-v, --version            Display version and licensing information.
+-h, --help               Displays usage info
 ```
 
 ### Demo options
@@ -1337,7 +1548,14 @@ Sets up demo config files:
 - ~/.config/dar-backup/backup.d/default
 
 ```bash
--i, --install              Sets up `dar-backup`.
--v, --version              Display version and licensing information.
--h, --help                 Displays usage info
+-i, --install       Sets up `dar-backup`.
+--root-dir          Specify the root directory for the backup.
+--dir-to-backup     Directory to backup, relative to the root directory.
+--backup-dir        Directory where backups and redundancy files are put.
+--override          By default, the script will not overwrite existing files or directories.
+                    Use this option to override this behavior.
+--generate          Generate config files and put them in /tmp/ for inspection
+                    without writing to $HOME.
+-v, --version       Display version and licensing information.
+-h, --help          Displays usage info
 ```

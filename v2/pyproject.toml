@@ -78,7 +78,8 @@ classifiers = [
 dependencies = [
     "inputimeout>=1.0.4",
     "rich>=13.0.0",
-    "argcomplete>=3.6.2"
+    "argcomplete>=3.6.2",
+    "Jinja2>=3.1.6",
     # other dependencies
 ]
 

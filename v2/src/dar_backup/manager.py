@@ -559,7 +559,7 @@ def main():
     args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
     start_msgs.append(("Logfile:", config_settings.logfile_location))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
-    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
+    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive)) 
     dar_manager_properties = get_binary_info(command='dar_manager')
     start_msgs.append(("dar_manager:", dar_manager_properties['path']))
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))

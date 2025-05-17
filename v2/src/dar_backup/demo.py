@@ -23,11 +23,14 @@ import sys
 from . import __about__ as about
 from . import util
 
-
-
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 from typing import Dict, Tuple
+
+
+CONFIG_DIR = util.normalize_dir(util.expand_path("~/.config/dar-backup"))
+DAR_BACKUP_DIR = util.normalize_dir(util.expand_path("~/dar-backup"))
+
 
 
 def check_directories(args, vars_map: Dict[str,str]) -> bool:
@@ -48,7 +51,7 @@ def check_directories(args, vars_map: Dict[str,str]) -> bool:
 
 def generate_file(args, template: str, file_path: Path, vars_map: Dict[str, str], opts_dict: Dict[str, str]) -> bool:
     """
-    Generate a file using Jinja2 template.
+    Generate a file using a Jinja2 template.
 
     Args:
         args: Command line arguments.
@@ -78,7 +81,7 @@ def generate_file(args, template: str, file_path: Path, vars_map: Dict[str, str]
 
 def setup_dicts(args, vars_map: Dict[str, str]) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
-    Set up the dictionaries for jinja templating.
+    Override various entries in the dictionaries for jinja templating with user input.
 
     Returns:
         Tuple[Dict[str, str], Dict[str, str]]: A tuple containing the vars_map and opts_dict dictionaries.
@@ -95,16 +98,6 @@ def setup_dicts(args, vars_map: Dict[str, str]) -> Tuple[Dict[str, str], Dict[st
         vars_map[key] = value
 
     return vars_map, opts_dict
-
-
-def do_generate(args):
-    # args has args.root_dir, args.dir_to_backup, args.backup_dir, args.override
-    print("Running generate with", args)
-
-def do_install(args):
-    # args.override only
-    print("Running install with", args)
-
 
 
 def main():
@@ -152,18 +145,18 @@ def main():
 
     args = parser.parse_args()
 
+    group = [args.root_dir, args.dir_to_backup]
+    if any(group) and not all(group):
+        parser.error(
+            "Options --root-dir, --dir-to-backup must all be specified together."
+        )
+        exit(1)
+
     args.root_dir = util.normalize_dir(util.expand_path(args.root_dir)) if args.root_dir else None
     args.backup_dir = util.normalize_dir(util.expand_path(args.backup_dir)) if args.backup_dir else None
     args.dir_to_backup = util.normalize_dir(util.expand_path(args.dir_to_backup)) if args.dir_to_backup else None
 
-    group = [args.root_dir, args.dir_to_backup] 
-    if any(group) and not all(group):
-        parser.error(
-        "Options --root-dir, --dir-to-backup must be specified together."
-    ) 
 
-    CONFIG_DIR = util.normalize_dir(util.expand_path("~/.config/dar-backup"))
-    DAR_BACKUP_DIR = util.normalize_dir(util.expand_path("~/dar-backup"))
 
     vars_map = {
     #  dar-backup.conf variables 

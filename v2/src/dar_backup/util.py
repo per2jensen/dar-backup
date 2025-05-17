@@ -19,11 +19,14 @@ import shutil
 import sys
 import threading
 import traceback
+
+import dar_backup.__about__ as about
+
+
 from argcomplete.completers import ChoicesCompleter
 from datetime import datetime
 from dar_backup.config_settings import ConfigSettings
-import dar_backup.__about__ as about
-
+from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
@@ -664,3 +667,16 @@ def print_aligned_settings(
     console.print(f"[bold cyan]{footer_line}[/bold cyan]")
     if log and logger:
         logger.info(footer_line)
+
+
+
+
+def normalize_dir(path: str) -> str:
+    """
+    Strip any trailing slash/backslash but leave root (“/” or “C:\\”) intact.
+    """
+    p = Path(path)
+    # Path(__str__) drops any trailing separators
+    normalized = str(p)
+    return normalized
+

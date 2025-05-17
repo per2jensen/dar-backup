@@ -7,6 +7,7 @@ Github link: [v2-beta-0.6.21](https://github.com/per2jensen/dar-backup/tree/v2-b
 
 ### Added
 
+- Quick Guide with reworked `demo` program.
 - util.get_invocation_command_line() used to print command line.
 - Installer to setup directories and catalog databases as prescribed in config file.
 - Documentation on dar-backup --selection option improved.
