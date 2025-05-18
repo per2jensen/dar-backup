@@ -1,0 +1,37 @@
+name: Update GitHub Clone Metrics
+
+on:
+  schedule:
+    - cron: '17 2 * * *'  # Run daily at 02:17 UTC
+  workflow_dispatch:
+
+jobs:
+  update-clones:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run fetch_clones.py
+        env:
+          TOKEN: ${{ secrets.DAR_BACKUP_METRICS }}
+        run: python v2/src/misc/fetch_clones.py
+
+      - name: Commit changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          if ! git diff --quiet; then
+            git add v2/doc/clones.json
+            git commit -m "Update clones.json"
+            git push
+          fi

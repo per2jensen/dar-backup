@@ -7,7 +7,8 @@
 ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/)
 [![PyPI monthly downloads](https://img.shields.io/pypi/dm/dar-backup)](https://pypi.org/project/dar-backup/)
-[![Total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
+[![PyPI total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
+[![# clones](https://img.shields.io/badge/dynamic/json?color=deeppink&label=%23%20clones&query=total_clones&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fv2%2Fdoc%2Fclones.json)](https://github.com/per2jensen/dar-backup)
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
 the heavy lifting, together with the [parchive (redundancy to patch bitrot)](https://github.com/Parchive/par2cmdline) suite in these scripts.
