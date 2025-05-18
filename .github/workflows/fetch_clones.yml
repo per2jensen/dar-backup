@@ -1,5 +1,9 @@
 name: Update GitHub Clone Metrics
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   schedule:
     - cron: '17 2 * * *'  # Run daily at 02:17 UTC

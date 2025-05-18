@@ -1,5 +1,9 @@
 name: Generate Clone Dashboard
 
+permissions:
+  contents: read
+  pull-requests: write
+ 
 on:
   schedule:
     - cron: '19 3 * * 1'  # Every Monday at 03:19 UTC
