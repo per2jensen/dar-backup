@@ -1,0 +1,35 @@
+name: Generate Clone Dashboard
+
+on:
+  schedule:
+    - cron: '19 3 * * 1'  # Every Monday at 03:19 UTC
+  workflow_dispatch:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install matplotlib pandas
+
+      - name: Generate dashboard image
+        run: python v2/src/misc/generate_clone_dashboard.py
+
+      - name: Commit dashboard update
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          if ! git diff --quiet; then
+            git add v2/doc/weekly_clones.png
+            git commit -m "Update weekly clones dashboard"
+            git push
+          fi
