@@ -1,0 +1,9 @@
+Package: dar-backup
+Version: {version}
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: dar-backup <dar-backup@pm.me>
+Homepage: https://github.com/per2jensen/dar-backup
+Depends: dar (>= 2.7.13), par2 (>= 0.8.1)
+Description: Backup utility using dar with cleanup and verification tools.
