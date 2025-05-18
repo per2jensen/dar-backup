@@ -1,1 +1,5 @@
-theme: jekyll-theme-hacker
+remote_theme: pages-themes/merlot@v0.2.0
+plugins:
+- jekyll-remote-theme
+title: dar-backup
+description: Reliable DAR backups, automated in clean Python
