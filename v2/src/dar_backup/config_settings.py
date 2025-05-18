@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 import configparser
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser

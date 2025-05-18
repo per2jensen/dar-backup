@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 demo.py source code is here: https://github.com/per2jensen/dar-backup/tree/main/v2/src/dar_backup/demo.py
 This script is part of dar-backup, a backup solution for Linux using dar and systemd.

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 util.py source code is here: https://github.com/per2jensen/dar-backup
 

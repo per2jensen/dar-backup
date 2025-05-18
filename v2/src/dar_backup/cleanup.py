@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """
 cleanup.py source code is here: https://github.com/per2jensen/dar-backup

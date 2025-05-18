@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """ 
 Fetch clone data from GitHub API and update local JSON file,

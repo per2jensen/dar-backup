@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Script to generate a clone dashboard from the clones.json file.
 
