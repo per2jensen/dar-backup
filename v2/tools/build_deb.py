@@ -70,17 +70,25 @@ def build_deb(tag):
     deb_root = v2_dir / "packages" / "deb" / f"dar-backup_{version}"
     if deb_root.exists():
         shutil.rmtree(deb_root)
-    os.makedirs(deb_root / "usr" / "local", exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tempdir:
         run([
             sys.executable, "-m", "pip", "install",
             str(next(dist_dir.glob("*.whl"))),
-            "--target", tempdir,
+            "--no-deps", "--target", tempdir,
         ])
         site_packages = deb_root / "usr" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
         site_packages.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(tempdir, site_packages, dirs_exist_ok=True)
+
+        # Remove unwanted bin/ from site-packages
+        bin_inside = site_packages / "bin"
+        if bin_inside.exists():
+            shutil.rmtree(bin_inside)
+        # Remove all .pyc files
+        for pyc in site_packages.rglob("*.pyc"):
+            pyc.unlink()
+
 
     # Step 3: Create CLI wrappers in /usr/bin
     bin_dir = deb_root / "usr" / "bin"
