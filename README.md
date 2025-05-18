@@ -151,6 +151,7 @@ The package include a `demo`application, that can help you set up `dar-backup` q
 **Let's roll** with installation, backup, list backup content, restore & restore check
 
 ```bash
+sudo apt -y install dar par2 python3 python3-venv
 INSTALL_DIR=/tmp/dar-backup
 mkdir "$INSTALL_DIR"
 cd "$INSTALL_DIR"
@@ -202,13 +203,13 @@ Successfully installed argcomplete-3.6.2 dar-backup-0.6.21 inputimeout-1.0.4 mar
 <br>
 
 ```bash
-demo --install          # you can modify some of the settings, see the reference section
+demo --install          # see reference section for options tweaking the install
 
 manager --create-db
 
-dar-backup -d demo --full-backup
+dar-backup --full-backup
 
-dar-backup --list-contents $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
 ```
 
 <details>
@@ -238,7 +239,7 @@ dar_manager v.: 1.9.0
 
 
 
-(venv) $ dar-backup -d demo --full-backup
+(venv) $ dar-backup --full-backup
 ========== Startup Settings ==========
 dar-backup.py:    0.7.1
 dar path:         /home/user/.local/dar/bin/dar
@@ -250,7 +251,7 @@ Config file:      /home/user/.config/dar-backup/dar-backup.conf
 
 
 
-(venv) $ dar-backup --list-contents $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+(venv) $ dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
 ========== Startup Settings ==========
 dar-backup.py:    0.7.1
 dar path:         /home/user/.local/dar/bin/dar
@@ -276,8 +277,9 @@ Config file:      /home/user/.config/dar-backup/dar-backup.conf
 <br>
 
 ```bash
-dar-backup --restore $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)  --verbose
+dar-backup --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)  --verbose
 
+# prove the files have been restored
 find $HOME/dar-backup/restore
 ```
 
@@ -286,7 +288,7 @@ find $HOME/dar-backup/restore
 <summary>🎯 --restore details</summary>
 
 ```bash
-(venv) $ dar-backup --verbose --restore $(dar-backup -d demo --list |tail -n 1 | cut -d " " -f1)
+(venv) $ dar-backup --verbose --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)
 ========== Startup Settings ==========
 dar-backup.py:    0.7.1
 dar path:         /home/user/.local/dar/bin/dar
@@ -329,6 +331,8 @@ PAR2 enabled:     True
 > - --root-dir      (perhaps $HOME)
 > - --dir-to-backup (perhaps Pictures)
 > - --backup-dir    (perhaps /media/user/big-disk)
+>
+> See log file: `cat "$HOME/dar-backup/dar-backup.log"`
 >
 > Checkout [systemd timers and services](#generate-systemd-files)
 >
