@@ -5,6 +5,5 @@ Priority: optional
 Architecture: all
 Maintainer: dar-backup <dar-backup@pm.me>
 Homepage: https://github.com/per2jensen/dar-backup
-Depends: python3, python3-rich (>= 13.0.0), python3-jinja2, python3-argcomplete, python3-inputimeout
+Depends: python3, python3-rich (>= 13.0.0), python3-jinja2, python3-argcomplete, dar (>= 2.7.13), par2
 Description: Backup utility using dar with cleanup and verification tools.
-
