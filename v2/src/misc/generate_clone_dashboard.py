@@ -1,3 +1,10 @@
+"""
+Script to generate a clone dashboard from the clones.json file.
+
+It aggregates daily clone data into weekly metrics and mark the annotations stored in the clones.json.
+"""
+
+
 import os
 import json
 import pandas as pd
@@ -24,22 +31,64 @@ weekly_data = weekly_data.sort_values('week').tail(12)
 weekly_data['count_avg'] = weekly_data['count'].rolling(window=3, min_periods=1).mean()
 weekly_data['uniques_avg'] = weekly_data['uniques'].rolling(window=3, min_periods=1).mean()
 
+# Prepare week positions
+weeks = weekly_data['week'].tolist()
+week_dates = pd.to_datetime(weekly_data['week'] + '-1', format='%Y-W%U-%w')  # week starts (Monday)
+
+# Extract annotation dates
+annotations = clones_data.get("annotations", [])
+annotation_df = pd.DataFrame(annotations)
+if not annotation_df.empty:
+    annotation_df['date'] = pd.to_datetime(annotation_df['date'])
+    annotation_df = annotation_df.sort_values('date')
+
 # Plot
-plt.figure(figsize=(10, 5))
-plt.plot(weekly_data['week'], weekly_data['count'], label='Total Clones', marker='o')
-plt.plot(weekly_data['week'], weekly_data['count_avg'], label='Total Clones (3w Avg)', linestyle='--')
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(weeks, weekly_data['count'], label='Total Clones', marker='o')
+ax.plot(weeks, weekly_data['count_avg'], label='Total Clones (3w Avg)', linestyle='--')
 
-plt.plot(weekly_data['week'], weekly_data['uniques'], label='Unique Clones', marker='s')
-plt.plot(weekly_data['week'], weekly_data['uniques_avg'], label='Unique Clones (3w Avg)', linestyle=':')
+ax.plot(weeks, weekly_data['uniques'], label='Unique Clones', marker='s')
+ax.plot(weeks, weekly_data['uniques_avg'], label='Unique Clones (3w Avg)', linestyle=':')
 
-plt.title("Weekly Clone Metrics (Last 12 Weeks)")
-plt.xlabel("Week")
-plt.ylabel("Clones")
-plt.grid(True)
-plt.xticks(rotation=45)
-plt.legend()
+# Add interpolated annotation markers
+for _, row in annotation_df.iterrows():
+    annotation_date = row['date']
+    label = row['label']
+    x_pos = 0  # default if out of range
+
+    for i in range(len(week_dates) - 1):
+        if week_dates[i] <= annotation_date < week_dates[i + 1]:
+            delta = (annotation_date - week_dates[i]) / (week_dates[i + 1] - week_dates[i])
+            x_pos = i + delta
+            break
+    else:
+        if annotation_date >= week_dates.iloc[-1]:
+            x_pos = len(week_dates) - 1
+        elif annotation_date < week_dates.iloc[0]:
+            x_pos = 0
+
+    ax.axvline(x=x_pos, color='gray', linestyle=':', linewidth=1)
+    ax.annotate(
+        label,
+        xy=(x_pos, ax.get_ylim()[1] * 0.85),
+        xytext=(0, 5),
+        textcoords='offset points',
+        rotation=90,
+        fontsize=10,
+        ha='center',
+        va='center',
+        color='dimgray'
+    )
+
+# Final polish
+ax.set_title("Weekly Clone Metrics (Last 12 Weeks)")
+ax.set_xlabel("Week")
+ax.set_ylabel("Clones")
+ax.grid(True)
+ax.set_xticks(range(len(weeks)))
+ax.set_xticklabels(weeks, rotation=45)
+ax.legend(loc="lower left", fontsize=9)
 plt.tight_layout()
 
 # Save chart
 plt.savefig(OUTPUT_PNG)
-

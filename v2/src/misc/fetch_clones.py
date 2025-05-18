@@ -1,4 +1,5 @@
-"""
+
+""" 
 Fetch clone data from GitHub API and update local JSON file,
 triggered by Action `fetch_clones.json`.
 The script retrieves clone statistics for the dar-backup repository
@@ -7,6 +8,7 @@ A badge on the repo README.md file will show the total number of clones.
 import os
 import json
 import requests
+from collections import OrderedDict
 
 # Constants
 API_URL = "https://api.github.com/repos/per2jensen/dar-backup/traffic/clones"
@@ -34,6 +36,7 @@ if os.path.exists(CLONES_FILE):
         clones_data = json.load(f)
 else:
     clones_data = {
+        "annotations": [],
         "total_clones": 0,
         "unique_clones": 0,
         "daily": []
@@ -56,12 +59,20 @@ for day in data.get("clones", []):
 # Only update and write the file if there are new entries
 if new_entries:
     clones_data["daily"].extend(new_entries)
-    clones_data["daily"].sort(key=lambda x: x["timestamp"])
+    clones_data["daily"].sort(key=lambda x: x["timestamp"], reverse=True)
 
     # Recalculate totals
     clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
     clones_data["unique_clones"] = sum(entry["uniques"] for entry in clones_data["daily"])
 
+    # Reorder keys to keep annotations at the top
+    ordered = OrderedDict()
+    if "annotations" in clones_data:
+        ordered["annotations"] = clones_data["annotations"]
+    ordered["total_clones"] = clones_data["total_clones"]
+    ordered["unique_clones"] = clones_data["unique_clones"]
+    ordered["daily"] = clones_data["daily"]
+
     # Save the updated file
     with open(CLONES_FILE, "w") as f:
-        json.dump(clones_data, f, indent=2)
+        json.dump(ordered, f, indent=2)

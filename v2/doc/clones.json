@@ -1,4 +1,14 @@
 {
+  "annotations": [
+    {
+      "date": "2025-05-17",
+      "label": "LinkedIn"
+    },
+    {
+      "date": "2025-05-04",
+      "label": "r/linuxadmin"
+    }
+  ],
   "total_clones": 196,
   "unique_clones": 114,
   "daily": [
