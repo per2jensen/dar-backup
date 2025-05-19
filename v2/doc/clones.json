@@ -9,73 +9,18 @@
       "label": "r/linuxadmin"
     }
   ],
-  "total_clones": 196,
-  "unique_clones": 114,
+  "total_clones": 208,
+  "unique_clones": 119,
   "daily": [
     {
-      "timestamp": "2025-05-04T00:00:00Z",
-      "count": 30,
-      "uniques": 15
-    },
-    {
-      "timestamp": "2025-05-05T00:00:00Z",
-      "count": 7,
+      "timestamp": "2025-05-19T00:00:00Z",
+      "count": 12,
       "uniques": 5
     },
     {
-      "timestamp": "2025-05-06T00:00:00Z",
-      "count": 7,
-      "uniques": 5
-    },
-    {
-      "timestamp": "2025-05-07T00:00:00Z",
+      "timestamp": "2025-05-18T00:00:00Z",
       "count": 8,
       "uniques": 6
-    },
-    {
-      "timestamp": "2025-05-08T00:00:00Z",
-      "count": 10,
-      "uniques": 7
-    },
-    {
-      "timestamp": "2025-05-09T00:00:00Z",
-      "count": 10,
-      "uniques": 5
-    },
-    {
-      "timestamp": "2025-05-10T00:00:00Z",
-      "count": 8,
-      "uniques": 6
-    },
-    {
-      "timestamp": "2025-05-11T00:00:00Z",
-      "count": 14,
-      "uniques": 9
-    },
-    {
-      "timestamp": "2025-05-12T00:00:00Z",
-      "count": 11,
-      "uniques": 5
-    },
-    {
-      "timestamp": "2025-05-13T00:00:00Z",
-      "count": 26,
-      "uniques": 14
-    },
-    {
-      "timestamp": "2025-05-14T00:00:00Z",
-      "count": 22,
-      "uniques": 12
-    },
-    {
-      "timestamp": "2025-05-15T00:00:00Z",
-      "count": 13,
-      "uniques": 8
-    },
-    {
-      "timestamp": "2025-05-16T00:00:00Z",
-      "count": 8,
-      "uniques": 4
     },
     {
       "timestamp": "2025-05-17T00:00:00Z",
@@ -83,9 +28,69 @@
       "uniques": 7
     },
     {
-      "timestamp": "2025-05-18T00:00:00Z",
+      "timestamp": "2025-05-16T00:00:00Z",
+      "count": 8,
+      "uniques": 4
+    },
+    {
+      "timestamp": "2025-05-15T00:00:00Z",
+      "count": 13,
+      "uniques": 8
+    },
+    {
+      "timestamp": "2025-05-14T00:00:00Z",
+      "count": 22,
+      "uniques": 12
+    },
+    {
+      "timestamp": "2025-05-13T00:00:00Z",
+      "count": 26,
+      "uniques": 14
+    },
+    {
+      "timestamp": "2025-05-12T00:00:00Z",
+      "count": 11,
+      "uniques": 5
+    },
+    {
+      "timestamp": "2025-05-11T00:00:00Z",
+      "count": 14,
+      "uniques": 9
+    },
+    {
+      "timestamp": "2025-05-10T00:00:00Z",
       "count": 8,
       "uniques": 6
+    },
+    {
+      "timestamp": "2025-05-09T00:00:00Z",
+      "count": 10,
+      "uniques": 5
+    },
+    {
+      "timestamp": "2025-05-08T00:00:00Z",
+      "count": 10,
+      "uniques": 7
+    },
+    {
+      "timestamp": "2025-05-07T00:00:00Z",
+      "count": 8,
+      "uniques": 6
+    },
+    {
+      "timestamp": "2025-05-06T00:00:00Z",
+      "count": 7,
+      "uniques": 5
+    },
+    {
+      "timestamp": "2025-05-05T00:00:00Z",
+      "count": 7,
+      "uniques": 5
+    },
+    {
+      "timestamp": "2025-05-04T00:00:00Z",
+      "count": 30,
+      "uniques": 15
     }
   ]
 }
