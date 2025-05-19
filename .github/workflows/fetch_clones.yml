@@ -1,7 +1,7 @@
 name: Update GitHub Clone Metrics
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 on:
@@ -39,3 +39,4 @@ jobs:
             git commit -m "Update clones.json"
             git push
           fi
+
