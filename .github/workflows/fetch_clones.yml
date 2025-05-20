@@ -34,9 +34,9 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
+          git pull --rebase
           if ! git diff --quiet; then
             git add v2/doc/clones.json
-            git pull --rebase
             git commit -m "Update clones.json on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
             git push
           fi
