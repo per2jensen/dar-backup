@@ -142,8 +142,8 @@ if new_entries:
             "color": "lightgray"
         }
 
-        with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
-            json.dump(badge, f, indent=2)
+    with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
+        json.dump(badge, f, indent=2)
 
 
 # --- Generate total clones badge.json ---
