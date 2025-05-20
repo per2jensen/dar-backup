@@ -97,53 +97,53 @@ if new_entries:
     os.replace(CLONES_FILE + ".tmp", CLONES_FILE)
 
 
-    # --- Milestone Watcher ---
-    milestones_hit = []
+# --- Milestone Watcher ---
+milestones_hit = []
 
-    for milestone in MILESTONES:
-        milestone_file = os.path.join(BADGE_DIR, f"milestone_{milestone}.txt")
-        if clones_data["total_clones"] >= milestone and not os.path.exists(milestone_file):
-            with open(milestone_file, "w") as f:
-                f.write(f"Reached {milestone} clones on {datetime.utcnow().isoformat()}Z\n")
-            milestones_hit.append(milestone)
+for milestone in MILESTONES:
+    milestone_file = os.path.join(BADGE_DIR, f"milestone_{milestone}.txt")
+    if clones_data["total_clones"] >= milestone and not os.path.exists(milestone_file):
+        with open(milestone_file, "w") as f:
+            f.write(f"Reached {milestone} clones on {datetime.utcnow().isoformat()}Z\n")
+        milestones_hit.append(milestone)
 
-    # Determine the highest milestone reached (if any)
-    total_clones = clones_data["total_clones"]
-    milestones_hit = [m for m in MILESTONES if total_clones >= m]
-
-
-    # Optional: write a badge for the highest milestone just reached
-    if milestones_hit:
-        last = milestones_hit[-1]
-
-        # Determine number of 🎉 to show
-        index = MILESTONES.index(last) + 1
-        celebration = "🎉" * index
+# Determine the highest milestone reached (if any)
+total_clones = clones_data["total_clones"]
+milestones_hit = [m for m in MILESTONES if total_clones >= m]
 
 
-        if last >= 2000:
-            color = "red"
-        elif last >= 1000:
-            color = "orange"
-        else:
-            color = "yellow"
+# Optional: write a badge for the highest milestone just reached
+if milestones_hit:
+    last = milestones_hit[-1]
 
-        badge = {
-            "schemaVersion": 1,
-            "label": "Milestone",
-            "message": f"{last} clones {celebration}",
-            "color": color
-        }
+    # Determine number of 🎉 to show
+    index = MILESTONES.index(last) + 1
+    celebration = "🎉" * index
+
+
+    if last >= 2000:
+        color = "red"
+    elif last >= 1000:
+        color = "orange"
     else:
-        badge = {
-            "schemaVersion": 1,
-            "label": "Milestone",
-            "message": "Coming soon...",
-            "color": "lightgray"
-        }
+        color = "yellow"
 
-    with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
-        json.dump(badge, f, indent=2)
+    badge = {
+        "schemaVersion": 1,
+        "label": "Milestone",
+        "message": f"{last} clones {celebration}",
+        "color": color
+    }
+else:
+    badge = {
+        "schemaVersion": 1,
+        "label": "Milestone",
+        "message": "Coming soon...",
+        "color": "lightgray"
+    }
+
+with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
+    json.dump(badge, f, indent=2)
 
 
 # --- Generate total clones badge.json ---
