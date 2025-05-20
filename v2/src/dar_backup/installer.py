@@ -35,8 +35,8 @@ def install_autocompletion():
         'eval "$(register-python-argcomplete dar-backup)"',
         'eval "$(register-python-argcomplete cleanup)"',
         'eval "$(register-python-argcomplete manager)"',
-        "complete -o nosort -C 'python -m argcomplete cleanup' cleanup",
-        "complete -o nosort -C 'python -m argcomplete manager' manager",
+        "#complete -o nosort -C 'python -m argcomplete cleanup' cleanup",
+        "#complete -o nosort -C 'python -m argcomplete manager' manager",
         end_marker,
     ]) + "\n"
 

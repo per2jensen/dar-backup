@@ -1308,8 +1308,8 @@ Try auto completion in your session:
 eval "$(register-python-argcomplete dar-backup)"
 eval "$(register-python-argcomplete cleanup)"
 eval "$(register-python-argcomplete manager)"
-complete -o nosort -C 'python -m argcomplete cleanup' cleanup
-complete -o nosort -C 'python -m argcomplete manager' manager
+#complete -o nosort -C 'python -m argcomplete cleanup' cleanup
+#complete -o nosort -C 'python -m argcomplete manager' manager
 ```
 
 To make it persistent across sessions, add this to your ~/.bashrc:
@@ -1320,8 +1320,8 @@ eval "$(register-python-argcomplete dar-backup)"
 eval "$(register-python-argcomplete cleanup)"
 eval "$(register-python-argcomplete manager)"
 # This disables bash sorting, so sorting is by <backup definition> and <date>
-complete -o nosort -C 'python -m argcomplete cleanup' cleanup
-complete -o nosort -C 'python -m argcomplete manager' manager
+#complete -o nosort -C 'python -m argcomplete cleanup' cleanup
+#complete -o nosort -C 'python -m argcomplete manager' manager
 ```
 
 If you're using a virtual environment and register-python-argcomplete isn't in your global PATH, use:
