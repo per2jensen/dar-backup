@@ -9,8 +9,8 @@
       "label": "r/linuxadmin"
     }
   ],
-  "total_clones": 300,
-  "unique_clones": 155,
+  "total_clones": 363,
+  "unique_clones": 177,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -94,8 +94,8 @@
     },
     {
       "timestamp": "2025-05-20T00:00:00Z",
-      "count": 26,
-      "uniques": 10
+      "count": 89,
+      "uniques": 32
     }
   ]
 }
