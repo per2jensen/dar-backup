@@ -6,7 +6,9 @@ Fetch clone data from GitHub API and update local JSON file,
 triggered by Action `fetch_clones.json`.
 The script retrieves clone statistics for the dar-backup repository
 A badge on the repo README.md file will show the total number of clones.
+Also, it will create a badge for each milestone reached (500, 1000, 2000 clones).
 """
+import datetime
 import os
 import json
 import requests
@@ -15,6 +17,10 @@ from collections import OrderedDict
 # Constants
 API_URL = "https://api.github.com/repos/per2jensen/dar-backup/traffic/clones"
 CLONES_FILE = "v2/doc/clones.json"
+MILESTONES = [500, 1000, 2000]
+BADGE_DIR = "v2/doc"
+BADGE_CLONES = "badge_clones.json"
+
 
 # Load token from environment
 TOKEN = os.getenv("TOKEN")
@@ -89,3 +95,36 @@ if new_entries:
     with open(CLONES_FILE + ".tmp", "w") as f:
         json.dump(ordered, f, indent=2)
     os.replace(CLONES_FILE + ".tmp", CLONES_FILE)
+
+
+    # --- Milestone Watcher ---
+    milestones_hit = []
+
+    for milestone in MILESTONES:
+        milestone_file = os.path.join(BADGE_DIR, f"milestone_{milestone}.txt")
+        if clones_data["total_clones"] >= milestone and not os.path.exists(milestone_file):
+            with open(milestone_file, "w") as f:
+                f.write(f"Reached {milestone} clones on {datetime.utcnow().isoformat()}Z\n")
+            milestones_hit.append(milestone)
+
+    # Optional: write a badge for the highest milestone just reached
+    if milestones_hit:
+        badge = {
+            "schemaVersion": 1,
+            "label": "Milestone",
+            "message": f"{milestones_hit[-1]} clones 🎉",
+            "color": "orange"
+        }
+        with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
+            json.dump(badge, f, indent=2)
+
+
+# --- Generate total clones badge.json ---
+badge = {
+    "schemaVersion": 1,
+    "label": "# clones",
+    "message": str(clones_data["total_clones"]),
+    "color": "deeppink"
+}
+with open(os.path.join(BADGE_DIR, BADGE_CLONES), "w") as f:
+    json.dump(badge, f, indent=2)
