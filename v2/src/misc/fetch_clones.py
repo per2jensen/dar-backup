@@ -37,6 +37,11 @@ HEADERS = {
 response = requests.get(API_URL, headers=HEADERS)
 response.raise_for_status()
 data = response.json()
+if not data.get("clones"):
+    print("⚠️ No clone data returned from GitHub API.")
+    exit(0)
+
+
 
 # Load existing clone data if available
 if os.path.exists(CLONES_FILE):
@@ -53,48 +58,61 @@ else:
 
 # Build existing entries as a dict (timestamp → entry)
 existing_entries = {entry["timestamp"]: entry for entry in clones_data.get("daily", [])}
-new_entries = []
 
 # Process and optionally update/skip each day's data
 for day in data.get("clones", []):
-    timestamp = day.get("timestamp")
-    if not timestamp:
-        continue  # skip invalid entries
+    timestamp = day["timestamp"]
+    new_entry = {
+        "timestamp": timestamp,
+        "count": day["count"],
+        "uniques": day["uniques"]
+    }
 
-    # Only add if it's new
-    if timestamp not in existing_entries:
-        new_entries.append({
-            "timestamp": timestamp,
-            "count": day["count"],
-            "uniques": day["uniques"]
+    # Log if updated
+    if timestamp in existing_entries:
+        prev = existing_entries[timestamp]
+        if prev != new_entry:
+            print(f"🔄 Updated {timestamp}: {prev} → {new_entry}")
+
+    existing_entries[timestamp] = new_entry
+
+clones_data["daily"] = sorted(existing_entries.values(), key=lambda x: x["timestamp"])
+
+# Recalculate totals
+clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
+clones_data["unique_clones"] = sum(entry["uniques"] for entry in clones_data["daily"])
+
+# Reorder keys to keep annotations at the top
+ordered = OrderedDict()
+if "annotations" in clones_data:
+    ordered["annotations"] = clones_data["annotations"]
+ordered["total_clones"] = clones_data["total_clones"]
+ordered["unique_clones"] = clones_data["unique_clones"]
+ordered["daily"] = clones_data["daily"]
+
+
+# --- Auto-annotate max clone day ---
+# Find previous max
+max_prev = max(clones_data["daily"], key=lambda d: d["count"])
+today = datetime.date.today().isoformat()
+
+# Get today's entry (assumes sorted and up to date)
+today_entry = next((d for d in clones_data["daily"] if d["timestamp"].startswith(today)), None)
+
+if today_entry and today_entry["count"] > max_prev["count"]:
+    # Avoid duplicate annotations
+    if not any(a["date"] == today and "max" in a["label"].lower() for a in clones_data.get("annotations", [])):
+        clones_data.setdefault("annotations", []).append({
+            "date": today,
+            "label": f"🔥 New max: {today_entry['count']} clones"
         })
-    # Optional: detect and warn about mismatches (for debug/logging)
-    elif (existing_entries[timestamp]["count"], existing_entries[timestamp]["uniques"]) != (day["count"], day["uniques"]):
-        print(f"⚠️  Data mismatch at {timestamp}, skipping duplicate with different values.")
+        print(f"📌 Annotated new max clone day: {today_entry['count']}")
 
 
-# Only update and write the file if there are new entries
-if new_entries:
-    print(f"Adding {len(new_entries)} new clone entries.")
-    clones_data["daily"].extend(new_entries)
-    clones_data["daily"].sort(key=lambda x: x["timestamp"])
-
-    # Recalculate totals
-    clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
-    clones_data["unique_clones"] = sum(entry["uniques"] for entry in clones_data["daily"])
-
-    # Reorder keys to keep annotations at the top
-    ordered = OrderedDict()
-    if "annotations" in clones_data:
-        ordered["annotations"] = clones_data["annotations"]
-    ordered["total_clones"] = clones_data["total_clones"]
-    ordered["unique_clones"] = clones_data["unique_clones"]
-    ordered["daily"] = clones_data["daily"]
-
-    # Save the updated file
-    with open(CLONES_FILE + ".tmp", "w") as f:
-        json.dump(ordered, f, indent=2)
-    os.replace(CLONES_FILE + ".tmp", CLONES_FILE)
+# Save the updated file
+with open(CLONES_FILE + ".tmp", "w") as f:
+    json.dump(ordered, f, indent=2)
+os.replace(CLONES_FILE + ".tmp", CLONES_FILE)
 
 
 # --- Milestone Watcher ---
