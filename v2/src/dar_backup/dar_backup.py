@@ -877,9 +877,9 @@ def main():
         start_msgs.append(('Config file:', os.path.abspath(args.config_file)))
         start_msgs.append((".darrc location:", args.darrc))
 
-        args.verbose and args.full_backup         and start_msgs.append(("Type of backup:", "FULL"))
-        args.verbose and args.differential_backup and start_msgs.append(("Type of backup:", "DIFF"))
-        args.verbose and args.incremental_backup  and start_msgs.append(("Type of backup:", "INCR"))
+        args.full_backup         and start_msgs.append(("Type of backup:", "FULL"))
+        args.differential_backup and start_msgs.append(("Type of backup:", "DIFF"))
+        args.incremental_backup  and start_msgs.append(("Type of backup:", "INCR"))
         args.verbose and args.backup_definition   and start_msgs.append(("Backup definition:", args.backup_definition))
         if args.alternate_reference_archive:
             args.verbose and start_msgs.append(("Alternate ref archive:", args.alternate_reference_archive))
