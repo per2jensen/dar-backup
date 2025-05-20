@@ -22,9 +22,16 @@ with open(CLONES_FILE, "r") as f:
     clones_data = json.load(f)
 
 # Create DataFrame
-df = pd.DataFrame(clones_data["daily"])
-df['timestamp'] = pd.to_datetime(df['timestamp'])
-df['week'] = df['timestamp'].dt.strftime('%Y-W%U')
+try:
+    df = pd.DataFrame(clones_data["daily"])
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['week'] = df['timestamp'].dt.strftime('%G-W%V')
+except Exception as e:
+    print(f"DataFrame: failed to process clone data: {e}")
+    exit(1)
+if df.empty:
+    print("No clone data available.")
+    exit(0)
 
 # Aggregate by week
 weekly_data = df.groupby('week')[['count', 'uniques']].sum().reset_index()
@@ -36,7 +43,7 @@ weekly_data['uniques_avg'] = weekly_data['uniques'].rolling(window=3, min_period
 
 # Prepare week positions
 weeks = weekly_data['week'].tolist()
-week_dates = pd.to_datetime(weekly_data['week'] + '-1', format='%Y-W%U-%w')  # week starts (Monday)
+week_dates = pd.to_datetime(weekly_data['week'] + '-1', format='%G-W%V-%w')
 
 # Extract annotation dates
 annotations = clones_data.get("annotations", [])

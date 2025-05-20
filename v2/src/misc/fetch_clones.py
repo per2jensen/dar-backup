@@ -44,24 +44,34 @@ else:
         "daily": []
     }
 
-# Collect existing timestamps to ensure idempotency
-existing_dates = {entry["timestamp"] for entry in clones_data.get("daily", [])}
+
+# Build existing entries as a dict (timestamp → entry)
+existing_entries = {entry["timestamp"]: entry for entry in clones_data.get("daily", [])}
 new_entries = []
 
-# Process each day's data
+# Process and optionally update/skip each day's data
 for day in data.get("clones", []):
-    timestamp = day["timestamp"]
-    if timestamp not in existing_dates:
+    timestamp = day.get("timestamp")
+    if not timestamp:
+        continue  # skip invalid entries
+
+    # Only add if it's new
+    if timestamp not in existing_entries:
         new_entries.append({
             "timestamp": timestamp,
             "count": day["count"],
             "uniques": day["uniques"]
         })
+    # Optional: detect and warn about mismatches (for debug/logging)
+    elif (existing_entries[timestamp]["count"], existing_entries[timestamp]["uniques"]) != (day["count"], day["uniques"]):
+        print(f"⚠️  Data mismatch at {timestamp}, skipping duplicate with different values.")
+
 
 # Only update and write the file if there are new entries
 if new_entries:
+    print(f"Adding {len(new_entries)} new clone entries.")
     clones_data["daily"].extend(new_entries)
-    clones_data["daily"].sort(key=lambda x: x["timestamp"], reverse=True)
+    clones_data["daily"].sort(key=lambda x: x["timestamp"])
 
     # Recalculate totals
     clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
@@ -76,5 +86,6 @@ if new_entries:
     ordered["daily"] = clones_data["daily"]
 
     # Save the updated file
-    with open(CLONES_FILE, "w") as f:
+    with open(CLONES_FILE + ".tmp", "w") as f:
         json.dump(ordered, f, indent=2)
+    os.replace(CLONES_FILE + ".tmp", CLONES_FILE)
