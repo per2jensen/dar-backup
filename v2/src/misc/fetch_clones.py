@@ -18,7 +18,7 @@ from collections import OrderedDict
 API_URL = "https://api.github.com/repos/per2jensen/dar-backup/traffic/clones"
 CLONES_FILE = "v2/doc/clones.json"
 MILESTONES = [500, 1000, 2000]
-BADGE_DIR = "v2/doc"
+BADGE_DIR = "v2/doc/badges"
 BADGE_CLONES = "badge_clones.json"
 
 
