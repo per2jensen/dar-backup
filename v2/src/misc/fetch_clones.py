@@ -17,7 +17,7 @@ from collections import OrderedDict
 # Constants
 API_URL = "https://api.github.com/repos/per2jensen/dar-backup/traffic/clones"
 CLONES_FILE = "v2/doc/clones.json"
-MILESTONES = [500, 1000, 2000]
+MILESTONES = [500, 1000, 2000, 5000, 10000, 20000, 50000]
 BADGE_DIR = "v2/doc/badges"
 BADGE_CLONES = "badge_clones.json"
 
@@ -107,14 +107,41 @@ if new_entries:
                 f.write(f"Reached {milestone} clones on {datetime.utcnow().isoformat()}Z\n")
             milestones_hit.append(milestone)
 
+    # Determine the highest milestone reached (if any)
+    total_clones = clones_data["total_clones"]
+    milestones_hit = [m for m in MILESTONES if total_clones >= m]
+
+
     # Optional: write a badge for the highest milestone just reached
     if milestones_hit:
+        last = milestones_hit[-1]
+
+        # Determine number of 🎉 to show
+        index = MILESTONES.index(last) + 1
+        celebration = "🎉" * index
+
+
+        if last >= 2000:
+            color = "red"
+        elif last >= 1000:
+            color = "orange"
+        else:
+            color = "yellow"
+
         badge = {
             "schemaVersion": 1,
             "label": "Milestone",
-            "message": f"{milestones_hit[-1]} clones 🎉",
-            "color": "orange"
+            "message": f"{last} clones {celebration}",
+            "color": color
         }
+    else:
+        badge = {
+            "schemaVersion": 1,
+            "label": "Milestone",
+            "message": "Coming soon...",
+            "color": "lightgray"
+        }
+
         with open(os.path.join(BADGE_DIR, "milestone_badge.json"), "w") as f:
             json.dump(badge, f, indent=2)
 
