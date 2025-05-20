@@ -30,14 +30,38 @@ jobs:
           TOKEN: ${{ secrets.DAR_BACKUP_METRICS }}
         run: python v2/src/misc/fetch_clones.py
 
+      - name: Show Git status (debug)
+        run: |
+          echo "::group::Git Status"
+          git status
+          echo "::endgroup::"
+          echo "::group::Git Diff"
+          git diff
+          echo "::endgroup::"
+          echo "::group::Untracked Files"
+          git ls-files --others --exclude-standard
+          echo "::endgroup::"
+
       - name: Commit changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git pull --rebase
-          if ! git diff --quiet; then
-            git add v2/doc/clones.json
-            git commit -m "Update clones.json on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-            git push
-          fi
 
+          # Step 1: Check if files changed
+          if ! git diff --quiet; then
+
+            # Step 2: Ensure working directory is clean before rebasing
+            git diff --exit-code || (echo "Uncommitted changes before pull, aborting safely." && exit 1)
+
+            # Step 3: Pull latest changes safely
+            git pull --rebase
+
+            # Step 4: Stage everything safely (allow for missing milestone files)
+            git add $(find v2/doc -type f \( -name '*.json' -o -name '*.png' -o -name 'milestone_*.txt' \)) || true
+
+            # Step 5: Commit and push
+            git commit -m "Update clone data on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            git push
+          else
+            echo "No changes to commit."
+          fi
