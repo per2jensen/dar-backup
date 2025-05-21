@@ -14,11 +14,18 @@ Github link: [v2-beta-0.6.21](https://github.com/per2jensen/dar-backup/tree/v2-b
 - README.md clean up, signing section now with multiple collabsible sections.
 - Install instructions fixed after trial in fresh utuntu VM.
 - Small license display refac.
-- .deb package for Ubuntu can now be built with a functioning Quick Start
+- .deb package for Ubuntu can now be built (draft quality)
 
   -- package `inputimeout` is installed via pip as Ubuntu does not have a .deb
 
 - SPDX license header added
+- Action + program to capture cloning stats and store them in v2/doc directory. Includes a badge.
+
+  -- annotate new daily max number of clones
+  -- Celebration badge when number of clones numbers are hit (just for fun)
+
+- Action + program to generate 12weeks cloning dashboard (a PNG) with annotation
+- Tweaked the auto completion setup in .bashrc, it stopped working for unknown reasons (needs som looking into)
 
 ## v2-beta-0.6.20.1 - 2025-05-04
 

@@ -61,7 +61,7 @@ git log --pretty=format:"%ad - %an: %s %d" --date=short
 
 ## tarball for chatgpt
 
-```` bash
+```bash
 tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     tests/ \
     src/ \
@@ -73,7 +73,7 @@ tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     release.sh \
     pytest.ini \
     MANIFEST.in
-````
+```
 
 ## chatgpt prompts
 
@@ -85,12 +85,33 @@ Please take a look at the `dar`wrapper scripts and the pytest test cases in test
 
 ## build dar
 
+## check signature
+
+gpg --import <key>
+
+Verify source code has not been tampered with:
+
+```bash
+gpg --verify dar-2.7.18.tar.gz.sig dar-2.7.18.tar.gz
+
+gpg: Signature made tir 20 maj 2025 18:02:15 CEST
+gpg:                using RSA key 55E484A6A5C5BC7F53F7F72EA8B14160D36B3BA7
+gpg: Good signature from "Denis Corbin (http://dar.linux.free.fr/) <dar.linux@free.fr>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 1BE4 7606 A74F 178C 7328  43B0 5F64 5B19 16D5 6546
+     Subkey fingerprint: 55E4 84A6 A5C5 BC7F 53F7  F72E A8B1 4160 D36B 3BA7
+```
+
+## build
+
 This worked for dar version 2.7.17 on ubuntu 24.04
 
-SRC_CODE=/some/dir
-DAR_DIR=$HOME/.local/dar
+export SRC_CODE=/some/dir
+export DAR_DIR=$HOME/.local/dar-2.7.18
 
 ```` bash
+# I probably miss some libraries here, as they  were already installed
 sudo apt-get install libkrb5-dev 
 sudo apt-get install libgcrypt-dev libgpgme-dev libext2fs-dev  libthreadar-dev  librsync-dev  libcurl4-gnutls-dev
 cd "$SRC_CODE"
