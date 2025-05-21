@@ -92,23 +92,26 @@ ordered["daily"] = clones_data["daily"]
 
 
 # --- Auto-annotate max clone day ---
-# Use the most recent entry from the GitHub data
 latest_entry = clones_data["daily"][-1]
-latest_date = latest_entry["timestamp"][:10]  # 'YYYY-MM-DD'
+latest_date = latest_entry["timestamp"][:10]
+previous_entries = clones_data["daily"][:-1]
 
-# Compare against previous max (excluding the latest entry)
-previous_entries = clones_data["daily"][:-1]  # everything except last
 if previous_entries:
     max_prev = max(previous_entries, key=lambda d: d["count"])
-    if latest_entry["count"] > max_prev["count"]:
-        # Avoid duplicate annotation
-        if not any(a["date"] == latest_date and "max" in a["label"].lower()
-                   for a in clones_data.get("annotations", [])):
-            clones_data.setdefault("annotations", []).append({
-                "date": latest_date,
-                "label": f"🔥 New max: {latest_entry['count']} clones"
-            })
-            print(f"📌 Annotated new max clone day: {latest_entry['count']}")
+    is_new_max = latest_entry["count"] > max_prev["count"]
+
+    annotations = clones_data.setdefault("annotations", [])
+
+    # Remove old max for the same day (if any)
+    annotations[:] = [a for a in annotations
+                      if not (a["date"] == latest_date and "max" in a["label"].lower())]
+
+    if is_new_max:
+        annotations.append({
+            "date": latest_date,
+            "label": f"🔥 New max: {latest_entry['count']} clones"
+        })
+        print(f"📌 Updated max annotation for {latest_date}: {latest_entry['count']}")
 
 
 # Save the updated file
