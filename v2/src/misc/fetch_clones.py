@@ -82,15 +82,6 @@ clones_data["daily"] = sorted(existing_entries.values(), key=lambda x: x["timest
 clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
 clones_data["unique_clones"] = sum(entry["uniques"] for entry in clones_data["daily"])
 
-# Reorder keys to keep annotations at the top
-ordered = OrderedDict()
-if "annotations" in clones_data:
-    ordered["annotations"] = clones_data["annotations"]
-ordered["total_clones"] = clones_data["total_clones"]
-ordered["unique_clones"] = clones_data["unique_clones"]
-ordered["daily"] = clones_data["daily"]
-
-
 # --- Auto-annotate max clone day ---
 latest_entry = clones_data["daily"][-1]
 latest_date = latest_entry["timestamp"][:10]
@@ -112,6 +103,15 @@ if previous_entries:
             "label": f"🔥 New max: {latest_entry['count']} clones"
         })
         print(f"📌 Updated max annotation for {latest_date}: {latest_entry['count']}")
+
+
+# Reorder keys to keep annotations at the top
+ordered = OrderedDict()
+if "annotations" in clones_data:
+    ordered["annotations"] = clones_data["annotations"]
+ordered["total_clones"] = clones_data["total_clones"]
+ordered["unique_clones"] = clones_data["unique_clones"]
+ordered["daily"] = clones_data["daily"]
 
 
 # Save the updated file
