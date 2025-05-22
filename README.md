@@ -150,6 +150,8 @@ The package include a `demo`application, that can help you set up `dar-backup` q
 
 **Let's roll** with installation, backup, list backup content, restore & restore check
 
+The demo is known to work on an Ubuntu 24.04 clean VM as delivered from `Multipass`
+
 ```bash
 sudo apt -y install dar par2 python3 python3-venv
 INSTALL_DIR=/tmp/dar-backup
@@ -157,7 +159,7 @@ mkdir "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 python3 -m venv venv    # create the virtual environment 
 . venv/bin/activate     # activate the virtual environment
-pip install dar-backup  # run pip to install `dar-backup`
+pip install dar-backup  # run pip to install `dar-backup` into the virtual environment
 ```
 
 <details>
@@ -200,15 +202,21 @@ Successfully installed argcomplete-3.6.2 dar-backup-0.6.21 inputimeout-1.0.4 mar
 
 </details>
 
+Setup the demo configurations and show a few operations
+
 <br>
 
 ```bash
-demo --install          # see reference section for options tweaking the install
+# see reference section for options tweaking the install
+demo --install
 
+# create catalog database
 manager --create-db
 
-dar-backup --full-backup
+# do a FULL backup of the installed backup definition called `demo`
+dar-backup --full-backup  
 
+# list the contents of the backup
 dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
 ```
 
@@ -276,10 +284,13 @@ Config file:      /home/user/.config/dar-backup/dar-backup.conf
 
 <br>
 
+Perform a restore and show the restored files
+
 ```bash
+# restore all files in the backup
 dar-backup --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)  --verbose
 
-# prove the files have been restored
+# prove the files have been restored to directory as configured
 find $HOME/dar-backup/restore
 ```
 

@@ -16,16 +16,19 @@ Github link: [v2-beta-0.6.21](https://github.com/per2jensen/dar-backup/tree/v2-b
 - Small license display refac.
 - .deb package for Ubuntu can now be built (draft quality)
 
+  -- DO NOT use unless for testing on an empty VM
+  -- no real checking if this package aligns with Ubuntu's package requirements
   -- package `inputimeout` is installed via pip as Ubuntu does not have a .deb
 
-- SPDX license header added
+- SPDX license header added to many files
 - Action + program to capture cloning stats and store them in v2/doc directory. Includes a badge.
 
   -- annotate new daily max number of clones
   -- Celebration badge when number of clones numbers are hit (just for fun)
 
 - Action + program to generate 12weeks cloning dashboard (a PNG) with annotation
-- Tweaked the auto completion setup in .bashrc, it stopped working for unknown reasons (needs som looking into)
+- Tweaked the auto completion setup in .bashrc, it stopped working for me unknown reasons (needs some looking into)
+- --verbose now affects the startup banner. Now it is printed only if --verbose is given
 
 ## v2-beta-0.6.20.1 - 2025-05-04
 
