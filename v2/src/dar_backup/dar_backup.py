@@ -893,8 +893,8 @@ def main():
         args.verbose and start_msgs.append(("PAR2 enabled:", config_settings.par2_enabled))
         args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))
 
-        dangerous_keywords = ["--do-not", "alternate"] # TODO: add more dangerous keywords
-        print_aligned_settings(start_msgs)
+        highlight_keywords = ["--do-not", "alternate"] # TODO: add more dangerous keywords
+        print_aligned_settings(start_msgs, quiet=not args.verbose, highlight_keywords=highlight_keywords)
 
         # sanity check
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):

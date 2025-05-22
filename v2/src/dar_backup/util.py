@@ -611,6 +611,7 @@ def print_aligned_settings(
     settings: List[Tuple[str, str]],
     log: bool = True,
     header: str = "Startup Settings",
+    quiet: bool = True,
     highlight_keywords: List[str] = None
 ) -> None:
     """
@@ -629,7 +630,7 @@ def print_aligned_settings(
     header_line = f"========== {header} =========="
     footer_line = "=" * len(header_line)
 
-    console.print(f"[bold cyan]{header_line}[/bold cyan]")
+    not quiet and console.print(f"[bold cyan]{header_line}[/bold cyan]")
     if log and logger:
         logger.info(header_line)
 
@@ -659,14 +660,14 @@ def print_aligned_settings(
 
         line_text.append(text, style="white")
 
-        console.print(line_text)
+        not quiet and console.print(line_text)
 
         # Always log clean text (no [!] in log)
         final_line_for_log = f"{padded_label} {text}"
         if log and logger:
             logger.info(final_line_for_log)
 
-    console.print(f"[bold cyan]{footer_line}[/bold cyan]")
+    not quiet and console.print(f"[bold cyan]{footer_line}[/bold cyan]")
     if log and logger:
         logger.info(footer_line)
 

@@ -237,7 +237,7 @@ def main():
     args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
 
     dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
-    print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords)
+    print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords, quiet=not args.verbose)
 
     # run PREREQ scripts
     requirements('PREREQ', config_settings)

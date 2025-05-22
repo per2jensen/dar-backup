@@ -435,7 +435,7 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
 
     try:
         with caplog.at_level(env.logger.level):
-            print_aligned_settings(settings, log=True, highlight_keywords=highlight_keywords)
+            print_aligned_settings(settings, log=True, quiet=False, highlight_keywords=highlight_keywords)
     finally:
         sys.stdout = sys.__stdout__
 

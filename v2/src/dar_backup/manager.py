@@ -565,7 +565,7 @@ def main():
     start_msgs.append(("dar_manager:", dar_manager_properties['path']))
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
     
-    print_aligned_settings(start_msgs)
+    print_aligned_settings(start_msgs, quiet=not args.verbose)
 
     # --- Sanity checks ---
     if args.add_dir and not args.add_dir.strip():
