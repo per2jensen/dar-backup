@@ -1,9 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-beta-0.6.21 - not yet released
+## v2-beta-0.7.2 - not released
 
-Github link: [v2-beta-0.6.21](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.21/v2)
+Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.2/v2)
+
+### Added
+
+## v2-beta-0.7.1 - 2025-05-22
+
+Github link: [v2-beta-0.7.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.1/v2)
 
 ### Added
 

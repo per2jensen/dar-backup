@@ -13,6 +13,8 @@ import os
 import json
 import requests
 from collections import OrderedDict
+from datetime import datetime as dt
+from datetime import timezone
 
 # Constants
 API_URL = "https://api.github.com/repos/per2jensen/dar-backup/traffic/clones"
@@ -124,7 +126,7 @@ for milestone in MILESTONES:
     milestone_file = os.path.join(BADGE_DIR, f"milestone_{milestone}.txt")
     if clones_data["total_clones"] >= milestone and not os.path.exists(milestone_file):
         with open(milestone_file, "w") as f:
-            f.write(f"Reached {milestone} clones on {datetime.utcnow().isoformat()}Z\n")
+            f.write(f"Reached {milestone} clones on {dt.now(timezone.utc).isoformat()}Z\n")
         milestones_hit.append(milestone)
 
 # Determine the highest milestone reached (if any)
@@ -140,6 +142,7 @@ if milestones_hit:
     index = MILESTONES.index(last) + 1
     celebration = "🎉" * index
 
+    print (f"🎯 Milestone reached: {last} clones {celebration}")
 
     if last >= 2000:
         color = "red"
