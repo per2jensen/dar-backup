@@ -7,6 +7,8 @@ Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-be
 
 ### Added
 
+- setup-environment.py added to make it easy to develop
+
 ## v2-beta-0.7.1 - 2025-05-22
 
 Github link: [v2-beta-0.7.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.1/v2)
