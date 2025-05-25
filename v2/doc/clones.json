@@ -13,8 +13,8 @@
       "label": "\ud83d\udd25 New max: 125 clones"
     }
   ],
-  "total_clones": 483,
-  "unique_clones": 231,
+  "total_clones": 497,
+  "unique_clones": 239,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -53,8 +53,8 @@
     },
     {
       "timestamp": "2025-05-11T00:00:00Z",
-      "count": 14,
-      "uniques": 9
+      "count": 13,
+      "uniques": 8
     },
     {
       "timestamp": "2025-05-12T00:00:00Z",
@@ -114,6 +114,11 @@
     {
       "timestamp": "2025-05-23T00:00:00Z",
       "count": 17,
+      "uniques": 9
+    },
+    {
+      "timestamp": "2025-05-24T00:00:00Z",
+      "count": 15,
       "uniques": 9
     }
   ]
