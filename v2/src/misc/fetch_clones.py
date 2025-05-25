@@ -149,7 +149,7 @@ if milestones_hit:
     elif last >= 1000:
         color = "orange"
     else:
-        color = "yellow"
+        color = "goldenrod"
 
     badge = {
         "schemaVersion": 1,
