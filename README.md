@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
 ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/)
-[![PyPI total Downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
+[![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/v2/doc/badges/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/weekly_clones.png)
 [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/v2/doc/badges/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/weekly_clones.png)
 
@@ -73,6 +73,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [Skipping cache directories](#skipping-cache-directories)
   - [Progress bar + current directory](#progress-bar-and-current-directory)
   - [Shell Autocompletion](#shell-autocompletion)
+  - [Easy development setup](#easy-development-setup)
 - [Todo](#todo)
 - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
 - [Reference](#reference)
@@ -1209,6 +1210,8 @@ These [.darrc](#darrc) settings make `dar` print the current directory being pro
 
 This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
 
+The `dar` output is streamed to the `dar-backup-commands.log` file.
+
 ### Separate log file for command output
 
 Dar-backup's log file is called `dar-backup.log`.
@@ -1369,6 +1372,24 @@ Then reload Zsh:
 ```zsh
 source ~/.zshrc
 ```
+
+## Easy development setup
+
+It is very easy to have your own development environment.
+
+```bash
+git clone https://github.com/per2jensen/dar-backup.git
+cd dar-back/v2
+./setup_environment.py
+```
+
+This script:
+
+- Creates a unique Python virtual environment
+- Installs all development dependencies from requirements-dev.txt
+- Runs the build script (build.sh) to prepare the project
+
+✅ Your environment is now ready to activate and test!
 
 ## Todo
 
