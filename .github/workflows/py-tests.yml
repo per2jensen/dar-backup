@@ -1,99 +1,60 @@
-name: dar-backup.py
+name: dar-backup
 permissions:
   contents: read
   pull-requests: write
-  
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
   python3-unit-tests:
     runs-on: ubuntu-24.04
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      
-      # From: https://lannonbr.com/blog/2019-12-09-git-commit-in-actions
-      # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
-      - name: setup git config
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup git config
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "<>"
 
-      - name: Install required packages
-        run:  sudo apt update && sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
+      - name: Install required system packages
+        run: |
+          sudo apt update
+          sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
 
-      - name: Make kernel ready for libguestfs (readable by users)
+      - name: Make kernel readable for libguestfs
         run: |
           version=$(uname -r)
-          sudo dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-\${version}
+          sudo dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-${version}
 
-      - name: Get Python version
-        run: |
-          PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-          PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-          PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-          echo "PYTHON_MAJOR=$PYTHON_MAJOR" >> $GITHUB_ENV
-          echo "PYTHON_MINOR=$PYTHON_MINOR" >> $GITHUB_ENV
-      - name: Copy README into v2 to make build work
+      - name: Copy README into v2 for build
         run: cp README.md v2/README.md
-          
-      - name: Install virtualenv, build and install the dar-backup package
+
+      - name: Create and prepare Python virtual environment
         run: |
           cd $GITHUB_WORKSPACE/v2
+          if [[ -d venv* ]]; then
+            rm -rf venv*
+          fi
 
-          if [[ -d venv ]]; then
-             rm -fr venv
-          fi  
+          # Use script to create venv, install deps, and run build.sh
+          cd $GITHUB_WORKSPACE/v2
+          ./setup_environment.py
 
-          python3 -m venv venv
-          . venv/bin/activate
-          python3 -m pip install --upgrade pip
-          python3 -m pip install wheel build pytest hatchling hatch psutil pytest-cov coverage pytest-html pytest-mock pytest-asyncio pytest-timeout pytest-xdist pytest-timeout
-          python3 -m build
-          VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
-          echo "Version: $VERSION"
-          pip3 install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
-
-          # Patch installed package with needed docs for tests
-          cp README.md venv/lib/python${PYTHON_MAJOR}.${PYTHON_MINOR}/site-packages/dar_backup/
-          cp Changelog.md venv/lib/python${PYTHON_MAJOR}.${PYTHON_MINOR}/site-packages/dar_backup/      
-
-
-      - name: Run pytest
+      - name: Run pytest with coverage
         run: |
           cd $GITHUB_WORKSPACE/v2
-          export PYTHONPATH=$GITHUB_WORKSPACE/v2/src
-
-          if [[ "$VIRTUAL_ENV" ]]; then
-             deactivate
-          fi
-        
-          if [[ -z "$VIRTUAL_ENV" ]]; then
-          . venv/bin/activate
-          fi
+          . venv*/bin/activate  # activate the newly created venv (venv or venv-YYYYMMDD-N)
           coverage erase
-          PYTHONPATH=src pytest --rootdir=.
-      - name: Run coverage measurement
-        run: |
-          cd $GITHUB_WORKSPACE/v2
-          export PYTHONPATH=$GITHUB_WORKSPACE/v2/src
+          pytest --rootdir=. --cov=src/dar_backup --cov-report=term --cov-report=xml:coverage.xml tests/
 
-          if [[ "$VIRTUAL_ENV" ]]; then
-             deactivate
-          fi
-        
-          if [[ -z "$VIRTUAL_ENV" ]]; then
-          . venv/bin/activate
-          fi
-          coverage xml -o coverage.xml
-      - name: Upload coverage reports to Codecov
+      - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos

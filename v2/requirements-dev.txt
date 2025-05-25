@@ -1,0 +1,15 @@
+inputimeout
+build
+hatch
+hatchling
+pytest
+pytest-cov
+twine
+wheel
+psutil
+pytest-timeout
+argcomplete
+Jinja2
+black
+flake8
+isort

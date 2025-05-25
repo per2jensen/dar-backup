@@ -13,23 +13,12 @@ import os
 import subprocess
 from datetime import datetime
 
-REQUIREMENTS = [
-    "inputimeout",
-    "build",
-    "hatch",
-    "hatchling",
-    "pytest",
-    "pytest-cov",
-    "twine",
-    "wheel",
-    "psutil",
-    "pytest-timeout",
-    "argcomplete",
-    "Jinja2",
-    "black",
-    "flake8",
-    "isort"
-]
+def get_requirements():
+    req_file = os.path.join(os.path.dirname(__file__), "requirements-dev.txt")
+    with open(req_file) as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+
+REQUIREMENTS = get_requirements()
 
 def find_available_venv_name():
     base_name = "venv"
@@ -59,16 +48,21 @@ def install_packages(venv_name):
     subprocess.run([pip_path, "install"] + REQUIREMENTS, check=True)
     print("Installation complete.")
 
-def run_build_script():
-    print("🔧 Running build.sh to set up the project...")
-    subprocess.run(["./build.sh"], check=True)
+def run_build_script(venv_name):
+    print("🔧 Running build.sh to set up the project in the new venv...")
+    # Use the venv's environment
+    env = os.environ.copy()
+    env["VIRTUAL_ENV"] = os.path.abspath(venv_name)
+    env["PATH"] = os.path.abspath(os.path.join(venv_name, "bin")) + os.pathsep + env["PATH"]
+    subprocess.run(["./build.sh"], check=True, env=env)
     print("build.sh completed.")
+
 
 def main():
     venv_name = find_available_venv_name()
     create_venv(venv_name)
     install_packages(venv_name)
-    run_build_script()
+    run_build_script(venv_name)
 
     print("\n\n✅ Virtual environment and project build complete")
     print(f"💡 To activate the virtual environment:\n  source {venv_name}/bin/activate")
