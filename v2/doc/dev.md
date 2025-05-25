@@ -1,22 +1,32 @@
 # Dev snippets
 
-## Setup the venv
+## Setup the development environment
+
+The easiest way to set up a fully reproducible environment is to
+
+use the included helper script:
+
+```bash
+cd <path/to/dar-backup/v2>
+./setup_environment.py
+```
+
+This will:
+
+✅ Create a unique Python virtual environment (like venv or venv-YYYYMMDD-{N})
+
+✅ Install all development dependencies listed in requirements-dev.txt
+
+✅ Run build.sh to build the project wheel in the new environment
+
+## Howto activate the venv
 
 ```` bash
 cd <path/to/dar-backup/v2>
-python3 -m venv venv
-. venv/bin/activate
-pip install inputimeout build hatch hatchling pytest pytest-cov twine wheel psutil pytest-timeout argcomplete Jinja2
-````
-
-## Activate the venv
-
-```` bash
-cd <path/to/dar-backup/v2>
 . venv/bin/activate
 ````
 
-## build, deploy to dev venv
+## Howto build & deploy to dev venv
 
 Make sure __about__.py has the correct version number
 
@@ -25,7 +35,7 @@ VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]
 python3 -m build && pip install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
 ````
 
-## use pytest in venv
+## Howto use pytest in venv
 
 A pytest.ini is located in the v2 directory, so that pytest writes out captures to  console.
 
@@ -35,7 +45,7 @@ That is useful when working with a single test and is the default
 PYTHONPATH=src  pytest -c pytest-minimal.ini tests/test_verbose.py::test_verbose_error_reporting
 ````
 
-Use  to get the minimal info on successful test cases
+Use to get the minimal info on successful test cases
 
 ```` bash
 PYTHONPATH=src pytest -c pytest-minimal.ini
@@ -47,11 +57,12 @@ or for specific file with test cases
 PYTHONPATH=src pytest -c pytest-minimal.ini tests/test_verbose.py
 ````
 
-## Upload to PyPI
+## Release to PyPI
 
-```` bash
-twine upload dist/<wheel package>
-````
+```bash
+cd <path/to/dar-backup/v2>
+./release.sh --upload-to-pypi # provide password to GPG to sign the built artifacts
+```
 
 ## Git log
 
@@ -64,6 +75,8 @@ git log --pretty=format:"%ad - %an: %s %d" --date=short
 ```bash
 tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     tests/ \
+    doc/dev.md \
+    doc/doc.md \
     src/ \
     README.md \
     Changelog.md \
@@ -74,14 +87,6 @@ tar --exclude='*/__pycache__' -cvf dar-backup.tar \
     pytest.ini \
     MANIFEST.in
 ```
-
-## chatgpt prompts
-
-### the next test case
-
-```` text
-Please take a look at the `dar`wrapper scripts and the pytest test cases in tests/ and then suggest the most important test case to write. And generate a pytest test case that uses the test case setup in tests/conftest.py and also uses the tests/envdata.py
-````
 
 ## build dar
 
