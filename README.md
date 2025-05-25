@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
 ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/)
-[![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=Total%20Downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
+[![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
 [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/v2/doc/badges/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/weekly_clones.png)
 [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/v2/doc/badges/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/weekly_clones.png)
 
@@ -837,6 +837,12 @@ The name of the file is the name of the backup definition.
 
 You can use as many backup definitions as you need.
 
+> Note 👉
+>
+> Environment variables and tilde (~) not allowed here. `dar` does not expand them.
+>
+> See [TODO](#todo)
+
 ```text
  # Switch to ordered selection mode, which means that the following
  # options will be considered top to bottom
@@ -1393,6 +1399,8 @@ This script:
 
 ## Todo
 
+- Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars
+  `dar-backup` could do so and feed the result to `dar`.
 - When run interactively, a progress bar during test and par2 generation would be nice.
 - Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
@@ -1582,7 +1590,7 @@ Create directories:
 Sets up demo config files:
 
 - ~/.config/dar-backup/dar-backup.conf
-- ~/.config/dar-backup/backup.d/default
+- ~/.config/dar-backup/backup.d/demo
 
 ```bash
 -i, --install       Sets up `dar-backup`.
