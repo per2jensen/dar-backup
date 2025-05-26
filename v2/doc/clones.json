@@ -13,8 +13,8 @@
       "label": "\ud83d\udd25 New max: 125 clones"
     }
   ],
-  "total_clones": 504,
-  "unique_clones": 243,
+  "total_clones": 561,
+  "unique_clones": 262,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -123,8 +123,8 @@
     },
     {
       "timestamp": "2025-05-25T00:00:00Z",
-      "count": 13,
-      "uniques": 7
+      "count": 70,
+      "uniques": 26
     }
   ]
 }
