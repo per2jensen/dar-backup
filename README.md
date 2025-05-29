@@ -208,16 +208,16 @@ Setup the demo configurations and show a few operations
 <br>
 
 ```bash
-# see reference section for options tweaking the install
+# See reference section for options tweaking the install
 demo --install
 
 # create catalog database
 manager --create-db
 
-# do a FULL backup of the installed backup definition called `demo`
+# FULL backup as defined in backup definition `demo`
 dar-backup --full-backup  
 
-# list the contents of the backup
+# List the contents of the backup
 dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
 ```
 
@@ -288,10 +288,10 @@ Config file:      /home/user/.config/dar-backup/dar-backup.conf
 Perform a restore and show the restored files
 
 ```bash
-# restore all files in the backup
+# Restore all files in the backup
 dar-backup --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)  --verbose
 
-# prove the files have been restored to directory as configured
+# Prove the files have been restored to directory as configured
 find $HOME/dar-backup/restore
 ```
 
@@ -338,7 +338,7 @@ PAR2 enabled:     True
 
 > ✅ **Next steps**
 >
-> Tinker with `demo's` options:
+> Play with `demo's` options:
 >
 > - --root-dir      (perhaps $HOME)
 > - --dir-to-backup (perhaps Pictures)
@@ -682,6 +682,8 @@ TEST_RESTORE_DIR = /tmp/dar-backup/restore/
 
 [AGE]
 # age settings are in days
+# `cleanup` script removes archives and their .par redundancy files if older than configured.
+# `cleanup` does not remove FULL archives, unless specifically told to and a "y" is answered to "are you sure?".
 DIFF_AGE = 100
 INCR_AGE = 40
 
