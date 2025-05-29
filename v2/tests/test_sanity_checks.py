@@ -93,7 +93,58 @@ def test_env_vars_in_config_file(
     assert os.path.exists(expected_log)
 
 
+@pytest.mark.skip(reason="`dar` does not expand env vars in it's config files, test kept for documentation")
+def _test_env_vars_in_backup_definition(setup_environment, env: EnvData):
+    """
+    WILL NOT WORK AS EXPECTED, because the dar-backup command does not
+    expand environment variables in the backup definition file.
+    The backup definition file is read as a literal string by `dar`.
 
+    dar-backup must preprocess the backup definition file for it to 
+    contain environment variables and feed the processed content to `dar`.
+    
+    Test that environment variables in the backup definition file are correctly expanded by dar-backup.
+    """
+    # Set environment variables
+    os.environ["TEST_ROOT"] = "/"
+    os.environ["TEST_DATA_DIR"] = env.data_dir
+
+    # Create the backup definition content
+    # Use shell-style environment variable references ($VAR or ${VAR})
+    backup_definition = f"""
+-R "$TEST_ROOT"
+-s 10G
+-z6
+-am
+--cache-directory-tagging
+-g "$TEST_DATA_DIR"
+""".replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
+
+    # Write the backup definition file
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    with open(backup_def_path, "w") as f:
+        f.write(backup_definition)
+
+    # Run the backup using the definition name and -d argument
+    process = runner.run([
+        "dar-backup",
+        "--full-backup",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug",
+        "--log-stdout"
+    ])
+
+    assert process.returncode == 0, f"Backup command failed:\n{process.stderr}\n{process.stdout}"
+
+    # Validate the expected backup file exists
+    expected_backup = os.path.join(env.backup_dir, f"example_FULL_{env.datestamp}.1.dar")
+
+    assert os.path.exists(expected_backup)
+
+    # the test must restore the backup and verify the files in env.data_dir are restored correctly
+    # to f"{env.restore_dir}/{env.data_dir}"
+    
 
 def test_tilde_in_config_file(
     setup_environment,
