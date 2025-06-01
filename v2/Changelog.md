@@ -9,6 +9,7 @@ Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-be
 
 - setup_environment.py added to make it easy to develop
 - use setup_environment.py in workflow
+- added 2 new optional params to control log file roll.
 
 ## v2-beta-0.7.1 - 2025-05-22
 
@@ -33,9 +34,9 @@ Github link: [v2-beta-0.7.1](https://github.com/per2jensen/dar-backup/tree/v2-be
 - Action + program to capture cloning stats and store them in v2/doc directory. Includes a badge.
 
   -- annotate new daily max number of clones
-  -- Celebration badge when number of clones numbers are hit (just for fun)
+  -- Celebration badge when certain clones numbers are hit (just for fun)
 
-- Action + program to generate 12weeks cloning dashboard (a PNG) with annotation
+- Action + program to generate 12 weeks cloning dashboard (a PNG) with annotation
 - Tweaked the auto completion setup in .bashrc, it stopped working for me unknown reasons (needs some looking into)
 - --verbose now affects the startup banner. Now it is printed only if --verbose is given
 
