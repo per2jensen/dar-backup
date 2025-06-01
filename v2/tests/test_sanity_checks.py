@@ -1,4 +1,5 @@
 # modified: 2021-07-25 to be a pytest test
+import glob
 import importlib
 import os
 import pytest
@@ -16,6 +17,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from dar_backup.command_runner import CommandRunner
 from dar_backup.dar_backup import find_files_with_paths
 from tests.envdata import EnvData
+from dar_backup.util import setup_logging
+
+
+
 
 runner: CommandRunner = None
 
@@ -524,3 +529,51 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
     # Cannot assert strict line counts because rich wraps, but can still sanity check
     assert "Startup Settings" in captured_output.getvalue(), "Header not printed"
     assert "delete full backup" in captured_output.getvalue(), "Dangerous text not printed"
+
+
+
+@pytest.mark.usefixtures("env")
+def test_logfile_rotation(setup_environment, env: EnvData):
+    log_dir = env.test_dir
+    log_path = os.path.join(log_dir, "dar-backup.log")
+    cmd_log_path = os.path.join(log_dir, "dar-backup-commands.log")
+    max_bytes = 50 * 1024  # 50 KB
+    backup_count = 5
+
+    logger = setup_logging(
+        log_path,
+        cmd_log_path,
+        log_level="debug",
+        log_to_stdout=False,
+        logfile_max_bytes=max_bytes,
+        logfile_backup_count=backup_count,
+    )
+
+    from dar_backup.util import logger as main_logger, secondary_logger
+
+    msg = "0123456789" * 20
+    for i in range(0, 3000):
+        main_logger.debug(f"mainlog {i} - {msg}")
+        secondary_logger.debug(f"cmdlog {i} - {msg}")
+
+    for handler in main_logger.handlers:
+        handler.close()
+    for handler in secondary_logger.handlers:
+        handler.close()
+
+    # Use glob to find rotated logs in the directory
+    main_logs = glob.glob(os.path.join(log_dir, "dar-backup.log*"))
+    cmd_logs = glob.glob(os.path.join(log_dir, "dar-backup-commands.log*"))
+
+    assert len(main_logs) == backup_count + 1
+    assert len(cmd_logs) == backup_count + 1
+
+    # Each rotated file should exist
+    for idx in range(backup_count + 1):
+        assert os.path.exists(os.path.join(log_dir, f"dar-backup.log{'' if idx == 0 else f'.{idx}'}"))
+        assert os.path.exists(os.path.join(log_dir, f"dar-backup-commands.log{'' if idx == 0 else f'.{idx}'}"))
+
+    # Optional: check file sizes (should be <= max_bytes except possibly the most recent file)
+    for p in main_logs + cmd_logs:
+        assert os.path.getsize(p) <= max_bytes
+
