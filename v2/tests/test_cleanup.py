@@ -246,10 +246,22 @@ def test_cleanup_alternate_dir(setup_environment, env):
 
 def test_confirmation_no_stops_deleting_full(monkeypatch, capsys):
     os.environ["CLEANUP_TEST_DELETE_FULL"] = "no"
+
+    class DummyConfig:
+        def __init__(self):
+            self.backup_dir = "."
+            self.config = {}
+            self.logfile_location = "/dev/null"
+            self.backup_d_dir = "."
+            self.logfile_max_bytes = 26214400  # int, not MagicMock!
+            self.logfile_backup_count = 5
+
     monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01", "--test-mode"])
     monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
-    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."))
-    
+#    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."))
+    monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: DummyConfig())
+
+
     from dar_backup import cleanup
     with pytest.raises(SystemExit):
         cleanup.main()

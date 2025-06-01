@@ -838,7 +838,7 @@ def main():
     if command_output_log == config_settings.logfile_location:
         print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
 
-    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
     command_logger = get_logger(command_output_logger = True)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
@@ -890,6 +890,9 @@ def main():
         args.verbose and start_msgs.append(("Restore dir:", restore_dir))
 
         args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
+        args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
+        args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
+
         args.verbose and start_msgs.append(("PAR2 enabled:", config_settings.par2_enabled))
         args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))
 

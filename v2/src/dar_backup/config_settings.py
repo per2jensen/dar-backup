@@ -44,6 +44,8 @@ class ConfigSettings:
     incr_age: int = field(init=False)
     error_correction_percent: int = field(init=False)
     par2_enabled: bool = field(init=False)
+    logfile_max_bytes: int = field(init=False)
+    logfile_no_count: int = field(init=False)    
 
 
     OPTIONAL_CONFIG_FIELDS = [
@@ -53,6 +55,20 @@ class ConfigSettings:
             "attr": "manager_db_dir",
             "type": str,
             "default": None,
+        },
+        {
+            "section": "MISC",
+            "key": "LOGFILE_MAX_BYTES",
+            "attr": "logfile_max_bytes",
+            "type": int,
+            "default": 26214400 , # 25 MB
+        },
+        {
+            "section": "MISC",
+            "key": "LOGFILE_BACKUP_COUNT",
+            "attr": "logfile_backup_count",
+            "type": int,
+            "default": 5,
         },
         # Add more optional fields here
     ]

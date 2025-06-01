@@ -544,7 +544,7 @@ def main():
         return
 
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout)
+    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
@@ -559,6 +559,8 @@ def main():
     start_msgs.append(("Config file:", args.config_file))
     args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
     start_msgs.append(("Logfile:", config_settings.logfile_location))
+    args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
+    args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
     args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive)) 
     dar_manager_properties = get_binary_info(command='dar_manager')

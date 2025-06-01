@@ -13,6 +13,7 @@ import typing
 import locale
 import configparser
 import logging
+
 import os
 import re
 import subprocess
@@ -28,6 +29,7 @@ import dar_backup.__about__ as about
 from argcomplete.completers import ChoicesCompleter
 from datetime import datetime
 from dar_backup.config_settings import ConfigSettings
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from rich.console import Console
 from rich.text import Text
@@ -39,7 +41,16 @@ from typing import Tuple
 logger=None
 secondary_logger=None   
 
-def setup_logging(log_file: str, command_output_log_file: str, log_level: str = "info", log_to_stdout: bool = False) -> logging.Logger:
+#def setup_logging(log_file: str, command_output_log_file: str, log_level: str = "info", log_to_stdout: bool = False) -> logging.Logger:
+def setup_logging(
+    log_file: str,
+    command_output_log_file: str,
+    log_level: str = "info",
+    log_to_stdout: bool = False,
+    logfile_max_bytes: int = 26214400,
+    logfile_backup_count: int = 5,
+) -> logging.Logger:
+
     """
     Sets up logging for the main program and a separate secondary logfile for command outputs.
 
@@ -48,9 +59,11 @@ def setup_logging(log_file: str, command_output_log_file: str, log_level: str = 
         command_output_log_file (str): The path to the secondary log file for command outputs.
         log_level (str): The log level to use. Can be "info", "debug", or "trace". Defaults to "info".
         log_to_stdout (bool): If True, log messages will be printed to the console. Defaults to False.
+        logfile_max_bytes: max file size of a log file, defailt = 26214400.
+        logfile_backup_count: max numbers of logs files, default = 5.
 
     Returns:
-        None
+        a RotatingFileHandler logger instance.
 
     Raises:
         Exception: If an error occurs during logging initialization
@@ -66,20 +79,31 @@ def setup_logging(log_file: str, command_output_log_file: str, log_level: str = 
 
         logging.Logger.trace = trace
 
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=logfile_max_bytes,
+            backupCount=logfile_backup_count,
+            encoding="utf-8",
+        )
+
+        command_handler = RotatingFileHandler(
+            command_output_log_file,
+            maxBytes=logfile_max_bytes,
+            backupCount=logfile_backup_count,
+            encoding="utf-8",
+        )
+
+
         # Setup main logger
         logger = logging.getLogger("main_logger")
         logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
         # Setup secondary logger for command outputs
         secondary_logger = logging.getLogger("command_output_logger")
         secondary_logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
-        sec_file_handler = logging.FileHandler(command_output_log_file)
-        sec_file_handler.setFormatter(formatter)
-        secondary_logger.addHandler(sec_file_handler)
+        secondary_logger.addHandler(command_handler)
 
         if log_to_stdout:
             stdout_handler = logging.StreamHandler(sys.stdout)

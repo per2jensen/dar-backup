@@ -16,10 +16,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.dar_backup import find_files_with_paths
-from tests.envdata import EnvData
 from dar_backup.util import setup_logging
-
-
+from pathlib import Path
+from tests.envdata import EnvData
+from unittest.mock import patch
 
 
 runner: CommandRunner = None
@@ -532,48 +532,91 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
 
 
 
+
+# Custom RotatingFileHandler that announces rotation
+import logging
+from logging.handlers import RotatingFileHandler
+
+class AnnounceRotatingFileHandler(RotatingFileHandler):
+    def doRollover(self):
+        print(f"[TEST] Rotating log: {self.baseFilename}")
+        super().doRollover()
+
 @pytest.mark.usefixtures("env")
-def test_logfile_rotation(setup_environment, env: EnvData):
-    log_dir = env.test_dir
-    log_path = os.path.join(log_dir, "dar-backup.log")
-    cmd_log_path = os.path.join(log_dir, "dar-backup-commands.log")
+def test_logfile_rotation_and_content_integrity(setup_environment, env: 'EnvData'):
+    log_dir = Path(env.test_dir)
+    log_path = log_dir / "dar-backup.log"
+    cmd_log_path = log_dir / "dar-backup-commands.log"
     max_bytes = 50 * 1024  # 50 KB
     backup_count = 5
+    total_lines = 3000
 
-    logger = setup_logging(
-        log_path,
-        cmd_log_path,
-        log_level="debug",
-        log_to_stdout=False,
-        logfile_max_bytes=max_bytes,
-        logfile_backup_count=backup_count,
-    )
+    # Patch the handler only inside the test
+    with patch("dar_backup.util.RotatingFileHandler", AnnounceRotatingFileHandler):
+        logger = setup_logging(
+            str(log_path),
+            str(cmd_log_path),
+            log_level="debug",
+            log_to_stdout=False,
+            logfile_max_bytes=max_bytes,
+            logfile_backup_count=backup_count,
+        )
 
-    from dar_backup.util import logger as main_logger, secondary_logger
+        # Use the global loggers as set by util.py
+        from dar_backup.util import logger as main_logger, secondary_logger
 
-    msg = "0123456789" * 20
-    for i in range(0, 3000):
-        main_logger.debug(f"mainlog {i} - {msg}")
-        secondary_logger.debug(f"cmdlog {i} - {msg}")
+        # Write lots of lines to both loggers, uniquely numbered
+        msg = "0123456789" * 20  # About 200 bytes per line
+        for i in range(total_lines):
+            main_logger.debug(f"mainlog {i} - {msg}")
+            secondary_logger.debug(f"cmdlog {i} - {msg}")
 
-    for handler in main_logger.handlers:
-        handler.close()
-    for handler in secondary_logger.handlers:
-        handler.close()
+        # Ensure all log output is flushed
+        for handler in main_logger.handlers:
+            handler.close()
+        for handler in secondary_logger.handlers:
+            handler.close()
 
-    # Use glob to find rotated logs in the directory
-    main_logs = glob.glob(os.path.join(log_dir, "dar-backup.log*"))
-    cmd_logs = glob.glob(os.path.join(log_dir, "dar-backup-commands.log*"))
+    # Helper to get log lines in rotation order (oldest first)
+    def get_log_lines_in_rotation_order(prefix):
+        files = []
+        # .5 (oldest) to .1, then base file
+        for i in range(backup_count, 0, -1):
+            f = log_dir / f"{prefix}.{i}"
+            if f.exists():
+                files.append(f)
+        base = log_dir / prefix
+        if base.exists():
+            files.append(base)
+        lines = []
+        for f in files:
+            with f.open(encoding="utf-8") as logf:
+                lines.extend(logf.readlines())
+        return lines
 
-    assert len(main_logs) == backup_count + 1
-    assert len(cmd_logs) == backup_count + 1
+    # Get all lines written across all rotated log files
+    main_lines = get_log_lines_in_rotation_order("dar-backup.log")
+    cmd_lines = get_log_lines_in_rotation_order("dar-backup-commands.log")
 
-    # Each rotated file should exist
-    for idx in range(backup_count + 1):
-        assert os.path.exists(os.path.join(log_dir, f"dar-backup.log{'' if idx == 0 else f'.{idx}'}"))
-        assert os.path.exists(os.path.join(log_dir, f"dar-backup-commands.log{'' if idx == 0 else f'.{idx}'}"))
+    # Compose the expected lines
+    expected_main_lines = [f"mainlog {i} - {msg}\n" for i in range(total_lines)]
+    expected_cmd_lines  = [f"cmdlog {i} - {msg}\n" for i in range(total_lines)]
 
-    # Optional: check file sizes (should be <= max_bytes except possibly the most recent file)
-    for p in main_logs + cmd_logs:
-        assert os.path.getsize(p) <= max_bytes
+    # The logs may be truncated at the beginning if too much was written (oldest lines fall off)
+    # So we check that the *end* of the expected lines matches the actual lines present
+    assert main_lines[-len(main_lines):] == expected_main_lines[-len(main_lines):], "Main log lines corrupted or out of order after rotation"
+    assert cmd_lines[-len(cmd_lines):] == expected_cmd_lines[-len(cmd_lines):], "Command log lines corrupted or out of order after rotation"
 
+    # Print for visual confirmation (non-invasive, only for test run)
+    print(f"[TEST] Main log files found: {[str(f) for f in log_dir.glob('dar-backup.log*')]}")
+    print(f"[TEST] Command log files found: {[str(f) for f in log_dir.glob('dar-backup-commands.log*')]}")
+
+    # Check log file count (current + backups)
+    assert len(list(log_dir.glob("dar-backup.log*"))) == backup_count + 1
+    assert len(list(log_dir.glob("dar-backup-commands.log*"))) == backup_count + 1
+
+    # Optional: check file sizes do not exceed max_bytes
+    for f in log_dir.glob("dar-backup.log*"):
+        assert f.stat().st_size <= max_bytes
+    for f in log_dir.glob("dar-backup-commands.log*"):
+        assert f.stat().st_size <= max_bytes
