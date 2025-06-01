@@ -218,7 +218,7 @@ manager --create-db
 dar-backup --full-backup  
 
 # List the contents of the backup
-dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
+dar-backup --list-contents demo_FULL_$(date '+%F')
 ```
 
 <details>
@@ -260,7 +260,7 @@ Config file:      /home/user/.config/dar-backup/dar-backup.conf
 
 
 
-(venv) $ dar-backup --list-contents $(dar-backup --list |tail -n 1 | cut -d " " -f1)
+(venv) $ dar-backup --list-contents demo_FULL_$(date '+%F')
 ========== Startup Settings ==========
 dar-backup.py:    0.7.1
 dar path:         /home/user/.local/dar/bin/dar
@@ -289,7 +289,7 @@ Perform a restore and show the restored files
 
 ```bash
 # Restore all files in the backup
-dar-backup --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)  --verbose
+dar-backup --restore demo_FULL_$(date '+%F') --verbose
 
 # Prove the files have been restored to directory as configured
 find $HOME/dar-backup/restore
@@ -300,7 +300,7 @@ find $HOME/dar-backup/restore
 <summary>🎯 --restore details</summary>
 
 ```bash
-(venv) $ dar-backup --verbose --restore $(dar-backup --list |tail -n 1 | cut -d " " -f1)
+(venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
 ========== Startup Settings ==========
 dar-backup.py:    0.7.1
 dar path:         /home/user/.local/dar/bin/dar
@@ -664,6 +664,9 @@ Tilde `~` and environment variables can be used in the paths for various file lo
 ```text
 [MISC]
 LOGFILE_LOCATION=~/.dar-backup.log
+# optional parameters
+# LOGFILE_MAX_BYTES = 26214400  # 25 MB max file size is default, change as neeeded
+# LOGFILE_BACKUP_COUNT = 5      # 5 backup log files is default, change as needed
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 1
 NO_FILES_VERIFICATION = 5
