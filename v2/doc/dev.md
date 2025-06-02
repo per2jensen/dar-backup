@@ -73,19 +73,23 @@ git log --pretty=format:"%ad - %an: %s %d" --date=short
 ## tarball for chatgpt
 
 ```bash
-tar --exclude='*/__pycache__' -cvf dar-backup.tar \
-    tests/ \
-    doc/dev.md \
-    doc/doc.md \
-    src/ \
-    README.md \
-    Changelog.md \
-    pyproject.toml \
-    testall.sh \
-    build.sh \
-    release.sh \
-    pytest.ini \
-    MANIFEST.in
+tar --exclude='*/__pycache__' \
+  -cvf dar-backup.tar \
+  tests/ \
+  doc/dev.md \
+  doc/doc.md \
+  src/  \
+  README.md \
+  Changelog.md \
+  pyproject.toml \
+  testall.sh \
+  build.sh \
+  release.sh \
+  pytest.ini  \
+  MANIFEST.in \
+  pytest-cov.sh \
+  pytest.ini \
+  requirements-dev.tx
 ```
 
 ## build dar

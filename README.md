@@ -11,7 +11,7 @@
 [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/v2/doc/badges/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/weekly_clones.png)
 
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
-the heavy lifting, together with [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
+the heavy lifting, together with the [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
 
 This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-backup/tree/main/v2) of `dar-backup`.
 
