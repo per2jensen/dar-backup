@@ -26,7 +26,7 @@ def test_installer_creates_catalog(setup_environment, env, use_manager_db_dir):
         f.write("fake contents")
 
     # Run installer (creates the catalogs)
-    run_installer(env.config_file, create_db_flag=True, install_ac_flag=False)
+    run_installer(env.config_file, create_db_flag=True)
 
     # Load the config settings
     config_settings = ConfigSettings(env.config_file)
