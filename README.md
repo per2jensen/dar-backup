@@ -3,7 +3,7 @@
 
 **Reliable DAR backups, automated in clean Python**
 
-[![codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
+[![Codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
 ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/)
 [![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fdownloads.json)](https://pypi.org/project/dar-backup/)
@@ -473,8 +473,9 @@ Please review the [Code of Conduct](https://github.com/per2jensen/dar-backup/blo
 
 ## Requirements
 
+- A linux system
 - dar
-- par2
+- parchive (par2)
 - python3
 - python3-venv
 
@@ -579,27 +580,25 @@ See section 15 and section 16 in the supplied "LICENSE" file.
 
 ### 2 - configuration
 
-The dar-backup [demo](#demo-options) application can be used to demo how `dar-backup` works.
-It creates some directories, installs a demo configuration file and puts a demo backup definition in place.
+The dar-backup [installer](#installer-options) application can be used to setup the needed directories for `dar-backup` to work.
+It creates necessary directories as prescribed in the config file and optionally creates manager databases.
 
-`demo` is non-destructive and stops if some of the default directories exist.
+`installer` can also add configuration of shell auto completion.
 
-Run `demo`
+Step 1:
+
+Create a config file   - [see details on config file](#config-file))
+
+Step 2:
+
+Create one or more backup definitions - [see details on backup definitions](#backup-definition-example)
+
+Step 3:
+
+Run the installer:
 
 ```bash
-demo --install
-```
-
-The output is
-
-```text
-Directories created: `/home/user/dar-backup/` and `/home/user/.config/dar-backup`
-Config file deployed to /home/user/.config/dar-backup/dar-backup.conf
-Default backup definition deployed to /home/user/.config/dar-backup/backup.d/default
-1. Now run `manager --create-db` to create the catalog database.
-2. Then you can run `dar-backup --full-backup` to create a backup.
-3. List backups with `dar-backup --list`
-4. List contents of a backup with `dar-backup --list-contents <backup-name>`
+installer --config <path to dar-backup.conf> --install-autocompletion
 ```
 
 ### 3 - generate catalog databases
@@ -614,9 +613,7 @@ manager --create-db
 
 ### 4 - give dar-backup a spin
 
-The `demo` application has put a demo [backup definition](#backup-definition-example) in place in BACKUP.D_DIR (see [config file](#config-file)).
-
-You are now ready to do backups as configured in the backup definition.
+You are now ready to do backups as configured in your backup definition(s).
 
 Give `dar-backup`a spin:
 
@@ -625,6 +622,9 @@ dar-backup --full-backup --verbose
 
 # list backups
 dar-backup --list
+
+# list contents of a dar backup
+dar-backup --list-contents <TAB>... <choose a backup>
 
 # see some examples on usage
 dar-backup --examples
@@ -1390,7 +1390,7 @@ It is very easy to have your own development environment.
 
 ```bash
 git clone https://github.com/per2jensen/dar-backup.git
-cd dar-back/v2
+cd dar-backup/v2
 ./setup_environment.py
 ```
 
@@ -1401,6 +1401,13 @@ This script:
 - Runs the build script (build.sh) to prepare the project
 
 ✅ Your environment is now ready to activate and test!
+
+Activate and run the test suite:
+
+```bash
+source venv/bin/activate # activate the virtual env
+pytest                   # run the test suite
+```
 
 ## Todo
 
@@ -1570,12 +1577,12 @@ Sets up `dar-backup` according to provided config file.
 The installer creates the necessary backup catalog databases if `--create-db` is given.
 
 ```bash
---config                 Sets up `dar-backup`.
---create-db              Create backup catalog databases. Add it to --config
---install-autocompletion Add bash or zsh auto completion - idempotent
---remove-autocompletion  Remove the auto completion from bash or zsh
+--config                 Path to a config file. The configured directories will be created.
+--create-db              Create backup catalog databases. Use this option with `--config`.
+--install-autocompletion Add bash or zsh auto completion - idempotent.
+--remove-autocompletion  Remove the auto completion from bash or zsh.
 -v, --version            Display version and licensing information.
--h, --help               Displays usage info
+-h, --help               Displays usage info.
 ```
 
 ### Demo options

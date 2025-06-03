@@ -99,7 +99,7 @@ def uninstall_autocompletion() -> str:
 
 
 
-def run_installer(config_file: str, create_db_flag: bool, install_ac_flag: bool):
+def run_installer(config_file: str, create_db_flag: bool):
     """
     Run the installation process for dar-backup using the given config file.
 
@@ -149,10 +149,9 @@ def run_installer(config_file: str, create_db_flag: bool, install_ac_flag: bool)
             print(f"Creating catalog for: {backup_def}")
             result = create_db(backup_def, config_settings, logger, runner)
             if result == 0:
-                print(f"✔️  Catalog created (or already existed): {backup_def}")
+                print(f"✔️  Catalog created (or already exist): {backup_def}")
             else:
                 print(f"❌ Failed to create catalog: {backup_def}")
-
 
 
 def main():
@@ -177,12 +176,17 @@ def main():
 
 
     if args.config:
+        if not os.path.exists(args.config):
+            print(f"❌ Config file does not exist: {args.config}")
+            return
         run_installer(args.config, args.create_db)
-    elif args.install_autocompletion:
+
+    if args.install_autocompletion:
         install_autocompletion()
     elif args.remove_autocompletion:
         uninstall_autocompletion()  
 
+    
 
 if __name__ == "__main__":
     main()
