@@ -41,6 +41,7 @@ from dar_backup.util import show_version
 from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
+from dar_backup.util import is_safe_filename
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -80,7 +81,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
             if file_date < cutoff_date:
                 file_path = os.path.join(backup_dir, filename)
                 try:
-                    os.remove(file_path)
+                    is_safe_filename(file_path) and os.remove(file_path)
                     logger.info(f"Deleted {backup_type} backup: {file_path}")
                     archive_name = filename.split('.')[0]
                     if not archive_name in archives_deleted:
@@ -109,7 +110,7 @@ def delete_archive(backup_dir, archive_name, args):
         if archive_regex.match(filename):
             file_path = os.path.join(backup_dir, filename)
             try:
-                os.remove(file_path)
+                is_safe_filename(file_path) and os.remove(file_path)
                 logger.info(f"Deleted archive slice: {file_path}")
                 files_deleted = True
             except Exception as e:
@@ -127,7 +128,7 @@ def delete_archive(backup_dir, archive_name, args):
         if par2_regex.match(filename):
             file_path = os.path.join(backup_dir, filename)
             try:
-                os.remove(file_path)
+                is_safe_filename(file_path) and os.remove(file_path)
                 logger.info(f"Deleted PAR2 file: {file_path}")
                 files_deleted = True
             except Exception as e:
@@ -263,7 +264,8 @@ def main():
             if "_FULL_" in archive_name:
                 if not confirm_full_archive_deletion(archive_name, args.test_mode):
                     continue
-            logger.info(f"Deleting archive: {archive_name}")
+            archive_path = os.path.join(config_settings.backup_dir, archive_name.strip())
+            logger.info(f"Deleting archive: {archive_path}")
             delete_archive(config_settings.backup_dir, archive_name.strip(), args)
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)

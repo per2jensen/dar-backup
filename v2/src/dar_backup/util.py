@@ -707,3 +707,29 @@ def normalize_dir(path: str) -> str:
     normalized = str(p)
     return normalized
 
+
+
+# Reusable pattern for archive file naming
+archive_pattern = re.compile(
+    r'^.+?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})\.\d+\.dar'
+    r'(?:\.vol\d+(?:\+\d+)?\.par2|\.par2)?$'
+)
+
+def is_safe_filename(filename: str) -> bool:
+    """
+    Validates that the filename matches acceptable dar/par2 naming convention.
+    """
+    return archive_pattern.match(filename) is not None
+
+def is_safe_path(path: str) -> bool:
+    """
+    Validates that the full path is absolute, has no '..', and filename is safe.
+    """
+    normalized = os.path.normpath(path)
+    filename = os.path.basename(normalized)
+
+    return (
+        os.path.isabs(normalized)
+        and '..' not in normalized.split(os.sep)
+        and is_safe_filename(filename)
+    )
