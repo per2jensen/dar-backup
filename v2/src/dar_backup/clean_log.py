@@ -137,6 +137,14 @@ def main():
         args.file = [config_settings.logfile_location]
 
     for file_path in args.file:
+        # sanitize the file path
+        directory = os.path.abspath(os.path.dirname(file_path))
+        config_logdir = os.path.abspath(os.path.dirname(config_settings.logfile_location))
+        if directory != config_logdir:
+            print(f"Error: Invalid file path: {file_path}")
+            sys.exit(1)
+        
+
         if not isinstance(file_path, (str, bytes, os.PathLike)):
             print(f"Error: Invalid file path type: {file_path}")
             sys.exit(1)
