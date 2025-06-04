@@ -2,15 +2,15 @@
 requires = ['hatchling']
 build-backend = "hatchling.build"
 
-[tool.pytest.ini_options]
+#[tool.pytest.ini_options]
 # test the deployed package
-pythonpath = "venv/lib/python3.12/site-packages"
-addopts = [
-    "--import-mode=importlib",
-    "--cov=dar_backup",
-    "--cov-report=xml",
-    "--no-cov-on-fail"
-]
+#pythonpath = "venv/lib/python3.12/site-packages"
+#addopts = [
+#    "--import-mode=importlib",
+#    "--cov=dar_backup",
+#    "--cov-report=xml",
+#    "--no-cov-on-fail"
+#]
 
 #addopts = [
 #    "--import-mode=importlib",
@@ -75,20 +75,37 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: System :: Archiving :: Backup",
 ]
-#
-#  Some versions as required by Snyk security scanner to fix vulnerabilities
-#
+
+
 dependencies = [
     "inputimeout>=1.0.4",
     "rich>=13.0.0",
     "argcomplete>=3.6.2",
     "Jinja2>=3.1.6",
-    "httpcore>=0.17.3",
-    "h11>=0.16.0",
-    "zipp>=3.19.1",
-    "anyio>=4.4.0",
-    "wheel>=0.45.1",
-    "requests>=2.32.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "wheel>=0.45.1",
+  "requests>=2.32.2",
+  "coverage>=7.8.2",
+  "pytest>=8.4.0",
+  "pytest-cov>=6.1.1",
+  "psutil>=7.0.0",
+  "pytest-timeout>=2.4.0",
+  "httpcore>=0.17.3",
+  "h11>=0.16.0",
+  "zipp>=3.19.1",
+  "anyio>=4.4.0",
+  "black>=25.1.0",
+]
+
+packaging = [
+ "build>=1.2.2",
+ "hatchling>=1.27.0",
+ "hatch>=1.14.1",
+ "twine>=6.1.0",
 ]
 
 [project.urls]
