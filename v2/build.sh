@@ -1,37 +1,30 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-# Determine virtual environment directory
-if [ -n "$VIRTUAL_ENV" ]; then
-    # Already activated – use that!
-    VENV_DIR="$VIRTUAL_ENV"
-    echo "Detected active virtual environment: $VENV_DIR"
-else
-    # No venv activated – fallback to VENV_DIR variable or 'venv'
-    VENV_DIR="${VENV_DIR:-venv}"
-    echo "Using virtual environment directory: $VENV_DIR"
+# Exit on error
+set -e
 
-    if [ ! -d "$VENV_DIR" ]; then
-        echo "Virtual environment not found ($VENV_DIR)"
-        echo "See doc/dev.md for instructions on setting up the virtual environment"
-        exit 1
-    fi
+python3 -m venv venv
+# Activate the virtual environment
+source venv/bin/activate
 
-    echo "Activating virtual environment: $VENV_DIR"
-    source "$VENV_DIR/bin/activate"
-fi
+# Use the venv's Python
+PYTHON="$(which python3)"
+PIP="$(which pip)"
 
-# Continue with your build...
-VERSION=$(grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?' src/dar_backup/__about__.py)
+echo "🔧 Installing project using pyproject.toml in venv: $VIRTUAL_ENV"
 
-cp ../README.md README.md
-TEMP_README="src/dar_backup/README.md"
-cp README.md "$TEMP_README"
-TEMP_CHANGELOG="src/dar_backup/Changelog.md"
-cp Changelog.md "$TEMP_CHANGELOG"
+$PIP install --upgrade pip build hatch
 
-trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
+# Build and install the project using pyproject.toml
+$PYTHON -m build
+LATEST_WHEEL=$(ls -t dist/dar_backup-*.whl | head -n1)
+$PIP install "$LATEST_WHEEL" --upgrade --force-reinstall
 
-python3 -m build
-pip install -e .
 
-echo "✅ Build and install complete using virtual environment: $VENV_DIR"
+# Optionally, for editable install:
+# hatch install
+
+echo "✅ Project build and install complete."
+
+

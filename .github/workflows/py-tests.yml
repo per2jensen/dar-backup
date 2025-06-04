@@ -1,4 +1,4 @@
-name: dar-backup
+name: Pytest
 permissions:
   contents: read
   pull-requests: write
@@ -43,9 +43,7 @@ jobs:
             rm -rf venv*
           fi
 
-          # Use script to create venv, install deps, and run build.sh
-          cd $GITHUB_WORKSPACE/v2
-          ./setup_environment.py
+          ./build.sh
 
       - name: Run pytest with coverage
         run: |
