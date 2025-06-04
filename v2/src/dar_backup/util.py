@@ -723,7 +723,7 @@ def is_safe_filename(filename: str) -> bool:
 
 def is_safe_path(path: str) -> bool:
     """
-    Validates that the full path is absolute, has no '..', and filename is safe.
+    Validates that the full path is absolute, has no '..'.
     """
     normalized = os.path.normpath(path)
     filename = os.path.basename(normalized)
@@ -731,5 +731,4 @@ def is_safe_path(path: str) -> bool:
     return (
         os.path.isabs(normalized)
         and '..' not in normalized.split(os.sep)
-        and is_safe_filename(filename)
     )

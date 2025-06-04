@@ -12,6 +12,7 @@ from dar_backup.manager import create_db
 # Always expand manager DB dir correctly, using helper function
 from dar_backup.manager import get_db_dir
 from dar_backup.util import expand_path
+from dar_backup.util import is_safe_path
 
 def install_autocompletion():
     """Detect user shell, choose RC file, and idempotently append autocompletion."""
@@ -116,6 +117,8 @@ def run_installer(config_file: str, create_db_flag: bool):
     config_file = os.path.expanduser(os.path.expandvars(config_file))
     config_settings = ConfigSettings(config_file)
 
+    print(f"Using config settings: {config_settings}")
+
     # Set up logging
     command_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(
@@ -137,6 +140,9 @@ def run_installer(config_file: str, create_db_flag: bool):
     }
 
     for name, dir_path in required_dirs.items():
+        if not is_safe_path(dir_path):
+            logger.error(f"Unsafe path detected: {dir_path} ({name})")
+            raise ValueError(f"Unsafe path detected: {dir_path} ({name})")
         expanded = Path(expand_path(dir_path))
         if not expanded.exists():
             logger.info(f"Creating directory: {expanded} ({name})")

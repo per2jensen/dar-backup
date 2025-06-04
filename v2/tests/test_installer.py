@@ -20,7 +20,7 @@ def test_installer_creates_catalog(setup_environment, env, use_manager_db_dir):
             f.write(f"\nMANAGER_DB_DIR = {custom_catalog_dir}\n")
 
     # Create dummy .def file
-    backup_def_name = "demo-backup.def"
+    backup_def_name = "demo"
     backup_def_path = os.path.join(env.backup_d_dir, backup_def_name)
     with open(backup_def_path, "w") as f:
         f.write("fake contents")
