@@ -1392,14 +1392,33 @@ It is very easy to have your own development environment.
 ```bash
 git clone https://github.com/per2jensen/dar-backup.git
 cd dar-backup/v2
-./setup_environment.py
+./build.py
 ```
 
 This script:
 
-- Creates a unique Python virtual environment
-- Installs all development dependencies from requirements-dev.txt
-- Runs the build script (build.sh) to prepare the project
+- Creates a Python virtual environment called `venv`
+- pip install `hatch`
+- pip install the development environment as setup in pyproject.toml
+
+  --
+  
+  ```text
+  dev = [
+  "pytest",
+  "wheel>=0.45.1",
+  "requests>=2.32.2",
+  "coverage>=7.8.2",
+  "pytest>=8.4.0",
+  "pytest-cov>=6.1.1",
+  "psutil>=7.0.0",
+  "pytest-timeout>=2.4.0",
+  "httpcore>=0.17.3",
+  "h11>=0.16.0",
+  "zipp>=3.19.1",
+  "anyio>=4.4.0",
+  "black>=25.1.0"]
+  ```
 
 ✅ Your environment is now ready to activate and test!
 
