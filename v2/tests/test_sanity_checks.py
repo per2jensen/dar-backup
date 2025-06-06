@@ -598,6 +598,9 @@ def test_logfile_rotation_and_content_integrity(setup_environment, env: 'EnvData
     main_lines = get_log_lines_in_rotation_order("dar-backup.log")
     cmd_lines = get_log_lines_in_rotation_order("dar-backup-commands.log")
 
+    main_lines = [line.split(" - ", 2)[-1] for line in main_lines]
+    cmd_lines  = [line.split(" - ", 2)[-1] for line in cmd_lines]
+
     # Compose the expected lines
     expected_main_lines = [f"mainlog {i} - {msg}\n" for i in range(total_lines)]
     expected_cmd_lines  = [f"cmdlog {i} - {msg}\n" for i in range(total_lines)]
