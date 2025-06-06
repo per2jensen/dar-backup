@@ -99,7 +99,7 @@ annotations[:] = [a for a in annotations if "max" not in a["label"].lower()]
 # Step 3: Add one correct max annotation
 annotations.append({
     "date": max_date,
-    "label": f"🔥 New max: {max_count} clones"
+    "label": f"Daily max: {max_count}"
 })
 print(f"📌 Set max annotation for {max_date}: {max_count} clones (replaced {before - len(annotations) + 1} old)")
 
