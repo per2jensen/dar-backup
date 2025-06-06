@@ -10,6 +10,11 @@ Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-be
 - setup_environment.py added to make it easy to develop
 - use setup_environment.py in workflow
 - added 2 new optional params to control log file roll.
+- Enrolling into [Snyk code checker](https://snyk.io/code-checker/) and learning how to work with it.
+  
+  - Snyk helped pointing out vulnerable versions of some packages used.
+
+- Refactored build system, so all dependencies are kept in `pyproject.toml`. The dependencies are separated into dev, packaging and delivery phases.
 
 ## v2-beta-0.7.1 - 2025-05-22
 

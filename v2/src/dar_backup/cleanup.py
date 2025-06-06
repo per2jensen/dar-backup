@@ -42,6 +42,7 @@ from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import is_safe_filename
+from dar_backup.util import show_scriptname
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -222,7 +223,7 @@ def main():
 
     start_msgs: List[Tuple[str, str]] = []
 
-    start_msgs.append(("cleanup.py:", about.__version__))
+    start_msgs.append((f"{show_scriptname()}:", about.__version__))
 
     logger.info(f"START TIME: {start_time}")
     logger.debug(f"Command line: {get_invocation_command_line()}")

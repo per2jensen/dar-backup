@@ -93,11 +93,14 @@ def setup_logging(
             encoding="utf-8",
         )
 
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        command_handler.setFormatter(formatter)
+
 
         # Setup main logger
         logger = logging.getLogger("main_logger")
         logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         logger.addHandler(file_handler)
 
         # Setup secondary logger for command outputs
@@ -168,6 +171,17 @@ def get_invocation_command_line() -> str:
             return content.replace(b'\x00', b' ').decode().strip()
     except Exception as e:
         return f"[error: could not read /proc/[pid]/cmdline: {e}]"
+
+
+def show_scriptname()  -> str:
+    """
+    Return script name, useful in start banner for example
+    """
+    try:
+        scriptname = os.path.basename(sys.argv[0])
+    except:
+        scriptname = "unknown"
+    return scriptname
 
 
 def show_version():
