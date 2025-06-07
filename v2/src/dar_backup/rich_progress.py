@@ -102,3 +102,4 @@ def show_log_driven_bar(log_path: str, stop_event: Event, session_marker: str, m
             if stop_event.is_set():
                 break
 
+    # Rich prints a \n here, I will live with it

@@ -12,6 +12,7 @@ See section 15 and section 16 in the supplied "LICENSE" file
 import typing
 import locale
 import configparser
+import inspect
 import logging
 
 import os
@@ -149,6 +150,15 @@ def _setup_completer_logger(logfile="/tmp/dar_backup_completer.log"):
 # Singleton logger for completer debugging
 completer_logger = _setup_completer_logger()
 completer_logger.debug("Completer logger initialized.")
+
+
+def print_debug(msg):
+    """
+    Print a debug message with the filename and line number of the caller.    
+    """
+    frame = inspect.currentframe().f_back
+    print(f"[DEBUG] {frame.f_code.co_filename}:{frame.f_lineno} - {repr(msg)}")
+
 
 
 def get_invocation_command_line() -> str:
@@ -746,3 +756,5 @@ def is_safe_path(path: str) -> bool:
         os.path.isabs(normalized)
         and '..' not in normalized.split(os.sep)
     )
+
+

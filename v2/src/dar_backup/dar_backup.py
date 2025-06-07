@@ -56,6 +56,7 @@ from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
+from dar_backup.util import print_debug
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -93,6 +94,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     Returns:
         List of tuples (<msg>, <exit_code>) of errors not considered critical enough for raising an exception  
     """
+
     result: List[tuple] = []
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
@@ -106,7 +108,6 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         stop_event = Event()
         session_marker = f"=== START BACKUP SESSION: {int(time())} ==="
         get_logger(command_output_logger=True).info(session_marker)
-
         progress_thread = threading.Thread(
             target=show_log_driven_bar,
             args=(log_path, stop_event, session_marker),
@@ -535,12 +536,12 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
             # Perform backup
             backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
+
             if not isinstance(backup_result, list) or not all(isinstance(i, tuple) and len(i) == 2 for i in backup_result):
                 logger.error("Unexpected return format from generic_backup")
                 backup_result = [("Unexpected return format from generic_backup", 1)]
 
             results.extend(backup_result)
-
             logger.info("Starting verification...")
             verify_result = verify(args, backup_file, backup_definition_path, config_settings)
             if verify_result:   
@@ -931,6 +932,7 @@ def main():
         logger.debug(f"results[]: {results}")
 
         requirements('POSTREQ', config_settings)
+
 
     except Exception as e:
         logger.error("Exception details:", exc_info=True)
