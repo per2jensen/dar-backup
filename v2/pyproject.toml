@@ -99,6 +99,8 @@ dev = [
   "zipp>=3.19.1",
   "anyio>=4.4.0",
   "black>=25.1.0",
+  "pandas>=2.3.0",
+  "matplotlib>=3.10.3",
 ]
 
 packaging = [
