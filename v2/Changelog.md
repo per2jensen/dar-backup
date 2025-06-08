@@ -1,6 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.8.0 - not released
+
+Github link: [v2-beta-0.8.0](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.0/v2)
+
+### Added
+
+- Modified clone dashboard generator to produce easier to read dashboard and be more robust.
+
 ## v2-beta-0.7.2 - 2025-06-07
 
 Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.2/v2)
