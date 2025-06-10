@@ -131,9 +131,12 @@ if df.empty:
 weekly_data = df.groupby('week_start')[['count', 'uniques']].sum().reset_index()
 
 # Remove the current (possibly incomplete) week
-latest_day = df['timestamp'].max().normalize()
-last_complete_week = latest_day - pd.to_timedelta(latest_day.weekday(), unit='D')
-weekly_data = weekly_data[weekly_data['week_start'] < last_complete_week]
+yesterday = pd.Timestamp.utcnow().normalize() - pd.Timedelta(days=1)
+last_complete_monday = yesterday - pd.Timedelta(days=yesterday.weekday())
+
+# Include only weeks that ended by yesterday (i.e., their Sunday ≤ yesterday)
+today = pd.Timestamp.utcnow().normalize()
+weekly_data = weekly_data[weekly_data['week_start'] + pd.Timedelta(days=6) < today]
 
 # Compute rolling averages
 weekly_data['count_avg'] = weekly_data['count'].rolling(window=3, min_periods=1).mean()
@@ -236,5 +239,11 @@ plt.savefig(OUTPUT_PNG)
 
 # --- CI-friendly log output ---
 print(f"✅ Dashboard rendered with {len(weekly_data)} weeks.")
-print(f"📊 Latest week shown: {weekly_data['week_start'].max().date()}")
+
+last_week = weekly_data.iloc[-1]
+start_date = last_week['week_start'].date()
+end_date = (last_week['week_start'] + pd.Timedelta(days=6)).date()
+report_date = last_week['report_date'].date()
+
+print(f"📊 Latest week: {start_date} → {end_date} (reported on {report_date})")
 print(f"🖼️  Output saved to: {OUTPUT_PNG}")
