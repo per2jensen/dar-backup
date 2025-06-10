@@ -245,7 +245,7 @@ def test_clean_log_invalid_empty_filename(setup_environment, env: EnvData):
     command = ["clean-log", "-f", "", "-c", env.config_file]
     process = runner.run(command)
     assert process.returncode != 0
-    assert "does not exist" in process.stdout or process.stderr
+    assert "Error: File is outside allowed directory:" in process.stdout or process.stderr
 
 
 def test_clean_log_missing_config_file(setup_environment, env: EnvData, sample_log_file):

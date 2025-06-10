@@ -138,6 +138,18 @@ def main():
 
     for file_path in args.file:
 
+        if ".." in os.path.normpath(file_path).split(os.sep):
+            print(f"Error: Path traversal is not allowed: '{file_path}'")
+            sys.exit(1)
+
+        logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))
+        resolved_path = os.path.realpath(file_path)
+
+        if not resolved_path.startswith(logfile_dir + os.sep):
+            print(f"Error: File is outside allowed directory: '{file_path}'")
+            sys.exit(1)
+
+        # Validate the file path type and existence        
         if not isinstance(file_path, (str, bytes, os.PathLike)):
             print(f"Error: Invalid file path type: {file_path}")
             sys.exit(1)
