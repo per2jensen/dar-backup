@@ -8,6 +8,7 @@ Github link: [v2-beta-0.8.0](https://github.com/per2jensen/dar-backup/tree/v2-be
 ### Added
 
 - Modified clone dashboard generator to produce easier to read dashboard and be more robust.
+- Dir_traversal sanitation: clean_log.py now only accepts files in configured log directory to --file option.
 
 ## v2-beta-0.7.2 - 2025-06-07
 
