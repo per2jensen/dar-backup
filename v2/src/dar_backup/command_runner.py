@@ -2,6 +2,7 @@
 
 import subprocess
 import logging
+import traceback
 import threading
 import os
 import sys
@@ -18,7 +19,7 @@ class CommandResult:
         self.stderr = stderr
 
     def __repr__(self):
-        return f"<CommandResult returncode={self.returncode}>"
+        return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}>"
 
 
 class CommandRunner:
@@ -123,6 +124,10 @@ class CommandRunner:
             process.kill()
             self.logger.error(f"Command timed out: {' '.join(cmd)}")
             return CommandResult(-1, ''.join(stdout_lines), ''.join(stderr_lines))
+        except Exception as e:
+            stack = traceback.format_exc()
+            self.logger.error(f"Command execution failed: {' '.join(cmd)} with error: {e}")
+            return CommandResult(-1, '\nStdout: '.join(stdout_lines), '\nStderr: '.join(stderr_lines), stack)  
 
         for t in threads:
             t.join()
