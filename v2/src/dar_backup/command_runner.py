@@ -13,13 +13,14 @@ from dar_backup.util import get_logger
 
 
 class CommandResult:
-    def __init__(self, returncode: int, stdout: str, stderr: str):
+    def __init__(self, returncode: int, stdout: str, stderr: str, stack: str = None):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+        self.stack = stack
 
     def __repr__(self):
-        return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}>"
+        return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}\nstack={self.stack}>"
 
 
 class CommandRunner:
@@ -127,7 +128,7 @@ class CommandRunner:
         except Exception as e:
             stack = traceback.format_exc()
             self.logger.error(f"Command execution failed: {' '.join(cmd)} with error: {e}")
-            return CommandResult(-1, '\nStdout: '.join(stdout_lines), '\nStderr: '.join(stderr_lines), stack)  
+            return CommandResult(-1, ''.join(stdout_lines), ''.join(stderr_lines), stack)  
 
         for t in threads:
             t.join()

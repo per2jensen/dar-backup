@@ -1,6 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.8.1 - 2025-07-16
+
+Github link: [v2-beta-0.8.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.1/v2)
+
+### Added
+
+- FIX: runner now logs an error and fills more data into the returned CommandResult.
+
 ## v2-beta-0.8.0 - 2025-06-13
 
 Github link: [v2-beta-0.8.0](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.0/v2)
