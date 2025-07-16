@@ -21,7 +21,16 @@ class CommandResult:
 
     def __repr__(self):
         return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}\nstack={self.stack}>"
+    
 
+    def __str__(self):
+        return (
+            f"CommandResult:\n"
+            f"  Return code: {self.returncode}\n"
+            f"  STDOUT:\n{self.stdout}\n"
+            f"  STDERR:\n{self.stderr}\n"
+            f"  Stacktrace:\n{self.stack if self.stack else '<none>'}"
+        )
 
 class CommandRunner:
     def __init__(
@@ -76,22 +85,29 @@ class CommandRunner:
     ) -> CommandResult:
         timeout = timeout or self.default_timeout
 
-        #log the command to be executed
         command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
-        self.command_logger.info(command) # log to command logger
-        self.logger.debug(command)        # log to main logger if "--log-level debug"
-
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE if capture_output else None,
-            stderr=subprocess.PIPE if capture_output else None,
-            text=False,
-            bufsize=-1
-        )
+        self.command_logger.info(command)
+        self.logger.debug(command)
 
         stdout_lines = []
         stderr_lines = []
 
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE if capture_output else None,
+                stderr=subprocess.PIPE if capture_output else None,
+                text=False,
+                bufsize=-1
+            )
+        except Exception as e:
+            stack = traceback.format_exc()
+            return CommandResult(
+                returncode=-1,
+                stdout='',
+                stderr=str(e),
+                stack=stack
+            )
 
         def stream_output(stream, lines, level):
             try:
@@ -133,7 +149,19 @@ class CommandRunner:
         for t in threads:
             t.join()
 
+
         if check and process.returncode != 0:
             self.logger.error(f"Command failed with exit code {process.returncode}")
+            return CommandResult(
+                process.returncode,
+                ''.join(stdout_lines),
+                ''.join(stderr_lines),
+                stack=traceback.format_stack()
+            )
 
-        return CommandResult(process.returncode, ''.join(stdout_lines), ''.join(stderr_lines))
+        return CommandResult(
+            process.returncode,
+            ''.join(stdout_lines),
+            ''.join(stderr_lines),
+        )
+

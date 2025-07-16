@@ -5,9 +5,9 @@ import pytest
 import sys
 import re
 import tempfile
-from dar_backup.command_runner import CommandRunner
+
+from dar_backup.command_runner import CommandRunner, CommandResult
 from io import StringIO
-from dar_backup.command_runner import CommandRunner
 from unittest.mock import patch, MagicMock
 
 
@@ -131,3 +131,32 @@ def test_command_runner_fallback_logger(monkeypatch):
     assert runner.command_logger is not None
 
 
+
+
+
+def test_command_runner_captures_all_outputs():
+    runner = CommandRunner()
+
+    # This will produce both stdout and stderr and return error
+    result = runner.run(
+        ['bash', '-c', 'echo "hello stdout"; echo "oops stderr" >&2; exit 2'],
+        check=False
+    )
+
+    assert isinstance(result, CommandResult)
+    assert result.returncode == 2
+    assert "hello stdout" in result.stdout
+    assert "oops stderr" in result.stderr
+    assert result.stack is None  # Normal non-zero exit, no exception
+
+def test_command_runner_stacktrace_on_failure():
+    runner = CommandRunner()
+
+    # Induce a subprocess failure via invalid command to trigger exception
+    result = runner.run(['nonexistent-command'], check=False)
+
+    assert isinstance(result, CommandResult)
+    assert result.returncode == -1
+    assert "No such file or directory" in result.stderr or result.stdout
+    assert result.stack is not None
+    assert "Traceback" in result.stack
