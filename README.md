@@ -22,71 +22,90 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 
 ## Table of Contents
 
-- [Reliable `dar` backups wrapped in Python](#dar-backup)
-- [My use case](#my-use-case)
-- [Features](#features)
-- [License](#license)
-- [Changelog version 2](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
-- [Quick Guide](#quick-guide)
-- [Status](#status)
-  - [GPG Signing key](#gpg-signing-key)
-  - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
-- [Homepage - Github](#homepage---github)
-- [Community](#community)
-- [Requirements](#requirements)
-- [Principles](#dar-backup-principles)
-- [How to run](#how-to-run)
-  - [1 - installation](#1---installation)
-  - [2 - configuration](#2---configuration)
-  - [3 - generate catalog databases](#3---generate-catalog-databases)
-  - [4 - give `dar-backup` a spin](#4---give-dar-backup-a-spin)
-  - [5 - deactivate venv](#5---deactivate-venv)
-- [Config](#config)
-  - [Config file](#config-file)
-  - [.darrc](#darrc)
-  - [Backup definition](#backup-definition-example)
-- [Systemd examples](#systemctl-examples)
+- [`dar-backup`](#dar-backup)
+  - [TL;DR](#tldr)
+  - [Table of Contents](#table-of-contents)
+  - [My use case](#my-use-case)
+  - [Features](#features)
+  - [License](#license)
+  - [Quick Guide](#quick-guide)
+  - [Status](#status)
+    - [GPG Signing key](#gpg-signing-key)
+    - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
+  - [Homepage - Github](#homepage---github)
+  - [Community](#community)
+  - [Requirements](#requirements)
+  - [dar-backup principles](#dar-backup-principles)
+    - [dar-backup](#dar-backup-1)
+    - [cleanup](#cleanup)
+    - [manager](#manager)
+  - [How to run](#how-to-run)
+    - [1 - installation](#1---installation)
+    - [2 - configuration](#2---configuration)
+    - [3 - generate catalog databases](#3---generate-catalog-databases)
+    - [4 - give dar-backup a spin](#4---give-dar-backup-a-spin)
+    - [5 - deactivate venv](#5---deactivate-venv)
+  - [Config](#config)
+    - [Config file](#config-file)
+    - [.darrc](#darrc)
+    - [Backup definition example](#backup-definition-example)
   - [Generate systemd files](#generate-systemd-files)
-  - [Service: dar-back --incremental-backup](#service-dar-backup---incremental-backup)
-  - [Timer: dar-back --incremental-backup](#timer-dar-backup---incremental-backup)
-  - [Systemd timer note](#systemd-timer-note)
-- [List contents of an archive](#list-contents-of-an-archive)
-- [dar file selection examples](#dar-file-selection-examples)
-  - [Select a directory](#select-a-directory)
-  - [Include and exclude some file](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
-- [Restoring](#restoring)
-  - [Default location for restores](#default-location-for-restores)
-  - [--restore-dir option](#--restore-dir-option)
-  - [A single file](#a-single-file)
-  - [A directory](#a-directory)
-  - [.NEF from a specific date](#nef-from-a-specific-date)
-  - [Restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
-  - [Restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
-- [Par2](#par2)
-  - [Par2 to verify/repair](#par2-to-verifyrepair)
-  - [Par2 create redundancy files](#par2-create-redundancy-files)
-- [Points of interest](#points-of-interest)
-  - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
-  - [dar manager databases](#dar-manager-databases)
-  - [Performance tip due to par2](#performance-tip-due-to-par2)
-  - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
-  - [Separate log file for command output](#separate-log-file-for-command-output)
-  - [Skipping cache directories](#skipping-cache-directories)
-  - [Progress bar + current directory](#progress-bar-and-current-directory)
-  - [Shell Autocompletion](#shell-autocompletion)
+  - [Systemctl examples](#systemctl-examples)
+  - [Service: dar-backup --incremental-backup](#service-dar-backup---incremental-backup)
+  - [Timer: dar-backup --incremental-backup](#timer-dar-backup---incremental-backup)
+  - [systemd timer note](#systemd-timer-note)
+  - [list contents of an archive](#list-contents-of-an-archive)
+  - [dar file selection examples](#dar-file-selection-examples)
+    - [select a directory](#select-a-directory)
+    - [select files with "Z50" in the file name and exclude .xmp files](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
+  - [Restoring](#restoring)
+    - [default location for restores](#default-location-for-restores)
+    - [--restore-dir option](#--restore-dir-option)
+    - [a single file](#a-single-file)
+    - [a directory](#a-directory)
+    - [.NEF from a specific date](#nef-from-a-specific-date)
+    - [restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
+    - [restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
+  - [Par2](#par2)
+    - [Par2 to verify/repair](#par2-to-verifyrepair)
+    - [Par2 create redundancy files](#par2-create-redundancy-files)
+  - [Points of interest](#points-of-interest)
+    - [Limitations on File Names with Special Characters](#limitations-on-file-names-with-special-characters)
+      - [Why this matters](#why-this-matters)
+      - [Workarounds](#workarounds)
+        - [Restoring Files with Forbidden Characters in Their Names](#restoring-files-with-forbidden-characters-in-their-names)
+        - [Backups: Safe and Fully Functional](#backups-safe-and-fully-functional)
+        - [Restores via CLI: Limited by Sanitizer](#restores-via-cli-limited-by-sanitizer)
+        - [Workaround: Use `dar` Directly](#workaround-use-dar-directly)
+        - [Example: Manual Restore Using `dar`](#example-manual-restore-using-dar)
+        - [🧪 How to Locate Files with Forbidden Characters](#-how-to-locate-files-with-forbidden-characters)
+      - [Summary](#summary)
+    - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
+    - [dar manager databases](#dar-manager-databases)
+    - [Performance tip due to par2](#performance-tip-due-to-par2)
+    - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
+    - [Separate log file for command output](#separate-log-file-for-command-output)
+    - [Skipping cache directories](#skipping-cache-directories)
+    - [Progress bar and current directory](#progress-bar-and-current-directory)
+    - [Shell autocompletion](#shell-autocompletion)
+      - [Use it](#use-it)
+      - [Archive name completion (smart, context-aware)](#archive-name-completion-smart-context-aware)
+      - [Enabling Bash completion](#enabling-bash-completion)
+      - [Enable Zsh Completion](#enable-zsh-completion)
   - [Easy development setup](#easy-development-setup)
-- [Todo](#todo)
-- [Known Limitations / Edge Cases](#known-limitations--edge-cases)
-- [Reference](#reference)
-  - [CLI Tools Overview](#cli-tools-overview)
-  - [Test coverage report](#test-coverage)
-  - [dar-backup](#dar-backup-options)
-  - [manager](#manager-options)
-  - [cleanup](#cleanup-options)
-  - [clean-log](#clean-log-options)
-  - [dar-backup-systemd](#dar-backup-systemd-options)
-  - [Installer](#installer-options)
-  - [demo](#demo-options)
+  - [Todo](#todo)
+  - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
+  - [Projects these scripts benefit from](#projects-these-scripts-benefit-from)
+  - [Reference](#reference)
+    - [CLI Tools Overview](#cli-tools-overview)
+    - [test coverage](#test-coverage)
+    - [Dar-backup options](#dar-backup-options)
+    - [Manager Options](#manager-options)
+    - [Cleanup options](#cleanup-options)
+    - [Clean-log options](#clean-log-options)
+    - [Dar-backup-systemd options](#dar-backup-systemd-options)
+    - [Installer options](#installer-options)
+    - [Demo options](#demo-options)
   
 ## My use case
 
@@ -1182,6 +1201,109 @@ done
 where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
 
 ## Points of interest
+
+### Limitations on File Names with Special Characters
+
+`dar-backup` strictly validates all command-line arguments passed to its internal execution engine to protect against command injection and shell-based attacks. As part of this security measure, certain characters are disallowed in user-provided inputs — particularly those that carry special meaning in shell environments:
+
+Disallowed characters include:
+
+```text
+\$ & ; | > < ` \n
+```
+
+#### Why this matters
+
+When restoring specific files using the --selection argument or similar mechanisms, filenames that contain one or more of these characters (e.g., file_with_currency$.txt) cannot be safely passed as command-line arguments. As a result, attempting to restore such a file by name using the CLI will result in a validation error.
+
+✅ Backups and Restores Still Work
+
+  ✅ These files are still backed up and restored automatically as part of normal FULL, DIFF, or INCR operations.
+
+  ❌ They cannot be explicitly specified for restore using CLI options like --selection="-g path/to/file_with_currency$.txt".
+
+#### Workarounds
+
+If you need to restore such a file:
+
+  Perform a restore of the entire directory using a more general selection (e.g., --selection="-g path/to/parent-directory").
+
+  Manually retrieve the restored file afterward.
+
+##### Restoring Files with Forbidden Characters in Their Names
+
+The DAR Backup system enforces a strict command-line argument sanitizer to improve security and prevent shell injection attacks. As a result, certain characters are **not allowed** in filenames or arguments passed to the CLI, especially during restore operations. This includes characters like:
+
+| Character | Reason Blocked                  |
+|----------:|---------------------------------|
+| `;`       | Shell command separator         |
+| `&`       | Background execution operator   |
+| `\|`      | Pipe operator                   |
+| `<` / `>` | Redirection operators           |
+| `#`       | Shell comment                   |
+| `` ` ``   | Command substitution            |
+| `"` / `'` | Quoting that may be unbalanced  |
+
+However, **backups of files with such names still work** — they are preserved correctly within the archive. The limitation only applies to **invoking restore commands via the CLI**, where such filenames cannot be safely passed as arguments.
+
+##### Backups: Safe and Fully Functional
+
+Files with special characters in their names **are backed up without issue**. The only issue you might encounter is restoring a file and giving the file name on the command line (with forbidden characters.)
+
+##### Restores via CLI: Limited by Sanitizer
+
+Attempting to restore such files via:
+
+```bash
+    dar-backup restore --file "weird#name.txt"
+```
+
+...will fail with an error like:
+
+```bash
+    Unsafe argument detected: weird#name.txt
+```
+
+---
+
+##### Workaround: Use `dar` Directly
+
+You can always restore the file manually using the `dar` command-line utility itself, bypassing any CLI restrictions imposed by the backup tool.
+
+##### Example: Manual Restore Using `dar`
+
+```bash
+    dar -x /path/to/backup/example -g "weird#name.txt"
+```
+
+Where:
+
+- `/path/to/backup/example` is the base name of the archive (without `.dar`, `.1.dar`, etc.).
+- `"weird#name.txt"` is the exact filename with the special character(s).
+
+You may need to quote the argument or escape characters depending on your shell.
+
+---
+
+##### 🧪 How to Locate Files with Forbidden Characters
+
+To search for such files inside the archive:
+
+```bash
+    dar -l /path/to/backup/example | grep '[#;<>|&]'
+```
+
+This will help you identify files that require manual restoration.
+
+---
+
+#### Summary
+
+- 🚫 Forbidden characters are blocked **only** in CLI arguments to maintain safety.
+- ✅ Files containing these characters are **still archived and restorable**.
+- 🛠 Use `dar` directly for full manual control when restoring such files.
+
+
 
 ### Merge FULL with DIFF, creating new FULL
 
