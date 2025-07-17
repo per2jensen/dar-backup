@@ -5,6 +5,8 @@ import logging
 import traceback
 import threading
 import os
+import re
+import shlex
 import sys
 import tempfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -12,25 +14,51 @@ from typing import List, Optional
 from dar_backup.util import get_logger
 
 
+def is_safe_arg(arg: str) -> bool:
+    """
+    Check if the argument is safe by rejecting dangerous shell characters.
+    """
+    return not re.search(r'[;&|><`$\n]', arg)
+
+
+def sanitize_cmd(cmd: List[str]) -> List[str]:
+    """
+    Validate and sanitize a list of command-line arguments.
+    Ensures all elements are strings and do not contain dangerous shell characters.
+    Raises ValueError if any argument is unsafe.
+    """
+
+    if not isinstance(cmd, list):
+        raise ValueError("Command must be a list of strings")
+    for arg in cmd:
+        if not isinstance(arg, str):
+            raise ValueError(f"Invalid argument type: {arg} (must be string)")
+        if not is_safe_arg(arg):
+            raise ValueError(f"Unsafe argument detected: {arg}")
+    return cmd
+
 class CommandResult:
-    def __init__(self, returncode: int, stdout: str, stderr: str, stack: str = None):
+    def __init__(self, returncode: int, stdout: str, stderr: str, stack: str = None, note: str = None):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
         self.stack = stack
+        self.note = note
 
     def __repr__(self):
         return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}\nstack={self.stack}>"
-    
+
 
     def __str__(self):
         return (
-            f"CommandResult:\n"
+            "CommandResult:\n"
             f"  Return code: {self.returncode}\n"
-            f"  STDOUT:\n{self.stdout}\n"
-            f"  STDERR:\n{self.stderr}\n"
-            f"  Stacktrace:\n{self.stack if self.stack else '<none>'}"
+            f"  Note: {self.note if self.note else '<none>'}\n"
+            f"  STDOUT: {self.stdout}\n"
+            f"  STDERR: {self.stderr}\n"
+            f"  Stacktrace: {self.stack if self.stack else '<none>'}"
         )
+
 
 class CommandRunner:
     def __init__(
@@ -45,6 +73,7 @@ class CommandRunner:
 
         if not self.logger or not self.command_logger:
             self.logger_fallback()
+
 
     def logger_fallback(self):
         """
@@ -85,7 +114,28 @@ class CommandRunner:
     ) -> CommandResult:
         timeout = timeout or self.default_timeout
 
-        command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
+
+        cmd_sanitized = None
+        try:
+            cmd_sanitized = sanitize_cmd(cmd)
+        except ValueError as e:
+            stack = traceback.format_exc()
+            self.logger.error(f"Command sanitation failed: {e}")
+            return CommandResult(
+                returncode=-1,
+                note=f"Sanitizing failed: command: {' '.join(cmd)}",
+                stdout='',
+                stderr=str(e),
+                stack=stack,
+
+            )
+        finally:
+            cmd = cmd_sanitized
+
+        #command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
+        command = f"Executing command: {' '.join(shlex.quote(arg) for arg in cmd)} (timeout={timeout}s)"
+
+
         self.command_logger.info(command)
         self.logger.debug(command)
 
