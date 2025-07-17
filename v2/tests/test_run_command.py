@@ -9,22 +9,28 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
 
+
+import tempfile
+from pathlib import Path
+
 def test_stdout_1MB(setup_environment, env):
-    """
-    Test that a process writing 1MB to stdout in runner.run() does not fail
-    """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    command = ['bash', '-c', 'base64 < /dev/random| head -c 1048576']
-    process = runner.run(command)
-    env.logger.info(f"process.returncode={process.returncode}")
-    if process.returncode != 0:
-        stdout, stderr = process.stdout, process.stderr
-        if stderr:
-            raise Exception(f"Expected error message not found in stderr: {stderr}")
-        else:
-            raise Exception(f"Command failed: {command}")        
-    if len(process.stdout) != 1048576:
-        raise Exception(f"Expected 1MB of output, got {len(process.stdout)} bytes")
+
+    script = (
+        "import sys, os\n"
+        "sys.stdout.buffer.write(os.urandom(1048576))\n"
+        "sys.stdout.flush()\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(script)
+        script_path = f.name
+
+    command = ["python3", script_path]
+    process = runner.run(command, text=False)
+
+    assert process.returncode == 0
+    assert isinstance(process.stdout, bytes)
+    assert len(process.stdout) == 1048576
 
 
 

@@ -248,7 +248,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         PermissionError: If a permission error occurs while comparing files.
     """
     result = True
-    command = ['dar', '-t', backup_file, '-Q']
+    command = ['dar', '-t', backup_file, '-N', '-Q']
  
  
     log_basename = os.path. dirname(config_settings.logfile_location)
@@ -315,7 +315,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     for restored_file_path in random_files:
         try:
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '-Q', '-B', args.darrc, 'restore-options']
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf',  '-Q', '-B', args.darrc, 'restore-options']
             args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = runner.run(command, timeout = config_settings.command_timeout_secs)    
             if process.returncode != 0:
@@ -347,7 +347,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     results: List[tuple] = []
     try:
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
-        command = ['dar', '-x', backup_file, '-Q', '-D']
+        command = ['dar', '-x', backup_file, '--noconf', '-Q', '-D']
         if restore_dir:
             if not os.path.exists(restore_dir):
                 os.makedirs(restore_dir)
@@ -390,7 +390,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
     logger.debug(f"Getting backed up files in xml from DAR archive: '{backup_name}'")
     backup_path = os.path.join(backup_dir, backup_name)
     try:
-        command = ['dar', '-l', backup_path, '-am', '-as', "-Txml" , '-Q']
+        command = ['dar', '-l', backup_path, '--noconf', '-am', '-as', "-Txml" , '-Q']
         logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
         command_result = runner.run(command)
         # Parse the XML data
@@ -418,7 +418,7 @@ def list_contents(backup_name, backup_dir, selection=None):
     backup_path = os.path.join(backup_dir, backup_name)
 
     try:
-        command = ['dar', '-l', backup_path, '-am', '-as', '-Q']
+        command = ['dar', '-l', backup_path, '--noconf',  '-am', '-as', '-Q']
         if selection:
             selection_criteria = shlex.split(selection)
             command.extend(selection_criteria)

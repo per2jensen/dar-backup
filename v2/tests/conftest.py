@@ -2,6 +2,7 @@ import pytest
 
 import logging
 import os
+import re
 import shutil
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -24,11 +25,17 @@ test_files = {
         'file with spaces.txt': 'This is file with spaces.',
         'file_with_danish_chars_æøå.txt': 'This is file with danish chars æøå.',
         'file_with_DANISH_CHARS_ÆØÅ.txt': 'This is file with DANISH CHARS ÆØÅ.',
-        'file_with_colon:.txt': 'This is file with colon :.',
-        'file_with_hash#.txt': 'This is file with hash #.',
-        'file_with_currency$.txt': 'This is file with currency $ ¤.',
+        'file_with_colon.txt': 'This is file with colon .',
+        'file_with_hash.txt': 'This is file with hash #.',
+        'file_with_currency.txt': 'This is file with currency ¤.',
         'file with spaces.txt': 'This is file with spaces.',
 }
+
+
+
+def safe_test_name(name):
+    # Replace all unsafe characters with underscores
+    return re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
 
 
 @pytest.fixture
@@ -71,7 +78,8 @@ def env(request, logger):
     """
     Setup the EnvData dataclass for each test case before the "yield" statement.
     """
-    env = EnvData(request.node.name, logger["logger"], logger["command_logger"]) # name of test case
+    test_name = safe_test_name(request.node.name)
+    env = EnvData(test_name, logger["logger"], logger["command_logger"]) # name of test case
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     yield env
@@ -83,7 +91,8 @@ def setup_environment(request, logger):
     Setup the environment for each test case before the "yield" statement.
     Tear down the environment after the "yield" statement.
     """
-    env = EnvData(request.node.name,  logger["logger"], logger["command_logger"]) # name of test case
+    test_name = safe_test_name(request.node.name)
+    env = EnvData(test_name,  logger["logger"], logger["command_logger"]) # name of test case
 
     env.logger.info("================================================================")
     env.logger.info("               Configure test environment")

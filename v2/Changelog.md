@@ -1,6 +1,24 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.8.2 - 2025-07-17
+
+Github link: [v2-beta-0.8.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.2/v2)
+
+### Added
+
+- Security hardening: CommandRunner now performs strict command-line sanitization
+  - Disallows potentially dangerous characters (e.g. ;, &, |) in command arguments
+  - Prevents injection-style misuse when restoring specific files or invoking custom commands
+
+- Documentation:
+  - New [README section](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#limitations-on-file-names-with-special-characters) explains filename restrictions and safe workarounds (e.g. restoring directly with dar, if needed)
+  - Includes a Markdown table listing all disallowed characters
+
+- Test suite:
+  - Existing test cases updated to comply with the new sanitization rules
+  - Additional tests ensure CommandRunner handles large binary output and edge cases cleanly
+
 ## v2-beta-0.8.1 - 2025-07-16
 
 Github link: [v2-beta-0.8.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.1/v2)

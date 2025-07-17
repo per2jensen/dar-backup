@@ -133,21 +133,25 @@ def test_command_runner_fallback_logger(monkeypatch):
 
 
 
-
 def test_command_runner_captures_all_outputs():
     runner = CommandRunner()
 
-    # This will produce both stdout and stderr and return error
-    result = runner.run(
-        ['bash', '-c', 'echo "hello stdout"; echo "oops stderr" >&2; exit 2'],
-        check=False
-    )
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('hello stdout')\nprint('oops stderr', file=sys.stderr)\nexit(2)\n")
+        script_path = f.name
 
-    assert isinstance(result, CommandResult)
-    assert result.returncode == 2
-    assert "hello stdout" in result.stdout
-    assert "oops stderr" in result.stderr
-    assert result.stack is None  # Normal non-zero exit, no exception
+    try:
+        result = runner.run(['python3', script_path], check=False)
+
+        assert isinstance(result, CommandResult)
+        assert result.returncode == 2
+        assert "hello stdout" in result.stdout
+        assert "oops stderr" in result.stderr
+        assert result.stack is None
+    finally:
+        os.remove(script_path)
+
+
 
 def test_command_runner_stacktrace_on_failure():
     runner = CommandRunner()

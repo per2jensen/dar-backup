@@ -10,7 +10,7 @@ import shlex
 import sys
 import tempfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-from typing import List, Optional
+from typing import List, Optional, Union
 from dar_backup.util import get_logger
 
 
@@ -37,13 +37,28 @@ def sanitize_cmd(cmd: List[str]) -> List[str]:
             raise ValueError(f"Unsafe argument detected: {arg}")
     return cmd
 
+def _safe_str(s):
+    if isinstance(s, bytes):
+        return f"<{len(s)} bytes of binary data>"
+    return s
+
+
 class CommandResult:
-    def __init__(self, returncode: int, stdout: str, stderr: str, stack: str = None, note: str = None):
+    def __init__(
+        self,
+        returncode: int,
+        stdout: Union[str, bytes],
+        stderr: Union[str, bytes],
+        stack: Optional[str] = None,
+        note: Optional[str] = None
+    ):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
         self.stack = stack
         self.note = note
+
+
 
     def __repr__(self):
         return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}\nstack={self.stack}>"
@@ -54,8 +69,8 @@ class CommandResult:
             "CommandResult:\n"
             f"  Return code: {self.returncode}\n"
             f"  Note: {self.note if self.note else '<none>'}\n"
-            f"  STDOUT: {self.stdout}\n"
-            f"  STDERR: {self.stderr}\n"
+            f"  STDOUT: {_safe_str(self.stdout)}\n"
+            f"  STDERR: {_safe_str(self.stderr)}\n"
             f"  Stacktrace: {self.stack if self.stack else '<none>'}"
         )
 
@@ -112,10 +127,11 @@ class CommandRunner:
         capture_output: bool = True,
         text: bool = True
     ) -> CommandResult:
+        self._text_mode = text 
         timeout = timeout or self.default_timeout
 
-
         cmd_sanitized = None
+
         try:
             cmd_sanitized = sanitize_cmd(cmd)
         except ValueError as e:
@@ -165,9 +181,13 @@ class CommandRunner:
                     chunk = stream.read(1024)
                     if not chunk:
                         break
-                    decoded = chunk.decode('utf-8', errors='replace')
-                    lines.append(decoded)
-                    self.command_logger.log(level, decoded.strip())
+                    if self._text_mode:
+                        decoded = chunk.decode('utf-8', errors='replace')
+                        lines.append(decoded)
+                        self.command_logger.log(level, decoded.strip())
+                    else:
+                        lines.append(chunk)
+                        # Avoid logging raw binary data to prevent garbled logs
             except Exception as e:
                 self.logger.warning(f"stream_output decode error: {e}")
             finally:
@@ -200,18 +220,27 @@ class CommandRunner:
             t.join()
 
 
+
+        if self._text_mode:
+            stdout_combined = ''.join(stdout_lines)
+            stderr_combined = ''.join(stderr_lines)
+        else:
+            stdout_combined = b''.join(stdout_lines)
+            stderr_combined = b''.join(stderr_lines)
+
+
         if check and process.returncode != 0:
             self.logger.error(f"Command failed with exit code {process.returncode}")
             return CommandResult(
                 process.returncode,
-                ''.join(stdout_lines),
-                ''.join(stderr_lines),
+                stdout_combined,
+                stderr_combined,
                 stack=traceback.format_stack()
             )
 
         return CommandResult(
             process.returncode,
-            ''.join(stdout_lines),
-            ''.join(stderr_lines),
+                stdout_combined,
+                stderr_combined
         )
 
