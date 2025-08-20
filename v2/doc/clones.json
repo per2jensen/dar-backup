@@ -11,6 +11,10 @@
     {
       "date": "2025-05-20",
       "label": "Daily max: 124"
+    },
+    {
+      "date": "2025-08-15",
+      "label": "Stats failing ..."
     }
   ],
   "total_clones": 1704,
