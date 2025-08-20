@@ -323,11 +323,12 @@ def test_list_archive_contents(setup_environment: None, env: EnvData):
     files = generate_test_data_and_full_backup(env)
 
     command = ['manager', '--list-archive-contents', f'example_FULL_{today_date}' ,'--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process = runner.run(command)
+    process = runner.run(command, timeout=600)
     stdout, stderr = process.stdout, process.stderr
     env.logger.info(f"stdout:\n{stdout}")
     if process.returncode != 0:
-        print(f"stderr: {stderr}")  
+        print(f"ERROR: stdout: {stdout}")  
+        print(f"ERROR: stderr: {stderr}")  
         raise Exception(f"Command failed: {command}")
 
     # Loop over the file names in the 'files' dictionary and verify they are present in stdout
