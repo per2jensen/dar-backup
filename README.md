@@ -1638,12 +1638,18 @@ Available options:
 --list-contents <archive>            List the contents of a specified archive.
 --selection <params>                 Define file selection for listing/restoring.
 --restore <archive>                  Restore a specified archive.
--r, --restore-dir <path>             Directory to restore files to.
+-r, --restore <archive>              Restore archive.
+--restore-dir                        Directory on which to restore
 --verbose                            Enable verbose output.
 --suppress-dar-msg                   Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
 --log-level <level>                  `debug` or `trace`, default is `info`.
 --log-stdout                         Also print log messages to stdout.
 --do-not-compare                     Do not compare restores to file system.
+--examples                           Show examples of using dar-backup.
+--readme                             Print README.md and exit
+--readme-pretty                      Print README.md with Markdown styling and exit
+--changelog                          Print Changelog and exit
+--changelog-pretty                   Print Changelog with Markdown styling and exit
 -v, --version                         Show version and license information.
 ```
 
