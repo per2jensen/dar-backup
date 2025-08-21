@@ -9,16 +9,16 @@
       "label": "r/linuxadmin"
     },
     {
-      "date": "2025-05-20",
-      "label": "Daily max: 124"
-    },
-    {
       "date": "2025-08-15",
       "label": "Stats failing ..."
+    },
+    {
+      "date": "2025-05-20",
+      "label": "Daily max: 124"
     }
   ],
-  "total_clones": 1704,
-  "unique_clones": 1024,
+  "total_clones": 1697,
+  "unique_clones": 1020,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -497,8 +497,8 @@
     },
     {
       "timestamp": "2025-08-07T00:00:00Z",
-      "count": 9,
-      "uniques": 6
+      "count": 2,
+      "uniques": 2
     },
     {
       "timestamp": "2025-08-08T00:00:00Z",
