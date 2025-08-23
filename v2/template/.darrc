@@ -92,13 +92,13 @@ compress-exclusion:
 #  remove comments belov for dar being more verbose
 verbose:
 
-# -vt show each file teated due to filtering inclusion or no filtering at all
+# -vt show each file treated due to filtering inclusion or no filtering at all
 #  -vt
 
 # -vs show skipped files du to exclusion
 #  -vs
 
-# -vd show diretory currently being processed
+# -vd show directory currently being processed
   -vd 
 
 # -vm show detailed messages, not related to files and directories

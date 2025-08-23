@@ -20,6 +20,6 @@
 # size of each slice in the archive
 --slice 4G
 
-# bypass directores marked as cache directories
+# bypass directories marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
 --cache-directory-tagging

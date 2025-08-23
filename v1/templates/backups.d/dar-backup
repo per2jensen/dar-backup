@@ -28,6 +28,6 @@
 --comparison-field=ignore-owner
 
 
-# bypass directores marked as cache directories
+# bypass directories marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
 --cache-directory-tagging

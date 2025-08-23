@@ -24,7 +24,7 @@ touch "$TESTDIR"/archives/TEST_DIFF_${DAY_2_OLD}.dar
 touch "$TESTDIR"/archives/TEST_INC_${DAY_1_OLD}.dar
 touch "$TESTDIR"/archives/TEST_INC_${DAY_2_OLD}.dar
 
-#check that a direcotry name does not mess anythin up (it did on a usbdisk  disk :-) )
+#check that a directory name does not mess anything up (it did on a usbdisk  disk :-) )
 mkdir "$TESTDIR"/archives/"$DAY_2_OLD"
 touch "$TESTDIR"/archives/"$DAY_2_OLD"/TEST_DIFF_${DAY_2_OLD}.dar
 touch "$TESTDIR"/archives/"$DAY_2_OLD"/TEST_INC_${DAY_2_OLD}.dar

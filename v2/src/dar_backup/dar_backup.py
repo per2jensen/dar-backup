@@ -679,7 +679,7 @@ INCR back of a single backup definition in backup.d
   
 --alternate-reference-archive (useful if the calculated archive is broken)
     Use this to specify a different reference archive for DIFF or INCR backups.
-    The specified archive can be any regardsless of type,  name does not include the slice number.
+    The specified archive can be any regardless of type,  name does not include the slice number.
     Example: 'python3 dar-backup.py --differential-backup --alternate-reference-archive <name of dar archive>'
 
 --log-level

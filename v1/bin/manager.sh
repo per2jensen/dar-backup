@@ -32,7 +32,7 @@ CREATE_CATALOG=""
 ADD_DIR=""
 ARCHIVE_DIR_TO_ADD=""
 
-# restict --create-catalog and --alternate-archive-dir to add only archives for this backup definition
+# restrict --create-catalog and --alternate-archive-dir to add only archives for this backup definition
 BACKUP_DEF=""
 
 # add this archive to catalog
@@ -81,7 +81,7 @@ OPTIONS
     --alternate-archive-dir, override MOUNT_POINT (from .conf file)
     --create-catalog, create missing catalogs. Restrict to one backup definition using --backup-def
     --add-dir <dir name>, add all archives in <dir_name> for existing backup definitions to catalogs
-    --backup-def|-d <backup definition>, restict another operation to work only on this backup definition
+    --backup-def|-d <backup definition>, restrict another operation to work only on this backup definition
     --add-specific-archive <archive name>, the short form without .<slice>.dar
     --remove-specific-archive <archive name>, the short form without .<slice>.dar
     --verbose|-v, output start up params and more
@@ -152,7 +152,7 @@ done
 source "${SCRIPTDIRPATH}/../conf/dar-backup.conf"
 source "${SCRIPTDIRPATH}/dar-util.sh"
 
-# sanity chekcs before starting
+# sanity checks before starting
 if [[ $ADD_DIR == "1" && $ARCHIVE_DIR_TO_ADD == "" ]]; then
     log_error "archive dir not given, exiting"
     exit 1

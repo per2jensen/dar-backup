@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# test adding achives to catalog for multiple different backup definitions
+# test adding archives to catalog for multiple different backup definitions
 
 TESTRESULT=0
 

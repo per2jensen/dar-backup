@@ -60,7 +60,7 @@ def test_restore_with_restoredir(setup_environment, env):
         shutil.rmtree(unique_dir)
         env.logger.info(f"test_restore_with_restoredir():  removed directory {unique_dir}")
 
-def test_restore_validatation(setup_environment, env):
+def test_restore_validation(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     try:
         result: CommandResult = run_backup_script("--full-backup", env)

@@ -60,7 +60,7 @@ def setup_logging(
         command_output_log_file (str): The path to the secondary log file for command outputs.
         log_level (str): The log level to use. Can be "info", "debug", or "trace". Defaults to "info".
         log_to_stdout (bool): If True, log messages will be printed to the console. Defaults to False.
-        logfile_max_bytes: max file size of a log file, defailt = 26214400.
+        logfile_max_bytes: max file size of a log file, default = 26214400.
         logfile_backup_count: max numbers of logs files, default = 5.
 
     Returns:
@@ -319,7 +319,7 @@ class RestoreError(Exception):
 
 class CommandResult(NamedTuple):
     """
-    The reult of the run_command() function.
+    The result of the run_command() function.
     """
     process: subprocess.CompletedProcess
     stdout: str

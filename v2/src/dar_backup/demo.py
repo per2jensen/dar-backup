@@ -14,7 +14,7 @@ See section 15 and section 16 in the supplied "LICENSE" file
 This script can be used to configure dar-backup on your system.
 It is non-destructive and will not overwrite any existing files or directories under --override is used.
 
-User can set ROOT_DIR, DIR_TO_BACKUP and BACKUP_DIR (destination for backups) via optins to override defaults.
+User can set ROOT_DIR, DIR_TO_BACKUP and BACKUP_DIR (destination for backups) via options to override defaults.
 """
 
 import argparse

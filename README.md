@@ -685,7 +685,7 @@ Tilde `~` and environment variables can be used in the paths for various file lo
 [MISC]
 LOGFILE_LOCATION=~/.dar-backup.log
 # optional parameters
-# LOGFILE_MAX_BYTES = 26214400  # 25 MB max file size is default, change as neeeded
+# LOGFILE_MAX_BYTES = 26214400  # 25 MB max file size is default, change as needed
 # LOGFILE_BACKUP_COUNT = 5      # 5 backup log files is default, change as needed
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 1
@@ -745,7 +745,7 @@ The default `.darrc` contents are as follows:
 
 verbose:
 
-# shows files teated due to filtering inclusion or no filtering at all
+# shows files treated due to filtering inclusion or no filtering at all
 
 # -vt
 
@@ -753,7 +753,7 @@ verbose:
 
 # -vs
 
-# shows diretory currently being processed
+# shows directory currently being processed
 # dar-backup logs `dar` stdout in real time, so directories being processed are now shown in the log file.
 # this is quite useful in long running jobs
  -vd 
@@ -898,7 +898,7 @@ You can use as many backup definitions as you need.
 # size of each slice in the archive
  --slice 7G
 
-# bypass directores marked as cache directories
+# bypass directories marked as cache directories
 # http://dar.linux.free.fr/doc/Features.html
 # https://bford.info/cachedir/
 --cache-directory-tagging
@@ -1189,7 +1189,7 @@ if there are problems with a slice, try to repair it like this:
 
 ### Par2 create redundancy files
 
-If you have merged archives, you will need to create the .par2 redundency files manually.
+If you have merged archives, you will need to create the .par2 redundancy files manually.
 Here is an example
 
 ```bash
@@ -1198,7 +1198,7 @@ for file in <some-archive>_FULL_yyyy-mm-dd.*; do
 done
 ```
 
-where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+where "c" is create, -r5 is 5% redundancy and -n1 is 1 redundancy file
 
 ## Points of interest
 
@@ -1569,7 +1569,7 @@ One backup definition per file
 
 ## Projects these scripts benefit from
 
- 1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
+ 1. [The wonderful dar archiver](https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)
