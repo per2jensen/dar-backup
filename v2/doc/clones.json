@@ -9,16 +9,16 @@
       "label": "r/linuxadmin"
     },
     {
-      "date": "2025-05-20",
-      "label": "Daily max: 124"
-    },
-    {
       "date": "2025-08-15",
       "label": "Stats failing ..."
+    },
+    {
+      "date": "2025-05-20",
+      "label": "Daily max: 124"
     }
   ],
-  "total_clones": 1704,
-  "unique_clones": 1024,
+  "total_clones": 1820,
+  "unique_clones": 1101,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -497,18 +497,18 @@
     },
     {
       "timestamp": "2025-08-07T00:00:00Z",
-      "count": 9,
-      "uniques": 6
+      "count": 2,
+      "uniques": 2
     },
     {
       "timestamp": "2025-08-08T00:00:00Z",
-      "count": 12,
-      "uniques": 7
+      "count": 5,
+      "uniques": 3
     },
     {
       "timestamp": "2025-08-09T00:00:00Z",
-      "count": 11,
-      "uniques": 8
+      "count": 3,
+      "uniques": 3
     },
     {
       "timestamp": "2025-08-10T00:00:00Z",
@@ -532,8 +532,48 @@
     },
     {
       "timestamp": "2025-08-14T00:00:00Z",
-      "count": 9,
+      "count": 10,
+      "uniques": 7
+    },
+    {
+      "timestamp": "2025-08-15T00:00:00Z",
+      "count": 11,
       "uniques": 6
+    },
+    {
+      "timestamp": "2025-08-16T00:00:00Z",
+      "count": 12,
+      "uniques": 9
+    },
+    {
+      "timestamp": "2025-08-17T00:00:00Z",
+      "count": 12,
+      "uniques": 9
+    },
+    {
+      "timestamp": "2025-08-18T00:00:00Z",
+      "count": 22,
+      "uniques": 15
+    },
+    {
+      "timestamp": "2025-08-19T00:00:00Z",
+      "count": 10,
+      "uniques": 7
+    },
+    {
+      "timestamp": "2025-08-20T00:00:00Z",
+      "count": 28,
+      "uniques": 19
+    },
+    {
+      "timestamp": "2025-08-21T00:00:00Z",
+      "count": 28,
+      "uniques": 16
+    },
+    {
+      "timestamp": "2025-08-22T00:00:00Z",
+      "count": 14,
+      "uniques": 8
     }
   ]
 }
