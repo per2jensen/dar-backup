@@ -1,6 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.8.4 - 2025-08-23
+
+Github link: [v2-beta-0.8.4](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.4/v2)
+
+### Added
+
+- Option '-D' only added when restoring FULL backups.
+  - A test case on [my dar-backup-image repo](https://github.com/per2jensen/dar-backup-image) does not delete a lone file in a directory if -D is used restoring from a DIFF.
+
 ## v2-beta-0.8.3 - 2025-08-23
 
 Github link: [v2-beta-0.8.3](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.3/v2)
