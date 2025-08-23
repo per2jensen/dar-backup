@@ -209,12 +209,14 @@ class CommandRunner:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             process.kill()
-            self.logger.error(f"Command timed out: {' '.join(cmd)}")
-            return CommandResult(-1, ''.join(stdout_lines), ''.join(stderr_lines))
+            log_msg = f"Command timed out after {timeout} seconds: {' '.join(cmd)}:\n"
+            self.logger.error(log_msg)
+            return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
         except Exception as e:
             stack = traceback.format_exc()
-            self.logger.error(f"Command execution failed: {' '.join(cmd)} with error: {e}")
-            return CommandResult(-1, ''.join(stdout_lines), ''.join(stderr_lines), stack)  
+            log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
+            self.logger.error(log_msg)
+            return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines), stack)  
 
         for t in threads:
             t.join()

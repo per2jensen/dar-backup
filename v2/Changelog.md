@@ -1,6 +1,16 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-beta-0.8.3 - 2025-08-23
+
+Github link: [v2-beta-0.8.3](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.3/v2)
+
+### Added
+
+- Dar-backup now deletes files if noted as "removed" in the archive catalog for DIFF and INCR backups.
+  - This ensures a restore of a FULL + DIFF + INCR matches the files in the source directories.
+  - Options '-wa' & '-/ Oo'  added to the restore command.
+
 ## v2-beta-0.8.2 - 2025-07-17
 
 Github link: [v2-beta-0.8.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.2/v2)

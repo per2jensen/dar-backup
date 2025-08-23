@@ -347,7 +347,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     results: List[tuple] = []
     try:
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
-        command = ['dar', '-x', backup_file, '--noconf', '-Q', '-D']
+        command = ['dar', '-x', backup_file, '-wa', '-/ Oo', '--noconf', '-Q', '-D']
         if restore_dir:
             if not os.path.exists(restore_dir):
                 os.makedirs(restore_dir)
