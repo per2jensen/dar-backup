@@ -9,7 +9,7 @@ echo tag to create release from: \""$1"\"
 
 TAG=$(grep -P -o "^v\d+\.\d+\.\d+$" <<< "$1")
 if [[ "$TAG" == "" ]]; then
-    echo "TAG \"$1\" does not match required tag patten, exiting"
+    echo "TAG \"$1\" does not match required tag pattern, exiting"
     exit 1
 fi
 if ! git show-ref --tags --quiet "$1"; then

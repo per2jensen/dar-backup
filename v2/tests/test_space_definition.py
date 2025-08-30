@@ -68,7 +68,7 @@ def test_backup_definition_with_space(setup_environment, env):
     Verify that the backups are correct when a backup
     definition name contains space(s)
 
-    Expects to be run in a virtal environment with dar-backup installed.
+    Expects to be run in a virtual environment with dar-backup installed.
     """
     env.file_sizes = {
         '100kB': 100 * 1024,

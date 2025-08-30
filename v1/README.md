@@ -30,7 +30,7 @@ This is the `bash` based **version 1** of `dar-backup`.
   - [restore test fails with exit code 4](#restore-test-exit-code-4) 
   - [restore test fails with exit code 5](#restore-test-exit-code-5) 
   - [par2 verification/repair](#par2-verification)</a>  
-  - [par2 create redundency files](#par2-redundency)</a> 
+  - [par2 create redundancy files](#par2-redundancy)</a> 
   - [performance tip](#performance-tip) 
   - [overview of archives](#overview-of-archives) 
   - [merge FULL with DIFF, creating new FULL](#merge-full-diff)
@@ -352,7 +352,7 @@ You can run a FULL, DIFF of INC backup on a specific backup definition using the
       # size of each slice in the archive
       --slice 4G
 
-      # bypass directores marked as cache directories
+      # bypass directories marked as cache directories
       # http://dar.linux.free.fr/doc/Features.html
       --cache-directory-tagging
 
@@ -419,7 +419,7 @@ You can run a FULL, DIFF of INC backup on a specific backup definition using the
   ````
   LOCAL_BACKUP_DIR=1
   ````
-  This way you will not need to use the --local-backup-dir option, it is set as a default for all scrips in the dar-backup package.
+  This way you will not need to use the --local-backup-dir option, it is set as a default for all scripts in the dar-backup package.
 
 ## <a id="run-a-single-definition"> how to run a single backup definition
   Backup definitions are placed in the backups.d/ directory. Each definition corresponds to a separate 'dar' archive.
@@ -603,15 +603,15 @@ All files are correct, repair is not required.
 ````
 
 
-## <a id="par2-redundency"></a> par2 create redundency files
-If you have merged archives, you will need to create the .par2 redundency files manually.
+## <a id="par2-redundancy"></a> par2 create redundancy files
+If you have merged archives, you will need to create the .par2 redundancy files manually.
 Here is an example
 ````  
 for file in <some-archive>_FULL_yyyy-mm-dd.*; do
   par2 c -r5 -n1 "$file"
 done
 ````  
-where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+where "c" is create, -r5 is 5% redundancy and -n1 is 1 redundancy file
   
 ## <a id="performance-tip"> performance tip
   This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
@@ -650,8 +650,8 @@ For convenience it also prints that total amount of storage used in the director
 The reason the total is bigger than the sum of slices, is that the total includes parity files.
 
 ## <a id="cleanup-usbdisk"> clean up a usbdisk for old archives
-  I copy dar achives from my server to different usbdisks, which are rotated out of my home.
-  That provides increased redundency and increases the chances of recovery in the event, that all computers are stolen or my home burns down to the ground.
+  I copy dar archives from my server to different usbdisks, which are rotated out of my home.
+  That provides increased redundancy and increases the chances of recovery in the event, that all computers are stolen or my home burns down to the ground.
 
   The cleanup script can be used to remove old archives located anywhere on the file system. It uses the DIFF_AGE and INC_AGE settings from the [configuration file](https://github.com/per2jensen/dar-backup/blob/main/templates/dar-backup.conf.template) when cleaning up.
 
@@ -697,7 +697,7 @@ The reason the total is bigger than the sum of slices, is that the total include
   # test the new FULL archive
   dar -t pj_homedir_FULL_2021-09-12
   ````
-  *Remember* to create new par2 redundency files, see the [redundency section](#par2-redundency).
+  *Remember* to create new par2 redundancy files, see the [redundancy section](#par2-redundancy).
 
 
   **Notes**
@@ -746,7 +746,7 @@ sudo mount "$BTRFS_FILE" "$BTRFS_MOUNT_POINT"
 sudo chmod 777 "$BTRFS_MOUNT_POINT"
 
 ATTRIBUTE_FILE="${BTRFS_MOUNT_POINT}/attribute-test"
-# set an attibute
+# set an attribute
 touch "$ATTRIBUTE_FILE"
 chattr +c "$ATTRIBUTE_FILE"
 
@@ -949,7 +949,7 @@ Any way, I followed [this link](https://support.mozilla.org/en-US/kb/profiles-wh
 
 # <a id="dependencies"> Projects this script benefits from
 
- 1. [The wonderful dar achiver](https://github.com/Edrusb/DAR)
+ 1. [The wonderful dar archiver](https://github.com/Edrusb/DAR)
  2. [The Parchive suite](https://github.com/Parchive)
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)

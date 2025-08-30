@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# test removing 1 entry of an specific achive from it's catalog
+# test removing 1 entry of an specific archive from it's catalog
 #   - multiple different backup definitions
 #   - a backup definition name containing spaces
 

@@ -82,7 +82,7 @@ Github link: [v2-beta-0.7.1](https://github.com/per2jensen/dar-backup/tree/v2-be
 - util.get_invocation_command_line() used to print command line.
 - Installer to setup directories and catalog databases as prescribed in config file.
 - Documentation on dar-backup --selection option improved.
-- README.md clean up, signing section now with multiple collabsible sections.
+- README.md clean up, signing section now with multiple collapsible sections.
 - Install instructions fixed after trial in fresh utuntu VM.
 - Small license display refac.
 - .deb package for Ubuntu can now be built (draft quality)

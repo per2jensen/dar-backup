@@ -151,7 +151,7 @@ setArchivePath () {
 
 # find newest archive for type
 # $1: type is FULL|DIFF|INC
-# $2: named varible to deliver result to
+# $2: named variable to deliver result to
 # "archive" is set to the archive name only, not including path
 findNewestForType () {
     local -n archive=$2
@@ -340,7 +340,7 @@ catalogOpsResult () {
 
 
 # do a dar backup
-# $1: a varible to pass back the result
+# $1: a variable to pass back the result
 darBackup () {
     local -n result=$1 # write result to to $1 variable
     local _result
@@ -366,7 +366,7 @@ darBackup () {
 
 # do a dar differential backup
 # $1: the archive to do the diff against (the -A option)
-# $2: the varible to store the result in (via a name reference, to avoid a global var)
+# $2: the variable to store the result in (via a name reference, to avoid a global var)
 darDiffBackup () {
     local -n result=$2 # reference to supplied argument
     local _result

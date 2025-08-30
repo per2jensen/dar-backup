@@ -15,7 +15,7 @@ I suspect a config somewhere is teasing me - temporary "fix" unti I figure out w
 
 ### --disable-libcurl-linking
 
-currently I get errors building dar if not issueing this config option
+currently I get errors building dar if not issuing this config option
 
 
 ## package prereg

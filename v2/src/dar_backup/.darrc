@@ -7,13 +7,13 @@
 #  remove comments belov for dar being more verbose
 verbose:
 
-# shows files teated due to filtering inclusion or no filtering at all
+# shows files treated due to filtering inclusion or no filtering at all
 # -vt
 
 # shows skipped files du to exclusion
 # -vs
 
-# shows diretory currently being processed
+# shows directory currently being processed
  -vd 
 
 # shows detailed messages, not related to files and directories

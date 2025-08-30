@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# test adding a specific achive to catalog
+# test adding a specific archive to catalog
 
 TESTRESULT=0
 CATALOG=TEST.catalog

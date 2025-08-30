@@ -8,7 +8,7 @@
 # list the FULL, DIFF, INC archives
 
 _RESULT="0"
-BACKUP_DEFINITON="A backup definition"
+BACKUP_DEFINITION="A backup definition"
 
 SCRIPTPATH=$(realpath "$0")
 SCRIPTDIRPATH=$(dirname "$SCRIPTPATH")
@@ -18,7 +18,7 @@ source "$SCRIPTDIRPATH"/setup.sh
 
 source "$TESTDIR"/conf/dar-backup.conf
 
-mv "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITON"
+mv "$TESTDIR"/backups.d/TEST  "$TESTDIR/backups.d/$BACKUP_DEFINITION"
 
 # create catalogs
 "$TESTDIR/bin/manager.sh" --create-catalog --local-backup-dir
@@ -29,13 +29,13 @@ fi
 
 
 # run the test
-"$TESTDIR"/bin/dar-backup.sh -d "$BACKUP_DEFINITON" --local-backup-dir
+"$TESTDIR"/bin/dar-backup.sh -d "$BACKUP_DEFINITION" --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
  
-dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITON"_FULL_"$DATE" > "$TESTDIR"/FULL-filelist.txt
+dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITION"_FULL_"$DATE" > "$TESTDIR"/FULL-filelist.txt
 echo "dar exit code: $?"
 
 
@@ -44,13 +44,13 @@ cp "$SCRIPTDIRPATH"/GREENLAND.JPEG "$TESTDIR/dirs/include this one/"
 cp "$SCRIPTDIRPATH"/GREENLAND.JPEG "$TESTDIR/dirs/exclude this one/"
 
 # run DIFF backup
-"$TESTDIR"/bin/dar-diff-backup.sh -d "$BACKUP_DEFINITON" --local-backup-dir
+"$TESTDIR"/bin/dar-diff-backup.sh -d "$BACKUP_DEFINITION" --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
 
-dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITON"_DIFF_"$DATE" > "$TESTDIR"/DIFF-filelist.txt
+dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITION"_DIFF_"$DATE" > "$TESTDIR"/DIFF-filelist.txt
 echo dar exit code: $?
 
 
@@ -58,13 +58,13 @@ echo dar exit code: $?
 touch "$TESTDIR/dirs/include this one/GREENLAND.JPEG"
 
 # run INCREMENTAL backup
-"$TESTDIR"/bin/dar-inc-backup.sh -d "$BACKUP_DEFINITON" --local-backup-dir
+"$TESTDIR"/bin/dar-inc-backup.sh -d "$BACKUP_DEFINITION" --local-backup-dir
 RESULT=$?
 if [[ $RESULT != "0" ]]; then
     _RESULT=1
 fi
 
-dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITON"_INC_"$DATE" > "$TESTDIR"/INC-filelist.txt
+dar -l  "$MOUNT_POINT"/"$BACKUP_DEFINITION"_INC_"$DATE" > "$TESTDIR"/INC-filelist.txt
 echo dar exit code: $?
 
 
@@ -89,7 +89,7 @@ echo RESULTS for FULL backup:
 # FULL backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
-checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
+checkExpectLog   "\[Saved\].*?dirs/compressible/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
 

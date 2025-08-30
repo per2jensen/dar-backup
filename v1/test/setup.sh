@@ -44,7 +44,7 @@ checkDontFindLog () {
 }
 
 # check given symbolic link path, verify it exists and is a link
-# $1: link paht
+# $1: link path
 checkExpectSymbolicLink () {
   if [[ -L "$1" ]]; then
     echo "ok Symbolic link: \"$1\" found"

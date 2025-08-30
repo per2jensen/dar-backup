@@ -18,7 +18,7 @@ MOUNT_POINT="@@ARCHIVE_DIR@@/archives"
 
 # not relevant if --local-backup-dir is used
 # which ssh config file to use when connecting to a server using sshfs
-# it could be the stadard ~/.ssh/config or this one ~/.ssh/dar-config if 
+# it could be the standard ~/.ssh/config or this one ~/.ssh/dar-config if 
 # a special ssh setup is used for script to mount a server directory
 SSH_CONFIG="~/.ssh/dar-config"
 

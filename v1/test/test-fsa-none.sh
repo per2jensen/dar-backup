@@ -4,10 +4,10 @@
 # setup a btrfs file system, backup and restore to another type of filesystem
 
 # setup a btrfs file system
-# set an attibute not supported on ext4 file systems
+# set an attribute not supported on ext4 file systems
 # run install.sh
 # run dar-backup.sh
-# restore the file with ext4 unsupprted attribute
+# restore the file with ext4 unsupported attribute
 # add file GREENLAND.JEP to "include dir" and to the "exclude dir"
 # run dar-diff-backup.sh
 # list the FULL & DIFF archives
@@ -51,7 +51,7 @@ MOUNT_POINT="$TESTDIR/archives"
 LOG_LOCATION="$MOUNT_POINT"
 
 ATTRIBUTE_FILE="${TESTDIR}/dirs/attribute-test"
-# set a non ext{2,3,4} attibute
+# set a non ext{2,3,4} attribute
 touch "$ATTRIBUTE_FILE"
 chattr +c "$ATTRIBUTE_FILE"
 
@@ -149,7 +149,7 @@ echo RESULTS for FULL backup:
 # FULL backup
 checkExpectLog   "\[Saved\].*?dirs/include this one/Abe.jpg"        "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/include this one/Krummi.JPG"     "$TESTDIR/FULL-filelist.txt"
-checkExpectLog   "\[Saved\].*?dirs/compressable/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
+checkExpectLog   "\[Saved\].*?dirs/compressible/Lorem Ipsum.txt"    "$TESTDIR/FULL-filelist.txt"
 checkExpectLog   "\[Saved\].*?dirs/attribute-test"                  "$TESTDIR/FULL-filelist.txt" 
 checkDontFindLog "include this one/GREENLAND.JPEG"                  "$TESTDIR/FULL-filelist.txt"
 checkDontFindLog "exclude this one/In exclude dir.txt"              "$TESTDIR/FULL-filelist.txt"
