@@ -36,6 +36,7 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
   - [Community](#community)
   - [Requirements](#requirements)
   - [dar-backup principles](#dar-backup-principles)
+    - [dar-backup overview](#dar-backup-overview)
     - [dar-backup](#dar-backup-1)
     - [cleanup](#cleanup)
     - [manager](#manager)
@@ -506,6 +507,10 @@ On Ubuntu, install the requirements this way:
 ```
 
 ## dar-backup principles
+
+### dar-backup overview
+
+![dar-backup overview](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview.svg)
 
 ### dar-backup
 
