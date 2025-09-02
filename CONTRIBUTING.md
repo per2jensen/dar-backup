@@ -55,7 +55,17 @@ This document outlines the basic rules and workflow for contributions.
 
 - Group related changes into a single commit when possible.
 
-**6. Pull request**
+**6. Licensing Requirements**
+
+All contributions to this project must be made under the GNU General Public License v3.0 or later (GPL-3.0+).
+
+To ensure clarity and legal compliance, contributors must explicitly confirm in writing (e.g., in the PR comment or description) that:
+
+“I am submitting this contribution under the terms of the GPL-3.0 or later.”
+
+Checking the license box in the PR template is **not sufficient** on its own.
+
+**7. Pull request**
 
 - Open a PR against the correct branch.
 
