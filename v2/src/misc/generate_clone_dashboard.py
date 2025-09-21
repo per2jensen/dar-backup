@@ -73,6 +73,7 @@ from datetime import datetime
 
 CLONES_FILE = "v2/doc/clones.json"
 OUTPUT_PNG =  "v2/doc/weekly_clones.png"
+NUM_WEEKS = 16  # Number of weeks to display on the chart
 
 # --- Load and validate JSON ---
 try:
@@ -144,7 +145,7 @@ weekly_data['uniques_avg'] = weekly_data['uniques'].rolling(window=3, min_period
 
 # Shift week_start to the *reporting date* (following Monday)
 weekly_data['report_date'] = weekly_data['week_start'] + pd.Timedelta(days=7)
-weekly_data = weekly_data.sort_values('report_date').tail(12)
+weekly_data = weekly_data.sort_values('report_date').tail(NUM_WEEKS)
 
 # --- Validate and parse annotations ---
 annotations = clones_data.get("annotations", [])
@@ -162,7 +163,7 @@ else:
             print(f"⚠️  Annotation {i} missing 'date' or 'label' — skipping.")
             continue
         try:
-            ann_date = pd.to_datetime(ann["date"], utc=True)
+            ann_date = pd.to_datetime(ann["date"], utc=True).normalize()
             if ann_date > now:
                 print(f"⚠️  Annotation {i} has future date ({ann['date']}) — skipping.")
                 continue
@@ -173,12 +174,25 @@ else:
             print(f"⚠️  Annotation {i} label is not a string — skipping.")
             continue
 
-        valid_annotations.append({
-            "date": ann_date,
-            "label": ann["label"]
-        })
+        valid_annotations.append({"date": ann_date, "label": ann["label"]})
 
 annotation_df = pd.DataFrame(valid_annotations).sort_values("date")
+
+# --- Keep only annotations within the plotted time window ---
+if weekly_data.empty:
+    print("No weekly data after filtering. Skipping annotations.")
+    annotation_df = pd.DataFrame(columns=["date", "label"])
+else:
+    plot_start = weekly_data["report_date"].min().normalize()
+    plot_end   = weekly_data["report_date"].max().normalize()
+
+    if not annotation_df.empty:
+        in_window = (annotation_df["date"] >= plot_start) & (annotation_df["date"] <= plot_end)
+        dropped = int((~in_window).sum())
+        if dropped:
+            print(f"ℹ️  Skipping {dropped} annotation(s) outside [{plot_start.date()} .. {plot_end.date()}].")
+        annotation_df = annotation_df.loc[in_window].reset_index(drop=True)
+
 
 # --- Plotting ---
 fig, ax = plt.subplots(figsize=(10, 5))
