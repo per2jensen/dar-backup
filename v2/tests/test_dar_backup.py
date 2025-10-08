@@ -11,6 +11,8 @@ from dar_backup.dar_backup import restore_backup, RestoreError
 import dar_backup.dar_backup as db
 from pathlib import Path 
 
+
+
 def test_verify_filecmp_mismatch_returns_false(env):
     args = SimpleNamespace(
         verbose=False,
@@ -721,4 +723,297 @@ def test_find_files_within_min_max_range(env):
     assert "large.txt" not in result
     assert "huge.txt" not in result
     assert len(result) == 2
+
+
+
+####################################################
+# 2025-10-08
+
+
+# tests/test_dar_backup.py
+import os
+import pytest
+import subprocess
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import dar_backup.dar_backup as db
+from dar_backup.util import BackupError
+
+
+# 1) generic_backup(): inner try/except when runner raises a generic Exception
+#    Improvement #4: parametrize over FULL/DIFF/INCR
+@pytest.mark.parametrize("btype", ["FULL", "DIFF", "INCR"])
+def test_generic_backup_runner_exception_raises(env, tmp_path, btype):
+    config = SimpleNamespace(
+        logfile_location=str(tmp_path / "dar-backup.log"),
+        command_timeout_secs=5,
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+    darrc = str(tmp_path / "dummy_darrc")
+    os.makedirs(tmp_path, exist_ok=True)
+    open(darrc, "w").close()
+
+    class DummyThread:
+        def __init__(self, *a, **k): pass
+        def start(self): pass
+        def join(self): pass
+
+    with patch.object(db, "threading") as mock_threading, \
+         patch.object(db, "show_log_driven_bar"), \
+         patch.object(db, "get_logger") as mock_get_logger, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_threading.Thread.side_effect = lambda *a, **k: DummyThread()
+        mock_get_logger.return_value = MagicMock(info=MagicMock())
+
+        with patch.object(db, "runner") as mock_runner:
+            mock_runner.run.side_effect = Exception("boom")
+            with pytest.raises(Exception, match="boom"):
+                db.generic_backup(
+                    type=btype,
+                    command=["dar", "-c", "archive", "-R", "/"],
+                    backup_file="archive.1.dar",
+                    backup_definition=str(tmp_path / "backup.d/photos"),
+                    config_settings=config,
+                    args=args,
+                    darrc=darrc,
+                )
+
+        # Improvement #4 add-on: ensure progress thread constructed
+        assert mock_threading.Thread.call_count == 1
+
+
+# 2) generic_backup(): outer handler wraps CalledProcessError -> BackupError
+#    Improvement #4: parametrize over FULL/DIFF/INCR
+@pytest.mark.parametrize("btype", ["FULL", "DIFF", "INCR"])
+def test_generic_backup_calledprocesserror_wrapped(env, tmp_path, btype):
+    config = SimpleNamespace(
+        logfile_location=str(tmp_path / "dar-backup.log"),
+        command_timeout_secs=5,
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+    darrc = str(tmp_path / "dummy_darrc")
+    open(darrc, "w").close()
+
+    class DummyThread:
+        def __init__(self, *a, **k): pass
+        def start(self): pass
+        def join(self): pass
+
+    with patch.object(db, "threading") as mock_threading, \
+         patch.object(db, "show_log_driven_bar"), \
+         patch.object(db, "get_logger") as mock_get_logger, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_threading.Thread.side_effect = lambda *a, **k: DummyThread()
+        mock_get_logger.return_value = MagicMock(info=MagicMock())
+
+        with patch.object(db, "runner") as mock_runner:
+            mock_runner.run.side_effect = subprocess.CalledProcessError(
+                1, ["dar", "-c", "archive"]
+            )
+            with pytest.raises(BackupError) as exc:
+                db.generic_backup(
+                    type=btype,
+                    command=["dar", "-c", "archive", "-R", "/"],
+                    backup_file="archive.1.dar",
+                    backup_definition=str(tmp_path / "backup.d/photos"),
+                    config_settings=config,
+                    args=args,
+                    darrc=darrc,
+                )
+            assert "Backup command failed" in str(exc.value)
+
+        # Improvement #4 add-on: ensure progress thread constructed
+        assert mock_threading.Thread.call_count == 1
+
+
+# 3) restore_backup(): selection handling and darrc propagation
+#    Improvement #1: assert -B darrc is in command
+#    Improvement #2: cover selection present vs None with parametrization
+@pytest.mark.parametrize(
+    "selection, expect_tokens",
+    [
+        ('--selections some/file.txt --selections "dir with spaces/"',
+         ["--selections", "some/file.txt", "dir with spaces/"]),
+        (None, []),
+    ],
+)
+def test_restore_backup_selection_and_darrc(tmp_path, selection, expect_tokens):
+    config = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        command_timeout_secs=5,
+    )
+    backup_name = "backup_FULL_20240101"
+    darrc = str(tmp_path / "dummy_darrc")
+    open(darrc, "w").close()
+    restore_dir = tmp_path / "restore"
+    (tmp_path / backup_name).touch()  # simulate existing archive
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        db.restore_backup(backup_name, config, str(restore_dir), darrc, selection)
+
+        called_cmd = mock_runner.run.call_args[0][0]
+        # -R restore target present
+        assert "-R" in called_cmd and str(restore_dir) in called_cmd
+        # Improvement #1: darrc must be passed with -B
+        assert "-B" in called_cmd and darrc in called_cmd
+
+        # Improvement #2: selection tokens when provided, absent when None
+        for tok in expect_tokens:
+            assert tok in called_cmd
+        if selection is None:
+            assert "--selections" not in called_cmd
+
+
+# 4) print_markdown(): missing file exits with code 1 and prints error
+def test_print_markdown_missing_file_exits(capsys, tmp_path):
+    missing = str(tmp_path / "NO_SUCH_FILE.md")
+    with pytest.raises(SystemExit) as exc:
+        db.print_markdown(missing, pretty=False)
+    assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert "File not found" in out
+
+
+# 5) get_backed_up_files(): error mapping
+#    Improvement #3: parametrize generic Exception -> RuntimeError, and CalledProcessError -> BackupError
+@pytest.mark.parametrize(
+    "side_effect, expected_exc, match",
+    [
+        (subprocess.CalledProcessError(1, "dar"), BackupError, r"Error listing backed up files"),
+        (Exception("explode"), RuntimeError, r"Unexpected error listing backed up files.*dummy_backup"),
+    ],
+)
+def test_get_backed_up_files_error_mapping(tmp_path, side_effect, expected_exc, match):
+    backup_name = "dummy_backup"
+    backup_dir = str(tmp_path)
+    (tmp_path / backup_name).touch()
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.side_effect = side_effect
+        with pytest.raises(expected_exc, match=match):
+            db.get_backed_up_files(backup_name, backup_dir)
+
+
+
+###############################################
+
+# --- get_backed_up_files -----------------------------------------------------
+
+def test_get_backed_up_files_success_parses_xml(tmp_path):
+    """Success path: returns parsed (path, size) tuples from dar -Txml output."""
+    backup_name = "dummy_backup"
+    backup_dir = str(tmp_path)
+    (tmp_path / backup_name).touch()
+
+    # Minimal XML that matches find_files_with_paths() expectations
+    xml = """<?xml version="1.0"?>
+<DARArchive>
+  <Directory name="dirA">
+    <File name="a.txt" size="123"/>
+    <Directory name="nested">
+      <File name="b.bin" size="456"/>
+    </Directory>
+  </Directory>
+  <File name="root.log" size="78"/>
+</DARArchive>
+"""
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout=xml, stderr="")
+        files = db.get_backed_up_files(backup_name, backup_dir)
+
+    # Expect normalized paths with sizes as strings
+    # Order should match traversal: dirA/a.txt, dirA/nested/b.bin, root.log
+    assert ("dirA/a.txt", "123") in files
+    assert ("dirA/nested/b.bin", "456") in files
+    assert ("root.log", "78") in files
+    assert len(files) == 3
+
+
+# --- generate_par2_files -----------------------------------------------------
+
+def test_generate_par2_files_success_invokes_par2(tmp_path):
+    # Arrange: create two DAR slices the function will discover
+    (tmp_path / "archive.1.dar").write_text("")
+    (tmp_path / "archive.2.dar").write_text("")
+    backup_file = "archive"  # IMPORTANT: basename used to match "archive.<n>.dar"
+    cfg = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        error_correction_percent=10,
+        command_timeout_secs=5,
+        logfile_location=str(tmp_path / "dar-backup.log"),
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        db.generate_par2_files(backup_file, cfg, args)
+
+        # Two slices -> two calls
+        assert mock_runner.run.call_count == 2
+        # Commands should include -r10 and the slice path
+        called_cmds = [c[0][0] for c in mock_runner.run.call_args_list]
+        assert any("-r10" in " ".join(map(str, cmd)) for cmd in called_cmds)
+        assert any("archive.1.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
+        assert any("archive.2.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
+
+
+def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):
+    # Arrange: one slice present so the function actually calls runner.run
+    (tmp_path / "archive.1.dar").write_text("")
+    backup_file = "archive"
+    cfg = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        error_correction_percent=5,
+        command_timeout_secs=5,
+        logfile_location=str(tmp_path / "dar-backup.log"),
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.side_effect = subprocess.CalledProcessError(1, ["par2", "create"])
+        with pytest.raises(subprocess.CalledProcessError):
+            db.generate_par2_files(backup_file, cfg, args)
+
+
+# --- print_markdown ----------------------------------------------------------
+
+def test_print_markdown_from_string_pretty_false(capsys):
+    """from_string=True + pretty=False prints raw content to stdout."""
+    content = "# Title\nText"
+    db.print_markdown(content, from_string=True, pretty=False)
+    out = capsys.readouterr().out
+    assert "# Title" in out
+    assert "Text" in out
+
+
+def test_print_markdown_pretty_falls_back_when_rich_missing(tmp_path, monkeypatch, capsys):
+    """pretty=True but importing rich fails -> prints fallback notice + content."""
+    md_path = tmp_path / "note.md"
+    md_path.write_text("# Hello\nWorld", encoding="utf-8")
+
+    # Force ImportError for rich.* imports
+    real_import = __import__
+
+    def blocked_import(name, *a, **k):
+        if name.startswith("rich"):
+            raise ImportError("no rich")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr("builtins.__import__", blocked_import)
+    db.print_markdown(str(md_path), from_string=False, pretty=True)
+
+    out = capsys.readouterr().out
+    assert "rich" in out.lower()  # fallback message mentions rich
+    assert "Hello" in out and "World" in out
+
+
 

@@ -89,7 +89,7 @@ tar --exclude='*/__pycache__' \
   MANIFEST.in \
   pytest-cov.sh \
   pytest.ini \
-  requirements-dev.tx
+  requirements-dev.txt
 ```
 
 ## build dar

@@ -7,6 +7,164 @@ from dar_backup.manager import get_db_dir
 from dar_backup.util import expand_path
 
 
+
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch, MagicMock
+
+import dar_backup.installer as installer
+
+
+# --- Helpers -----------------------------------------------------------------
+
+class DummyCfg:
+    def __init__(self, backup_dir, test_restore_dir, backup_d_dir):
+        self.backup_dir = backup_dir
+        self.test_restore_dir = test_restore_dir
+        self.backup_d_dir = backup_d_dir
+        # required by run_installer()
+        self.logfile_location = os.path.join(backup_dir, "dar-backup.log")
+        self.logfile_max_bytes = 1024 * 1024
+        self.logfile_no_count = 3
+
+def _patch_min_logging_and_runner():
+    # prevent real logging/runner init noise
+    return patch.multiple(
+        installer,
+        setup_logging=MagicMock(),
+        get_logger=MagicMock(return_value=MagicMock()),
+        CommandRunner=MagicMock(return_value=MagicMock()),
+    )
+
+
+# --- run_installer() core flows ----------------------------------------------
+
+def test_run_installer_creates_required_dirs(tmp_path, capsys):
+    cfg_file = tmp_path / "dar-backup.conf"
+    cfg_file.write_text("dummy", encoding="utf-8")
+    backup_dir = tmp_path / "backups"
+    test_restore_dir = tmp_path / "restore"
+    backup_d_dir = tmp_path / "backup.d"
+    manager_db_dir = tmp_path / "dbdir"
+
+    dummy_cfg = DummyCfg(str(backup_dir), str(test_restore_dir), str(backup_d_dir))
+
+    with patch.object(installer, "ConfigSettings", return_value=dummy_cfg), \
+         patch.object(installer, "get_db_dir", return_value=str(manager_db_dir)), \
+         patch.object(installer, "expand_path", side_effect=lambda p: p), \
+         patch.object(installer, "is_safe_path", return_value=True), \
+         _patch_min_logging_and_runner():
+        installer.run_installer(str(cfg_file), create_db_flag=False)
+
+    # All required dirs are created
+    for p in (backup_dir, test_restore_dir, backup_d_dir, manager_db_dir):
+        assert p.exists() and p.is_dir()
+
+
+def test_run_installer_with_create_db_prints_results(tmp_path, capsys):
+    cfg_file = tmp_path / "dar-backup.conf"
+    cfg_file.write_text("dummy", encoding="utf-8")
+    backup_d_dir = tmp_path / "backup.d"
+    backup_d_dir.mkdir(parents=True)
+    (backup_d_dir / "photos").write_text("", encoding="utf-8")
+    (backup_d_dir / "docs").write_text("", encoding="utf-8")
+
+    dummy_cfg = DummyCfg(str(tmp_path / "backups"), str(tmp_path / "restore"), str(backup_d_dir))
+
+    def fake_create_db(name, *_a, **_k):
+        return 0 if name == "photos" else 1
+
+    with patch.object(installer, "ConfigSettings", return_value=dummy_cfg), \
+         patch.object(installer, "get_db_dir", return_value=str(tmp_path / "db")), \
+         patch.object(installer, "expand_path", side_effect=lambda p: p), \
+         patch.object(installer, "is_safe_path", return_value=True), \
+         patch.object(installer, "create_db", side_effect=fake_create_db), \
+         _patch_min_logging_and_runner():
+        installer.run_installer(str(cfg_file), create_db_flag=True)
+
+    out = capsys.readouterr().out
+    assert "Creating catalog for: photos" in out
+    assert "✔️  Catalog created" in out
+    assert "Creating catalog for: docs" in out
+    assert "❌ Failed to create catalog" in out
+
+
+def test_run_installer_blocks_unsafe_path(tmp_path):
+    cfg_file = tmp_path / "dar-backup.conf"
+    cfg_file.write_text("dummy", encoding="utf-8")
+    dummy_cfg = DummyCfg(str(tmp_path / "backups"), str(tmp_path / "restore"), str(tmp_path / "backup.d"))
+
+    with patch.object(installer, "ConfigSettings", return_value=dummy_cfg), \
+         patch.object(installer, "get_db_dir", return_value=str(tmp_path / "db")), \
+         patch.object(installer, "expand_path", side_effect=lambda p: p), \
+         patch.object(installer, "is_safe_path", return_value=False), \
+         _patch_min_logging_and_runner():
+        with pytest.raises(ValueError, match="Unsafe path detected"):
+            installer.run_installer(str(cfg_file), create_db_flag=False)
+
+
+# --- main() CLI branches -----------------------------------------------------
+
+def test_installer_main_missing_config_prints_and_returns(monkeypatch, tmp_path, capsys):
+    # Nonexistent file
+    missing = tmp_path / "no.conf"
+    monkeypatch.setattr(sys, "argv", ["installer", "--config", str(missing)])
+
+    # Avoid extra side effects of autocompletion checks
+    with patch.object(installer, "install_autocompletion"), \
+         patch.object(installer, "uninstall_autocompletion"):
+        installer.main()
+
+    out = capsys.readouterr().out
+    assert "Config file does not exist" in out
+
+
+# --- autocompletion install/uninstall ----------------------------------------
+
+def test_install_autocompletion_appends_and_is_idempotent(monkeypatch, tmp_path):
+    # Fake home and shell
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.write_text("# initial\n", encoding="utf-8")
+
+    # First install
+    installer.install_autocompletion()
+    content1 = rc.read_text(encoding="utf-8")
+    assert "dar-backup" in content1  # marker block present
+
+    # Second install should not duplicate
+    installer.install_autocompletion()
+    content2 = rc.read_text(encoding="utf-8")
+    assert content2.count("dar-backup") == content1.count("dar-backup")
+
+
+def test_uninstall_autocompletion_removes_block(monkeypatch, tmp_path):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.write_text("# initial\n", encoding="utf-8")
+
+    # Install then uninstall
+    installer.install_autocompletion()
+    assert "dar-backup" in rc.read_text(encoding="utf-8")
+
+    installer.uninstall_autocompletion()
+    text = rc.read_text(encoding="utf-8")
+    assert "dar-backup" not in text
+
+
+
+
+
+
+
+###########################################
+
+
 @pytest.mark.parametrize("use_manager_db_dir", [False, True])
 def test_installer_creates_catalog(setup_environment, env, use_manager_db_dir):
     """
