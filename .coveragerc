@@ -1,0 +1,21 @@
+# .coveragerc
+[run]
+branch = True
+source = src
+relative_files = True
+data_file = .coverage
+
+[paths]
+source =
+    src
+    v2/src
+    */work/*/*/src
+    */runner/*/work/*/*/src
+    */home/runner/work/*/*/src
+    */home/pj/git/dar-backup/*/src
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 2
+

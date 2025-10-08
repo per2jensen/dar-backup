@@ -46,14 +46,15 @@ jobs:
           ./build.sh
 
       - name: Run pytest with coverage
+        working-directory: v2
         run: |
-          cd $GITHUB_WORKSPACE/v2
           . venv*/bin/activate  # activate the newly created venv (venv or venv-YYYYMMDD-N)
           coverage erase
-          pytest --rootdir=. --cov=src/dar_backup --cov-report=term --cov-report=xml:coverage.xml tests/
-
+          pytest --cov=src --cov-config=.coveragerc \
+                 --cov-report=term --cov-report=xml:coverage.xml
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos
           files: ./v2/coverage.xml
+          verbose: true
