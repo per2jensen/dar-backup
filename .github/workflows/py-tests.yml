@@ -48,10 +48,15 @@ jobs:
       - name: Run pytest with coverage
         working-directory: v2
         run: |
-          . venv*/bin/activate  # activate the newly created venv (venv or venv-YYYYMMDD-N)
+          . venv*/bin/activate
+          export COVERAGE_PROCESS_START=.coveragerc
           coverage erase
           pytest --cov=src --cov-config=.coveragerc \
-                 --cov-report=term --cov-report=xml:coverage.xml
+                --cov-report=term --cov-report=xml:coverage.xml
+          # collect child data files from subprocesses
+          coverage combine || true
+          coverage xml -i
+
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
         with:

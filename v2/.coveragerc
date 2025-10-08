@@ -1,13 +1,21 @@
 [run]
-source = src/dar_backup
-concurrency = thread
+branch = True
+source = src
+relative_files = True
+parallel = True
+concurrency = multiprocessing,thread
+# ensure subprocesses obey this file
+# (env var COVERAGE_PROCESS_START will point here)
 
 [paths]
 source =
-    src/dar_backup
-    */src/dar_backup  # normalize duplicate paths (helps remove /tmp ones)
+    src
+    v2/src
+    */work/*/*/src
+    */runner/*/work/*/*/src
 
 [report]
-omit =
-    */site-packages/*
-    /tmp/*
+show_missing = True
+skip_covered = True
+precision = 2
+

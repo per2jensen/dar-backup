@@ -1,0 +1,9 @@
+# codecov.yml (repo root)
+fixes:
+  - "v2/::"
+  - "*/work/*/*/::"
+  - "*/runner/*/work/*/*/::"
+ignore:
+  - "tests/**"
+  - "venv/**"
+
