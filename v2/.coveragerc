@@ -4,18 +4,3 @@ source = src
 relative_files = True
 parallel = True
 concurrency = multiprocessing,thread
-# ensure subprocesses obey this file
-# (env var COVERAGE_PROCESS_START will point here)
-
-[paths]
-source =
-    src
-    v2/src
-    */work/*/*/src
-    */runner/*/work/*/*/src
-
-[report]
-show_missing = True
-skip_covered = True
-precision = 2
-

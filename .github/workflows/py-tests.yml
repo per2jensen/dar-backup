@@ -51,15 +51,11 @@ jobs:
         working-directory: v2
         run: |
           . venv*/bin/activate
-          # absolute path so children find the rcfile
           export COVERAGE_PROCESS_START="$PWD/.coveragerc"
-          # make repo root importable so 'sitecustomize' auto-imports in children
           export PYTHONPATH="$PWD:$PYTHONPATH"
-          # install sitecustomize into the venv's site-packages as a hard guarantee
           python - <<'PY'
           import site, shutil, pathlib
-          sp = next(p for p in site.getsitepackages() if 'site-packages' in p)
-          dst = pathlib.Path(sp) / 'sitecustomize.py'
+          dst = pathlib.Path(next(p for p in site.getsitepackages() if 'site-packages' in p))/'sitecustomize.py'
           shutil.copyfile('sitecustomize.py', dst)
           print("installed:", dst)
           PY
@@ -71,8 +67,8 @@ jobs:
           export COVERAGE_PROCESS_START="$PWD/.coveragerc"
           export PYTHONPATH="$PWD:$PYTHONPATH"
           coverage erase
-          pytest --cov=src --cov-config=.coveragerc \
-                --cov-report=term --cov-report=xml:coverage.xml
+          python -c "import sitecustomize; print('sitecustomize OK')"
+          pytest --cov=src --cov-config=.coveragerc --cov-report=term --cov-report=xml:coverage.xml
           coverage combine || true
           coverage xml -i
 
