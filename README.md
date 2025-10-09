@@ -20,6 +20,8 @@ This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-bac
 
 `dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using `dar` and `par2`. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
 
+Version **1.0.0** was reached on October 9, 2025.
+
 ## Table of Contents
 
 - [`dar-backup`](#dar-backup)
@@ -374,10 +376,14 @@ PAR2 enabled:     True
 > Checkout the [reference section](#reference)
 
 ## Status
+**1.0.0 milestone reached**
+
+October 9, 2025, I have promoted version 0.8.4 --> **1.0.0** after having added more test cases and seen no issues with 0.8.4.
+
+As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
 
 As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
 
-As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
 
 ### GPG Signing key
 
@@ -1603,25 +1609,32 @@ Running
 pytest --cov=dar_backup tests/
 ```
 
-Results for a version 0.6.19 in this report:
+Results for version 1.0.0 in this report:
 
 ```text
-Name                                   Stmts   Miss  Cover
-----------------------------------------------------------
-src/dar_backup/__about__.py                1      0   100%
-src/dar_backup/__init__.py                 0      0   100%
-src/dar_backup/clean_log.py               68     13    81%
-src/dar_backup/cleanup.py                196     17    91%
-src/dar_backup/command_runner.py          80      3    96%
-src/dar_backup/config_settings.py         66      7    89%
-src/dar_backup/dar_backup.py             539     56    90%
-src/dar_backup/dar_backup_systemd.py      56      7    88%
-src/dar_backup/installer.py               59      6    90%
-src/dar_backup/manager.py                403     54    87%
-src/dar_backup/rich_progress.py           70      7    90%
-src/dar_backup/util.py                   231     24    90%
-----------------------------------------------------------
-TOTAL                                   1769    194    89%
+====================================== tests coverage ======================================
+_____________________ coverage: platform linux, python 3.12.3-final-0 ______________________
+
+Name                                   Stmts   Miss Branch BrPart  Cover
+------------------------------------------------------------------------
+src/dar_backup/__about__.py                2      0      0      0   100%
+src/dar_backup/__init__.py                 0      0      0      0   100%
+src/dar_backup/clean_log.py               76     15     40      7    81%
+src/dar_backup/cleanup.py                203     16     66      7    91%
+src/dar_backup/command_runner.py         129     16     26      5    86%
+src/dar_backup/config_settings.py         73      3     18      1    96%
+src/dar_backup/dar_backup.py             551     28    180     21    93%
+src/dar_backup/dar_backup_systemd.py      56      7     10      2    86%
+src/dar_backup/demo.py                    92     20     26      6    75%
+src/dar_backup/exceptions.py               2      0      0      0   100%
+src/dar_backup/installer.py              107     14     46      9    82%
+src/dar_backup/manager.py                427     42    152     15    90%
+src/dar_backup/rich_progress.py           70      7     30      4    89%
+src/dar_backup/util.py                   339     41     88     21    85%
+------------------------------------------------------------------------
+TOTAL                                   2127    209    682     98    89%
+Coverage XML written to file coverage.xml
+======================== 257 passed, 1 skipped in 223.21s (0:03:43) ========================
 ```
 
 ### Dar-backup options

@@ -1,6 +1,16 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.0.0 - 2025-10-09
+
+Github link: [v2-1.0.0](https://github.com/per2jensen/dar-backup/tree/v2-1.0.0/v2)
+
+### Added
+
+- Version 2 **1.0.0** declared
+- A bunch of test cases
+- Codecov config changes
+
 ## v2-beta-0.8.4 - 2025-08-23
 
 Github link: [v2-beta-0.8.4](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.4/v2)
