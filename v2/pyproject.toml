@@ -68,7 +68,7 @@ readme-content-type = "text/markdown"
 license = { file="LICENSE", name="GPL-3.0-or-later" }
 requires-python = ">=3.9"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
     'Programming Language :: Python :: 3.9',
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
