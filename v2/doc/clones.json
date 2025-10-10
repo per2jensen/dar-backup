@@ -15,6 +15,10 @@
     {
       "date": "2025-05-20",
       "label": "Daily max: 124"
+    },
+    {
+      "date": "2025-10-09",
+      "label": "v1.0.0 release"
     }
   ],
   "total_clones": 2551,
