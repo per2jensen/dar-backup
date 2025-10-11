@@ -13,16 +13,16 @@
       "label": "Stats failing ..."
     },
     {
-      "date": "2025-05-20",
-      "label": "Daily max: 124"
-    },
-    {
       "date": "2025-10-09",
       "label": "v1.0.0 release"
+    },
+    {
+      "date": "2025-05-20",
+      "label": "Daily max: 124"
     }
   ],
-  "total_clones": 2551,
-  "unique_clones": 1531,
+  "total_clones": 2580,
+  "unique_clones": 1548,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -741,7 +741,7 @@
     },
     {
       "timestamp": "2025-09-27T00:00:00Z",
-      "count": 13,
+      "count": 12,
       "uniques": 8
     },
     {
@@ -803,6 +803,11 @@
       "timestamp": "2025-10-09T00:00:00Z",
       "count": 67,
       "uniques": 27
+    },
+    {
+      "timestamp": "2025-10-10T00:00:00Z",
+      "count": 30,
+      "uniques": 17
     }
   ]
 }
