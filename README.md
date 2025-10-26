@@ -1762,8 +1762,8 @@ Create directories:
 - ~/.config/dar-backup/
   - ~/.config/dar-backup/backup.d/
 - ~/dar-backup/
-  - ~/dar-backup/backups
-  - ~/dar-backup/restore
+  - ~/dar-backup/backups/
+  - ~/dar-backup/restore/
 
 Sets up demo config files:
 
