@@ -225,7 +225,6 @@ def main():
 
     start_msgs.append((f"{show_scriptname()}:", about.__version__))
 
-    logger.info(f"START TIME: {start_time}")
     logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
