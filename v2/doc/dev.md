@@ -113,14 +113,20 @@ Primary key fingerprint: 1BE4 7606 A74F 178C 7328  43B0 5F64 5B19 16D5 6546
 ```
 
 ## build
-
+export DAR_VERSION=2.7.17
 This worked for dar version 2.7.17 on ubuntu 24.04
 
 export SRC_CODE=/some/dir
-export DAR_DIR=$HOME/.local/dar-2.7.18
+export DAR_DIR=$HOME/.local/dar-${DAR_VERSION}
 
 ```` bash
-# I probably miss some libraries here, as they  were already installed
+apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
+      build-essential autoconf automake libtool pkg-config binutils \
+      libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \
+      librsync-dev libcurl4-gnutls-dev libargon2-dev \
+      bzip2 zlib1g-dev libbz2-dev liblzo2-dev liblzma-dev libzstd-dev liblz4-dev \
+      groff doxygen graphviz upx
 sudo apt-get install libkrb5-dev 
 sudo apt-get install libgcrypt-dev libgpgme-dev libext2fs-dev  libthreadar-dev  librsync-dev  libcurl4-gnutls-dev
 cd "$SRC_CODE"
@@ -130,12 +136,15 @@ make clean distclean
 ./configure --prefix="$DAR_DIR" LDFLAGS="-lgssapi_krb5"
 make
 make install-strip
+
+rm $HOME/.local/dar  # remove link
+ln -s $HOME/.local/dar-${DAR_VERSION} $HOME/.local/dar
 ````
 
 This gives:
 
 ```` code
-$HOME/.local/dar/bin/ --version
+$HOME/.local/dar/bin/dar --version
 
  dar version 2.7.17, Copyright (C) 2002-2025 Denis Corbin
    Long options support         : YES
