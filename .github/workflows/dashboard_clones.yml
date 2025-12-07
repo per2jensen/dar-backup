@@ -26,7 +26,7 @@ jobs:
         run: pip install matplotlib pandas
 
       - name: Generate dashboard image
-        run: python v2/src/misc/generate_clone_dashboard.py
+        run: PYTHONPATH=src python3 src/clonepulse/generate_clone_dashboard.py --user per2jensen --repo dar-backup
 
       - name: Commit dashboard update
         run: |

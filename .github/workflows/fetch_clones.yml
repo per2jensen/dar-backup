@@ -28,7 +28,7 @@ jobs:
       - name: Run fetch_clones.py
         env:
           TOKEN: ${{ secrets.DAR_BACKUP_METRICS }}
-        run: python v2/src/misc/fetch_clones.py
+        run: PYTHONPARH=src python3 src/clonepulse/fetch_clones.py
 
       - name: Show Git status (debug)
         run: |
@@ -50,7 +50,7 @@ jobs:
           # Check for changes before committing
           if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
             echo "Changes detected, committing..."
-            git add $(find v2/doc -type f \( -name '*.json' -o -name '*.png' -o -name 'milestone_*.txt' \)) || true
+            git add $(find clonepulse -type f \( -name '*.json' -o -name '*.png' -o -name 'milestone_*.txt' \)) || true
             git commit -m "Update clone data on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
             # Push changes — if it fails, likely due to race; next run will retry
             git push || echo "⚠️ Push failed (likely a fast-forward conflict). Will retry next time."
