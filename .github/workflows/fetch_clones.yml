@@ -28,7 +28,9 @@ jobs:
       - name: Run fetch_clones.py
         env:
           TOKEN: ${{ secrets.DAR_BACKUP_METRICS }}
-        run: PYTHONPARH=src python3 src/clonepulse/fetch_clones.py
+        run: PYTHONPATH=src python src/clonepulse/fetch_clones.py \
+            --user per2jensen \
+            --repo clonepulse
 
       - name: Show Git status (debug)
         run: |
