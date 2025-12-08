@@ -33,7 +33,7 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
           if ! git diff --quiet; then
-            git add v2/doc/weekly_clones.png
+            git add clonepulse/weekly_clones.png
             git commit -m "Update weekly clones dashboard"
             git push
           fi
