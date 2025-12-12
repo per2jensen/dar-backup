@@ -28,6 +28,9 @@ Version **1.0.0** was reached on October 9, 2025.
   - [TL;DR](#tldr)
   - [Table of Contents](#table-of-contents)
   - [My use case](#my-use-case)
+  - [My setup](#my-setup)
+    - [Why PAR2 is especially good for portable / offsite copies](#why-par2-is-especially-good-for-portable--offsite-copies)
+    - [Design choices](#design-choices)
   - [Features](#features)
   - [License](#license)
   - [Quick Guide](#quick-guide)
@@ -118,7 +121,7 @@ I needed the following:
 - Backup primarily photos, home made video and different types of documents
 - I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
 
-  - Backup cloud storage (cloud is convenient, but I want control over my backups)
+  - Backup my cloud storage (cloud is convenient, but I want control over my backups)
   - A non-privileged user can perform a mount
   - A privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
@@ -128,6 +131,48 @@ I needed the following:
 - Easy to verify archive's integrity, after being moved around.
 
  I do not need the encryption features of dar, as all storage is already encrypted.
+
+## My setup
+
+1. Primary backup to server with an ext4 file system on mdadm RAID1
+
+2. Secondary copies to multiple USB disks / cloud
+
+3. Archive integrity verification anywhere using [Par2](#par2) and `dar -t`.
+
+4. Archive repair anywhere if needed. By default `dar-backup` creates par2 redundancy files with 5% coverage. Enough to fix localized bitrot.
+
+5. No dependency on original system
+
+### Why PAR2 is especially good for portable / offsite copies
+
+PAR2 parity is:
+
+> Self-contained (travels with the data)
+>
+>Format-agnostic (works on any filesystem)
+>
+>Location-agnostic (local disk, USB, cloud object storage)
+>
+>Tool-stable (PAR2 spec has not changed in years)
+>
+>That means:
+>
+>**Integrity protection moves with the archive**.
+
+### Design choices
+
+My design choices are boring, proven and pragmatic:
+>
+>mdadm handles disks
+>
+>PAR2 handles data integrity
+>
+>You control when and how verification happens
+>
+>Errors have a fair chance of being diagnosed and fixed, due to well known tooling.
+>
+>No hidden magic, no lock-in
 
 ## Features
 
