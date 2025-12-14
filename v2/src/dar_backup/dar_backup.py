@@ -57,6 +57,7 @@ from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
 from dar_backup.util import print_debug
+from dar_backup.util import send_discord_message
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -500,6 +501,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
 
     for backup_definition, backup_definition_path in backup_definitions:
+        start_len = len(results)
+        success = True
         try:
             date = datetime.now().strftime('%Y-%m-%d')
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
@@ -559,6 +562,23 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         except Exception as e:
             results.append((repr(e), 1))
             logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
+            success = False
+        finally:
+            # Determine status based on new results for this backup definition
+            new_results = results[start_len:]
+            if any(code for _, code in new_results if code != 0):
+                success = False
+
+            # Avoid spamming from example/demo backup definitions
+            if backup_definition.lower() == "example":
+                logger.debug("Skipping Discord notification for example backup definition.")
+                continue
+
+            status = "SUCCESS" if success else "FAILURE"
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
+            message = f"{timestamp} - dar-backup, {backup_definition}: {status}"
+            if not send_discord_message(message, config_settings=config_settings):
+                logger.debug(f"Discord notification not sent for {backup_definition}: {status}")
 
     logger.trace(f"perform_backup() results[]: {results}")
     return results

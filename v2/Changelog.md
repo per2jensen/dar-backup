@@ -1,6 +1,19 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.0.2 - 2025-12-14
+
+### Added
+
+- Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
+- Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
+- Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
+
+### Changed
+
+- Pytest defaults exclude live Discord tests; enable with `-m live_discord` when a webhook is available.
+- Skip Discord notifications for the demo/example backup definition to avoid spam during sample runs.
+
 ## v2-1.0.0 - 2025-10-09
 
 Github link: [v2-1.0.0](https://github.com/per2jensen/dar-backup/tree/v2-1.0.0/v2)

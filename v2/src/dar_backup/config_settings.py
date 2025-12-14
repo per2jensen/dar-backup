@@ -4,6 +4,7 @@ import configparser
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
 from pathlib import Path
+from typing import Optional
 
 from dar_backup.exceptions import ConfigSettingsError
 
@@ -46,6 +47,7 @@ class ConfigSettings:
     par2_enabled: bool = field(init=False)
     logfile_max_bytes: int = field(init=False)
     logfile_no_count: int = field(init=False)    
+    discord_webhook_url: Optional[str] = field(init=False, default=None)
 
 
     OPTIONAL_CONFIG_FIELDS = [
@@ -69,6 +71,13 @@ class ConfigSettings:
             "attr": "logfile_backup_count",
             "type": int,
             "default": 5,
+        },
+        {
+            "section": "MISC",
+            "key": "DISCORD_WEBHOOK_URL",
+            "attr": "discord_webhook_url",
+            "type": str,
+            "default": None,
         },
         # Add more optional fields here
     ]
@@ -143,5 +152,3 @@ class ConfigSettings:
             if hasattr(self, field.name) and getattr(self, field.name) is not None
         ]
         return f"<ConfigSettings({', '.join(safe_fields)})>"
-
-

@@ -14,6 +14,7 @@ import locale
 import configparser
 import inspect
 import logging
+import json
 
 import os
 import re
@@ -23,6 +24,8 @@ import shutil
 import sys
 import threading
 import traceback
+import urllib.error
+import urllib.request
 
 import dar_backup.__about__ as about
 
@@ -199,6 +202,74 @@ def show_version():
     print(f"{script_name} {about.__version__}")
     print(f"{script_name} source code is here: https://github.com/per2jensen/dar-backup")
     print(about.__license__)
+
+
+def send_discord_message(
+    content: str,
+    config_settings: typing.Optional[ConfigSettings] = None,
+    timeout_seconds: int = 10
+) -> bool:
+    """
+    Send a message to a Discord webhook if configured either in the config file or via environment.
+
+    The config value DISCORD_WEBHOOK_URL, when set, takes precedence over the environment variable
+    with the same name. If neither is defined, the function logs an info-level message and returns False.
+
+    Returns:
+        bool: True if the message was sent successfully, otherwise False.
+    """
+    log = get_logger()
+
+    config_webhook = getattr(config_settings, "discord_webhook_url", None) if config_settings else None
+    env_webhook = os.environ.get("DISCORD_WEBHOOK_URL")
+
+    webhook_url = config_webhook or env_webhook
+    source = "config file" if config_webhook else ("environment" if env_webhook else None)
+
+    if not webhook_url:
+        log and log.info("Discord message not sent: DISCORD_WEBHOOK_URL not configured.")
+        return False
+
+    payload = json.dumps({"content": content}).encode("utf-8")
+    user_agent = f"dar-backup/{about.__version__}"
+
+    request = urllib.request.Request(
+        webhook_url,
+        data=payload,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": user_agent,
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds):
+            pass
+        log and log.debug(f"Discord webhook message sent using {source}.")
+        return True
+    except urllib.error.HTTPError as exc:
+        # Attempt to read a short error body for diagnostics
+        body = None
+        try:
+            body = exc.read().decode(errors="replace")
+        except Exception:
+            body = None
+        detail = f" body='{body.strip()}'" if body else ""
+        message = f"Discord webhook HTTP error {exc.code}: {exc.reason}{detail}"
+        if log:
+            log.error(message)
+        else:
+            print(message, file=sys.stderr)
+    except Exception as exc:
+        message = f"Failed to send Discord webhook message: {exc}"
+        if log:
+            log.error(message)
+        else:
+            print(message, file=sys.stderr)
+
+    return False
 
 def extract_version(output):
     match = re.search(r'(\d+\.\d+(\.\d+)?)', output)
@@ -756,5 +827,3 @@ def is_safe_path(path: str) -> bool:
         os.path.isabs(normalized)
         and '..' not in normalized.split(os.sep)
     )
-
-
