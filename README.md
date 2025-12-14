@@ -1708,6 +1708,7 @@ Available options:
 --log-level <level>                  `debug` or `trace`, default is `info`.
 --log-stdout                         Also print log messages to stdout.
 --do-not-compare                     Do not compare restores to file system.
+--preflight-check                    Run preflight checks and exit (runs automatically; this flag just exits after checks).
 --examples                           Show examples of using dar-backup.
 --readme                             Print README.md and exit
 --readme-pretty                      Print README.md with Markdown styling and exit

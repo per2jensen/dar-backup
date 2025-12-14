@@ -313,6 +313,13 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     if len(files) < config_settings.no_files_verification:
         no_files_verification = len(files)
     random_files = random.sample(files, no_files_verification)
+
+    # Ensure restore directory exists for verification restores
+    try:
+        os.makedirs(config_settings.test_restore_dir, exist_ok=True)
+    except OSError as exc:
+        raise BackupError(f"Cannot create restore directory '{config_settings.test_restore_dir}': {exc}") from exc
+
     for restored_file_path in random_files:
         try:
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
@@ -465,6 +472,98 @@ def create_backup_command(backup_type: str, backup_file: str, darrc: str, backup
     
     return base_command
 
+
+def validate_required_directories(config_settings: ConfigSettings) -> None:
+    """
+    Ensure configured directories exist; raise if any are missing.
+    """
+    required = [
+        ("BACKUP_DIR", config_settings.backup_dir),
+        ("BACKUP.D_DIR", config_settings.backup_d_dir),
+        ("TEST_RESTORE_DIR", config_settings.test_restore_dir),
+    ]
+    manager_db_dir = getattr(config_settings, "manager_db_dir", None)
+    if manager_db_dir:
+        required.append(("MANAGER_DB_DIR", manager_db_dir))
+
+    missing = [(name, path) for name, path in required if not path or not os.path.isdir(path)]
+    if missing:
+        details = "; ".join(f"{name}={path}" for name, path in missing)
+        raise RuntimeError(f"Required directories missing or not accessible: {details}")
+
+
+def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -> bool:
+    """
+    Run preflight checks to validate environment before backup.
+    """
+    errors = []
+
+    def check_dir(name: str, path: str, require_write: bool = True):
+        if not path:
+            errors.append(f"{name} is not set")
+            return
+        if not os.path.isdir(path):
+            errors.append(f"{name} does not exist: {path}")
+            return
+        if require_write and not os.access(path, os.W_OK):
+            errors.append(f"{name} is not writable: {path}")
+
+    # Directories and permissions
+    check_dir("BACKUP_DIR", config_settings.backup_dir)
+    check_dir("BACKUP.D_DIR", config_settings.backup_d_dir)
+    check_dir("TEST_RESTORE_DIR", config_settings.test_restore_dir)
+    if getattr(config_settings, "manager_db_dir", None):
+        check_dir("MANAGER_DB_DIR", config_settings.manager_db_dir)
+
+    # Log directory write access
+    log_dir = os.path.dirname(config_settings.logfile_location)
+    check_dir("LOGFILE_LOCATION directory", log_dir)
+
+    # Binaries present
+    for cmd in ("dar",):
+        if shutil.which(cmd) is None:
+            errors.append(f"Binary not found on PATH: {cmd}")
+    if getattr(config_settings, "par2_enabled", False):
+        if shutil.which("par2") is None:
+            errors.append("Binary not found on PATH: par2 (required when PAR2.ENABLED is true)")
+
+    # Binaries respond to --version (basic health)
+    for cmd in ("dar",):
+        if shutil.which(cmd):
+            try:
+                subprocess.run([cmd, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            except Exception:
+                errors.append(f"Failed to run '{cmd} --version'")
+    if getattr(config_settings, "par2_enabled", False) and shutil.which("par2"):
+        try:
+            subprocess.run(["par2", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        except Exception:
+            errors.append("Failed to run 'par2 --version'")
+
+    # Restore scratch: can create/clean temp file
+    scratch_test_file = os.path.join(config_settings.test_restore_dir, ".dar-backup-preflight")
+    try:
+        os.makedirs(config_settings.test_restore_dir, exist_ok=True)
+        with open(scratch_test_file, "w") as f:
+            f.write("ok")
+        os.remove(scratch_test_file)
+    except Exception as exc:
+        errors.append(f"Cannot write to TEST_RESTORE_DIR ({config_settings.test_restore_dir}): {exc}")
+
+    # Config sanity: backup definition exists if provided
+    if args.backup_definition:
+        candidate = os.path.join(config_settings.backup_d_dir, args.backup_definition)
+        if not os.path.isfile(candidate):
+            errors.append(f"Backup definition not found: {candidate}")
+
+    if errors:
+        print("Preflight checks failed:")
+        for err in errors:
+            print(f" - {err}")
+        return False
+
+    print("Preflight checks passed.")
+    return True
 
 
 def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str) -> List[str]:
@@ -811,6 +910,7 @@ def main():
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
+    parser.add_argument('--preflight-check', action='store_true', help="Run preflight checks and exit")
     parser.add_argument('--suppress-dar-msg', action='store_true', help="cancel dar options in .darrc: -vt, -vs, -vd, -vf and -va")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
@@ -824,6 +924,9 @@ def main():
     
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
+    # Ensure new flags are present when parse_args is mocked in tests
+    if not hasattr(args, "preflight_check"):
+        args.preflight_check = False
 
     if args.version:
         show_version()
@@ -857,6 +960,24 @@ def main():
 
     args.config_file = config_settings_path
     config_settings = ConfigSettings(args.config_file)
+
+    try:
+        validate_required_directories(config_settings)
+    except RuntimeError as exc:
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - dar-backup: FAILURE - {exc}", config_settings=config_settings)
+        print(str(exc), file=stderr)
+        exit(127)
+
+    # Run preflight checks always; if --preflight-check is set, exit afterward.
+    ok = preflight_check(args, config_settings)
+    if not ok:
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed", config_settings=config_settings)
+        exit_code = 127 if args.backup_definition else 1
+        exit(exit_code)
+    if args.preflight_check:
+        exit(0)
 
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     if command_output_log == config_settings.logfile_location:

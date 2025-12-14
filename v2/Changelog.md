@@ -1,13 +1,14 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-1.0.2 - 2025-12-14
+## v2-1.0.2 - not released
 
 ### Added
 
 - Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
 - Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
+- Automatic preflight checks now run before every invocation (or standalone via `--preflight-check`) to verify required directories, write access, and availability of `dar`/`par2` binaries.
 
 ### Changed
 
