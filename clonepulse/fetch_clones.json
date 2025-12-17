@@ -17,12 +17,12 @@
       "label": "v1.0.0 release"
     },
     {
-      "date": "2025-12-03",
-      "label": "Daily max: 125"
+      "date": "2025-05-20",
+      "label": "Daily max: 124"
     }
   ],
-  "total_clones": 3938,
-  "unique_clones": 2373,
+  "total_clones": 3947,
+  "unique_clones": 2382,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -1076,8 +1076,8 @@
     },
     {
       "timestamp": "2025-12-03T00:00:00Z",
-      "count": 125,
-      "uniques": 66
+      "count": 113,
+      "uniques": 60
     },
     {
       "timestamp": "2025-12-04T00:00:00Z",
@@ -1138,6 +1138,11 @@
       "timestamp": "2025-12-15T00:00:00Z",
       "count": 24,
       "uniques": 16
+    },
+    {
+      "timestamp": "2025-12-16T00:00:00Z",
+      "count": 21,
+      "uniques": 15
     }
   ]
 }
