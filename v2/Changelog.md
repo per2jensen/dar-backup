@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-1.0.2 - not released
+## v2-1.0.1 - not released
 
 ### Added
 
@@ -9,6 +9,9 @@
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
 - Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
 - Automatic preflight checks now run before every invocation (or standalone via `--preflight-check`) to verify required directories, write access, and availability of `dar`/`par2` binaries.
+- PAR2 enhancements: optional PAR2_DIR storage, per-archive parity mode, per-backup overrides, and parity manifests to support verify/repair against archives in a different directory.
+- New tests for PAR2_DIR + per-archive verify/repair flow and per-backup overrides.
+- Documentation: new config options and per-backup overrides are documented in the README “Config changes” section.
 
 ### Changed
 

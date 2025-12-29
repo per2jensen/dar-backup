@@ -25,6 +25,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import configparser
 import xml.etree.ElementTree as ET
 import tempfile
 import threading
@@ -655,7 +656,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.error(msg)
                 results.append((msg, 1))
             logger.info("Generate par2 redundancy files.")
-            generate_par2_files(backup_file, config_settings, args)
+            generate_par2_files(backup_file, config_settings, args, backup_definition=backup_definition)
             logger.info("par2 files completed successfully.")
 
         except Exception as e:
@@ -682,7 +683,89 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
     logger.trace(f"perform_backup() results[]: {results}")
     return results
 
-def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args):
+def _parse_archive_base(backup_file: str) -> str:
+    return os.path.basename(backup_file)
+
+
+def _list_dar_slices(archive_dir: str, archive_base: str) -> List[str]:
+    pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
+    dar_slices: List[str] = []
+
+    for filename in os.listdir(archive_dir):
+        match = pattern.match(filename)
+        if match:
+            dar_slices.append(filename)
+
+    dar_slices.sort(key=lambda x: int(pattern.match(x).group(1)))
+    return dar_slices
+
+
+def _validate_slice_sequence(dar_slices: List[str], archive_base: str) -> None:
+    pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
+    if not dar_slices:
+        raise RuntimeError(f"No dar slices found for archive base: {archive_base}")
+    slice_numbers = [int(pattern.match(s).group(1)) for s in dar_slices]
+    expected = list(range(1, max(slice_numbers) + 1))
+    if slice_numbers != expected:
+        raise RuntimeError(f"Missing dar slices for archive {archive_base}: expected {expected}, got {slice_numbers}")
+
+
+def _get_backup_type_from_archive_base(archive_base: str) -> str:
+    parts = archive_base.split('_')
+    if len(parts) < 3:
+        raise RuntimeError(f"Unexpected archive name format: {archive_base}")
+    return parts[1]
+
+
+def _get_par2_ratio(backup_type: str, par2_config: dict, default_ratio: int) -> int:
+    backup_type = backup_type.upper()
+    if backup_type == "FULL" and par2_config.get("par2_ratio_full") is not None:
+        return par2_config["par2_ratio_full"]
+    if backup_type == "DIFF" and par2_config.get("par2_ratio_diff") is not None:
+        return par2_config["par2_ratio_diff"]
+    if backup_type == "INCR" and par2_config.get("par2_ratio_incr") is not None:
+        return par2_config["par2_ratio_incr"]
+    return default_ratio
+
+
+def _write_par2_manifest(
+    manifest_path: str,
+    archive_dir_relative: str,
+    archive_base: str,
+    archive_files: List[str],
+    dar_backup_version: str,
+    dar_version: str
+) -> None:
+    config = configparser.ConfigParser()
+    config["MANIFEST"] = {
+        "archive_dir_relative": archive_dir_relative,
+        "archive_base": archive_base,
+        "dar_backup_version": dar_backup_version,
+        "dar_version": dar_version,
+        "created_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    config["ARCHIVE_FILES"] = {
+        "files": "\n".join(archive_files)
+    }
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        config.write(f)
+
+
+def _default_par2_config(config_settings: ConfigSettings) -> dict:
+    return {
+        "par2_dir": getattr(config_settings, "par2_dir", None),
+        "par2_layout": getattr(config_settings, "par2_layout", "by-backup"),
+        "par2_mode": getattr(config_settings, "par2_mode", None),
+        "par2_ratio_full": getattr(config_settings, "par2_ratio_full", None),
+        "par2_ratio_diff": getattr(config_settings, "par2_ratio_diff", None),
+        "par2_ratio_incr": getattr(config_settings, "par2_ratio_incr", None),
+        "par2_run_verify": getattr(config_settings, "par2_run_verify", None),
+        "par2_enabled": getattr(config_settings, "par2_enabled", True),
+    }
+
+
+def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args, backup_definition: str = None):
     """
     Generate PAR2 files for a given backup file in the specified backup directory.
 
@@ -690,6 +773,7 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
         backup_file (str): The name of the backup file.
         config_settings: The configuration settings object.
         args: The command-line arguments object.
+        backup_definition (str): The backup definition name used for per-backup overrides.
 
     Raises:
         subprocess.CalledProcessError: If the par2 command fails to execute.
@@ -697,30 +781,80 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args)
     Returns:
         None
     """
-    # Regular expression to match DAR slice files
-    dar_slice_pattern = re.compile(rf"{re.escape(os.path.basename(backup_file))}\.([0-9]+)\.dar")
+    if hasattr(config_settings, "get_par2_config"):
+        par2_config = config_settings.get_par2_config(backup_definition)
+    else:
+        par2_config = _default_par2_config(config_settings)
+    if not par2_config.get("par2_enabled", False):
+        logger.debug("PAR2 disabled for this backup definition, skipping.")
+        return
 
-    # List of DAR slice files to be processed
-    dar_slices: List[str] = []
+    archive_dir = config_settings.backup_dir
+    archive_base = _parse_archive_base(backup_file)
+    backup_type = _get_backup_type_from_archive_base(archive_base)
+    par2_dir = par2_config.get("par2_dir")
+    if par2_dir:
+        par2_dir = os.path.expanduser(os.path.expandvars(par2_dir))
+        os.makedirs(par2_dir, exist_ok=True)
 
-    for filename in os.listdir(config_settings.backup_dir):
-        match = dar_slice_pattern.match(filename)
-        if match:
-            dar_slices.append(filename)
+    par2_layout = (par2_config.get("par2_layout") or "by-backup").lower()
+    if par2_layout != "by-backup":
+        raise RuntimeError(f"Unsupported PAR2_LAYOUT: {par2_layout}")
 
-    # Sort the DAR slices based on the slice number
-    dar_slices.sort(key=lambda x: int(dar_slice_pattern.match(x).group(1)))
+    par2_mode = (par2_config.get("par2_mode") or "per-slice").lower()
+    ratio = _get_par2_ratio(backup_type, par2_config, config_settings.error_correction_percent)
+
+    dar_slices = _list_dar_slices(archive_dir, archive_base)
+    _validate_slice_sequence(dar_slices, archive_base)
     number_of_slices = len(dar_slices)
-    counter = 1
 
+    if par2_mode == "per-archive":
+        par2_output_dir = par2_dir or archive_dir
+        par2_path = os.path.join(par2_output_dir, f"{archive_base}.par2")
+        dar_slice_paths = [os.path.join(archive_dir, slice_file) for slice_file in dar_slices]
+        logger.info(f"Generating par2 set for archive: {archive_base}")
+        command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path] + dar_slice_paths
+        process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        if process.returncode != 0:
+            logger.error(f"Error generating par2 files for {archive_base}")
+            raise subprocess.CalledProcessError(process.returncode, command)
+
+        if par2_dir:
+            archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
+            manifest_path = f"{par2_path}.manifest.ini"
+            _write_par2_manifest(
+                manifest_path=manifest_path,
+                archive_dir_relative=archive_dir_relative,
+                archive_base=archive_base,
+                archive_files=dar_slices,
+                dar_backup_version=about.__version__,
+                dar_version=getattr(args, "dar_version", "unknown")
+            )
+            logger.info(f"Wrote par2 manifest: {manifest_path}")
+
+        if par2_config.get("par2_run_verify"):
+            logger.info(f"Verifying par2 set for archive: {archive_base}")
+            verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
+            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+            if verify_process.returncode != 0:
+                raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
+        return
+
+    if par2_mode != "per-slice":
+        raise RuntimeError(f"Unsupported PAR2_MODE: {par2_mode}")
+
+    counter = 1
     for slice_file in dar_slices:
-        file_path = os.path.join(config_settings.backup_dir, slice_file)
-    
+        file_path = os.path.join(archive_dir, slice_file)
         logger.info(f"{counter}/{number_of_slices}: Now generating par2 files for {file_path}")
 
-        # Run the par2 command to generate redundancy files with error correction
-        command = ['par2', 'create', f'-r{config_settings.error_correction_percent}', '-q', '-q', file_path]
-        process = runner.run(command, timeout = config_settings.command_timeout_secs)
+        if par2_dir:
+            par2_path = os.path.join(par2_dir, f"{slice_file}.par2")
+            command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, file_path]
+            process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        else:
+            command = ['par2', 'create', f'-r{ratio}', '-q', '-q', file_path]
+            process = runner.run(command, timeout=config_settings.command_timeout_secs)
 
         if process.returncode == 0:
             logger.info(f"{counter}/{number_of_slices}: Done")
@@ -1014,6 +1148,7 @@ def main():
         logger.debug(f"`Args`:\n{args}")
         logger.debug(f"`Config_settings`:\n{config_settings}")
         dar_properties = get_binary_info(command='dar')
+        args.dar_version = dar_properties.get('version', 'unknown')
         start_msgs.append(('dar path:', dar_properties['path']))
         start_msgs.append(('dar version:', dar_properties['version']))
 

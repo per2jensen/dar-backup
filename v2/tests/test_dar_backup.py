@@ -939,9 +939,9 @@ def test_get_backed_up_files_success_parses_xml(tmp_path):
 
 def test_generate_par2_files_success_invokes_par2(tmp_path):
     # Arrange: create two DAR slices the function will discover
-    (tmp_path / "archive.1.dar").write_text("")
-    (tmp_path / "archive.2.dar").write_text("")
-    backup_file = "archive"  # IMPORTANT: basename used to match "archive.<n>.dar"
+    (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
+    (tmp_path / "example_FULL_2025-01-01.2.dar").write_text("")
+    backup_file = "example_FULL_2025-01-01"
     cfg = SimpleNamespace(
         backup_dir=str(tmp_path),
         error_correction_percent=10,
@@ -961,14 +961,14 @@ def test_generate_par2_files_success_invokes_par2(tmp_path):
         # Commands should include -r10 and the slice path
         called_cmds = [c[0][0] for c in mock_runner.run.call_args_list]
         assert any("-r10" in " ".join(map(str, cmd)) for cmd in called_cmds)
-        assert any("archive.1.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
-        assert any("archive.2.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
+        assert any("example_FULL_2025-01-01.1.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
+        assert any("example_FULL_2025-01-01.2.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
 
 
 def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):
     # Arrange: one slice present so the function actually calls runner.run
-    (tmp_path / "archive.1.dar").write_text("")
-    backup_file = "archive"
+    (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
+    backup_file = "example_FULL_2025-01-01"
     cfg = SimpleNamespace(
         backup_dir=str(tmp_path),
         error_correction_percent=5,
@@ -1014,6 +1014,3 @@ def test_print_markdown_pretty_falls_back_when_rich_missing(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert "rich" in out.lower()  # fallback message mentions rich
     assert "Hello" in out and "World" in out
-
-
-

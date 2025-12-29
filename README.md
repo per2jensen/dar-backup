@@ -74,6 +74,8 @@ Version **1.0.0** was reached on October 9, 2025.
     - [restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
   - [Par2](#par2)
     - [Par2 to verify/repair](#par2-to-verifyrepair)
+      - [Par2 files kept with archives](#par2-files-kept-with-archives)
+      - [Par2 files in separate directory](#par2-files-in-separate-directory)
     - [Par2 create redundancy files](#par2-create-redundancy-files)
   - [Points of interest](#points-of-interest)
     - [Limitations on File Names with Special Characters](#limitations-on-file-names-with-special-characters)
@@ -112,6 +114,8 @@ Version **1.0.0** was reached on October 9, 2025.
     - [Dar-backup-systemd options](#dar-backup-systemd-options)
     - [Installer options](#installer-options)
     - [Demo options](#demo-options)
+    - [Config changes](#config-changes)
+      - [1.0.1](#101)
   
 ## My use case
 
@@ -733,7 +737,7 @@ deactivate
 
 The configuration file's default location is: ~/.config/dar-backup/dar-backup.conf
 
-If you have your config file somewhere else, use the `--config` option to point to it.
+If you have your config file somewhere else, use the `--config-file` option to point to it.
 
 Tilde `~` and environment variables can be used in the paths for various file locations.
 
@@ -769,6 +773,20 @@ INCR_AGE = 40
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
+# Optional PAR2 configuration
+# PAR2_DIR = /path/to/par2-store
+# PAR2_LAYOUT = by-backup
+# PAR2_MODE = per-slice
+# PAR2_RATIO_FULL = 10
+# PAR2_RATIO_DIFF = 5
+# PAR2_RATIO_INCR = 5
+# PAR2_RUN_VERIFY = false
+
+# Optional per-backup overrides (section name = backup definition)
+[media-files]
+PAR2_DIR = /mnt/par2/media-files
+PAR2_MODE = per-archive
+PAR2_RATIO_FULL = 10
 
 # scripts to run before the backup to setup the environment
 [PREREQ]
@@ -1227,9 +1245,35 @@ If you need to use this option, un-comment it in the [.darrc](#darrc) file (loca
 
 ## Par2
 
+Why keep PAR2 on a different storage device:
+
+- Reduces single-disk failure impact: bitrot on the archive disk does not affect the parity.
+- Easier offsite rotation: you can sync only the PAR2 sets to a different failure domain.
+
+Redundancy guidance:
+
+- FULL backups: 10% is a practical default for larger data sets and longer retention.
+- DIFF/INCR: 5% is often enough because the delta is smaller and easier to re-create.
+- Increase the ratio if the storage is flaky or the backup is hard to re-run.
+
+Rule of thumb table:
+
+| Backup type | Suggested PAR2 ratio | Notes |
+|-------------|----------------------|-------|
+| FULL        | 10%                  | Longer retention, larger data set |
+| DIFF        | 5%                   | Smaller delta |
+| INCR        | 5%                   | Smaller delta |
+
+Cloud sync / air-gap note:
+
+- Syncing PAR2 sets to a different device or remote store protects against bitrot and small corruption, but it cannot recover a completely lost archive.
+- An air-gapped PAR2 store is useful when the archive disk is exposed to ransomware or accidental deletion.
+
 ### Par2 to verify/repair
 
-You can run a par2 verification on an archive like this:
+#### Par2 files kept with archives
+
+If PAR2 files are stored next to the archives (legacy per-slice behavior), you can verify like this:
 
 ```bash
 for file in <archive>*.dar.par2; do
@@ -1243,6 +1287,36 @@ if there are problems with a slice, try to repair it like this:
   par2 repair <archive>.<slice number>.dar.par2
 ```
 
+#### Par2 files in separate directory
+
+If PAR2_DIR is configured and PAR2_MODE = per-archive, verify/repair is done against the single set.
+
+Example: archives live in `/mnt/backup/archive/` and par2 lives in `/mnt/par2-store/`:
+
+Archive slices:
+`/mnt/backup/archive/media-files_FULL_2025-01-04.1.dar`
+`/mnt/backup/archive/media-files_FULL_2025-01-04.2.dar`
+
+Par2 set:
+`/mnt/par2-store/media-files_FULL_2025-01-04.par2`
+`/mnt/par2-store/media-files_FULL_2025-01-04.vol00+01.par2`
+
+```bash
+par2 verify -B <archive_dir> <par2_set.par2>
+par2 repair -B <archive_dir> <par2_set.par2>
+```
+
+Concrete commands for the example above:
+
+```bash
+par2 verify -B /mnt/backup/archive /mnt/par2-store/media-files_FULL_2025-01-04.par2
+par2 repair -B /mnt/backup/archive /mnt/par2-store/media-files_FULL_2025-01-04.par2
+```
+
+>Test case proving this flow:
+>
+>https://github.com/per2jensen/dar-backup/blob/main/v2/tests/test_par2_manifest.py
+
 ### Par2 create redundancy files
 
 If you have merged archives, you will need to create the .par2 redundency files manually.
@@ -1255,6 +1329,12 @@ done
 ```
 
 where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
+
+If you want to create a single parity set for all slices in an archive:
+
+```bash
+par2 create -B <archive_dir> -r5 <par2_dir>/<archive_base>.par2 <archive_dir>/<archive_base>.*.dar
+```
 
 ## Points of interest
 
@@ -1828,3 +1908,36 @@ Sets up demo config files:
 -v, --version       Display version and licensing information.
 -h, --help          Displays usage info
 ```
+
+### Config changes
+
+#### 1.0.1
+
+New optional PAR2 settings were added to the config file. If none of these keys are added, dar-backup behaves exactly as before (PAR2 files next to archives, per-slice parity).
+
+| Name | Description | When it is in effect | Suggested value |
+|------|-------------|----------------------|-----------------|
+| PAR2_DIR | Directory to store .par2 and .vol*.par2 files | When set | A different device or mount from BACKUP_DIR |
+| PAR2_LAYOUT | Layout of PAR2 files in PAR2_DIR | When PAR2_DIR is set | by-backup |
+| PAR2_MODE | Parity mode: per-archive or per-slice | When set | per-archive (to reduce file count) |
+| PAR2_RATIO_FULL | Redundancy percent for FULL | When set | 10 |
+| PAR2_RATIO_DIFF | Redundancy percent for DIFF | When set | 5 |
+| PAR2_RATIO_INCR | Redundancy percent for INCR | When set | 5 |
+| PAR2_RUN_VERIFY | Verify after create | When set | false |
+
+Notes:
+
+- PAR2_LAYOUT only matters when PAR2_DIR is set.
+- PAR2_MODE, PAR2_RATIO_*, and PAR2_RUN_VERIFY apply even if PAR2_DIR is not set (par2 output stays next to the archives).
+
+Per-backup overrides use a section named after the backup definition with the same PAR2_* keys:
+
+```text
+[media-files]
+PAR2_DIR = /some/other/par2/media-files  # regardless of the global PAR2_DIR being unset
+PAR2_MODE = per-archive
+PAR2_RATIO_FULL = 11
+```
+
+Per-backup override test case:
+https://github.com/per2jensen/dar-backup/blob/main/v2/tests/test_par2_overrides.py

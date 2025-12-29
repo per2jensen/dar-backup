@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
 from time import time
 from typing import Dict, List, NamedTuple, Tuple
+import glob
 
 
 from . import __about__ as about
@@ -50,7 +51,61 @@ from dar_backup.command_runner import CommandResult
 logger = None 
 runner = None
 
-def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None):
+def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: ConfigSettings = None, backup_definition: str = None) -> None:
+    if config_settings and hasattr(config_settings, "get_par2_config"):
+        par2_config = config_settings.get_par2_config(backup_definition)
+    else:
+        par2_config = {
+            "par2_dir": None,
+            "par2_mode": None,
+        }
+
+    par2_dir = par2_config.get("par2_dir") or backup_dir
+    par2_dir = os.path.expanduser(os.path.expandvars(par2_dir))
+    if not os.path.isdir(par2_dir):
+        logger.warning(f"PAR2 directory not found, skipping cleanup: {par2_dir}")
+        return
+
+    par2_mode = (par2_config.get("par2_mode") or "per-slice").lower()
+
+    if par2_mode == "per-archive":
+        par2_glob = os.path.join(par2_dir, f"{archive_name}*.par2")
+        targets = glob.glob(par2_glob)
+        manifest_path = os.path.join(par2_dir, f"{archive_name}.par2.manifest.ini")
+        if os.path.exists(manifest_path):
+            targets.append(manifest_path)
+        if not targets:
+            logger.info("No par2 files matched the per-archive cleanup pattern.")
+            return
+        for file_path in sorted(set(targets)):
+            try:
+                is_safe_filename(file_path) and os.remove(file_path)
+                logger.info(f"Deleted PAR2 file: {file_path}")
+            except Exception as e:
+                logger.error(f"Error deleting PAR2 file {file_path}: {e}")
+        return
+
+    if par2_mode != "per-slice":
+        logger.error(f"Unsupported PAR2_MODE during cleanup: {par2_mode}")
+        return
+
+    par2_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar.*\.par2$")
+    files_deleted = False
+    for filename in sorted(os.listdir(par2_dir)):
+        if par2_regex.match(filename):
+            file_path = os.path.join(par2_dir, filename)
+            try:
+                is_safe_filename(file_path) and os.remove(file_path)
+                logger.info(f"Deleted PAR2 file: {file_path}")
+                files_deleted = True
+            except Exception as e:
+                logger.error(f"Error deleting PAR2 file {file_path}: {e}")
+
+    if not files_deleted:
+        logger.info("No .par2 matched the regex for deletion.")
+
+
+def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: ConfigSettings = None):
     """
     Delete backups older than the specified age in days.
     Only .dar and .par2 files are considered for deletion.
@@ -67,7 +122,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
     archives_deleted = {}
 
     for filename in sorted(os.listdir(backup_dir)):
-        if not (filename.endswith('.dar') or filename.endswith('.par2')):
+        if not filename.endswith('.dar'):
             continue
         if backup_definition and not filename.startswith(backup_definition):
             continue
@@ -92,10 +147,12 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                     logger.error(f"Error deleting file {file_path}: {e}")
 
     for archive_name in archives_deleted.keys():
+        archive_definition = archive_name.split('_')[0]
+        _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition)
         delete_catalog(archive_name, args)
 
 
-def delete_archive(backup_dir, archive_name, args):
+def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettings = None):
     """
     Delete all .dar and .par2 files in the backup directory for the given archive name.
 
@@ -122,21 +179,8 @@ def delete_archive(backup_dir, archive_name, args):
     else:
         logger.info("No .dar files matched the regex for deletion.")
 
-    # Delete associated .par2 files
-    par2_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar.*\.par2$")
-    files_deleted = False
-    for filename in sorted(os.listdir(backup_dir)):
-        if par2_regex.match(filename):
-            file_path = os.path.join(backup_dir, filename)
-            try:
-                is_safe_filename(file_path) and os.remove(file_path)
-                logger.info(f"Deleted PAR2 file: {file_path}")
-                files_deleted = True
-            except Exception as e:
-                logger.error(f"Error deleting PAR2 file {file_path}: {e}")
-
-    if not files_deleted:
-        logger.info("No .par2 matched the regex for deletion.")
+    archive_definition = archive_name.split('_')[0]
+    _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition)
 
 
 def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
@@ -266,7 +310,7 @@ def main():
                     continue
             archive_path = os.path.join(config_settings.backup_dir, archive_name.strip())
             logger.info(f"Deleting archive: {archive_path}")
-            delete_archive(config_settings.backup_dir, archive_name.strip(), args)
+            delete_archive(config_settings.backup_dir, archive_name.strip(), args, config_settings)
     elif args.list:
         list_backups(config_settings.backup_dir, args.backup_definition)
     else:
@@ -279,8 +323,22 @@ def main():
                     backup_definitions.append(file.split('.')[0])
 
         for definition in backup_definitions:
-            delete_old_backups(config_settings.backup_dir, config_settings.diff_age, 'DIFF', args, definition)
-            delete_old_backups(config_settings.backup_dir, config_settings.incr_age, 'INCR', args, definition)
+            delete_old_backups(
+                config_settings.backup_dir,
+                config_settings.diff_age,
+                'DIFF',
+                args,
+                backup_definition=definition,
+                config_settings=config_settings
+            )
+            delete_old_backups(
+                config_settings.backup_dir,
+                config_settings.incr_age,
+                'INCR',
+                args,
+                backup_definition=definition,
+                config_settings=config_settings
+            )
 
     # run POST scripts
     requirements('POSTREQ', config_settings)

@@ -806,8 +806,12 @@ def normalize_dir(path: str) -> str:
 
 # Reusable pattern for archive file naming
 archive_pattern = re.compile(
-    r'^.+?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})\.\d+\.dar'
-    r'(?:\.vol\d+(?:\+\d+)?\.par2|\.par2)?$'
+    r'^.+?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})'
+    r'(?:'
+    r'\.\d+\.dar(?:\.vol\d+(?:\+\d+)?\.par2|\.par2)?'
+    r'|(?:\.vol\d+(?:\+\d+)?\.par2|\.par2)'
+    r'|\.par2\.manifest\.ini'
+    r')$'
 )
 
 def is_safe_filename(filename: str) -> bool:

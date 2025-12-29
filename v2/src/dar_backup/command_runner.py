@@ -125,7 +125,8 @@ class CommandRunner:
         timeout: Optional[int] = None,
         check: bool = False,
         capture_output: bool = True,
-        text: bool = True
+        text: bool = True,
+        cwd: Optional[str] = None
     ) -> CommandResult:
         self._text_mode = text 
         timeout = timeout or self.default_timeout
@@ -164,7 +165,8 @@ class CommandRunner:
                 stdout=subprocess.PIPE if capture_output else None,
                 stderr=subprocess.PIPE if capture_output else None,
                 text=False,
-                bufsize=-1
+                bufsize=-1,
+                cwd=cwd
             )
         except Exception as e:
             stack = traceback.format_exc()
@@ -245,4 +247,3 @@ class CommandRunner:
                 stdout_combined,
                 stderr_combined
         )
-
