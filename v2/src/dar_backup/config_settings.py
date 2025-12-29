@@ -45,6 +45,13 @@ class ConfigSettings:
     incr_age: int = field(init=False)
     error_correction_percent: int = field(init=False)
     par2_enabled: bool = field(init=False)
+    par2_dir: Optional[str] = field(init=False, default=None)
+    par2_layout: Optional[str] = field(init=False, default=None)
+    par2_mode: Optional[str] = field(init=False, default=None)
+    par2_ratio_full: Optional[int] = field(init=False, default=None)
+    par2_ratio_diff: Optional[int] = field(init=False, default=None)
+    par2_ratio_incr: Optional[int] = field(init=False, default=None)
+    par2_run_verify: Optional[bool] = field(init=False, default=None)
     logfile_max_bytes: int = field(init=False)
     logfile_no_count: int = field(init=False)    
     discord_webhook_url: Optional[str] = field(init=False, default=None)
@@ -112,6 +119,14 @@ class ConfigSettings:
             else:
                 raise ConfigSettingsError(f"Invalid boolean value for 'ENABLED' in [PAR2]: '{val}'")
 
+            self.par2_dir = self._get_optional_str("PAR2", "PAR2_DIR", default=None)
+            self.par2_layout = self._get_optional_str("PAR2", "PAR2_LAYOUT", default="by-backup")
+            self.par2_mode = self._get_optional_str("PAR2", "PAR2_MODE", default=None)
+            self.par2_ratio_full = self._get_optional_int("PAR2", "PAR2_RATIO_FULL", default=None)
+            self.par2_ratio_diff = self._get_optional_int("PAR2", "PAR2_RATIO_DIFF", default=None)
+            self.par2_ratio_incr = self._get_optional_int("PAR2", "PAR2_RATIO_INCR", default=None)
+            self.par2_run_verify = self._get_optional_bool("PAR2", "PAR2_RUN_VERIFY", default=None)
+
             # Load optional fields
             for opt in self.OPTIONAL_CONFIG_FIELDS:
                 if self.config.has_option(opt['section'], opt['key']):
@@ -152,3 +167,79 @@ class ConfigSettings:
             if hasattr(self, field.name) and getattr(self, field.name) is not None
         ]
         return f"<ConfigSettings({', '.join(safe_fields)})>"
+
+    def _get_optional_str(self, section: str, key: str, default: Optional[str] = None) -> Optional[str]:
+        if self.config.has_option(section, key):
+            return self.config.get(section, key).strip()
+        return default
+
+    def _get_optional_int(self, section: str, key: str, default: Optional[int] = None) -> Optional[int]:
+        if self.config.has_option(section, key):
+            raw = self.config.get(section, key).strip()
+            return int(raw)
+        return default
+
+    def _get_optional_bool(self, section: str, key: str, default: Optional[bool] = None) -> Optional[bool]:
+        if not self.config.has_option(section, key):
+            return default
+        val = self.config.get(section, key).strip().lower()
+        if val in ('true', '1', 'yes'):
+            return True
+        if val in ('false', '0', 'no'):
+            return False
+        raise ConfigSettingsError(f"Invalid boolean value for '{key}' in [{section}]: '{val}'")
+
+    def get_par2_config(self, backup_definition: Optional[str] = None) -> dict:
+        """
+        Return PAR2 settings, applying per-backup overrides when present.
+        """
+        par2_config = {
+            "par2_dir": self.par2_dir,
+            "par2_layout": self.par2_layout,
+            "par2_mode": self.par2_mode,
+            "par2_ratio_full": self.par2_ratio_full,
+            "par2_ratio_diff": self.par2_ratio_diff,
+            "par2_ratio_incr": self.par2_ratio_incr,
+            "par2_run_verify": self.par2_run_verify,
+            "par2_enabled": self.par2_enabled,
+        }
+
+        if not backup_definition or not self.config.has_section(backup_definition):
+            return par2_config
+
+        section = self.config[backup_definition]
+        for raw_key, raw_value in section.items():
+            key = raw_key.upper()
+            value = raw_value.strip()
+            if not key.startswith("PAR2_"):
+                continue
+            if key == "PAR2_DIR":
+                par2_config["par2_dir"] = value
+            elif key == "PAR2_LAYOUT":
+                par2_config["par2_layout"] = value
+            elif key == "PAR2_MODE":
+                par2_config["par2_mode"] = value
+            elif key == "PAR2_RATIO_FULL":
+                par2_config["par2_ratio_full"] = int(value)
+            elif key == "PAR2_RATIO_DIFF":
+                par2_config["par2_ratio_diff"] = int(value)
+            elif key == "PAR2_RATIO_INCR":
+                par2_config["par2_ratio_incr"] = int(value)
+            elif key == "PAR2_RUN_VERIFY":
+                val = value.lower()
+                if val in ('true', '1', 'yes'):
+                    par2_config["par2_run_verify"] = True
+                elif val in ('false', '0', 'no'):
+                    par2_config["par2_run_verify"] = False
+                else:
+                    raise ConfigSettingsError(f"Invalid boolean value for 'PAR2_RUN_VERIFY' in [{backup_definition}]: '{value}'")
+            elif key == "PAR2_ENABLED":
+                val = value.lower()
+                if val in ('true', '1', 'yes'):
+                    par2_config["par2_enabled"] = True
+                elif val in ('false', '0', 'no'):
+                    par2_config["par2_enabled"] = False
+                else:
+                    raise ConfigSettingsError(f"Invalid boolean value for 'PAR2_ENABLED' in [{backup_definition}]: '{value}'")
+
+        return par2_config

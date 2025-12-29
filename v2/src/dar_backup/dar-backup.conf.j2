@@ -29,6 +29,7 @@ LOGFILE_LOCATION = {{ vars_map.DAR_BACKUP_DIR -}}/dar-backup.log
 # optional parameters
 # LOGFILE_MAX_BYTES = 26214400  # 25 MB default, change as neeeded
 # LOGFILE_BACKUP_COUNT = 5      # default, change as needed
+# DISCORD_WEBHOOK_URL **should really** be given as an environment variable for security reasons
 # DISCORD_WEBHOOK_URL = https://discord.com/api/webhooks/<id>/<token>
 
 MAX_SIZE_VERIFICATION_MB = 2
@@ -56,6 +57,14 @@ INCR_AGE = 40
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
+# Optional PAR2 configuration
+# PAR2_DIR = /path/to/par2-store
+# PAR2_LAYOUT = by-backup
+# PAR2_MODE = per-slice
+# PAR2_RATIO_FULL = 10
+# PAR2_RATIO_DIFF = 5
+# PAR2_RATIO_INCR = 5
+# PAR2_RUN_VERIFY = false
 
 [PREREQ]
 #SCRIPT_1 = <pre-script 1>

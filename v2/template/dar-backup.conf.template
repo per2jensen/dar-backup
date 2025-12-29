@@ -27,4 +27,11 @@ INCR_AGE = 15
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
-
+# Optional PAR2 configuration
+# PAR2_DIR = /tmp/unit-test/par2
+# PAR2_LAYOUT = by-backup
+# PAR2_MODE = per-slice
+# PAR2_RATIO_FULL = 10
+# PAR2_RATIO_DIFF = 5
+# PAR2_RATIO_INCR = 5
+# PAR2_RUN_VERIFY = false
