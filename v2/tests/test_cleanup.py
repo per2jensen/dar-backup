@@ -545,6 +545,48 @@ def test_delete_file_permission_error(monkeypatch, tmp_path):
 
 
 
+def test_cleanup_deletes_per_archive_par2_in_external_dir(monkeypatch, tmp_path):
+    backup_dir = tmp_path / "backups"
+    par2_dir = tmp_path / "par2"
+    backup_dir.mkdir()
+    par2_dir.mkdir()
+
+    archive_name = f"example_DIFF_{date_100_days_ago}"
+    (backup_dir / f"{archive_name}.1.dar").write_text("dummy")
+    (backup_dir / f"{archive_name}.2.dar").write_text("dummy")
+
+    par2_files = [
+        f"{archive_name}.par2",
+        f"{archive_name}.vol000+01.par2",
+        f"{archive_name}.vol001+02.par2",
+        f"{archive_name}.par2.manifest.ini",
+    ]
+    for name in par2_files:
+        (par2_dir / name).write_text("dummy")
+
+    untouched = par2_dir / "other_DIFF_2020-01-01.par2"
+    untouched.write_text("dummy")
+
+    class DummyConfig:
+        def get_par2_config(self, backup_definition):
+            return {"par2_dir": str(par2_dir), "par2_mode": "per-archive"}
+
+    monkeypatch.setattr("dar_backup.cleanup.delete_catalog", lambda *a, **kw: True)
+    monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
+
+    from dar_backup.cleanup import delete_old_backups
+
+    delete_old_backups(str(backup_dir), 30, "DIFF", args=MagicMock(), backup_definition="example", config_settings=DummyConfig())
+
+    assert not (backup_dir / f"{archive_name}.1.dar").exists()
+    assert not (backup_dir / f"{archive_name}.2.dar").exists()
+    assert not (par2_dir / f"{archive_name}.par2").exists()
+    assert not (par2_dir / f"{archive_name}.vol000+01.par2").exists()
+    assert not (par2_dir / f"{archive_name}.vol001+02.par2").exists()
+    assert not (par2_dir / f"{archive_name}.par2.manifest.ini").exists()
+    assert untouched.exists()
+
+
 def test_delete_catalog_failure(monkeypatch):
     monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
     monkeypatch.setattr("dar_backup.cleanup.runner", MagicMock(run=lambda x: MagicMock(returncode=1, stderr="Failure")))
@@ -630,4 +672,3 @@ def test_cleanup_invalid_symlink(tmp_path):
 
         assert result is True
         mock_logger.warning.assert_called_once_with("catalog 'example' not found in the database, skipping deletion")
-
