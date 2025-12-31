@@ -17,6 +17,7 @@
 
 - Pytest defaults exclude live Discord tests; enable with `-m live_discord` when a webhook is available.
 - Skip Discord notifications for the demo/example backup definition to avoid spam during sample runs.
+- Completer logging now uses a per-user logfile and falls back safely if the completer logger setup fails.
 
 ## v2-1.0.0 - 2025-10-09
 

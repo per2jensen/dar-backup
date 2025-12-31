@@ -139,15 +139,29 @@ def get_logger(command_output_logger: bool = False) -> logging.Logger:
     return secondary_logger if command_output_logger else logger
 
 
+def _default_completer_logfile() -> str:
+    try:
+        uid = os.getuid()
+    except AttributeError:
+        uid = None
+    suffix = str(uid) if uid is not None else "unknown"
+    return f"/tmp/dar_backup_completer_{suffix}.log"
+
+
 # Setup completer logger only once
-def _setup_completer_logger(logfile="/tmp/dar_backup_completer.log"):
+def _setup_completer_logger(logfile: str = None):
     logger = logging.getLogger("completer")
     if not logger.handlers:
-        handler = logging.FileHandler(logfile)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
+        try:
+            logfile = logfile or _default_completer_logfile()
+            handler = logging.FileHandler(logfile)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.DEBUG)
+        except Exception:
+            logger.addHandler(logging.NullHandler())
+            logger.setLevel(logging.DEBUG)
     return logger
 
 # Singleton logger for completer debugging
@@ -501,14 +515,15 @@ def expand_path(path: str) -> str:
 
 
 def backup_definition_completer(prefix, parsed_args, **kwargs):
-    config_path = getattr(parsed_args, 'config_file', '~/.config/dar-backup/dar-backup.conf')
-    config_path = expand_path(config_path)
-    config_file = os.path.expanduser(config_path)
     try:
+        config_path = getattr(parsed_args, 'config_file', '~/.config/dar-backup/dar-backup.conf')
+        config_path = expand_path(config_path)
+        config_file = os.path.expanduser(config_path)
         config = ConfigSettings(config_file)
         backup_d_dir = os.path.expanduser(config.backup_d_dir)
         return [f for f in os.listdir(backup_d_dir) if f.startswith(prefix)]
     except Exception:
+        completer_logger.exception("backup_definition_completer failed")
         return []
 
 
@@ -531,36 +546,40 @@ def extract_backup_definition_fallback() -> str:
 
 
 def list_archive_completer(prefix, parsed_args, **kwargs):
-    import os
-    import configparser
-    from dar_backup.util import extract_backup_definition_fallback
+    try:
+        import os
+        import configparser
+        from dar_backup.util import extract_backup_definition_fallback
 
-    backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
-    config_path = getattr(parsed_args, "config_file", None) or "~/.config/dar-backup/dar-backup.conf"
+        backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
+        config_path = getattr(parsed_args, "config_file", None) or "~/.config/dar-backup/dar-backup.conf"
 
-    config_path = os.path.expanduser(os.path.expandvars(config_path))
-    if not os.path.exists(config_path):
+        config_path = os.path.expanduser(os.path.expandvars(config_path))
+        if not os.path.exists(config_path):
+            return []
+
+        config = configparser.ConfigParser()
+        config.read(config_path)
+        backup_dir = config.get("DIRECTORIES", "BACKUP_DIR", fallback="")
+        backup_dir = os.path.expanduser(os.path.expandvars(backup_dir))
+
+        if not os.path.isdir(backup_dir):
+            return []
+
+        files = os.listdir(backup_dir)
+        archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
+
+        completions = [
+            f.rsplit(".1.dar", 1)[0]
+            for f in files
+            if archive_re.match(f)
+        ]
+
+        completions = sorted(set(completions), key=sort_key)
+        return completions or ["[no matching archives]"]
+    except Exception:
+        completer_logger.exception("list_archive_completer failed")
         return []
-
-    config = configparser.ConfigParser()
-    config.read(config_path)
-    backup_dir = config.get("DIRECTORIES", "BACKUP_DIR", fallback="")
-    backup_dir = os.path.expanduser(os.path.expandvars(backup_dir))
-
-    if not os.path.isdir(backup_dir):
-        return []
-
-    files = os.listdir(backup_dir)
-    archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
-
-    completions = [
-        f.rsplit(".1.dar", 1)[0]
-        for f in files
-        if archive_re.match(f)
-    ]
-
-    completions = sorted(set(completions), key=sort_key)
-    return completions or ["[no matching archives]"]
 
 
 
@@ -582,6 +601,7 @@ def sort_key(archive_name: str):
         completer_logger.debug(f"Archive: {archive_name}, Def: {def_name}, Date: {date}")
         return (def_name, date)
     except Exception:
+        completer_logger.exception("sort_key failed")
         return (archive_name, datetime.min)
 
 
@@ -594,52 +614,56 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
     Only entries found in the catalog database (via `dar_manager --list`) are shown.
     """
 
-    from dar_backup.config_settings import ConfigSettings
-    import subprocess
-    import re
-    import os
-    from datetime import datetime
+    try:
+        from dar_backup.config_settings import ConfigSettings
+        import subprocess
+        import re
+        import os
+        from datetime import datetime
 
-    # Expand config path
-    config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
-    config = ConfigSettings(config_file=config_file)
-    #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
-    db_dir = expand_path(getattr(config, 'manager_db_dir', None) or config.backup_dir)
+        # Expand config path
+        config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
+        config = ConfigSettings(config_file=config_file)
+        #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
+        db_dir = expand_path(getattr(config, 'manager_db_dir', None) or config.backup_dir)
 
-    # Which db files to inspect?
-    backup_def = getattr(parsed_args, "backup_def", None)
-    db_files = (
-        [os.path.join( db_dir, f"{backup_def}.db")]
-        if backup_def
-        else [os.path.join( db_dir, f) for f in os.listdir( db_dir) if f.endswith(".db")]
-    )
+        # Which db files to inspect?
+        backup_def = getattr(parsed_args, "backup_def", None)
+        db_files = (
+            [os.path.join( db_dir, f"{backup_def}.db")]
+            if backup_def
+            else [os.path.join( db_dir, f) for f in os.listdir( db_dir) if f.endswith(".db")]
+        )
 
-    completions = []
+        completions = []
 
-    for db_path in db_files:
-        if not os.path.exists(db_path):
-            continue
+        for db_path in db_files:
+            if not os.path.exists(db_path):
+                continue
 
-        try:
-            result = subprocess.run(
-                ["dar_manager", "--base", db_path, "--list"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=True
-            )
-        except subprocess.CalledProcessError:
-            continue
+            try:
+                result = subprocess.run(
+                    ["dar_manager", "--base", db_path, "--list"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True
+                )
+            except subprocess.CalledProcessError:
+                continue
 
-        for line in result.stdout.splitlines():
-            parts = line.strip().split("\t")
-            if len(parts) >= 3:
-                archive = parts[2].strip()
-                if archive.startswith(prefix):
-                    completions.append(archive)
+            for line in result.stdout.splitlines():
+                parts = line.strip().split("\t")
+                if len(parts) >= 3:
+                    archive = parts[2].strip()
+                    if archive.startswith(prefix):
+                        completions.append(archive)
 
-    completions = sorted(set(completions), key=sort_key)
-    return completions or ["[no matching archives]"]
+        completions = sorted(set(completions), key=sort_key)
+        return completions or ["[no matching archives]"]
+    except Exception:
+        completer_logger.exception("archive_content_completer failed")
+        return []
 
 
 
@@ -649,55 +673,59 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
     but not yet present in the <backup_def>.db catalog.
     If --backup-def is provided, restrict suggestions to that.
     """
-    from dar_backup.config_settings import ConfigSettings
-    import subprocess
-    import re
-    import os
-    from datetime import datetime
+    try:
+        from dar_backup.config_settings import ConfigSettings
+        import subprocess
+        import re
+        import os
+        from datetime import datetime
 
-    config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
-    config = ConfigSettings(config_file=config_file)
-    #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
-    db_dir = expand_path(getattr(config, 'manager_db_dir') or config.backup_dir)
-    backup_dir = config.backup_dir
-    backup_def = getattr(parsed_args, "backup_def", None)
+        config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
+        config = ConfigSettings(config_file=config_file)
+        #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
+        db_dir = expand_path(getattr(config, 'manager_db_dir') or config.backup_dir)
+        backup_dir = config.backup_dir
+        backup_def = getattr(parsed_args, "backup_def", None)
 
-    # Match pattern for archive base names: e.g. test_FULL_2025-04-01
-    dar_pattern = re.compile(r"^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1\.dar$")
+        # Match pattern for archive base names: e.g. test_FULL_2025-04-01
+        dar_pattern = re.compile(r"^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1\.dar$")
 
-    # Step 1: scan backup_dir for .1.dar files
-    all_archives = set()
-    for fname in os.listdir(backup_dir):
-        match = dar_pattern.match(fname)
-        if match:
-            base = match.group(1)
-            if base.startswith(prefix):
-                if not backup_def or base.startswith(f"{backup_def}_"):
-                    all_archives.add(base)
+        # Step 1: scan backup_dir for .1.dar files
+        all_archives = set()
+        for fname in os.listdir(backup_dir):
+            match = dar_pattern.match(fname)
+            if match:
+                base = match.group(1)
+                if base.startswith(prefix):
+                    if not backup_def or base.startswith(f"{backup_def}_"):
+                        all_archives.add(base)
 
-    # Step 2: exclude ones already present in the .db
-    db_path = os.path.join(db_dir, f"{backup_def}.db") if backup_def else None
-    existing = set()
+        # Step 2: exclude ones already present in the .db
+        db_path = os.path.join(db_dir, f"{backup_def}.db") if backup_def else None
+        existing = set()
 
-    if db_path and os.path.exists(db_path):
-        try:
-            result = subprocess.run(
-                ["dar_manager", "--base", db_path, "--list"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=True
-            )
-            for line in result.stdout.splitlines():
-                parts = line.strip().split("\t")
-                if len(parts) >= 3:
-                    existing.add(parts[2].strip())
-        except subprocess.CalledProcessError:
-            pass
+        if db_path and os.path.exists(db_path):
+            try:
+                result = subprocess.run(
+                    ["dar_manager", "--base", db_path, "--list"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True
+                )
+                for line in result.stdout.splitlines():
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 3:
+                        existing.add(parts[2].strip())
+            except subprocess.CalledProcessError:
+                pass
 
-    # Step 3: return filtered list
-    candidates = sorted(archive for archive in all_archives if archive not in existing)
-    return candidates or ["[no new archives]"]
+        # Step 3: return filtered list
+        candidates = sorted(archive for archive in all_archives if archive not in existing)
+        return candidates or ["[no new archives]"]
+    except Exception:
+        completer_logger.exception("add_specific_archive_completer failed")
+        return []
 
 
 

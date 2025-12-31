@@ -6,11 +6,14 @@ import re
 
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
+import logging
 
 from pathlib import Path
 
 from dar_backup.util import (
     expand_path,
+    _default_completer_logfile,
+    _setup_completer_logger,
     backup_definition_completer,
     list_archive_completer,
     archive_content_completer
@@ -26,6 +29,32 @@ def test_expand_path(monkeypatch):
     expanded = expand_path(path)
     expected = os.path.join(os.path.expanduser("~"), "expanded/some/path")
     assert expanded == expected
+
+
+def test_default_completer_logfile_includes_uid():
+    if not hasattr(os, "getuid"):
+        pytest.skip("os.getuid not available on this platform")
+    logfile = _default_completer_logfile()
+    assert str(os.getuid()) in os.path.basename(logfile)
+    assert logfile.startswith("/tmp/")
+
+
+def test_setup_completer_logger_failure_does_not_raise(monkeypatch):
+    logger = logging.getLogger("completer")
+    original_handlers = list(logger.handlers)
+    logger.handlers = []
+
+    def fail_handler(*_args, **_kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr("dar_backup.util.logging.FileHandler", fail_handler)
+    try:
+        test_logger = _setup_completer_logger(logfile="/root/deny.log")
+        test_logger.debug("completer logger fallback works")
+        assert test_logger is logger
+        assert any(isinstance(h, logging.NullHandler) for h in test_logger.handlers)
+    finally:
+        logger.handlers = original_handlers
 
 
 def test_backup_definition_completer(setup_environment, tmp_path, env):
