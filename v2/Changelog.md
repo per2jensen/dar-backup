@@ -10,7 +10,7 @@
 - Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
 - Automatic preflight checks now run before every invocation (or standalone via `--preflight-check`) to verify required directories, write access, and availability of `dar`/`par2` binaries.
 - PAR2 enhancements: optional PAR2_DIR storage, per-archive parity mode, per-backup overrides, and parity manifests to support verify/repair against archives in a different directory.
-- New tests for PAR2_DIR + per-archive verify/repair flow, per-backup overrides, and multi-definition recovery scenarios.
+- New tests for PAR2_DIR + per-archive verify/repair flow, per-backup overrides.
 - Documentation: new config options and per-backup overrides are documented in the README “Config changes” section.
 
 ### Changed
