@@ -16,6 +16,8 @@ the heavy lifting, together with the [parchive](https://github.com/Parchive/par2
 
 This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-backup/tree/main/v2) of `dar-backup`.
 
+You can see the [v2 Changelog](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md) for details on features and progress.
+
 ## TL;DR
 
 `dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using `dar` and `par2`. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
