@@ -569,7 +569,7 @@ On Ubuntu, install the requirements this way:
 
 ### dar-backup overview
 
-![dar-backup overview](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview.svg)
+[![dar-backup overview](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview-small.png)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview.png)
 
 ### dar-backup
 
