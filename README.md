@@ -116,6 +116,8 @@ Version **1.0.0** was reached on October 9, 2025.
     - [Demo options](#demo-options)
     - [Config changes](#config-changes)
       - [1.0.1](#101)
+        - [DISCORD WEBHOOK](#discord-webhook)
+        - [Par2](#par2-1)
   
 ## My use case
 
@@ -1264,6 +1266,10 @@ Rule of thumb table:
 | DIFF        | 5%                   | Smaller delta |
 | INCR        | 5%                   | Smaller delta |
 
+>
+>For large, contiguous archives on reliable local storage, 7–8% has proven sufficient in practice; 10% remains a conservative default.
+>
+
 Cloud sync / air-gap note:
 
 - Syncing PAR2 sets to a different device or remote store protects against bitrot and small corruption, but it cannot recover a completely lost archive.
@@ -1912,6 +1918,18 @@ Sets up demo config files:
 ### Config changes
 
 #### 1.0.1
+
+##### DISCORD WEBHOOK
+
+For Discord notifications use the `DISCORD_WEBHOOK_URL` environment variable. It should not be placed in the config file.
+
+DISCORD_WEBHOOK_URL is the entire endpoint like this:
+
+```bash
+export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/\<userId\>/\<uuid\>
+```
+
+##### Par2
 
 New optional PAR2 settings were added to the config file. If none of these keys are added, dar-backup behaves exactly as before (PAR2 files next to archives, per-slice parity).
 
