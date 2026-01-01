@@ -110,6 +110,7 @@ Version **1.0.0** was reached on October 9, 2025.
     - [CLI Tools Overview](#cli-tools-overview)
     - [test coverage](#test-coverage)
     - [Dar-backup options](#dar-backup-options)
+    - [Dar-backup exit codes](#dar-backup-exit-codes)
     - [Manager Options](#manager-options)
     - [Cleanup options](#cleanup-options)
     - [Clean-log options](#clean-log-options)
@@ -1788,6 +1789,7 @@ Available options:
 --examples                           Show examples of using dar-backup.py.
 -l, --list                           List available backups.
 --list-contents <archive>            List the contents of a specified archive.
+--list-definitions                   List backup definitions from BACKUP.D_DIR.
 --selection <params>                 Define file selection for listing/restoring.
 --restore <archive>                  Restore a specified archive.
 -r, --restore <archive>              Restore archive.
@@ -1805,6 +1807,15 @@ Available options:
 --changelog-pretty                   Print Changelog with Markdown styling and exit
 -v, --version                         Show version and license information.
 ```
+
+### Dar-backup exit codes
+
+- 0: Success.
+- 1: Error (backup/restore/preflight failure).
+- 2: Warning (restore test failed or backup already exists and is skipped).
+
+  - if the `dar -t` test fails, exit code 1 is emitted 
+  - restore tests could fail if the source file has changed after the backup
 
 ### Manager Options
 

@@ -7,6 +7,7 @@ from dar_backup.dar_backup import verify
 import dar_backup.dar_backup as db
 from unittest.mock import patch, MagicMock, mock_open
 import subprocess
+from datetime import datetime
 from dar_backup.dar_backup import restore_backup, RestoreError
 import dar_backup.dar_backup as db
 from pathlib import Path 
@@ -273,6 +274,38 @@ def test_perform_backup_handles_failed_verification(env):
         results = perform_backup(args, config, "FULL")
 
     assert any("Verification of" in r[0] for r in results)
+
+
+def test_perform_backup_sends_warning_for_existing_backup(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    os.makedirs(config.backup_dir, exist_ok=True)
+    date = datetime.now().strftime('%Y-%m-%d')
+    backup_file_path = os.path.join(config.backup_dir, f"test_FULL_{date}.1.dar")
+    with open(backup_file_path, "w") as f:
+        f.write("DAR FILE")
+
+    with patch("dar_backup.dar_backup.send_discord_message", return_value=True) as mock_send, \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL")
+
+    assert any(code == 2 for _, code in results)
+    mock_send.assert_called_once()
+    sent_message = mock_send.call_args[0][0]
+    assert "dar-backup, test: WARNING" in sent_message
 
 
 

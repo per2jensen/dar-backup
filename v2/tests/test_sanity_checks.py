@@ -419,7 +419,7 @@ def test_duplicate_full_backup_fails(setup_environment, env: EnvData):
     first = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
     assert first.returncode == 0
     second = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
-    assert second.returncode != 0
+    assert second.returncode == 2
     assert "already exists" in second.stderr or "already exists" in second.stdout
 
 

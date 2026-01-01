@@ -645,8 +645,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
             if os.path.exists(backup_file + '.1.dar'):
                 msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
-                logger.error(msg)
-                results.append((msg, 1))
+                logger.warning(msg)
+                results.append((msg, 2))
                 continue
 
             latest_base_backup = None
@@ -690,7 +690,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             else:
                 msg = f"Verification of '{backup_file}' failed."
                 logger.error(msg)
-                results.append((msg, 1))
+                results.append((msg, 2))
             logger.info("Generate par2 redundancy files.")
             generate_par2_files(backup_file, config_settings, args, backup_definition=backup_definition)
             logger.info("par2 files completed successfully.")
@@ -702,7 +702,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         finally:
             # Determine status based on new results for this backup definition
             new_results = results[start_len:]
-            if any(code for _, code in new_results if code != 0):
+            has_error = any(code == 1 for _, code in new_results)
+            has_warning = any(code == 2 for _, code in new_results)
+            if has_error:
                 success = False
 
             # Avoid spamming from example/demo backup definitions
@@ -710,7 +712,12 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.debug("Skipping Discord notification for example backup definition.")
                 continue
 
-            status = "SUCCESS" if success else "FAILURE"
+            if has_error:
+                status = "FAILURE"
+            elif has_warning:
+                status = "WARNING"
+            else:
+                status = "SUCCESS"
             timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
             message = f"{timestamp} - dar-backup, {backup_definition}: {status}"
             if not send_discord_message(message, config_settings=config_settings):
@@ -1054,6 +1061,14 @@ def print_readme(path: str = None, pretty: bool = True):
         path = Path(__file__).parent / "README.md"
     print_markdown(str(path), pretty=pretty)
 
+def list_definitions(backup_d_dir: str) -> List[str]:
+    """
+    Return backup definition filenames from BACKUP.D_DIR, sorted by name.
+    """
+    dir_path = Path(backup_d_dir)
+    if not dir_path.is_dir():
+        raise RuntimeError(f"BACKUP.D_DIR does not exist or is not a directory: {backup_d_dir}")
+    return sorted([entry.name for entry in dir_path.iterdir() if entry.is_file()])
 
 
 def main():
@@ -1075,6 +1090,7 @@ def main():
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.").completer = list_archive_completer
     parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
+    parser.add_argument('--list-definitions', action='store_true', help="List available backup definitions from BACKUP.D_DIR.")
     parser.add_argument('--selection', type=str, help="Selection string to pass to 'dar', e.g. --selection=\"-I '*.NEF'\"")
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
@@ -1097,6 +1113,8 @@ def main():
     # Ensure new flags are present when parse_args is mocked in tests
     if not hasattr(args, "preflight_check"):
         args.preflight_check = False
+    if not hasattr(args, "list_definitions"):
+        args.list_definitions = False
 
     if args.version:
         show_version()
@@ -1130,6 +1148,15 @@ def main():
 
     args.config_file = config_settings_path
     config_settings = ConfigSettings(args.config_file)
+
+    if args.list_definitions:
+        try:
+            for name in list_definitions(config_settings.backup_d_dir):
+                print(name)
+        except RuntimeError as exc:
+            print(str(exc), file=stderr)
+            exit(127)
+        exit(0)
 
     try:
         validate_required_directories(config_settings)
@@ -1263,6 +1290,7 @@ def main():
 
     # Determine exit code 
     error = False
+    final_exit_code = 0
     logger.debug(f"results[]: {results}")
     if results:
         i = 0
@@ -1273,15 +1301,21 @@ def main():
                 if exit_code > 0:
                     error = True
                     args.verbose and print(msg)
+                    if exit_code == 1:
+                        final_exit_code = 1
+                    elif exit_code == 2 and final_exit_code == 0:
+                        final_exit_code = 2
             else:
                 logger.error(f"not correct result type: {result}, which must be a tuple (<msg>, <exit_code>)")
+                error = True
+                final_exit_code = 1
             i=i+1
             
     console = Console()
     if error:
         if args.verbose:
             console.print(Text("Errors encountered", style="bold red"))
-        exit(1)
+        exit(final_exit_code or 1)
     else:
         if args.verbose:
             console.print(Text("Success: all backups completed", style="bold green"))

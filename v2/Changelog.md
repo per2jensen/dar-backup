@@ -7,6 +7,7 @@
 
 - Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
+- dar-backup `--list-definitions` option to list backup definitions from `BACKUP.D_DIR`.
 - Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
 - Automatic preflight checks now run before every invocation (or standalone via `--preflight-check`) to verify required directories, write access, and availability of `dar`/`par2` binaries.
 - PAR2 enhancements: optional PAR2_DIR storage, per-archive parity mode, per-backup overrides, and parity manifests to support verify/repair against archives in a different directory.
@@ -18,7 +19,9 @@
 
 - Pytest defaults exclude live Discord tests; enable with `-m live_discord` when a webhook is available.
 - Skip Discord notifications for the demo/example backup definition to avoid spam during sample runs.
+- Discord backup status now includes WARNING when a backup is skipped because it already exists.
 - Completer logging now uses a per-user logfile and falls back safely if the completer logger setup fails.
+- Verification failures and existing-backup skips now emit exit code 2 (warning), while errors continue to emit exit code 1.
 
 ## v2-1.0.0 - 2025-10-09
 
