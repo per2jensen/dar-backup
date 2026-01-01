@@ -229,6 +229,39 @@ def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], confi
     return files
 
 
+def filter_restoretest_candidates(files: List[str], config_settings: ConfigSettings) -> List[str]:
+    prefixes = [
+        prefix.lstrip("/").lower()
+        for prefix in getattr(config_settings, "restoretest_exclude_prefixes", [])
+    ]
+    suffixes = [
+        suffix.lower()
+        for suffix in getattr(config_settings, "restoretest_exclude_suffixes", [])
+    ]
+    regex = getattr(config_settings, "restoretest_exclude_regex", None)
+
+    if not prefixes and not suffixes and not regex:
+        return files
+
+    filtered = []
+    for path in files:
+        normalized = path.lstrip("/")
+        lowered = normalized.lower()
+        if prefixes and any(lowered.startswith(prefix) for prefix in prefixes):
+            continue
+        if suffixes and any(lowered.endswith(suffix) for suffix in suffixes):
+            continue
+        if regex and regex.search(normalized):
+            continue
+        filtered.append(path)
+
+    if logger:
+        excluded = len(files) - len(filtered)
+        if excluded:
+            logger.debug(f"Restore test filter excluded {excluded} of {len(files)} candidates")
+    return filtered
+
+
 def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, config_settings: ConfigSettings):
     """
     Verify the integrity of a DAR backup by performing the following steps:
@@ -289,8 +322,11 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     backed_up_files = get_backed_up_files(backup_file, config_settings.backup_dir) 
 
     files = find_files_between_min_and_max_size(backed_up_files, config_settings)
+    files = filter_restoretest_candidates(files, config_settings)
     if len(files) == 0:
-        logger.info(f"No files between {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB for verification, skipping")
+        logger.info(
+            "No files eligible for verification after size and restore-test filters, skipping"
+        )
         return result
 
     # find Root path in backup definition

@@ -119,6 +119,7 @@ Version **1.0.0** was reached on October 9, 2025.
     - [Config changes](#config-changes)
       - [1.0.1](#101)
         - [DISCORD WEBHOOK](#discord-webhook)
+        - [Restore test config](#restore-test-config)
         - [Par2](#par2-1)
   
 ## My use case
@@ -1930,6 +1931,37 @@ DISCORD_WEBHOOK_URL is the entire endpoint like this:
 ```bash
 export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/\<userId\>/\<uuid\>
 ```
+
+##### Restore test config
+
+Restore tests choose random files from the archive and compare them with the live filesystem.
+To avoid noisy paths (caches, temp files, logs), you can exclude candidates before the random
+selection happens. All matching is case-insensitive.
+
+Config keys (in [MISC]):
+
+- RESTORETEST_EXCLUDE_PREFIXES: comma-separated path prefixes to skip. Matches from the start of
+  the path (after trimming a leading "/"). Use trailing "/" for directories.
+- RESTORETEST_EXCLUDE_SUFFIXES: comma-separated filename suffixes to skip.
+- RESTORETEST_EXCLUDE_REGEX: optional regex to skip anything matching the path.
+
+Example:
+
+```ini
+[MISC]
+RESTORETEST_EXCLUDE_PREFIXES = .cache/, .local/share/Trash/, .mozilla/, snap/firefox/common/.mozilla/
+RESTORETEST_EXCLUDE_SUFFIXES = .sqlite-wal, .sqlite-shm, .log, .tmp, .lock, .journal
+RESTORETEST_EXCLUDE_REGEX = (^|/)(Cache|cache|Logs|log)/
+```
+
+Regex tips (case-insensitive):
+
+- Match common cache/log directories anywhere:
+  `(^|/)(cache|logs)/`
+- Skip thumbnails and temp dirs:
+  `(^|/)(thumbnails|tmp|temp)/`
+- Exclude browser profile noise while keeping other files:
+  `(^|/)\.mozilla/|/snap/firefox/common/\.mozilla/`
 
 ##### Par2
 

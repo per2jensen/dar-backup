@@ -725,6 +725,99 @@ def test_find_files_within_min_max_range(env):
     assert len(result) == 2
 
 
+def test_filter_restoretest_candidates_case_insensitive():
+    import re
+    from dar_backup.dar_backup import filter_restoretest_candidates
+
+    files = [
+        "Docs/Report.LOG",
+        ".cache/foo.txt",
+        "notes.txt",
+        "dir/Cache/file.tmp",
+        "data.db",
+    ]
+    config = SimpleNamespace(
+        restoretest_exclude_prefixes=[".CACHE/"],
+        restoretest_exclude_suffixes=[".log", ".TMP"],
+        restoretest_exclude_regex=re.compile(r"(^|/)(cache|logs)/", re.IGNORECASE),
+    )
+
+    result = filter_restoretest_candidates(files, config)
+
+    assert "notes.txt" in result
+    assert "data.db" in result
+    assert "Docs/Report.LOG" not in result
+    assert ".cache/foo.txt" not in result
+    assert "dir/Cache/file.tmp" not in result
+
+
+def test_restoretest_filters_and_verifies_all_good_files(env):
+    import re
+    from dar_backup.dar_backup import verify
+
+    args = SimpleNamespace(
+        verbose=True,
+        do_not_compare=False,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        test_restore_dir=env.restore_dir,
+        logfile_location=env.log_file,
+        command_timeout_secs=86400,
+        backup_dir=env.backup_dir,
+        min_size_verification_mb=0,
+        max_size_verification_mb=20,
+        no_files_verification=2,
+        restoretest_exclude_prefixes=[".cache/"],
+        restoretest_exclude_suffixes=[".log", ".tmp"],
+        restoretest_exclude_regex=re.compile(r"(^|/)(Cache|cache)/", re.IGNORECASE),
+    )
+
+    good_files = [
+        "/good/dir1/file1.txt",
+        "/good/dir3/file3.txt",
+    ]
+    backed_up_files = [
+        ("/.cache/skip1.txt", "10 Mio"),
+        ("/good/dir1/file1.txt", "10 Mio"),
+        ("/good/dir2/file2.log", "10 Mio"),
+        ("/good/dir3/file3.txt", "10 Mio"),
+        ("/data/Cache/file4.txt", "10 Mio"),
+        ("/var/tmp/skip.tmp", "10 Mio"),
+    ]
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    mock_definition_content = "-R /\n-s 10G\n"
+
+    with patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.filecmp.cmp", return_value=True), \
+         patch("dar_backup.dar_backup.get_backed_up_files", return_value=backed_up_files), \
+         patch("dar_backup.dar_backup.logger") as mock_logger, \
+         patch("dar_backup.dar_backup.show_log_driven_bar"), \
+         patch("dar_backup.dar_backup.random.sample", side_effect=lambda files, n: list(files)), \
+         patch("builtins.open", mock_open(read_data=mock_definition_content)):
+
+        result = verify(args, "mock-backup", env.config_file, config)
+
+    assert result is True
+
+    restore_calls = [
+        call for call in mock_runner.run.call_args_list
+        if "-x" in call.args[0]
+    ]
+    assert len(restore_calls) == len(good_files)
+    for path in good_files:
+        expected_token = path.lstrip("/")
+        assert any(expected_token in call.args[0] for call in restore_calls)
+
+    mock_logger.debug.assert_any_call(
+        "Restore test filter excluded 4 of 6 candidates"
+    )
+
+
 
 ####################################################
 # 2025-10-08

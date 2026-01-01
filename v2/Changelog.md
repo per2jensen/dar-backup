@@ -12,6 +12,7 @@
 - PAR2 enhancements: optional PAR2_DIR storage, per-archive parity mode, per-backup overrides, and parity manifests to support verify/repair against archives in a different directory.
 - New tests for PAR2_DIR + per-archive verify/repair flow, per-backup overrides.
 - Documentation: new config options and per-backup overrides are documented in the README “Config changes” section.
+- Restore test filters: optional case-insensitive prefix/suffix/regex exclusions for restore-test file sampling, plus a dedicated unit test.
 
 ### Changed
 

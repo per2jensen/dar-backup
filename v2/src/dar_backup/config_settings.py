@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import configparser
+import re
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Pattern
 
 from dar_backup.exceptions import ConfigSettingsError
 
@@ -55,6 +56,9 @@ class ConfigSettings:
     logfile_max_bytes: int = field(init=False)
     logfile_no_count: int = field(init=False)    
     discord_webhook_url: Optional[str] = field(init=False, default=None)
+    restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
+    restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
+    restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
 
 
     OPTIONAL_CONFIG_FIELDS = [
@@ -126,6 +130,21 @@ class ConfigSettings:
             self.par2_ratio_diff = self._get_optional_int("PAR2", "PAR2_RATIO_DIFF", default=None)
             self.par2_ratio_incr = self._get_optional_int("PAR2", "PAR2_RATIO_INCR", default=None)
             self.par2_run_verify = self._get_optional_bool("PAR2", "PAR2_RUN_VERIFY", default=None)
+            self.restoretest_exclude_prefixes = self._get_optional_csv_list(
+                "MISC",
+                "RESTORETEST_EXCLUDE_PREFIXES",
+                default=[]
+            )
+            self.restoretest_exclude_suffixes = self._get_optional_csv_list(
+                "MISC",
+                "RESTORETEST_EXCLUDE_SUFFIXES",
+                default=[]
+            )
+            self.restoretest_exclude_regex = self._get_optional_regex(
+                "MISC",
+                "RESTORETEST_EXCLUDE_REGEX",
+                default=None
+            )
 
             # Load optional fields
             for opt in self.OPTIONAL_CONFIG_FIELDS:
@@ -188,6 +207,32 @@ class ConfigSettings:
         if val in ('false', '0', 'no'):
             return False
         raise ConfigSettingsError(f"Invalid boolean value for '{key}' in [{section}]: '{val}'")
+
+    def _get_optional_csv_list(self, section: str, key: str, default: Optional[list[str]] = None) -> list[str]:
+        if not self.config.has_option(section, key):
+            return default if default is not None else []
+        raw = self.config.get(section, key).strip()
+        if not raw:
+            return default if default is not None else []
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    def _get_optional_regex(
+        self,
+        section: str,
+        key: str,
+        default: Optional[Pattern[str]] = None
+    ) -> Optional[Pattern[str]]:
+        if not self.config.has_option(section, key):
+            return default
+        raw = self.config.get(section, key).strip()
+        if not raw:
+            return default
+        try:
+            return re.compile(raw, re.IGNORECASE)
+        except re.error as exc:
+            raise ConfigSettingsError(
+                f"Invalid regex for '{key}' in [{section}]: {exc}"
+            ) from exc
 
     def get_par2_config(self, backup_definition: Optional[str] = None) -> dict:
         """

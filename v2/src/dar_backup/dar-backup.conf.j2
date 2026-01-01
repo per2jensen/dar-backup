@@ -35,6 +35,10 @@ LOGFILE_LOCATION = {{ vars_map.DAR_BACKUP_DIR -}}/dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 2
 MIN_SIZE_VERIFICATION_MB = 0
 NO_FILES_VERIFICATION = 1
+# Optional restore test filters (case-insensitive)
+# RESTORETEST_EXCLUDE_PREFIXES = .cache/, .local/share/Trash/, .mozilla/
+# RESTORETEST_EXCLUDE_SUFFIXES = .sqlite-wal, .sqlite-shm, .log, .tmp, .lock, .journal
+# RESTORETEST_EXCLUDE_REGEX = (^|/)(Cache|Logs)/
 # timeout in seconds for backup, test, restore and par2 operations
 # The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
 # If a timeout is not specified when using the CommandRunner, a default timeout of 30 secs is used.

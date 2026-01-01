@@ -22,11 +22,17 @@ Before using the script, ensure that the configuration file (`backup_script.conf
 LOGFILE_LOCATION=/tmp/backup_script.log
 BACKUP_DIR=/tmp
 TEST_RESTORE_DIR=/tmp/restore-test
+RESTORETEST_EXCLUDE_PREFIXES=.cache/, .local/share/Trash/, .mozilla/
+RESTORETEST_EXCLUDE_SUFFIXES=.sqlite-wal, .sqlite-shm, .log, .tmp, .lock, .journal
+# RESTORETEST_EXCLUDE_REGEX=(^|/)(Cache|Logs)/
 BACKUP.D=/path/to/backup/configs
 
     LOGFILE_LOCATION: The location of the log file.
     BACKUP_DIR: The directory where backup archives will be stored.
     TEST_RESTORE_DIR: The directory where test restores will be performed.
+    RESTORETEST_EXCLUDE_PREFIXES: Comma-separated prefixes to skip in restore test sampling (case-insensitive).
+    RESTORETEST_EXCLUDE_SUFFIXES: Comma-separated suffixes to skip in restore test sampling (case-insensitive).
+    RESTORETEST_EXCLUDE_REGEX: Optional regex to skip in restore test sampling (case-insensitive).
     BACKUP.D: The directory containing the configuration snippets.
 
 ## Usage
