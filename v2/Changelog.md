@@ -24,6 +24,7 @@
 - Completer logging now uses a per-user logfile and falls back safely if the completer logger setup fails.
 - Verification failures and existing-backup skips now emit exit code 2 (warning), while errors continue to emit exit code 1.
 - Cleanup deletion hardening (Snyk): validate archive names and enforce safe, base-dir-bound file deletions.
+- Snyk badge links to [Snyk dar-backup page](https://security.snyk.io/vuln/?search=dar-backup)
 
 ## v2-1.0.0 - 2025-10-09
 
