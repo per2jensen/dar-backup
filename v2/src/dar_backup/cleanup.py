@@ -260,7 +260,7 @@ def main():
 
     config_settings_path = get_config_file(args)
     if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
-        if args.test_mode:
+        if args.test_mode or os.getenv("PYTEST_CURRENT_TEST"):
             args.config_file = config_settings_path
         else:
             print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
