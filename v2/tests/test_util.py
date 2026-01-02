@@ -240,3 +240,53 @@ def test_safe_remove_file_refuses_bad_name(tmp_path, caplog):
 def test_is_archive_name_allowed_rejects_separators():
     assert util.is_archive_name_allowed("a/b_FULL_2024-01-01") is False
     assert util.is_archive_name_allowed(r"a\b_FULL_2024-01-01") is False
+
+
+def test_extract_backup_definition_fallback_dash_d(monkeypatch):
+    monkeypatch.setenv("COMP_LINE", "dar-backup --list-contents -d new-monster")
+    assert util.extract_backup_definition_fallback() == "new-monster"
+
+
+def test_extract_backup_definition_fallback_long_flag(monkeypatch):
+    monkeypatch.setenv("COMP_LINE", "dar-backup --backup-definition new-monster --list")
+    assert util.extract_backup_definition_fallback() == "new-monster"
+
+
+def test_extract_backup_definition_fallback_equals(monkeypatch):
+    monkeypatch.setenv("COMP_LINE", "dar-backup --backup-def=new-monster --list")
+    assert util.extract_backup_definition_fallback() == "new-monster"
+
+
+def test_split_archive_list_prefix_empty():
+    assert util.split_archive_list_prefix("") == ("", "")
+
+
+def test_split_archive_list_prefix_single():
+    assert util.split_archive_list_prefix("new-monster") == ("", "new-monster")
+
+
+def test_split_archive_list_prefix_strips_spaces():
+    head, last = util.split_archive_list_prefix("a,  b , c")
+    assert head == "a, b"
+    assert last == "c"
+
+
+def test_list_archive_completer_handles_list_with_spaces(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    (backup_dir / "new-monster_FULL_2025-12-31.1.dar").write_text("dummy")
+    (backup_dir / "other_FULL_2025-12-31.1.dar").write_text("dummy")
+
+    config_path = tmp_path / "dar-backup.conf"
+    config_path.write_text("[DIRECTORIES]\nBACKUP_DIR=%s\n" % backup_dir)
+
+    args = type("Args", (), {"backup_definition": None, "backup_def": None, "config_file": str(config_path)})
+    completions = util.list_archive_completer("old,  new-mon", args)
+
+    assert "old, new-monster_FULL_2025-12-31" in completions
+
+
+def test_list_archive_completer_cleanup_without_specific_archives(monkeypatch):
+    monkeypatch.setenv("COMP_LINE", "cleanup ")
+    args = type("Args", (), {"backup_definition": None, "backup_def": None, "config_file": "/nope"})
+    assert util.list_archive_completer("", args) == []

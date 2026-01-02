@@ -601,6 +601,15 @@ The `cleanup` application deletes DIFF and INCR if the archives are older than t
 
 `cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used. It requires the user to confirm deletion of FULL archives.
 
+Use `--dry-run` to preview which archives, PAR2 files, and catalogs would be removed without deleting anything.
+
+Examples:
+
+```bash
+cleanup --dry-run -d media-files --log-stdout
+cleanup --dry-run --cleanup-specific-archives -d media-files media-files_INCR_2025-12-22
+```
+
 ### manager
 
 `dar`has the concept of catalogs which can be exported and optionally be added to a catalog database. That database makes it much easier to restore the correct version of a backed up file if for example a target date has been set.
@@ -1861,6 +1870,7 @@ Supported options:
 --alternate-archive-dir                           Clean up in this directory instead of the default one.
 --cleanup-specific-archives "<archive>, <>, ..."  Comma separated list of archives to cleanup.
 -l, --list                                       List available archives (filter using the -d option).
+--dry-run                                        Show what would be deleted without removing files.
 --verbose                                         Print various status messages to screen.
 --log-level <level>                               `debug` or `trace`, default is `info`", default="info".
 --log-stdout                                      Print log messages to stdout.

@@ -55,7 +55,13 @@ from dar_backup.command_runner import CommandResult
 logger = None 
 runner = None
 
-def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: ConfigSettings = None, backup_definition: str = None) -> None:
+def _delete_par2_files(
+    archive_name: str,
+    backup_dir: str,
+    config_settings: ConfigSettings = None,
+    backup_definition: str = None,
+    dry_run: bool = False,
+) -> None:
     if config_settings and hasattr(config_settings, "get_par2_config"):
         par2_config = config_settings.get_par2_config(backup_definition)
     else:
@@ -83,8 +89,11 @@ def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: Conf
             return
         for file_path in sorted(set(targets)):
             try:
-                safe_remove_file(file_path, base_dir=Path(par2_dir))
-                logger.info(f"Deleted PAR2 file: {file_path}")
+                if dry_run:
+                    logger.info(f"Dry run: would delete PAR2 file: {file_path}")
+                else:
+                    safe_remove_file(file_path, base_dir=Path(par2_dir))
+                    logger.info(f"Deleted PAR2 file: {file_path}")
             except Exception as e:
                 logger.error(f"Error deleting PAR2 file {file_path}: {e}")
         return
@@ -99,9 +108,12 @@ def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: Conf
         if par2_regex.match(filename):
             file_path = os.path.join(par2_dir, filename)
             try:
-                safe_remove_file(file_path, base_dir=Path(par2_dir))
-                logger.info(f"Deleted PAR2 file: {file_path}")
-                files_deleted = True
+                if dry_run:
+                    logger.info(f"Dry run: would delete PAR2 file: {file_path}")
+                else:
+                    safe_remove_file(file_path, base_dir=Path(par2_dir))
+                    logger.info(f"Deleted PAR2 file: {file_path}")
+                    files_deleted = True
             except Exception as e:
                 logger.error(f"Error deleting PAR2 file {file_path}: {e}")
 
@@ -125,6 +137,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
 
     archives_deleted = {}
 
+    dry_run = getattr(args, "dry_run", False) is True
     for filename in sorted(os.listdir(backup_dir)):
         if not filename.endswith('.dar'):
             continue
@@ -141,8 +154,11 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
             if file_date < cutoff_date:
                 file_path = os.path.join(backup_dir, filename)
                 try:
-                    safe_remove_file(file_path, base_dir=Path(backup_dir))
-                    logger.info(f"Deleted {backup_type} backup: {file_path}")
+                    if dry_run:
+                        logger.info(f"Dry run: would delete {backup_type} backup: {file_path}")
+                    else:
+                        safe_remove_file(file_path, base_dir=Path(backup_dir))
+                        logger.info(f"Deleted {backup_type} backup: {file_path}")
                     archive_name = filename.split('.')[0]
                     if not archive_name in archives_deleted:
                         logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
@@ -154,8 +170,11 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
         if not is_archive_name_allowed(archive_name):
             raise ValueError(f"Refusing unsafe archive name: {archive_name}")
         archive_definition = archive_name.split('_')[0]
-        _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition)
-        delete_catalog(archive_name, args)
+        _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
+        if dry_run:
+            logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
+        else:
+            delete_catalog(archive_name, args)
 
 
 def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettings = None):
@@ -170,23 +189,30 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
     
     # Delete the specified .dar files according to the naming convention
     files_deleted = False
+    dry_run = getattr(args, "dry_run", False) is True
     for filename in sorted(os.listdir(backup_dir)):
         if archive_regex.match(filename):
             file_path = os.path.join(backup_dir, filename)
             try:
-                is_safe_filename(file_path) and os.remove(file_path)
-                logger.info(f"Deleted archive slice: {file_path}")
+                if dry_run:
+                    logger.info(f"Dry run: would delete archive slice: {file_path}")
+                else:
+                    is_safe_filename(file_path) and os.remove(file_path)
+                    logger.info(f"Deleted archive slice: {file_path}")
                 files_deleted = True
             except Exception as e:
                 logger.error(f"Error deleting archive slice {file_path}: {e}")
     
     if files_deleted:
-            delete_catalog(archive_name, args)
+            if dry_run:
+                logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
+            else:
+                delete_catalog(archive_name, args)
     else:
         logger.info("No .dar files matched the regex for deletion.")
 
     archive_definition = archive_name.split('_')[0]
-    _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition)
+    _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
 
 
 def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
@@ -243,14 +269,29 @@ def main():
     parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
-    parser.add_argument('--cleanup-specific-archives', type=str, help="Comma separated list of archives to cleanup").completer = list_archive_completer 
+    parser.add_argument(
+        '--cleanup-specific-archives',
+        type=str,
+        nargs='?',
+        const="",
+        default=None,
+        help="Comma separated list of archives to cleanup",
+    ).completer = list_archive_completer 
+    parser.add_argument(
+        'cleanup_specific_archives_list',
+        nargs='*',
+        help=argparse.SUPPRESS,
+    ).completer = list_archive_completer
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--test-mode', action='store_true', help='Read envvars in order to run some pytest cases')
+    parser.add_argument('--dry-run', action='store_true', help='Show what would be deleted without removing files')
 
-    argcomplete.autocomplete(parser)
+    comp_line = os.environ.get("COMP_LINE", "")
+    only_archives = "--cleanup-specific-archives" in comp_line
+    argcomplete.autocomplete(parser, always_complete_options=not only_archives)
 
     args = parser.parse_args()
 
@@ -294,6 +335,7 @@ def main():
     args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
     args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
+    args.verbose and start_msgs.append(("--dry-run:", args.dry_run))
 
     dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
     print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords, quiet=not args.verbose)
@@ -313,9 +355,13 @@ def main():
     if args.cleanup_specific_archives is None and args.test_mode:
         logger.info("No --cleanup-specific-archives provided; skipping specific archive deletion in test mode.")
 
-    if args.cleanup_specific_archives:
-        logger.info(f"Cleaning up specific archives: {args.cleanup_specific_archives}")
-        archive_names = args.cleanup_specific_archives.split(',')
+    if args.cleanup_specific_archives or args.cleanup_specific_archives_list:
+        combined = []
+        if args.cleanup_specific_archives:
+            combined.extend(args.cleanup_specific_archives.split(','))
+        combined.extend(args.cleanup_specific_archives_list or [])
+        archive_names = [name.strip() for name in combined if name.strip()]
+        logger.info(f"Cleaning up specific archives: {', '.join(archive_names)}")
         for archive_name in archive_names:
             if "_FULL_" in archive_name:
                 if not confirm_full_archive_deletion(archive_name, args.test_mode):

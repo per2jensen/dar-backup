@@ -199,6 +199,34 @@ def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch)
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.vol001.par2')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2')} still exists"
 
+
+def test_cleanup_specific_archives_dry_run(setup_environment, env):
+    archive_name = f"dry_INCR_{date_10_days_ago}"
+    archive_path = os.path.join(env.test_dir, 'backups', f'{archive_name}.1.dar')
+    with open(archive_path, 'w') as f:
+        f.write("dummy")
+
+    command = [
+        'cleanup',
+        '--dry-run',
+        '--cleanup-specific-archives',
+        archive_name,
+        '--config-file',
+        env.config_file,
+        '--log-level',
+        'debug',
+        '--log-stdout',
+    ]
+    env.logger.info(command)
+    result = subprocess.run(command, capture_output=True, text=True)
+    env.logger.info(result.stdout)
+
+    if result.returncode != 0:
+        env.logger.error(result.stderr)
+        raise RuntimeError(f"Cleanup script failed with return code {result.returncode}")
+
+    assert os.path.exists(archive_path), f"File {archive_path} should not be deleted in dry run"
+
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.vol666.par2')} still exists"
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.2.dar.par2')} still exists"

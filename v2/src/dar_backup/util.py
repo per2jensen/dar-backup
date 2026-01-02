@@ -537,10 +537,17 @@ def extract_backup_definition_fallback() -> str:
         str: The value of the --backup-definition argument if found, else an empty string.
     """
     comp_line = os.environ.get("COMP_LINE", "")
-    # Match both "--backup-definition VALUE" and "-d VALUE"
-    match = re.search(r"(--backup-definition|-d)\s+([^\s]+)", comp_line)
-    if match:
-        return match.group(2)
+    try:
+        tokens = shlex.split(comp_line)
+    except ValueError:
+        tokens = comp_line.split()
+
+    for i, token in enumerate(tokens):
+        if token in ("-d", "--backup-definition", "--backup-def"):
+            if i + 1 < len(tokens):
+                return tokens[i + 1]
+        elif token.startswith(("--backup-definition=", "--backup-def=", "-d=")):
+            return token.split("=", 1)[1]
     return ""
 
 
@@ -552,7 +559,16 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
         import configparser
         from dar_backup.util import extract_backup_definition_fallback
 
-        backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
+        comp_line = os.environ.get("COMP_LINE", "")
+        if "cleanup" in comp_line and "--cleanup-specific-archives" not in comp_line:
+            return []
+
+        backup_def = (
+            getattr(parsed_args, "backup_definition", None)
+            or getattr(parsed_args, "backup_def", None)
+            or extract_backup_definition_fallback()
+        )
+        head, last = split_archive_list_prefix(prefix)
         config_path = get_config_file(parsed_args)
         if not os.path.exists(config_path):
             return []
@@ -568,17 +584,37 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
         files = os.listdir(backup_dir)
         archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
 
-        completions = [
-            f.rsplit(".1.dar", 1)[0]
-            for f in files
-            if archive_re.match(f)
-        ]
+        completions = []
+        for fname in files:
+            if not archive_re.match(fname):
+                continue
+            base = fname.rsplit(".1.dar", 1)[0]
+            if last and not base.startswith(last):
+                continue
+            if head:
+                completions.append(f"{head}, {base}")
+            else:
+                completions.append(base)
 
         completions = sorted(set(completions), key=sort_key)
         return completions or ["[no matching archives]"]
     except Exception:
         completer_logger.exception("list_archive_completer failed")
         return []
+
+
+def split_archive_list_prefix(prefix: str) -> tuple[str, str]:
+    """
+    Split a comma-separated archive list into (head, last).
+    Strips whitespace so completions don't include leading/trailing spaces.
+    """
+    if not prefix or "," not in prefix:
+        return ("", prefix.strip())
+    parts = [part.strip() for part in prefix.split(",")]
+    head_parts = [part for part in parts[:-1] if part]
+    head = ", ".join(head_parts)
+    last = parts[-1]
+    return (head, last)
 
 
 

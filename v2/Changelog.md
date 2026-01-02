@@ -5,6 +5,10 @@
 
 ### Added
 
+- Cleanup `--dry-run` to preview archive, PAR2, and catalog deletions.
+- Completion: `cleanup` supports comma-separated archive lists with whitespace normalization.
+- Completion: `cleanup` now offers archive-only suggestions after `--cleanup-specific-archives`.
+- Tests for completion list parsing and cleanup dry-run.
 - Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DAR_BACKUP_DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
 - dar-backup `--list-definitions` option to list backup definitions from `BACKUP.D_DIR`.
@@ -18,6 +22,7 @@
 
 ### Changed
 
+- Completion: `dar-backup -l -d <def>` and `cleanup --cleanup-specific-archives -d <def>` now narrow archive suggestions by definition and prefix.
 - Pytest defaults exclude live Discord tests; enable with `-m live_discord` when a webhook is available.
 - Skip Discord notifications for the demo/example backup definition to avoid spam during sample runs.
 - Discord backup status now includes WARNING when a backup is skipped because it already exists.

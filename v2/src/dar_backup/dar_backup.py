@@ -1088,7 +1088,14 @@ def main():
     parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
-    parser.add_argument('-l', '--list', action='store_true', help="List available archives.").completer = list_archive_completer
+    parser.add_argument(
+        '-l',
+        '--list',
+        nargs='?',
+        const=True,
+        default=False,
+        help="List available archives.",
+    ).completer = list_archive_completer
     parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
     parser.add_argument('--list-definitions', action='store_true', help="List available backup definitions from BACKUP.D_DIR.")
     parser.add_argument('--selection', type=str, help="Selection string to pass to 'dar', e.g. --selection=\"-I '*.NEF'\"")
@@ -1264,7 +1271,14 @@ def main():
         requirements('PREREQ', config_settings)
 
         if args.list:
-            list_backups(config_settings.backup_dir, args.backup_definition)
+            list_filter = args.backup_definition
+            if isinstance(args.list, str):
+                if list_filter:
+                    if args.list.startswith(list_filter):
+                        list_filter = args.list
+                else:
+                    list_filter = args.list
+            list_backups(config_settings.backup_dir, list_filter)
         elif args.full_backup and not args.differential_backup and not args.incremental_backup:
             results.extend(perform_backup(args, config_settings, "FULL"))
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
