@@ -1,3 +1,4 @@
+import os
 import sys
 import logging
 import pytest
@@ -130,7 +131,7 @@ def test_is_under_base_dir_outside(tmp_path):
 
     assert util.is_under_base_dir(candidate, base_dir) is False
 
-
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlink not supported")
 def test_is_under_base_dir_symlink_escape(tmp_path):
     base_dir = tmp_path / "base"
     base_dir.mkdir()
@@ -178,7 +179,7 @@ def test_safe_remove_file_refuses_bad_name(tmp_path):
     assert util.safe_remove_file(str(file_path), base_dir=base_dir) is False
     assert file_path.exists()
 
-
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlink not supported")
 def test_safe_remove_file_refuses_symlink(tmp_path):
     util.logger = logging.getLogger("test")
     base_dir = tmp_path / "base"
@@ -217,3 +218,25 @@ def test_is_archive_name_allowed_negative():
     assert util.is_archive_name_allowed(r"..\\example_FULL_2024-01-01") is False
     assert util.is_archive_name_allowed("example FULL_2024-01-01") is False
     assert util.is_archive_name_allowed("-bad_FULL_2024-01-01") is False
+
+
+def test_is_under_base_dir_nested_positive(tmp_path):
+    base = tmp_path / "base"
+    (base / "a" / "b").mkdir(parents=True)
+    candidate = base / "a" / "b" / "f.txt"
+    candidate.write_text("ok")
+    assert util.is_under_base_dir(candidate, base) is True
+
+
+def test_safe_remove_file_refuses_bad_name(tmp_path, caplog):
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    file_path = base_dir / "not-allowed.txt"
+    file_path.write_text("ok")
+
+    with caplog.at_level("WARNING"):
+        assert util.safe_remove_file(str(file_path), base_dir=base_dir) is False
+
+def test_is_archive_name_allowed_rejects_separators():
+    assert util.is_archive_name_allowed("a/b_FULL_2024-01-01") is False
+    assert util.is_archive_name_allowed(r"a\b_FULL_2024-01-01") is False
