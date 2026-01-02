@@ -109,3 +109,111 @@ def test_get_invocation_command_line_negative(monkeypatch):
     assert isinstance(result, str)
     assert "error" in result.lower()
     assert "could not read" in result.lower()
+
+
+def test_is_under_base_dir_positive(tmp_path):
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    candidate = base_dir / "file.txt"
+    candidate.write_text("ok")
+
+    assert util.is_under_base_dir(candidate, base_dir) is True
+
+
+def test_is_under_base_dir_outside(tmp_path):
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    candidate = outside / "file.txt"
+    candidate.write_text("nope")
+
+    assert util.is_under_base_dir(candidate, base_dir) is False
+
+
+def test_is_under_base_dir_symlink_escape(tmp_path):
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "target.txt"
+    target.write_text("ok")
+    link = base_dir / "link.txt"
+    link.symlink_to(target)
+
+    assert util.is_under_base_dir(link, base_dir) is False
+
+
+def test_safe_remove_file_deletes_valid(tmp_path):
+    util.logger = logging.getLogger("test")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    file_path = base_dir / "example_FULL_2024-01-01.1.dar"
+    file_path.write_text("ok")
+
+    assert util.safe_remove_file(str(file_path), base_dir=base_dir) is True
+    assert not file_path.exists()
+
+
+def test_safe_remove_file_refuses_outside_base(tmp_path):
+    util.logger = logging.getLogger("test")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    file_path = outside / "example_FULL_2024-01-01.1.dar"
+    file_path.write_text("ok")
+
+    assert util.safe_remove_file(str(file_path), base_dir=base_dir) is False
+    assert file_path.exists()
+
+
+def test_safe_remove_file_refuses_bad_name(tmp_path):
+    util.logger = logging.getLogger("test")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    file_path = base_dir / "not-allowed.txt"
+    file_path.write_text("ok")
+
+    assert util.safe_remove_file(str(file_path), base_dir=base_dir) is False
+    assert file_path.exists()
+
+
+def test_safe_remove_file_refuses_symlink(tmp_path):
+    util.logger = logging.getLogger("test")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    target = base_dir / "target.txt"
+    target.write_text("ok")
+    link = base_dir / "example_FULL_2024-01-02.1.dar"
+    link.symlink_to(target)
+
+    assert util.safe_remove_file(str(link), base_dir=base_dir) is False
+    assert link.exists()
+    assert target.exists()
+
+
+def test_safe_remove_file_refuses_non_file(tmp_path):
+    util.logger = logging.getLogger("test")
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    dir_path = base_dir / "example_FULL_2024-01-03.1.dar"
+    dir_path.mkdir()
+
+    assert util.safe_remove_file(str(dir_path), base_dir=base_dir) is False
+    assert dir_path.exists()
+
+
+def test_is_archive_name_allowed_positive():
+    assert util.is_archive_name_allowed("example_FULL_2024-01-01") is True
+    assert util.is_archive_name_allowed("proj-1.INC_INCR_2024-12-31") is True
+    assert util.is_archive_name_allowed(" example_DIFF_2024-02-29 ") is True
+
+
+def test_is_archive_name_allowed_negative():
+    assert util.is_archive_name_allowed("example_BAD_2024-01-01") is False
+    assert util.is_archive_name_allowed("example_FULL_2024-02-30") is False
+    assert util.is_archive_name_allowed("../example_FULL_2024-01-01") is False
+    assert util.is_archive_name_allowed(r"..\\example_FULL_2024-01-01") is False
+    assert util.is_archive_name_allowed("example FULL_2024-01-01") is False
+    assert util.is_archive_name_allowed("-bad_FULL_2024-01-01") is False

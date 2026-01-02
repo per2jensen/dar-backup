@@ -32,7 +32,7 @@ import dar_backup.__about__ as about
 
 
 from argcomplete.completers import ChoicesCompleter
-from datetime import datetime
+from datetime import datetime, date
 from datetime import date 
 from dar_backup.config_settings import ConfigSettings
 from logging.handlers import RotatingFileHandler
