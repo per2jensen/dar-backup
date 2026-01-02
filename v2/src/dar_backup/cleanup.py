@@ -250,15 +250,18 @@ def main():
 
     args = parser.parse_args()
 
-    config_settings_path = get_config_file(args)
-    if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
-        print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
-        raise SystemExit(127)
-    args.config_file = config_settings_path
-
     if args.version:
         show_version()
         sys.exit(0)
+
+    config_settings_path = get_config_file(args)
+    if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
+        if args.test_mode:
+            args.config_file = config_settings_path
+        else:
+            print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
+            raise SystemExit(127)
+    args.config_file = config_settings_path
 
     config_settings = ConfigSettings(args.config_file)
 
