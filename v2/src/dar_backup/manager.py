@@ -35,6 +35,7 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging
 from dar_backup.util import CommandResult
+from dar_backup.util import get_config_file
 from dar_backup.util import get_logger
 from dar_backup.util import get_binary_info
 from dar_backup.util import show_version
@@ -47,6 +48,7 @@ from dar_backup.command_runner import CommandResult
 from dar_backup.util import backup_definition_completer, list_archive_completer, archive_content_completer, add_specific_archive_completer
 
 from datetime import datetime
+from sys import stderr
 from time import time
 from typing import Dict, List, NamedTuple, Tuple
 
@@ -492,7 +494,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
-    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--create-db', action='store_true', help='Create missing databases for all backup definitions')
     parser.add_argument('--alternate-archive-dir', type=str, help='Use this directory instead of BACKUP_DIR in config file')
     parser.add_argument('--add-dir', type=str, help='Add all archive catalogs in this directory to databases')
@@ -536,7 +538,12 @@ def main():
         show_version()
         sys.exit(0)
 
-    args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
+    config_settings_path = get_config_file(args)
+    if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
+        print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
+        raise SystemExit(127)
+    args.config_file = config_settings_path
+
     config_settings = ConfigSettings(args.config_file)
 
     if not os.path.dirname(config_settings.logfile_location):

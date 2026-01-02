@@ -12,9 +12,6 @@ See section 15 and section 16 in the supplied "LICENSE" file
 
 This script can be used to control `dar` to backup parts of or the whole system.
 """
-
-
-
 import argcomplete
 import argparse
 import filecmp
@@ -52,6 +49,7 @@ from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
 from dar_backup.util import requirements
 from dar_backup.util import show_version
+from dar_backup.util import get_config_file
 from dar_backup.util import get_invocation_command_line
 from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
@@ -599,7 +597,9 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
             print(f" - {err}")
         return False
 
-    print("Preflight checks passed.")
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        print("Preflight checks passed.")
+
     return True
 
 
@@ -1086,7 +1086,7 @@ def main():
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
     parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer
     parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer
-    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.").completer = list_archive_completer
     parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
@@ -1136,15 +1136,25 @@ def main():
         exit(0)
 
 
+    # be backwards compatible with older versions
+    DEFAULT_CONFIG_FILE = "~/.config/dar-backup/dar-backup.conf"
 
-    if not args.config_file:
-        print(f"Config file not specified, exiting", file=stderr)
-        exit(1) 
+    env_cf = os.getenv("DAR_BACKUP_CONFIG_FILE")
+    env_cf = env_cf.strip() if env_cf else None
+
+    cli_cf = args.config_file.strip() if args.config_file else None
     
-    config_settings_path = os.path.expanduser(os.path.expandvars(args.config_file))
-    if not os.path.exists(config_settings_path):
-        print(f"Config file {args.config_file} does not exist.", file=stderr)
-        exit(127)
+    raw_config = (
+        cli_cf
+        or env_cf
+        or DEFAULT_CONFIG_FILE
+    )
+
+    config_settings_path = get_config_file(args)
+
+    if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
+        print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
+        raise SystemExit(127)
 
     args.config_file = config_settings_path
     config_settings = ConfigSettings(args.config_file)

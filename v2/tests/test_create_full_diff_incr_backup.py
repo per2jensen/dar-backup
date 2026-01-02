@@ -165,7 +165,7 @@ def test_backup_with_missing_config_file(setup_environment, env):
 
     # Assert correct failure behavior
     assert result.returncode == 127, f"Expected return code 127, got {result.returncode}"
-    assert "does not exist" in result.stderr.lower()
+    assert "must exist and be readable" in result.stderr.lower()
 
 
 def test_backup_with_malformed_config_file(setup_environment, env):

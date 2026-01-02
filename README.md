@@ -110,7 +110,8 @@ Version **1.0.0** was reached on October 9, 2025.
     - [CLI Tools Overview](#cli-tools-overview)
     - [test coverage](#test-coverage)
     - [Dar-backup options](#dar-backup-options)
-    - [Dar-backup exit codes](#dar-backup-exit-codes)
+      - [Dar-backup exit codes](#dar-backup-exit-codes)
+      - [Dar-backup env vars](#dar-backup-env-vars)
     - [Manager Options](#manager-options)
     - [Cleanup options](#cleanup-options)
     - [Clean-log options](#clean-log-options)
@@ -1726,15 +1727,15 @@ One backup definition per file
 
 ### CLI Tools Overview
 
-| Command              | Description                               |
-|----------------------|-------------------------------------------|
-| [dar-backup](#dar-backup-options)| Perform full, differential, or incremental backups with verification and restore testing |
-| [manager](#manager-options)      | Maintain and query catalog databases for archives |
-| [cleanup](#cleanup-options)      | Remove outdated DIFF/INCR archives (and optionally FULLs) |
-| [clean-log](#clean-log-options)  | Clean up excessive log output from dar command logs |
+| Command | Description |
+| --- | --- |
+| [dar-backup](#dar-backup-options) | Perform full, differential, or incremental backups with verification and restore testing |
+| [manager](#manager-options) | Maintain and query catalog databases for archives |
+| [cleanup](#cleanup-options) | Remove outdated DIFF/INCR archives (and optionally FULLs) |
+| [clean-log](#clean-log-options) | Clean up excessive log output from dar command logs |
 | [dar-backup-systemd](#dar-backup-systemd-options) | Generate (and optionally install) systemd timers and services for automated backups |
-| [installer](#installer-options)  | Set up directories and optionally create catalog databases according to a config file |
-| [demo](#demo-options)            | Set up required directories and config files for a demo|
+| [installer](#installer-options) | Set up directories and optionally create catalog databases according to a config file |
+| [demo](#demo-options) | Set up required directories and config files for a demo|
 
 ### test coverage
 
@@ -1808,14 +1809,21 @@ Available options:
 -v, --version                         Show version and license information.
 ```
 
-### Dar-backup exit codes
+#### Dar-backup exit codes
 
 - 0: Success.
 - 1: Error (backup/restore/preflight failure).
 - 2: Warning (restore test failed or backup already exists and is skipped).
 
-  - if the `dar -t` test fails, exit code 1 is emitted 
+  - if the `dar -t` test fails, exit code 1 is emitted
   - restore tests could fail if the source file has changed after the backup
+
+#### Dar-backup env vars
+
+| Env var | Value | Description |
+| --- | --- | --- |
+| DAR_BACKUP_CONFIG_FILE | Full path to config file | Overrides built-in default, overridden by --config-file |
+| DAR_BACKUP_DISCORD_WEBHOOK_URL | https://discord.com/api/webhooks/\<userID\>/\<webhook UUID\> | The full url |
 
 ### Manager Options
 
@@ -1935,12 +1943,12 @@ Sets up demo config files:
 
 ##### DISCORD WEBHOOK
 
-For Discord notifications use the `DISCORD_WEBHOOK_URL` environment variable. It should not be placed in the config file.
+For Discord notifications use the `DAR_BACKUP_DISCORD_WEBHOOK_URL` environment variable. It should not be placed in the config file.
 
-DISCORD_WEBHOOK_URL is the entire endpoint like this:
+DAR_BACKUP_DISCORD_WEBHOOK_URL is the entire endpoint like this:
 
 ```bash
-export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/\<userId\>/\<uuid\>
+export DAR_BACKUP_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/\<userId\>/\<uuid\>
 ```
 
 ##### Restore test config

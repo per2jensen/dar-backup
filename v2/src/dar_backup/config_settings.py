@@ -55,7 +55,7 @@ class ConfigSettings:
     par2_run_verify: Optional[bool] = field(init=False, default=None)
     logfile_max_bytes: int = field(init=False)
     logfile_no_count: int = field(init=False)    
-    discord_webhook_url: Optional[str] = field(init=False, default=None)
+    dar_backup_discord_webhook_url: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
@@ -85,8 +85,8 @@ class ConfigSettings:
         },
         {
             "section": "MISC",
-            "key": "DISCORD_WEBHOOK_URL",
-            "attr": "discord_webhook_url",
+            "key": "DAR_BACKUP_DISCORD_WEBHOOK_URL",
+            "attr": "dar_backup_discord_webhook_url",
             "type": str,
             "default": None,
         },

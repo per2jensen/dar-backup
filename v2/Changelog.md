@@ -5,7 +5,7 @@
 
 ### Added
 
-- Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
+- Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DAR_BACKUP_DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
 - dar-backup `--list-definitions` option to list backup definitions from `BACKUP.D_DIR`.
 - Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
@@ -14,6 +14,7 @@
 - New tests for PAR2_DIR + per-archive verify/repair flow, per-backup overrides.
 - Documentation: new config options and per-backup overrides are documented in the README “Config changes” section.
 - Restore test filters: optional case-insensitive prefix/suffix/regex exclusions for restore-test file sampling, plus a dedicated unit test.
+- Env var `DAR_BACKUP_CONFIG_FILE` now supported.
 
 ### Changed
 

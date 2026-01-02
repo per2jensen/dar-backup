@@ -226,7 +226,7 @@ def send_discord_message(
     """
     Send a message to a Discord webhook if configured either in the config file or via environment.
 
-    The config value DISCORD_WEBHOOK_URL, when set, takes precedence over the environment variable
+    The environment varible DAR_BACKUP_DISCORD_WEBHOOK_URL, when set, takes precedence over the config file variable 
     with the same name. If neither is defined, the function logs an info-level message and returns False.
 
     Returns:
@@ -234,14 +234,14 @@ def send_discord_message(
     """
     log = get_logger()
 
-    config_webhook = getattr(config_settings, "discord_webhook_url", None) if config_settings else None
-    env_webhook = os.environ.get("DISCORD_WEBHOOK_URL")
+    config_webhook = getattr(config_settings, "dar_backup_discord_webhook_url", None) if config_settings else None
+    env_webhook = os.environ.get("DAR_BACKUP_DISCORD_WEBHOOK_URL")
 
-    webhook_url = config_webhook or env_webhook
-    source = "config file" if config_webhook else ("environment" if env_webhook else None)
+    webhook_url = env_webhook or config_webhook
+    source = "environment" if env_webhook else ("config file" if config_webhook else None)
 
     if not webhook_url:
-        log and log.info("Discord message not sent: DISCORD_WEBHOOK_URL not configured.")
+        log and log.info("Discord message not sent: DAR_BACKUP_DISCORD_WEBHOOK_URL not configured.")
         return False
 
     payload = json.dumps({"content": content}).encode("utf-8")
@@ -513,12 +513,9 @@ def expand_path(path: str) -> str:
     return os.path.expanduser(os.path.expandvars(path))
 
 
-
 def backup_definition_completer(prefix, parsed_args, **kwargs):
     try:
-        config_path = getattr(parsed_args, 'config_file', '~/.config/dar-backup/dar-backup.conf')
-        config_path = expand_path(config_path)
-        config_file = os.path.expanduser(config_path)
+        config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file)
         backup_d_dir = os.path.expanduser(config.backup_d_dir)
         return [f for f in os.listdir(backup_d_dir) if f.startswith(prefix)]
@@ -552,9 +549,7 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
         from dar_backup.util import extract_backup_definition_fallback
 
         backup_def = getattr(parsed_args, "backup_definition", None) or extract_backup_definition_fallback()
-        config_path = getattr(parsed_args, "config_file", None) or "~/.config/dar-backup/dar-backup.conf"
-
-        config_path = os.path.expanduser(os.path.expandvars(config_path))
+        config_path = get_config_file(parsed_args)
         if not os.path.exists(config_path):
             return []
 
@@ -622,7 +617,7 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
         from datetime import datetime
 
         # Expand config path
-        config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
+        config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file=config_file)
         #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
         db_dir = expand_path(getattr(config, 'manager_db_dir', None) or config.backup_dir)
@@ -680,7 +675,7 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         import os
         from datetime import datetime
 
-        config_file = expand_path(getattr(parsed_args, "config_file", "~/.config/dar-backup/dar-backup.conf"))
+        config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file=config_file)
         #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
         db_dir = expand_path(getattr(config, 'manager_db_dir') or config.backup_dir)
@@ -859,3 +854,27 @@ def is_safe_path(path: str) -> bool:
         os.path.isabs(normalized)
         and '..' not in normalized.split(os.sep)
     )
+
+def get_config_file(args) -> str:
+    """
+    Returns the config file path based on the following precedence:
+    1. Command-line argument (--config-file)
+    2. Environment variable (DAR_BACKUP_CONFIG_FILE)
+    3. Default path (~/.config/dar-backup/dar-backup.conf)
+    """
+    DEFAULT_CONFIG_FILE = "~/.config/dar-backup/dar-backup.conf"
+
+    env_cf = os.getenv("DAR_BACKUP_CONFIG_FILE")
+    env_cf = env_cf.strip() if env_cf else None
+
+    cli_cf = getattr(args, "config_file", None)
+    cli_cf = cli_cf.strip() if cli_cf else None
+    
+    raw_config = (
+        cli_cf
+        or env_cf
+        or DEFAULT_CONFIG_FILE
+    )
+
+    config_settings_path = os.path.abspath(os.path.expanduser(os.path.expandvars(raw_config)))
+    return config_settings_path

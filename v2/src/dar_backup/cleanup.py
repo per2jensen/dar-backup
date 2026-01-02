@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
+from sys import stderr
 from time import time
 from typing import Dict, List, NamedTuple, Tuple
 import glob
@@ -36,6 +37,7 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
+from dar_backup.util import get_config_file
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
 from dar_backup.util import show_version
@@ -234,7 +236,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
     parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer
-    parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default='~/.config/dar-backup/dar-backup.conf')
+    parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
     parser.add_argument('--cleanup-specific-archives', type=str, help="Comma separated list of archives to cleanup").completer = list_archive_completer 
@@ -248,8 +250,11 @@ def main():
 
     args = parser.parse_args()
 
-    args.config_file = os.path.expanduser(os.path.expandvars(args.config_file))
-    
+    config_settings_path = get_config_file(args)
+    if not (os.path.isfile(config_settings_path) and os.access(config_settings_path, os.R_OK)):
+        print(f"Config file {config_settings_path} must exist and be readable.", file=stderr)
+        raise SystemExit(127)
+    args.config_file = config_settings_path
 
     if args.version:
         show_version()
