@@ -30,8 +30,10 @@ import urllib.request
 import dar_backup.__about__ as about
 
 
+
 from argcomplete.completers import ChoicesCompleter
 from datetime import datetime
+from datetime import date 
 from dar_backup.config_settings import ConfigSettings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -285,9 +287,11 @@ def send_discord_message(
 
     return False
 
+
 def extract_version(output):
     match = re.search(r'(\d+\.\d+(\.\d+)?)', output)
     return match.group(1) if match else "unknown"
+
 
 def get_binary_info(command):
     """
@@ -878,3 +882,96 @@ def get_config_file(args) -> str:
 
     config_settings_path = os.path.abspath(os.path.expanduser(os.path.expandvars(raw_config)))
     return config_settings_path
+
+
+
+def is_under_base_dir(candidate: Path, base_dir: Path) -> bool:
+    """
+    True iff candidate resolves under base_dir (symlink-safe).
+    """
+    try:
+        base = base_dir.resolve(strict=True)
+        resolved = candidate.resolve(strict=False)
+    except Exception:
+        return False
+    return resolved == base or base in resolved.parents
+
+
+def safe_remove_file(path_str: str, *, base_dir: Path) -> bool:
+    """
+    Remove a file only if it:
+      - is under base_dir (after resolve),
+      - matches archive naming convention by BASENAME,
+      - is a regular file (not a dir),
+      - is not a symlink (optional hardening).
+    Returns True if removed.
+    """
+    p = Path(path_str)
+
+    # Enforce containment first (defeats ../ and symlink escape)
+    if not is_under_base_dir(p, base_dir):
+        logger.warning("Refusing to delete outside base_dir: %s (base=%s)", p, base_dir)
+        return False
+
+    # Validate filename shape on basename only
+    if not is_safe_filename(p.name):
+        logger.warning("Refusing to delete non-matching filename: %s", p.name)
+        return False
+
+    # Hardening: don't follow symlinks
+    if p.is_symlink():
+        logger.warning("Refusing to delete symlink: %s", p)
+        return False
+
+    # Only delete regular files
+    if not p.is_file():
+        logger.warning("Refusing to delete non-file: %s", p)
+        return False
+
+    p.unlink()
+    return True
+
+
+
+# Allowed archive name:
+#   <definition>_(FULL|DIFF|INCR)_YYYY-MM-DD
+# Example:
+#   pj-homedir_INCR_2025-11-22
+_ARCHIVE_NAME_RE = re.compile(
+    r"^(?P<def>[A-Za-z0-9][A-Za-z0-9._-]{0,127})_"
+    r"(?P<kind>FULL|DIFF|INCR)_"
+    r"(?P<date>\d{4}-\d{2}-\d{2})$"
+)
+
+def is_archive_name_allowed(name: str) -> bool:
+    """
+    Return True iff the archive name is safe and valid.
+
+    Security properties:
+      - name only, never a path (no /, \\, or ..)
+      - strict allowed character set
+      - must be FULL / DIFF / INCR
+      - date must be a real calendar date
+    """
+    if not isinstance(name, str):
+        return False
+
+    name = name.strip()
+
+    # Reject anything path-like
+    if "/" in name or "\\" in name or ".." in name:
+        return False
+
+    m = _ARCHIVE_NAME_RE.match(name)
+    if not m:
+        return False
+
+    # Validate date is real (not just shape)
+    try:
+        date.fromisoformat(m.group("date"))   # <-- FIX
+        # alternatively:
+        # datetime.strptime(m.group("date"), "%Y-%m-%d")
+    except ValueError:
+        return False
+
+    return True

@@ -24,9 +24,9 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
-
 from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
+from pathlib import Path
 from sys import stderr
 from time import time
 from typing import Dict, List, NamedTuple, Tuple
@@ -44,7 +44,9 @@ from dar_backup.util import show_version
 from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
+from dar_backup.util import is_archive_name_allowed
 from dar_backup.util import is_safe_filename
+from dar_backup.util import safe_remove_file
 from dar_backup.util import show_scriptname
 
 from dar_backup.command_runner import CommandRunner   
@@ -81,7 +83,7 @@ def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: Conf
             return
         for file_path in sorted(set(targets)):
             try:
-                is_safe_filename(file_path) and os.remove(file_path)
+                safe_remove_file(file_path, base_dir=Path(par2_dir))
                 logger.info(f"Deleted PAR2 file: {file_path}")
             except Exception as e:
                 logger.error(f"Error deleting PAR2 file {file_path}: {e}")
@@ -97,7 +99,7 @@ def _delete_par2_files(archive_name: str, backup_dir: str, config_settings: Conf
         if par2_regex.match(filename):
             file_path = os.path.join(par2_dir, filename)
             try:
-                is_safe_filename(file_path) and os.remove(file_path)
+                safe_remove_file(file_path, base_dir=Path(par2_dir))
                 logger.info(f"Deleted PAR2 file: {file_path}")
                 files_deleted = True
             except Exception as e:
@@ -139,7 +141,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
             if file_date < cutoff_date:
                 file_path = os.path.join(backup_dir, filename)
                 try:
-                    is_safe_filename(file_path) and os.remove(file_path)
+                    safe_remove_file(file_path, base_dir=Path(backup_dir))
                     logger.info(f"Deleted {backup_type} backup: {file_path}")
                     archive_name = filename.split('.')[0]
                     if not archive_name in archives_deleted:
@@ -149,6 +151,8 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                     logger.error(f"Error deleting file {file_path}: {e}")
 
     for archive_name in archives_deleted.keys():
+        if not is_archive_name_allowed(archive_name):
+            raise ValueError(f"Refusing unsafe archive name: {archive_name}")
         archive_definition = archive_name.split('_')[0]
         _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition)
         delete_catalog(archive_name, args)
