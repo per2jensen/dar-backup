@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1400"
+   height="900"
+   viewBox="0 0 1400 900"
+   version="1.1"
+   id="svg64"
+   sodipodi:docname="Configfile.svg"
+   inkscape:version="1.4.2 (2aeb623e1d, 2025-05-12)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview64"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="false"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="0.91115759"
+     inkscape:cx="814.3487"
+     inkscape:cy="493.87724"
+     inkscape:window-width="2225"
+     inkscape:window-height="1214"
+     inkscape:window-x="371"
+     inkscape:window-y="324"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg64" />
+  <defs
+     id="defs1">
+    <rect
+       x="480.07754"
+       y="807.76367"
+       width="695.35029"
+       height="92.236333"
+       id="rect64" />
+    <style
+       type="text/css"
+       id="style1"><![CDATA[
+      .box { fill: #ffffff; stroke: #111827; stroke-width: 2; rx: 14; ry: 14; }
+      .title { font: 700 18px sans-serif; fill: #111827; }
+      .text { font: 14px sans-serif; fill: #111827; }
+      .mono { font: 13px monospace; fill: #111827; }
+      .muted { font: 12px sans-serif; fill: #374151; }
+      .arrow { stroke: #111827; stroke-width: 2; fill: none; marker-end: url(#arrowHead); }
+      .note { fill: #f9fafb; stroke: #9ca3af; stroke-width: 1.5; rx: 12; ry: 12; }
+      .good { fill: #ecfdf5; stroke: #10b981; }
+      .warn { fill: #fffbeb; stroke: #f59e0b; }
+    ]]></style>
+    <marker
+       id="arrowHead"
+       markerWidth="12"
+       markerHeight="12"
+       refX="10"
+       refY="6"
+       orient="auto">
+      <path
+         d="M 0 0 L 12 6 L 0 12 z"
+         fill="#111827"
+         id="path1" />
+    </marker>
+  </defs>
+  <!-- Left: config file -->
+  <rect
+     class="box"
+     x="40"
+     y="40"
+     width="460"
+     height="820"
+     id="rect1" />
+  <text
+     class="title"
+     x="60"
+     y="75"
+     id="text1">dar-backup.conf (INI)</text>
+  <text
+     class="text"
+     x="60"
+     y="110"
+     id="text2">Global sections (always read):</text>
+  <text
+     class="mono"
+     x="80"
+     y="140"
+     id="text3">[MISC]</text>
+  <text
+     class="mono"
+     x="80"
+     y="165"
+     id="text4">[DIRECTORIES]</text>
+  <text
+     class="mono"
+     x="80"
+     y="190"
+     id="text5">[AGE]</text>
+  <text
+     class="mono"
+     x="80"
+     y="215"
+     id="text6">[PAR2]</text>
+  <text
+     class="mono"
+     x="80"
+     y="240"
+     id="text7">[PREREQ]</text>
+  <text
+     class="mono"
+     x="80"
+     y="265"
+     id="text8">[POSTREQ]</text>
+  <rect
+     class="note"
+     x="60.184952"
+     y="298.82642"
+     width="419.81503"
+     height="270.3472"
+     id="rect8" />
+  <text
+     class="text"
+     x="80"
+     y="335"
+     id="text9">Per-backup override section(s):</text>
+  <text
+     class="mono"
+     x="80"
+     y="365"
+     id="text10">[&lt;backup_definition_name&gt;]</text>
+  <text
+     class="muted"
+     x="80"
+     y="392"
+     id="text11">Section name must exactly match the</text>
+  <text
+     class="muted"
+     x="80"
+     y="410"
+     id="text12"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif">backup definition file basename from backup.d</text>
+  <text
+     class="text"
+     x="80"
+     y="440"
+     id="text14"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:14px;line-height:normal;font-family:sans-serif">Currently supported per-backup keys:</text>
+  <text
+     class="mono"
+     x="100"
+     y="468"
+     id="text15"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">PAR2_ENABLED</text>
+  <text
+     class="mono"
+     x="100"
+     y="492"
+     id="text16"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">PAR2_DIR</text>
+  <text
+     class="mono"
+     x="100"
+     y="516"
+     id="text17"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">PAR2_RATIO_FULL / _DIFF / _INCR</text>
+  <text
+     class="mono"
+     x="100"
+     y="540"
+     id="text18"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">PAR2_RUN_VERIFY</text>
+  <g
+     id="g64"
+     transform="translate(0,70)">
+    <rect
+       class="note"
+       x="59.922451"
+       y="564.92242"
+       width="420.15509"
+       height="208.93558"
+       id="rect18" />
+    <text
+       class="text"
+       x="80"
+       y="595"
+       id="text19"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:14px;line-height:normal;font-family:sans-serif">Global (not per-backup) examples:</text>
+    <text
+       class="mono"
+       x="80"
+       y="625"
+       id="text20"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">RESTORETEST_EXCLUDE_PREFIXES</text>
+    <text
+       class="mono"
+       x="80"
+       y="649"
+       id="text21"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">RESTORETEST_EXCLUDE_SUFFIXES</text>
+    <text
+       class="mono"
+       x="80"
+       y="673"
+       id="text22"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">RESTORETEST_EXCLUDE_REGEX</text>
+    <text
+       class="muted"
+       x="80"
+       y="703"
+       id="text23"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif">These are read from [MISC] only.</text>
+    <text
+       class="muted"
+       x="80"
+       y="733"
+       id="text24"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif">Per-backup restore-test overrides</text>
+    <text
+       class="muted"
+       x="80"
+       y="751"
+       id="text25"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif">are not implemented (yet).</text>
+  </g>
+  <!-- Center: parsing -->
+  <rect
+     class="box"
+     x="540"
+     y="80"
+     width="360"
+     height="250"
+     id="rect25" />
+  <text
+     class="title"
+     x="560"
+     y="115"
+     id="text26">ConfigSettings</text>
+  <text
+     class="muted"
+     x="560"
+     y="140"
+     id="text27">configparser.ConfigParser → dataclass fields</text>
+  <text
+     class="text"
+     x="560"
+     y="175"
+     id="text28">Holds:</text>
+  <text
+     class="mono"
+     x="580"
+     y="200"
+     id="text29">config (raw INI sections)</text>
+  <text
+     class="mono"
+     x="580"
+     y="225"
+     id="text30">global fields (dirs, ages, verify)</text>
+  <text
+     class="mono"
+     x="580"
+     y="250"
+     id="text31">PAR2 defaults (from [PAR2])</text>
+  <text
+     class="mono"
+     x="580"
+     y="275"
+     id="text32">restore-test filters (from [MISC])</text>
+  <text
+     class="mono"
+     x="580"
+     y="300"
+     id="text33">helpers: get_par2_config(name)</text>
+  <!-- Right: runtime use -->
+  <rect
+     class="box"
+     x="940"
+     y="40"
+     width="420"
+     height="290"
+     id="rect33" />
+  <text
+     class="title"
+     x="960"
+     y="75"
+     id="text34">Runtime: perform_backup()</text>
+  <text
+     class="muted"
+     x="960"
+     y="100"
+     id="text35">Iterates backup.d definitions</text>
+  <text
+     class="text"
+     x="960"
+     y="135"
+     id="text36">For each backup definition name:</text>
+  <text
+     class="mono"
+     x="980"
+     y="160"
+     id="text37">backup_definition = basename(file)</text>
+  <text
+     class="mono"
+     x="980"
+     y="185"
+     id="text38">generate_par2_files(..., backup_definition)</text>
+  <text
+     class="mono"
+     x="980"
+     y="210"
+     id="text39">verify() uses global restore-test filters</text>
+  <!-- Right middle: per-backup PAR2 merge -->
+  <rect
+     class="box"
+     x="940.12323"
+     y="360.12323"
+     width="419.75351"
+     height="315.60382"
+     id="rect39" />
+  <text
+     class="title"
+     x="960"
+     y="395"
+     id="text40">get_par2_config(name)</text>
+  <text
+     class="muted"
+     x="960"
+     y="420"
+     id="text41">Merges global [PAR2] + per-backup section</text>
+  <text
+     class="text"
+     x="960"
+     y="455"
+     id="text42">Output dict (example keys):</text>
+  <text
+     class="mono"
+     x="980"
+     y="480"
+     id="text43">{</text>
+  <text
+     class="mono"
+     x="1000"
+     y="505"
+     id="text44"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">par2_enabled, par2_dir,</text>
+  <text
+     class="mono"
+     x="1000"
+     y="530"
+     id="text45"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13px;line-height:normal;font-family:monospace">par2_ratio_full/diff/incr,</text>
+  <text
+     class="mono"
+     x="1000"
+     y="555"
+     id="text46">par2_run_verify</text>
+  <text
+     class="mono"
+     x="980"
+     y="580"
+     id="text47">}</text>
+  <rect
+     class="note"
+     x="960"
+     y="590"
+     width="380"
+     height="45"
+     id="rect47" />
+  <text
+     class="muted"
+     x="975"
+     y="618"
+     id="text48">If section [name] is absent → uses global [PAR2] values</text>
+  <!-- Bottom right: PAR2_LAYOUT effects (merged) -->
+  <!-- Arrows -->
+  <path
+     class="arrow"
+     d="M 500 185 C 520 185, 520 185, 540 185"
+     id="path60" />
+  <path
+     class="arrow"
+     d="M 900 205 C 920 205, 920 205, 940 205"
+     id="path61" />
+  <path
+     class="arrow"
+     d="M 720 330 C 720 345, 720 345, 720 360"
+     id="path62" />
+  <text
+     xml:space="preserve"
+     id="text64"
+     style="fill:#000000;text-orientation:auto;font-size:12px;-inkscape-font-specification:sans-serif;font-family:sans-serif;stroke-width:1.153;stroke-linecap:round;text-align:start;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect64)" />
+</svg>

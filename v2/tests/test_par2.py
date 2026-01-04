@@ -91,11 +91,15 @@ def test_ordered_by_slicenumber(setup_environment, env):
         env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Error running backup command: {command}")
 
-    # Extract slice numbers from stdout
-
-    slice_pattern = re.compile(r'Now generating par2 files for.*?(\d+)\.dar')
-    slice_numbers = [int(match.group(1)) for match in slice_pattern.finditer(stdout)]
-    assert slice_numbers, f"No slice numbers found in stdout: {stdout}"
+    # Extract slice numbers from the par2 create command logged to stdout
+    par2_command_lines = [
+        line for line in stdout.splitlines()
+        if "Executing command:" in line and "par2 create" in line
+    ]
+    assert par2_command_lines, f"No par2 create command found in stdout: {stdout}"
+    slice_pattern = re.compile(r'\.(\d+)\.dar(?:\s|$)')
+    slice_numbers = [int(num) for num in slice_pattern.findall(par2_command_lines[0])]
+    assert slice_numbers, f"No slice numbers found in par2 command: {par2_command_lines[0]}"
     assert len(slice_numbers) > 0, f"There must at least be 1 dar slice, got 0"
 
     # Verify that slice numbers are in increasing order

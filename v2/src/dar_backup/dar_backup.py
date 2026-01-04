@@ -840,72 +840,42 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
         par2_dir = os.path.expanduser(os.path.expandvars(par2_dir))
         os.makedirs(par2_dir, exist_ok=True)
 
-    par2_layout = (par2_config.get("par2_layout") or "by-backup").lower()
-    if par2_layout != "by-backup":
-        raise RuntimeError(f"Unsupported PAR2_LAYOUT: {par2_layout}")
-
-    par2_mode = (par2_config.get("par2_mode") or "per-slice").lower()
     ratio = _get_par2_ratio(backup_type, par2_config, config_settings.error_correction_percent)
 
     dar_slices = _list_dar_slices(archive_dir, archive_base)
     _validate_slice_sequence(dar_slices, archive_base)
     number_of_slices = len(dar_slices)
 
-    if par2_mode == "per-archive":
-        par2_output_dir = par2_dir or archive_dir
-        par2_path = os.path.join(par2_output_dir, f"{archive_base}.par2")
-        dar_slice_paths = [os.path.join(archive_dir, slice_file) for slice_file in dar_slices]
-        logger.info(f"Generating par2 set for archive: {archive_base}")
-        command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path] + dar_slice_paths
-        process = runner.run(command, timeout=config_settings.command_timeout_secs)
-        if process.returncode != 0:
-            logger.error(f"Error generating par2 files for {archive_base}")
-            raise subprocess.CalledProcessError(process.returncode, command)
+    par2_output_dir = par2_dir or archive_dir
+    par2_path = os.path.join(par2_output_dir, f"{archive_base}.par2")
+    dar_slice_paths = [os.path.join(archive_dir, slice_file) for slice_file in dar_slices]
+    logger.info(f"Generating par2 set for archive: {archive_base}")
+    command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path] + dar_slice_paths
+    process = runner.run(command, timeout=config_settings.command_timeout_secs)
+    if process.returncode != 0:
+        logger.error(f"Error generating par2 files for {archive_base}")
+        raise subprocess.CalledProcessError(process.returncode, command)
 
-        if par2_dir:
-            archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
-            manifest_path = f"{par2_path}.manifest.ini"
-            _write_par2_manifest(
-                manifest_path=manifest_path,
-                archive_dir_relative=archive_dir_relative,
-                archive_base=archive_base,
-                archive_files=dar_slices,
-                dar_backup_version=about.__version__,
-                dar_version=getattr(args, "dar_version", "unknown")
-            )
-            logger.info(f"Wrote par2 manifest: {manifest_path}")
+    if par2_dir:
+        archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
+        manifest_path = f"{par2_path}.manifest.ini"
+        _write_par2_manifest(
+            manifest_path=manifest_path,
+            archive_dir_relative=archive_dir_relative,
+            archive_base=archive_base,
+            archive_files=dar_slices,
+            dar_backup_version=about.__version__,
+            dar_version=getattr(args, "dar_version", "unknown")
+        )
+        logger.info(f"Wrote par2 manifest: {manifest_path}")
 
-        if par2_config.get("par2_run_verify"):
-            logger.info(f"Verifying par2 set for archive: {archive_base}")
-            verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
-            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
-            if verify_process.returncode != 0:
-                raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
-        return
-
-    if par2_mode != "per-slice":
-        raise RuntimeError(f"Unsupported PAR2_MODE: {par2_mode}")
-
-    counter = 1
-    for slice_file in dar_slices:
-        file_path = os.path.join(archive_dir, slice_file)
-        logger.info(f"{counter}/{number_of_slices}: Now generating par2 files for {file_path}")
-
-        if par2_dir:
-            par2_path = os.path.join(par2_dir, f"{slice_file}.par2")
-            command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, file_path]
-            process = runner.run(command, timeout=config_settings.command_timeout_secs)
-        else:
-            command = ['par2', 'create', f'-r{ratio}', '-q', '-q', file_path]
-            process = runner.run(command, timeout=config_settings.command_timeout_secs)
-
-        if process.returncode == 0:
-            logger.info(f"{counter}/{number_of_slices}: Done")
-        else:
-            logger.error(f"Error generating par2 files for {file_path}")
-            raise subprocess.CalledProcessError(process.returncode, command)
-        counter += 1
-
+    if par2_config.get("par2_run_verify"):
+        logger.info(f"Verifying par2 set for archive: {archive_base}")
+        verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
+        verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+        if verify_process.returncode != 0:
+            raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
+    return
 
 
 def filter_darrc_file(darrc_path):

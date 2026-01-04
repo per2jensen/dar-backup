@@ -60,11 +60,12 @@ INCR_AGE = 40
 
 [PAR2]
 ERROR_CORRECTION_PERCENT = 5
+# Enable or disable PAR2 generation globally
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /path/to/par2-store
 # PAR2_LAYOUT = by-backup
-# PAR2_MODE = per-slice
+# PAR2_RATIOs are meuasured as percentages. Same function as ERROR_CORRECTION_PERCENT
 # PAR2_RATIO_FULL = 10
 # PAR2_RATIO_DIFF = 5
 # PAR2_RATIO_INCR = 5
@@ -75,3 +76,31 @@ ENABLED = True
 
 [POSTREQ]
 #SCRIPT_1 = <post-script 1>
+
+#######################################################################
+## Per-backup configuration example overrides
+#######################################################################
+#
+## --------------------------------------------------------------------
+## Per-backup overrides (section name must match backup.d filename stem)
+## Example: backup.d/home.conf  ->  [home]
+## --------------------------------------------------------------------
+#
+##[home]
+## Disable PAR2 entirely for this backup definition
+#PAR2_ENABLED = false
+##
+##[media]
+## Store PAR2 files in a separate location for this backup definition
+##PAR2_DIR = /samba/par2/media
+## Raise redundancy only for FULL
+##
+#[documents]
+## Run verify par2 sets after creation
+#PAR2_RUN_VERIFY = true
+##
+##[etc]
+## Keep global PAR2 settings but tweak ratios for this backup definition
+##PAR2_RATIO_FULL = 15
+##PAR2_RATIO_DIFF = 8
+##PAR2_RATIO_INCR = 8
