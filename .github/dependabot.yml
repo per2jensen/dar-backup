@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/v2"   # or "/" depending on where pyproject.toml is
+    schedule:
+      interval: "monthly"
