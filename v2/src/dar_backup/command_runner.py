@@ -8,6 +8,10 @@ import os
 import re
 import shlex
 import sys
+try:
+    import termios
+except ImportError:
+    termios = None
 import tempfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 from typing import List, Optional, Union
@@ -126,124 +130,152 @@ class CommandRunner:
         check: bool = False,
         capture_output: bool = True,
         text: bool = True,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
+        stdin: Optional[int] = subprocess.DEVNULL
     ) -> CommandResult:
-        self._text_mode = text 
+        self._text_mode = text
         timeout = timeout or self.default_timeout
 
-        cmd_sanitized = None
-
-        try:
-            cmd_sanitized = sanitize_cmd(cmd)
-        except ValueError as e:
-            stack = traceback.format_exc()
-            self.logger.error(f"Command sanitation failed: {e}")
-            return CommandResult(
-                returncode=-1,
-                note=f"Sanitizing failed: command: {' '.join(cmd)}",
-                stdout='',
-                stderr=str(e),
-                stack=stack,
-
-            )
-        finally:
-            cmd = cmd_sanitized
-
-        #command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
-        command = f"Executing command: {' '.join(shlex.quote(arg) for arg in cmd)} (timeout={timeout}s)"
-
-
-        self.command_logger.info(command)
-        self.logger.debug(command)
-
-        stdout_lines = []
-        stderr_lines = []
-
-        try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE if capture_output else None,
-                stderr=subprocess.PIPE if capture_output else None,
-                text=False,
-                bufsize=-1,
-                cwd=cwd
-            )
-        except Exception as e:
-            stack = traceback.format_exc()
-            return CommandResult(
-                returncode=-1,
-                stdout='',
-                stderr=str(e),
-                stack=stack
-            )
-
-        def stream_output(stream, lines, level):
+        tty_fd = None
+        tty_file = None
+        saved_tty_attrs = None
+        if termios is not None:
             try:
-                while True:
-                    chunk = stream.read(1024)
-                    if not chunk:
-                        break
-                    if self._text_mode:
-                        decoded = chunk.decode('utf-8', errors='replace')
-                        lines.append(decoded)
-                        self.command_logger.log(level, decoded.strip())
-                    else:
-                        lines.append(chunk)
-                        # Avoid logging raw binary data to prevent garbled logs
-            except Exception as e:
-                self.logger.warning(f"stream_output decode error: {e}")
-            finally:
-                stream.close()
-
-
-
-        threads = []
-        if capture_output and process.stdout:
-            t_out = threading.Thread(target=stream_output, args=(process.stdout, stdout_lines, logging.INFO))
-            t_out.start()
-            threads.append(t_out)
-        if capture_output and process.stderr:
-            t_err = threading.Thread(target=stream_output, args=(process.stderr, stderr_lines, logging.ERROR))
-            t_err.start()
-            threads.append(t_err)
+                if os.path.exists("/dev/tty"):
+                    tty_file = open("/dev/tty")
+                    tty_fd = tty_file.fileno()
+                elif sys.stdin and sys.stdin.isatty():
+                    tty_fd = sys.stdin.fileno()
+                if tty_fd is not None:
+                    saved_tty_attrs = termios.tcgetattr(tty_fd)
+            except Exception:
+                tty_fd = None
+                saved_tty_attrs = None
+                if tty_file:
+                    tty_file.close()
+                    tty_file = None
 
         try:
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            log_msg = f"Command timed out after {timeout} seconds: {' '.join(cmd)}:\n"
-            self.logger.error(log_msg)
-            return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
-        except Exception as e:
-            stack = traceback.format_exc()
-            log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
-            self.logger.error(log_msg)
-            return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines), stack)  
+            cmd_sanitized = None
 
-        for t in threads:
-            t.join()
+            try:
+                cmd_sanitized = sanitize_cmd(cmd)
+            except ValueError as e:
+                stack = traceback.format_exc()
+                self.logger.error(f"Command sanitation failed: {e}")
+                return CommandResult(
+                    returncode=-1,
+                    note=f"Sanitizing failed: command: {' '.join(cmd)}",
+                    stdout='',
+                    stderr=str(e),
+                    stack=stack,
 
+                )
+            finally:
+                cmd = cmd_sanitized
 
-
-        if self._text_mode:
-            stdout_combined = ''.join(stdout_lines)
-            stderr_combined = ''.join(stderr_lines)
-        else:
-            stdout_combined = b''.join(stdout_lines)
-            stderr_combined = b''.join(stderr_lines)
+            #command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
+            command = f"Executing command: {' '.join(shlex.quote(arg) for arg in cmd)} (timeout={timeout}s)"
 
 
-        if check and process.returncode != 0:
-            self.logger.error(f"Command failed with exit code {process.returncode}")
+            self.command_logger.info(command)
+            self.logger.debug(command)
+
+            stdout_lines = []
+            stderr_lines = []
+
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE if capture_output else None,
+                    stderr=subprocess.PIPE if capture_output else None,
+                    stdin=stdin,
+                    text=False,
+                    bufsize=-1,
+                    cwd=cwd
+                )
+            except Exception as e:
+                stack = traceback.format_exc()
+                return CommandResult(
+                    returncode=-1,
+                    stdout='',
+                    stderr=str(e),
+                    stack=stack
+                )
+
+            def stream_output(stream, lines, level):
+                try:
+                    while True:
+                        chunk = stream.read(1024)
+                        if not chunk:
+                            break
+                        if self._text_mode:
+                            decoded = chunk.decode('utf-8', errors='replace')
+                            lines.append(decoded)
+                            self.command_logger.log(level, decoded.strip())
+                        else:
+                            lines.append(chunk)
+                            # Avoid logging raw binary data to prevent garbled logs
+                except Exception as e:
+                    self.logger.warning(f"stream_output decode error: {e}")
+                finally:
+                    stream.close()
+
+            threads = []
+            if capture_output and process.stdout:
+                t_out = threading.Thread(target=stream_output, args=(process.stdout, stdout_lines, logging.INFO))
+                t_out.start()
+                threads.append(t_out)
+            if capture_output and process.stderr:
+                t_err = threading.Thread(target=stream_output, args=(process.stderr, stderr_lines, logging.ERROR))
+                t_err.start()
+                threads.append(t_err)
+
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                log_msg = f"Command timed out after {timeout} seconds: {' '.join(cmd)}:\n"
+                self.logger.error(log_msg)
+                return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
+            except Exception as e:
+                stack = traceback.format_exc()
+                log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
+                self.logger.error(log_msg)
+                return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines), stack)
+
+            for t in threads:
+                t.join()
+
+            if self._text_mode:
+                stdout_combined = ''.join(stdout_lines)
+                stderr_combined = ''.join(stderr_lines)
+            else:
+                stdout_combined = b''.join(stdout_lines)
+                stderr_combined = b''.join(stderr_lines)
+
+            if check and process.returncode != 0:
+                self.logger.error(f"Command failed with exit code {process.returncode}")
+                return CommandResult(
+                    process.returncode,
+                    stdout_combined,
+                    stderr_combined,
+                    stack=traceback.format_stack()
+                )
+
             return CommandResult(
                 process.returncode,
                 stdout_combined,
-                stderr_combined,
-                stack=traceback.format_stack()
-            )
-
-        return CommandResult(
-            process.returncode,
-                stdout_combined,
                 stderr_combined
-        )
+            )
+        finally:
+            if termios is not None and saved_tty_attrs is not None and tty_fd is not None:
+                try:
+                    termios.tcsetattr(tty_fd, termios.TCSADRAIN, saved_tty_attrs)
+                except Exception:
+                    self.logger.debug("Failed to restore terminal attributes", exc_info=True)
+            if tty_file is not None:
+                try:
+                    tty_file.close()
+                except Exception:
+                    self.logger.debug("Failed to close /dev/tty handle", exc_info=True)

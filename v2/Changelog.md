@@ -30,6 +30,10 @@
 - Verification failures and existing-backup skips now emit exit code 2 (warning), while errors continue to emit exit code 1.
 - Cleanup deletion hardening (Snyk): validate archive names and enforce safe, base-dir-bound file deletions.
 - Snyk badge links to [Snyk dar-backup page](https://security.snyk.io/vuln/?search=dar-backup)
+- Removed the rich progress bar wrapper from backup/verify runs to simplify core execution.
+- PAR2 tests now align with per-archive parity flow (single create command, repair via `.par2` set).
+- Slice-order test reads slice numbers from the logged `par2 create` command output.
+- CommandRunner now restores terminal attributes after subprocesses and runs with stdin set to `/dev/null` by default to avoid terminal echo issues.
 
 ## v2-1.0.0 - 2025-10-09
 
