@@ -41,7 +41,6 @@ def test_verify_filecmp_mismatch_returns_false(env):
          patch("dar_backup.dar_backup.filecmp.cmp", return_value=False), \
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=[("/some/file.txt", "10 Mio")]), \
          patch("dar_backup.dar_backup.logger"), \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
         
         result = verify(args, "mock-backup", env.config_file, config)
@@ -75,7 +74,6 @@ def test_verify_filecmp_permission_error_logged(env):
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=[("/some/file.txt", "10 Mio")]), \
          patch("dar_backup.dar_backup.filecmp.cmp", side_effect=PermissionError), \
          patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
 
         verify(args, "mock-backup", env.config_file, config)
@@ -116,7 +114,6 @@ def test_verify_do_not_compare_skips_verification(env):
          patch("dar_backup.dar_backup.get_backed_up_files") as mock_get_files, \
          patch("dar_backup.dar_backup.filecmp.cmp") as mock_cmp, \
          patch("dar_backup.dar_backup.logger"), \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("builtins.open", MagicMock(read_data="-R /\n")):
         
         result = verify(args, "mock-backup", env.config_file, config)
@@ -156,7 +153,6 @@ def test_verify_success_path_with_verbose_logging(env):
          patch("dar_backup.dar_backup.filecmp.cmp", return_value=True) as mock_cmp, \
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=[(mock_file, "10 Mio")]), \
          patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
 
         result = verify(args, "mock-backup", env.config_file, config)
@@ -499,8 +495,7 @@ def test_generic_backup_warns_on_returncode_5(env):
     
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.get_logger"), \
-         patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.show_log_driven_bar"):
+         patch("dar_backup.dar_backup.logger") as mock_logger:
         
         result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
 
@@ -532,8 +527,7 @@ def test_catalog_add_failure_handled(env):
 
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.get_logger"), \
-         patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.show_log_driven_bar"):
+         patch("dar_backup.dar_backup.logger") as mock_logger:
 
         result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
 
@@ -577,9 +571,7 @@ def test_verify_raises_error_if_no_root_path(env):
          patch("dar_backup.dar_backup.runner") as mock_runner, \
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=[("/file.txt", "10 Mio")]), \
          patch("dar_backup.dar_backup.logger"), \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
-         patch("dar_backup.dar_backup.get_logger"), \
-         patch("threading.Thread"):  # skip actual threading for test
+         patch("dar_backup.dar_backup.get_logger"):
 
         mock_runner.run.return_value = fake_process
 
@@ -829,7 +821,6 @@ def test_restoretest_filters_and_verifies_all_good_files(env):
          patch("dar_backup.dar_backup.filecmp.cmp", return_value=True), \
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=backed_up_files), \
          patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.show_log_driven_bar"), \
          patch("dar_backup.dar_backup.random.sample", side_effect=lambda files, n: list(files)), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
 
@@ -880,16 +871,8 @@ def test_generic_backup_runner_exception_raises(env, tmp_path, btype):
     os.makedirs(tmp_path, exist_ok=True)
     open(darrc, "w").close()
 
-    class DummyThread:
-        def __init__(self, *a, **k): pass
-        def start(self): pass
-        def join(self): pass
-
-    with patch.object(db, "threading") as mock_threading, \
-         patch.object(db, "show_log_driven_bar"), \
-         patch.object(db, "get_logger") as mock_get_logger, \
+    with patch.object(db, "get_logger") as mock_get_logger, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_threading.Thread.side_effect = lambda *a, **k: DummyThread()
         mock_get_logger.return_value = MagicMock(info=MagicMock())
 
         with patch.object(db, "runner") as mock_runner:
@@ -905,8 +888,6 @@ def test_generic_backup_runner_exception_raises(env, tmp_path, btype):
                     darrc=darrc,
                 )
 
-        # Improvement #4 add-on: ensure progress thread constructed
-        assert mock_threading.Thread.call_count == 1
 
 
 # 2) generic_backup(): outer handler wraps CalledProcessError -> BackupError
@@ -921,16 +902,8 @@ def test_generic_backup_calledprocesserror_wrapped(env, tmp_path, btype):
     darrc = str(tmp_path / "dummy_darrc")
     open(darrc, "w").close()
 
-    class DummyThread:
-        def __init__(self, *a, **k): pass
-        def start(self): pass
-        def join(self): pass
-
-    with patch.object(db, "threading") as mock_threading, \
-         patch.object(db, "show_log_driven_bar"), \
-         patch.object(db, "get_logger") as mock_get_logger, \
+    with patch.object(db, "get_logger") as mock_get_logger, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_threading.Thread.side_effect = lambda *a, **k: DummyThread()
         mock_get_logger.return_value = MagicMock(info=MagicMock())
 
         with patch.object(db, "runner") as mock_runner:
@@ -949,8 +922,6 @@ def test_generic_backup_calledprocesserror_wrapped(env, tmp_path, btype):
                 )
             assert "Backup command failed" in str(exc.value)
 
-        # Improvement #4 add-on: ensure progress thread constructed
-        assert mock_threading.Thread.call_count == 1
 
 
 # 3) restore_backup(): selection handling and darrc propagation
@@ -1082,13 +1053,14 @@ def test_generate_par2_files_success_invokes_par2(tmp_path):
 
         db.generate_par2_files(backup_file, cfg, args)
 
-        # Two slices -> two calls
-        assert mock_runner.run.call_count == 2
-        # Commands should include -r10 and the slice path
-        called_cmds = [c[0][0] for c in mock_runner.run.call_args_list]
-        assert any("-r10" in " ".join(map(str, cmd)) for cmd in called_cmds)
-        assert any("example_FULL_2025-01-01.1.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
-        assert any("example_FULL_2025-01-01.2.dar" in " ".join(map(str, cmd)) for cmd in called_cmds)
+        # Per-archive mode issues a single par2 create call with all slices
+        assert mock_runner.run.call_count == 1
+        called_cmd = mock_runner.run.call_args_list[0][0][0]
+        called_cmd_str = " ".join(map(str, called_cmd))
+        # Command should include -r10 and both slice paths
+        assert "-r10" in called_cmd_str
+        assert "example_FULL_2025-01-01.1.dar" in called_cmd_str
+        assert "example_FULL_2025-01-01.2.dar" in called_cmd_str
 
 
 def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):

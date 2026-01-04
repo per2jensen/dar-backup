@@ -25,7 +25,6 @@ import subprocess
 import configparser
 import xml.etree.ElementTree as ET
 import tempfile
-import threading
 
 from argparse import ArgumentParser
 from datetime import datetime
@@ -37,7 +36,6 @@ from sys import version_info
 from time import time
 from rich.console import Console
 from rich.text import Text
-from threading import Event
 from typing import List, Tuple
 
 from . import __about__ as about
@@ -61,7 +59,6 @@ from dar_backup.util import send_discord_message
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
 
-from dar_backup.rich_progress import show_log_driven_bar
 
 from argcomplete.completers import FilesCompleter
 
@@ -99,29 +96,11 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
     try:
-        log_basename = os.path. dirname(config_settings.logfile_location)
-        logfile = os.path.basename(config_settings.logfile_location)[:-4] + "-commands.log"
-        log_path = os.path.join( log_basename, logfile)
-        logger.debug(f"Commands log file: {log_path}")
-
-        # wrap a progress bar around the dar command
-        stop_event = Event()
-        session_marker = f"=== START BACKUP SESSION: {int(time())} ==="
-        get_logger(command_output_logger=True).info(session_marker)
-        progress_thread = threading.Thread(
-            target=show_log_driven_bar,
-            args=(log_path, stop_event, session_marker),
-            daemon=True
-        )
-        progress_thread.start()
         try:
-            process = runner.run(command, timeout = config_settings.command_timeout_secs)
+            process = runner.run(command, timeout=config_settings.command_timeout_secs)
         except Exception as e:
             print(f"[!] Backup failed: {e}")
             raise
-        finally:
-            stop_event.set()
-            progress_thread.join()
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
@@ -284,29 +263,11 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     command = ['dar', '-t', backup_file, '-N', '-Q']
  
  
-    log_basename = os.path. dirname(config_settings.logfile_location)
-    logfile = os.path.basename(config_settings.logfile_location)[:-4] + "-commands.log"
-    log_path = os.path.join( log_basename, logfile)
-
-    # wrap a progress bar around the dar command
-    stop_event = Event()
-    session_marker = f"=== START BACKUP SESSION: {int(time())} ==="
-    get_logger(command_output_logger=True).info(session_marker)
-
-    progress_thread = threading.Thread(
-        target=show_log_driven_bar,
-        args=(log_path, stop_event, session_marker),
-        daemon=True
-    )
-    progress_thread.start()
     try:
-        process = runner.run(command, timeout = config_settings.command_timeout_secs)
+        process = runner.run(command, timeout=config_settings.command_timeout_secs)
     except Exception as e:
         print(f"[!] Backup failed: {e}")
         raise
-    finally:
-        stop_event.set()
-        progress_thread.join()
 
 
     if process.returncode == 0:

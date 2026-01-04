@@ -107,7 +107,9 @@ def check_bitrot_recovery(env: EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     date = datetime.now().strftime('%Y-%m-%d')
     basename_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}")
-    archive_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}.1.dar")
+    backup_dir = os.path.join(env.test_dir, "backups")
+    archive_path = os.path.join(backup_dir, f"example_FULL_{date}.1.dar")
+    par2_path = os.path.join(backup_dir, f"example_FULL_{date}.par2")
     
     # Step 1: dar should detect corruption
     try:
@@ -128,7 +130,7 @@ def check_bitrot_recovery(env: EnvData):
 
     # Step 2: Repair
     try:
-        command = ["par2", "repair", "-q", archive_path]
+        command = ["par2", "repair", "-B", backup_dir, "-q", par2_path]
         result: CommandResult = runner.run(command)
         logging.info(f"stdout:\n{result.stdout}")
         logging.info(f"stderr:\n{result.stderr}")
