@@ -14,9 +14,9 @@
 The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
 the heavy lifting, together with the [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
 
-This is the `Python` based [**version 2**](https://github.com/per2jensen/dar-backup/tree/main/v2) of `dar-backup`.
+This is the `Python` based [**version 2**](v2) of `dar-backup`.
 
-You can see the [v2 Changelog](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md) for details on features and progress.
+You can see the [v2 Changelog](v2/Changelog.md) for details on features and progress.
 
 ## TL;DR
 
@@ -113,7 +113,7 @@ Version **1.0.0** was reached on October 9, 2025.
       - [Dar-backup exit codes](#dar-backup-exit-codes)
       - [Dar-backup env vars](#dar-backup-env-vars)
     - [Manager Options](#manager-options)
-    - [Cleanup options](#cleanup-options)
+      - [Cleanup env vars](#cleanup-env-vars)
     - [Clean-log options](#clean-log-options)
     - [Dar-backup-systemd options](#dar-backup-systemd-options)
     - [Installer options](#installer-options)
@@ -207,7 +207,7 @@ My design choices are boring, proven and pragmatic:
 ## License
 
   These scripts are licensed under the GPLv3 license.
-  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](https://github.com/per2jensen/dar-backup/blob/main/LICENSE) file in this repository.
+  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](LICENSE) file in this repository.
 
 ## Quick Guide
 
@@ -552,7 +552,7 @@ This python version is v2 of dar-backup, v1 is made in bash.
 
 ## Community
 
-Please review the [Code of Conduct](https://github.com/per2jensen/dar-backup/blob/main/CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
+Please review the [Code of Conduct](CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
 
 ## Requirements
 
@@ -572,7 +572,7 @@ On Ubuntu, install the requirements this way:
 
 ### dar-backup overview
 
-[![dar-backup overview](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview-small.png)](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-overview.png)
+[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
 
 ### dar-backup
 
@@ -791,7 +791,6 @@ ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /path/to/par2-store
-# PAR2_LAYOUT = by-backup
 # PAR2_MODE = per-slice
 # PAR2_RATIO_FULL = 10
 # PAR2_RATIO_DIFF = 5
@@ -813,6 +812,15 @@ SCRIPT_1 = ls -l /tmp
 SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
 ```
+
+PAR2 notes:
+
+- If `PAR2_DIR` is unset, par2 files are created next to the archive slices (legacy behavior) and no manifest is written
+- When `PAR2_DIR` is set, dar-backup writes a manifest next to the par2 set:
+  `archive_base.par2.manifest.ini`
+- Verify or repair using:
+  `par2 verify -B <archive_dir> <par2_set.par2>`
+  `par2 repair -B <archive_dir> <par2_set.par2>`
 
 ### .darrc
 
@@ -1309,33 +1317,11 @@ if there are problems with a slice, try to repair it like this:
 
 #### Par2 files in separate directory
 
-If PAR2_DIR is configured and PAR2_MODE = per-archive, verify/repair is done against the single set.
-
-Example: archives live in `/mnt/backup/archive/` and par2 lives in `/mnt/par2-store/`:
-
-Archive slices:
-`/mnt/backup/archive/media-files_FULL_2025-01-04.1.dar`
-`/mnt/backup/archive/media-files_FULL_2025-01-04.2.dar`
-
-Par2 set:
-`/mnt/par2-store/media-files_FULL_2025-01-04.par2`
-`/mnt/par2-store/media-files_FULL_2025-01-04.vol00+01.par2`
-
-```bash
-par2 verify -B <archive_dir> <par2_set.par2>
-par2 repair -B <archive_dir> <par2_set.par2>
-```
-
-Concrete commands for the example above:
-
-```bash
-par2 verify -B /mnt/backup/archive /mnt/par2-store/media-files_FULL_2025-01-04.par2
-par2 repair -B /mnt/backup/archive /mnt/par2-store/media-files_FULL_2025-01-04.par2
-```
+See [docs on disk layout matters](v2/doc/portable-par2-layout.md)
 
 >Test case proving this flow:
 >
->https://github.com/per2jensen/dar-backup/blob/main/v2/tests/test_par2_manifest.py
+>[tests/test_par2_manifest.py](v2/tests/test_par2_manifest.py)
 
 ### Par2 create redundancy files
 
@@ -1355,6 +1341,9 @@ If you want to create a single parity set for all slices in an archive:
 ```bash
 par2 create -B <archive_dir> -r5 <par2_dir>/<archive_base>.par2 <archive_dir>/<archive_base>.*.dar
 ```
+
+**OBSERVE** [docs on disk layout matters](v2/doc/portable-par2-layout.md)
+
 
 ## Points of interest
 
@@ -1823,7 +1812,7 @@ Available options:
 - 0: Success.
 - 1: Error (backup/restore/preflight failure).
 - 2: Warning (restore test failed or backup already exists and is skipped).
-
+- 127: Typically an error during startup, file or config value missing
   - if the `dar -t` test fails, exit code 1 is emitted
   - restore tests could fail if the source file has changed after the backup
 
@@ -1853,7 +1842,12 @@ Available options:
 --find-file <file>                   Search catalogs for a specific file.
 --verbose                            Enable verbose output.
 --log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
-```
+
+#### Manager env vars
+
+| Env var | Value | Description |
+| --- | --- | --- |
+| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |```
 
 ### Cleanup options
 
@@ -1876,6 +1870,12 @@ Supported options:
 --log-stdout                                      Print log messages to stdout.
 --test-mode                                       This is used when running pytest test cases
 ```
+
+#### Cleanup env vars
+
+| Env var | Value | Description |
+| --- | --- | --- |
+| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |
 
 ### Clean-log options
 
@@ -1999,8 +1999,6 @@ New optional PAR2 settings were added to the config file. If none of these keys 
 | Name | Description | When it is in effect | Suggested value |
 |------|-------------|----------------------|-----------------|
 | PAR2_DIR | Directory to store .par2 and .vol*.par2 files | When set | A different device or mount from BACKUP_DIR |
-| PAR2_LAYOUT | Layout of PAR2 files in PAR2_DIR | When PAR2_DIR is set | by-backup |
-| PAR2_MODE | Parity mode: per-archive or per-slice | When set | per-archive (to reduce file count) |
 | PAR2_RATIO_FULL | Redundancy percent for FULL | When set | 10 |
 | PAR2_RATIO_DIFF | Redundancy percent for DIFF | When set | 5 |
 | PAR2_RATIO_INCR | Redundancy percent for INCR | When set | 5 |
@@ -2008,17 +2006,39 @@ New optional PAR2 settings were added to the config file. If none of these keys 
 
 Notes:
 
-- PAR2_LAYOUT only matters when PAR2_DIR is set.
-- PAR2_MODE, PAR2_RATIO_*, and PAR2_RUN_VERIFY apply even if PAR2_DIR is not set (par2 output stays next to the archives).
+- PAR2_RATIO_*, and PAR2_RUN_VERIFY apply even if PAR2_DIR is not set (i.e. par2 output stays next to the archives).
 
 Per-backup overrides use a section named after the backup definition with the same PAR2_* keys:
 
 ```text
-[media-files]
-PAR2_DIR = /some/other/par2/media-files  # regardless of the global PAR2_DIR being unset
-PAR2_MODE = per-archive
-PAR2_RATIO_FULL = 11
+
+######################################################################
+# Per-backup configuration example overrides
+######################################################################
+
+# --------------------------------------------------------------------
+# Per-backup overrides (section name must match backup.d filename stem)
+# Example: backup.d/home.conf  ->  [home]
+# --------------------------------------------------------------------
+
+#[home]
+# Disable PAR2 entirely for this backup definition
+PAR2_ENABLED = false
+#
+#[media]
+# Store PAR2 files in a separate location for this backup definition
+#PAR2_DIR = /samba/par2/media
+# Raise redundancy only for FULL
+#
+[documents]
+# Run verify par2 sets after creation
+PAR2_RUN_VERIFY = true
+#
+#[etc]
+# Keep global PAR2 settings but tweak ratios for this backup definition
+#PAR2_RATIO_FULL = 15
+#PAR2_RATIO_DIFF = 8
+#PAR2_RATIO_INCR = 8
 ```
 
-Per-backup override test case:
-https://github.com/per2jensen/dar-backup/blob/main/v2/tests/test_par2_overrides.py
+[Per-backup override test case: `tests/test_par2_overrides.py`](v2/tests/test_par2_overrides.py)
