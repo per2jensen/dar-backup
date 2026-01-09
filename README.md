@@ -1999,9 +1999,9 @@ New optional PAR2 settings were added to the config file. If none of these keys 
 | Name | Description | When it is in effect | Suggested value |
 |------|-------------|----------------------|-----------------|
 | PAR2_DIR | Directory to store .par2 and .vol*.par2 files | When set | A different device or mount from BACKUP_DIR |
-| PAR2_RATIO_FULL | Redundancy percent for FULL | When set | 10 |
-| PAR2_RATIO_DIFF | Redundancy percent for DIFF | When set | 5 |
-| PAR2_RATIO_INCR | Redundancy percent for INCR | When set | 5 |
+| PAR2_RATIO_FULL | Redundancy percent for FULL | When set | 10 (%) |
+| PAR2_RATIO_DIFF | Redundancy percent for DIFF | When set | 5  (%)|
+| PAR2_RATIO_INCR | Redundancy percent for INCR | When set | 5  (%)|
 | PAR2_RUN_VERIFY | Verify after create | When set | false |
 
 Notes:
@@ -2036,7 +2036,8 @@ PAR2_RUN_VERIFY = true
 #
 #[etc]
 # Keep global PAR2 settings but tweak ratios for this backup definition
-#PAR2_RATIO_FULL = 15
+# RATIO is i percent number
+#PAR2_RATIO_FULL = 15  
 #PAR2_RATIO_DIFF = 8
 #PAR2_RATIO_INCR = 8
 ```

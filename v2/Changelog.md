@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-1.0.1 - not released
+## v2-1.0.1 - 2026-01-09
 
 ### Added
 
