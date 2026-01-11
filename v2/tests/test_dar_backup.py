@@ -1112,3 +1112,200 @@ def test_print_markdown_pretty_falls_back_when_rich_missing(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert "rich" in out.lower()  # fallback message mentions rich
     assert "Hello" in out and "World" in out
+
+
+# --- restore-test sampling ---------------------------------------------------
+
+def test_select_restoretest_samples_returns_empty_when_sample_size_zero():
+    from dar_backup.dar_backup import select_restoretest_samples
+
+    config = SimpleNamespace(
+        min_size_verification_mb=0,
+        max_size_verification_mb=10,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+    )
+    backed_up = [("/file.txt", "10 Mio")]
+
+    assert select_restoretest_samples(backed_up, config, 0) == []
+
+
+def test_select_restoretest_samples_ignores_invalid_sizes():
+    from dar_backup.dar_backup import select_restoretest_samples
+
+    config = SimpleNamespace(
+        min_size_verification_mb=1,
+        max_size_verification_mb=10,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+    )
+    backed_up = [
+        ("/bad1.txt", "10 Foo"),
+        ("/bad2.txt", "not-a-size"),
+        ("/bad3.txt", None),
+    ]
+
+    assert select_restoretest_samples(backed_up, config, 2) == []
+
+
+def test_select_restoretest_samples_reservoir_sampling_limits_size():
+    from dar_backup.dar_backup import select_restoretest_samples
+
+    config = SimpleNamespace(
+        min_size_verification_mb=0,
+        max_size_verification_mb=10,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+    )
+    backed_up = [(f"/file{idx}.txt", "1 Mio") for idx in range(5)]
+
+    with patch("dar_backup.dar_backup.random.randint", side_effect=[1, 1, 1]):
+        result = select_restoretest_samples(backed_up, config, 2)
+
+    assert len(result) == 2
+    assert "/file1.txt" in result
+    assert "/file4.txt" in result
+
+
+def test_verify_skips_when_no_eligible_files_logs_info(env):
+    args = SimpleNamespace(
+        verbose=False,
+        do_not_compare=False,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        test_restore_dir=env.restore_dir,
+        logfile_location=env.log_file,
+        command_timeout_secs=10,
+        backup_dir=env.backup_dir,
+        min_size_verification_mb=1,
+        max_size_verification_mb=2,
+        no_files_verification=2,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+    )
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.get_backed_up_files", return_value=[("/file.txt", "1 o")]), \
+         patch("dar_backup.dar_backup.filecmp.cmp") as mock_cmp, \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+
+        result = verify(args, "mock-backup", env.config_file, config)
+
+    assert result is True
+    mock_cmp.assert_not_called()
+    mock_logger.info.assert_any_call(
+        "No files eligible for verification after size and restore-test filters, skipping"
+    )
+
+
+# --- get_backed_up_files subprocess path -------------------------------------
+
+def test_get_backed_up_files_nonzero_returncode_raises_runtime_error(tmp_path):
+    import io
+
+    backup_name = "dummy_backup"
+    backup_dir = str(tmp_path)
+    (tmp_path / backup_name).touch()
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 1
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("boom\n")
+
+        def wait(self, timeout=None):
+            return None
+
+    fake_process = FakeProcess()
+
+    with patch.object(db, "runner", None), \
+         patch.object(db, "logger", new=MagicMock()), \
+         patch("dar_backup.dar_backup.subprocess.Popen", return_value=fake_process):
+        with pytest.raises(RuntimeError, match="Unexpected error listing backed up files"):
+            db.get_backed_up_files(backup_name, backup_dir)
+
+
+def test_get_backed_up_files_timeout_raises_backup_error(tmp_path):
+    import io
+
+    backup_name = "dummy_backup"
+    backup_dir = str(tmp_path)
+    (tmp_path / backup_name).touch()
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("")
+            self.killed = False
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired(cmd="dar", timeout=timeout)
+
+        def kill(self):
+            self.killed = True
+
+    fake_process = FakeProcess()
+
+    with patch.object(db, "runner", None), \
+         patch.object(db, "logger", new=MagicMock()), \
+         patch("dar_backup.dar_backup.subprocess.Popen", return_value=fake_process):
+        with pytest.raises(BackupError, match="Timeout listing backed up files"):
+            db.get_backed_up_files(backup_name, backup_dir, timeout=1)
+
+    assert fake_process.killed is True
+
+
+# --- par2 slice helpers ------------------------------------------------------
+
+def test_list_dar_slices_orders_numerically(tmp_path):
+    from dar_backup.dar_backup import _list_dar_slices
+
+    archive_base = "example_FULL_2025-01-01"
+    (tmp_path / f"{archive_base}.10.dar").write_text("")
+    (tmp_path / f"{archive_base}.2.dar").write_text("")
+    (tmp_path / f"{archive_base}.1.dar").write_text("")
+    (tmp_path / "unrelated.txt").write_text("")
+
+    result = _list_dar_slices(str(tmp_path), archive_base)
+
+    assert result == [
+        f"{archive_base}.1.dar",
+        f"{archive_base}.2.dar",
+        f"{archive_base}.10.dar",
+    ]
+
+
+def test_validate_slice_sequence_missing_slice_raises():
+    from dar_backup.dar_backup import _validate_slice_sequence
+
+    slices = ["archive.1.dar", "archive.3.dar"]
+    with pytest.raises(RuntimeError, match="Missing dar slices"):
+        _validate_slice_sequence(slices, "archive")
+
+
+def test_get_backup_type_from_archive_base_invalid_format_raises():
+    from dar_backup.dar_backup import _get_backup_type_from_archive_base
+
+    with pytest.raises(RuntimeError, match="Unexpected archive name format"):
+        _get_backup_type_from_archive_base("badformat")
+
+
+def test_get_par2_ratio_prefers_specific_ratio():
+    from dar_backup.dar_backup import _get_par2_ratio
+
+    par2_config = {
+        "par2_ratio_full": 12,
+        "par2_ratio_diff": 6,
+    }
+
+    assert _get_par2_ratio("FULL", par2_config, 3) == 12
+    assert _get_par2_ratio("DIFF", par2_config, 3) == 6
+    assert _get_par2_ratio("INCR", par2_config, 3) == 3

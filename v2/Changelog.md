@@ -8,12 +8,15 @@
 - Streaming restore-test sampling using reservoir sampling to avoid holding full file lists in memory.
 - Configurable command output capture cap (`COMMAND_CAPTURE_MAX_BYTES`, default 100 KB) to limit in-memory stdout/stderr while still logging full output.
 - Streaming list output for `dar-backup --list-contents` and `manager --list-archive-contents` to avoid large in-memory buffers.
+- Test coverage additions for config parsing, util helpers, restore-test sampling edge cases, par2 slice helpers, and get_backed_up_files error paths.
 
 ### Changed
 
 - Restore-test selection now streams DAR XML listings and samples candidates without loading all entries into RAM.
 - `get_backed_up_files` uses incremental XML parsing to reduce memory use for large archives.
 - CommandRunner supports per-command capture cap overrides (disable cap with `capture_output_limit_bytes=-1`).
+- Removed deprecated PAR2 layout/mode settings and simplified PAR2 cleanup to delete all matching .par2 artifacts.
+- Config templates/docs updated to drop PAR2_LAYOUT/PAR2_MODE references.
 
 ## v2-1.0.1 - 2026-01-09
 

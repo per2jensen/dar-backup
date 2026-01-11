@@ -67,7 +67,6 @@ def _delete_par2_files(
     else:
         par2_config = {
             "par2_dir": None,
-            "par2_mode": None,
         }
 
     par2_dir = par2_config.get("par2_dir") or backup_dir
@@ -76,52 +75,33 @@ def _delete_par2_files(
         logger.warning(f"PAR2 directory not found, skipping cleanup: {par2_dir}")
         return
 
-    par2_mode = (par2_config.get("par2_mode") or "per-slice").lower()
-
-    if par2_mode == "per-archive":
-        par2_glob = os.path.join(par2_dir, f"{archive_name}*.par2")
-        targets = glob.glob(par2_glob)
-        manifest_path = os.path.join(par2_dir, f"{archive_name}.par2.manifest.ini")
-        if os.path.exists(manifest_path):
-            targets.append(manifest_path)
-        if not targets:
-            logger.info("No par2 files matched the per-archive cleanup pattern.")
-            return
-        for file_path in sorted(set(targets)):
-            try:
-                if dry_run:
-                    logger.info(f"Dry run: would delete PAR2 file: {file_path}")
-                else:
-                    safe_remove_file(file_path, base_dir=Path(par2_dir))
-                    logger.info(f"Deleted PAR2 file: {file_path}")
-            except Exception as e:
-                logger.error(f"Error deleting PAR2 file {file_path}: {e}")
-        return
-
-    if par2_mode != "per-slice":
-        logger.error(f"Unsupported PAR2_MODE during cleanup: {par2_mode}")
-        return
+    par2_glob = os.path.join(par2_dir, f"{archive_name}*.par2")
+    targets = set(glob.glob(par2_glob))
+    manifest_path = os.path.join(par2_dir, f"{archive_name}.par2.manifest.ini")
+    if os.path.exists(manifest_path):
+        targets.add(manifest_path)
 
     par2_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar.*\.par2$")
-    files_deleted = False
     for entry in os.scandir(par2_dir):
         if not entry.is_file():
             continue
         filename = entry.name
         if par2_regex.match(filename):
-            file_path = entry.path
-            try:
-                if dry_run:
-                    logger.info(f"Dry run: would delete PAR2 file: {file_path}")
-                else:
-                    safe_remove_file(file_path, base_dir=Path(par2_dir))
-                    logger.info(f"Deleted PAR2 file: {file_path}")
-                    files_deleted = True
-            except Exception as e:
-                logger.error(f"Error deleting PAR2 file {file_path}: {e}")
+            targets.add(entry.path)
 
-    if not files_deleted:
-        logger.info("No .par2 matched the regex for deletion.")
+    if not targets:
+        logger.info("No par2 files matched the cleanup patterns.")
+        return
+
+    for file_path in sorted(targets):
+        try:
+            if dry_run:
+                logger.info(f"Dry run: would delete PAR2 file: {file_path}")
+            else:
+                safe_remove_file(file_path, base_dir=Path(par2_dir))
+                logger.info(f"Deleted PAR2 file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error deleting PAR2 file {file_path}: {e}")
 
 
 def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: ConfigSettings = None):

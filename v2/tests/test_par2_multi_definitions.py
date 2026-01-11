@@ -101,7 +101,6 @@ def test_par2_multi_definition_repair_flow(setup_environment, env: EnvData):
         _write_backup_definition(os.path.join(env.backup_d_dir, name), cfg["data_dir"])
         overrides[name] = {
             "PAR2_DIR": cfg["par2_dir"],
-            "PAR2_MODE": "per-archive",
             "PAR2_RATIO_FULL": cfg["ratio_full"],
         }
 

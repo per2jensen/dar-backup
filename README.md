@@ -792,7 +792,6 @@ ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /path/to/par2-store
-# PAR2_MODE = per-slice
 # PAR2_RATIO_FULL = 10
 # PAR2_RATIO_DIFF = 5
 # PAR2_RATIO_INCR = 5
@@ -801,7 +800,6 @@ ENABLED = True
 # Optional per-backup overrides (section name = backup definition)
 [media-files]
 PAR2_DIR = /mnt/par2/media-files
-PAR2_MODE = per-archive
 PAR2_RATIO_FULL = 10
 
 # scripts to run before the backup to setup the environment

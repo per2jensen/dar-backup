@@ -48,8 +48,6 @@ class ConfigSettings:
     error_correction_percent: int = field(init=False)
     par2_enabled: bool = field(init=False)
     par2_dir: Optional[str] = field(init=False, default=None)
-    par2_layout: Optional[str] = field(init=False, default=None)
-    par2_mode: Optional[str] = field(init=False, default=None)
     par2_ratio_full: Optional[int] = field(init=False, default=None)
     par2_ratio_diff: Optional[int] = field(init=False, default=None)
     par2_ratio_incr: Optional[int] = field(init=False, default=None)
@@ -132,8 +130,6 @@ class ConfigSettings:
                 raise ConfigSettingsError(f"Invalid boolean value for 'ENABLED' in [PAR2]: '{val}'")
 
             self.par2_dir = self._get_optional_str("PAR2", "PAR2_DIR", default=None)
-            self.par2_layout = self._get_optional_str("PAR2", "PAR2_LAYOUT", default="by-backup")
-            self.par2_mode = self._get_optional_str("PAR2", "PAR2_MODE", default=None)
             self.par2_ratio_full = self._get_optional_int("PAR2", "PAR2_RATIO_FULL", default=None)
             self.par2_ratio_diff = self._get_optional_int("PAR2", "PAR2_RATIO_DIFF", default=None)
             self.par2_ratio_incr = self._get_optional_int("PAR2", "PAR2_RATIO_INCR", default=None)
@@ -248,8 +244,6 @@ class ConfigSettings:
         """
         par2_config = {
             "par2_dir": self.par2_dir,
-            "par2_layout": self.par2_layout,
-            "par2_mode": self.par2_mode,
             "par2_ratio_full": self.par2_ratio_full,
             "par2_ratio_diff": self.par2_ratio_diff,
             "par2_ratio_incr": self.par2_ratio_incr,
@@ -268,10 +262,6 @@ class ConfigSettings:
                 continue
             if key == "PAR2_DIR":
                 par2_config["par2_dir"] = value
-            elif key == "PAR2_LAYOUT":
-                par2_config["par2_layout"] = value
-            elif key == "PAR2_MODE":
-                par2_config["par2_mode"] = value
             elif key == "PAR2_RATIO_FULL":
                 par2_config["par2_ratio_full"] = int(value)
             elif key == "PAR2_RATIO_DIFF":

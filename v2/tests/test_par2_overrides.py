@@ -28,11 +28,9 @@ def test_par2_overrides_are_applied(tmp_path):
         "ERROR_CORRECTION_PERCENT": "5",
         "ENABLED": "True",
         "PAR2_DIR": "/global/par2",
-        "PAR2_MODE": "per-slice",
     }
     config["media-files"] = {
         "PAR2_DIR": "/override/par2",
-        "PAR2_MODE": "per-archive",
         "PAR2_RATIO_FULL": "10",
     }
 
@@ -43,10 +41,8 @@ def test_par2_overrides_are_applied(tmp_path):
     par2_config = settings.get_par2_config("media-files")
 
     assert par2_config["par2_dir"] == "/override/par2"
-    assert par2_config["par2_mode"] == "per-archive"
     assert par2_config["par2_ratio_full"] == 10
     assert par2_config["par2_enabled"] is True
 
     default_par2_config = settings.get_par2_config("nonexistent")
     assert default_par2_config["par2_dir"] == "/global/par2"
-    assert default_par2_config["par2_mode"] == "per-slice"

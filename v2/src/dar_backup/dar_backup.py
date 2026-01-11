@@ -1010,8 +1010,6 @@ def _write_par2_manifest(
 def _default_par2_config(config_settings: ConfigSettings) -> dict:
     return {
         "par2_dir": getattr(config_settings, "par2_dir", None),
-        "par2_layout": getattr(config_settings, "par2_layout", "by-backup"),
-        "par2_mode": getattr(config_settings, "par2_mode", None),
         "par2_ratio_full": getattr(config_settings, "par2_ratio_full", None),
         "par2_ratio_diff": getattr(config_settings, "par2_ratio_diff", None),
         "par2_ratio_incr": getattr(config_settings, "par2_ratio_incr", None),

@@ -18,7 +18,6 @@ def _configure_par2_dir(env: EnvData, par2_dir: str) -> None:
     config = ConfigParser()
     config.read(env.config_file)
     config["PAR2"]["PAR2_DIR"] = par2_dir
-    config["PAR2"]["PAR2_MODE"] = "per-archive"
     config["PAR2"]["PAR2_RATIO_FULL"] = "5"
     with open(env.config_file, "w") as f:
         config.write(f)

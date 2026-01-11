@@ -369,7 +369,7 @@ def test_logs_warning_when_no_matching_archives(setup_environment, env, monkeypa
     output = result.stdout + result.stderr
     assert (
         "No .dar files matched the regex for deletion." in output
-        and "No .par2 matched the regex for deletion." in output
+        and "No par2 files matched the cleanup patterns." in output
     ), f"Expected messages not found in output:\n{output}"
 
 
@@ -597,7 +597,7 @@ def test_cleanup_deletes_per_archive_par2_in_external_dir(monkeypatch, tmp_path)
 
     class DummyConfig:
         def get_par2_config(self, backup_definition):
-            return {"par2_dir": str(par2_dir), "par2_mode": "per-archive"}
+            return {"par2_dir": str(par2_dir)}
 
     monkeypatch.setattr("dar_backup.cleanup.delete_catalog", lambda *a, **kw: True)
     monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))

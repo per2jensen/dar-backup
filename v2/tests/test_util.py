@@ -1,9 +1,12 @@
+import io
 import os
 import sys
 import logging
 import pytest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
+from urllib.error import HTTPError
 from dar_backup import util
 
 
@@ -290,3 +293,135 @@ def test_list_archive_completer_cleanup_without_specific_archives(monkeypatch):
     monkeypatch.setenv("COMP_LINE", "cleanup ")
     args = type("Args", (), {"backup_definition": None, "backup_def": None, "config_file": "/nope"})
     assert util.list_archive_completer("", args) == []
+
+
+def test_send_discord_message_returns_false_without_webhook(monkeypatch):
+    monkeypatch.delenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", raising=False)
+    fake_logger = MagicMock()
+    monkeypatch.setattr(util, "logger", fake_logger)
+
+    assert util.send_discord_message("hello", config_settings=None) is False
+    fake_logger.info.assert_called_once()
+    assert "not configured" in fake_logger.info.call_args[0][0].lower()
+
+
+def test_send_discord_message_http_error_logs_and_returns_false(monkeypatch):
+    fake_logger = MagicMock()
+    monkeypatch.setattr(util, "logger", fake_logger)
+    monkeypatch.setenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", "https://example/webhook")
+
+    def fake_urlopen(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            429,
+            "Too Many Requests",
+            None,
+            io.BytesIO(b"rate limited")
+        )
+
+    monkeypatch.setattr(util.urllib.request, "urlopen", fake_urlopen)
+
+    assert util.send_discord_message("hello") is False
+    fake_logger.error.assert_called_once()
+    assert "http error 429" in fake_logger.error.call_args[0][0].lower()
+
+
+def test_add_specific_archive_completer_filters_existing_db_entries(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    backup_d_dir = tmp_path / "backup.d"
+    backup_d_dir.mkdir()
+
+    config_path = tmp_path / "dar-backup.conf"
+    config_path.write_text(
+        "[MISC]\n"
+        "LOGFILE_LOCATION = /tmp/test.log\n"
+        "MAX_SIZE_VERIFICATION_MB = 100\n"
+        "MIN_SIZE_VERIFICATION_MB = 1\n"
+        "NO_FILES_VERIFICATION = 5\n"
+        "COMMAND_TIMEOUT_SECS = 5\n"
+        "\n"
+        "[DIRECTORIES]\n"
+        f"BACKUP_DIR = {backup_dir}\n"
+        "TEST_RESTORE_DIR = /tmp/restore\n"
+        f"BACKUP.D_DIR = {backup_d_dir}\n"
+        "\n"
+        "[AGE]\n"
+        "DIFF_AGE = 3\n"
+        "INCR_AGE = 1\n"
+        "\n"
+        "[PAR2]\n"
+        "ERROR_CORRECTION_PERCENT = 10\n"
+        "ENABLED = false\n"
+    )
+
+    (backup_dir / "example_FULL_2024-01-01.1.dar").write_text("data")
+    (backup_dir / "example_INCR_2024-01-02.1.dar").write_text("data")
+    (backup_dir / "example_DIFF_2024-01-03.1.dar").write_text("data")
+    (backup_dir / "other_FULL_2024-01-04.1.dar").write_text("data")
+    (backup_dir / "example.db").write_text("db")
+
+    args = SimpleNamespace(config_file=str(config_path), backup_def="example")
+    existing_output = "\n".join(
+        [
+            "\t1\t/tmp\texample_FULL_2024-01-01",
+            "\t2\t/tmp\texample_DIFF_2024-01-03",
+        ]
+    )
+
+    with patch("dar_backup.util.subprocess.run") as mock_run:
+        mock_run.return_value = SimpleNamespace(
+            stdout=existing_output,
+            stderr="",
+            returncode=0
+        )
+        result = util.add_specific_archive_completer("example", args)
+
+    assert result == ["example_INCR_2024-01-02"]
+
+
+def test_list_backups_no_backups(tmp_path, capsys):
+    util.list_backups(str(tmp_path))
+    out = capsys.readouterr().out
+    assert "no backups available" in out.lower()
+
+
+def test_is_safe_path_requires_absolute():
+    assert util.is_safe_path("/tmp/dir/file.txt") is True
+    assert util.is_safe_path("tmp/dir/file.txt") is False
+    assert util.is_safe_path("../tmp/file.txt") is False
+
+
+def test_print_debug_includes_filename_and_repr(capsys):
+    util.print_debug("hello")
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("[DEBUG]")
+    assert "test_util.py" in out
+    assert repr("hello") in out
+
+
+def test_show_scriptname_uses_sys_argv(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["dar-backup", "--help"])
+    assert util.show_scriptname() == "dar-backup"
+
+
+def test_show_scriptname_returns_unknown_on_error(monkeypatch):
+    monkeypatch.setattr(sys, "argv", None)
+    assert util.show_scriptname() == "unknown"
+
+
+def test_patch_config_file_replaces_only_matching_keys(tmp_path):
+    config_path = tmp_path / "config.conf"
+    config_path.write_text("A=1\nB=2\nC = 3\n")
+
+    util.patch_config_file(str(config_path), {"A": "10", "C": "30"})
+
+    content = config_path.read_text().splitlines()
+    assert "A = 10" in content
+    assert "C = 30" in content
+    assert "B=2" in content
+
+
+def test_normalize_dir_strips_trailing_separator(tmp_path):
+    raw = str(tmp_path / "dir") + "/"
+    assert util.normalize_dir(raw) == str(tmp_path / "dir")
