@@ -11,6 +11,7 @@ import envdata
 import test_bitrot
 import tempfile
 import pytest
+import subprocess
 
 
 from datetime import date
@@ -1202,6 +1203,302 @@ def test_manager_db_dir_invalid_path_raises(env, setup_environment, tmp_path):
 
     assert process.returncode != 0, "Expected failure due to invalid MANAGER_DB_DIR path"
     env.logger.info("✅ Catalog creation failed as expected due to invalid MANAGER_DB_DIR")
+
+
+def test_backup_def_from_archive_no_match_logs_error():
+    from dar_backup.manager import backup_def_from_archive
+
+    with patch("dar_backup.manager.logger") as mock_logger:
+        result = backup_def_from_archive("invalidarchive")
+
+    assert result is None
+    mock_logger.error.assert_called_once()
+
+
+def test_list_archive_contents_subprocess_empty_prints_info(tmp_path, capsys):
+    import io
+    from dar_backup.manager import list_archive_contents
+
+    archive = "example_FULL_2025-04-06"
+    db_path = tmp_path / "example.db"
+    db_path.touch()
+
+    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = io.BytesIO(b"header line\n")
+            self.stderr = io.BytesIO(b"")
+
+        def wait(self, timeout=None):
+            return None
+
+    with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
+         patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
+         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
+         patch("dar_backup.manager.logger", new=MagicMock()), \
+         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+        result = list_archive_contents(archive, config)
+
+    assert result == 0
+    out = capsys.readouterr().out.strip()
+    assert f"[info] Archive '{archive}' is empty." in out
+
+
+def test_list_archive_contents_subprocess_filters_saved_lines(tmp_path, capsys):
+    import io
+    from dar_backup.manager import list_archive_contents
+
+    archive = "example_FULL_2025-04-06"
+    db_path = tmp_path / "example.db"
+    db_path.touch()
+
+    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
+    output = (
+        b"header line\n"
+        b"[ Saved ] file1.txt\n"
+        b"other line\n"
+        b"[ Saved ] dir/file2.txt\n"
+    )
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = io.BytesIO(output)
+            self.stderr = io.BytesIO(b"")
+
+        def wait(self, timeout=None):
+            return None
+
+    with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
+         patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
+         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
+         patch("dar_backup.manager.logger", new=MagicMock()), \
+         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+        result = list_archive_contents(archive, config)
+
+    assert result == 0
+    out_lines = capsys.readouterr().out.strip().splitlines()
+    assert out_lines == ["[ Saved ] file1.txt", "[ Saved ] dir/file2.txt"]
+
+
+def test_add_specific_archive_missing_backup_def(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive = "example_FULL_2025-04-06"
+    (tmp_path / f"{archive}.1.dar").touch()
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+
+    with patch("dar_backup.manager.logger") as mock_logger:
+        result = add_specific_archive(archive, config)
+
+    assert result == 1
+    mock_logger.error.assert_called_once()
+
+
+def test_add_specific_archive_old_archive_declined(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive = "example_FULL_2025-04-01"
+    (tmp_path / f"{archive}.1.dar").touch()
+    (tmp_path / "example").touch()
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+
+    list_output = "1\t/path\texample_FULL_2025-04-10"
+
+    with patch("dar_backup.manager.subprocess.run") as mock_run, \
+         patch("dar_backup.manager.confirm_add_old_archive", return_value=False), \
+         patch("dar_backup.manager.logger") as mock_logger, \
+         patch("dar_backup.manager.runner") as mock_runner:
+        mock_run.return_value = SimpleNamespace(stdout=list_output)
+        result = add_specific_archive(archive, config)
+
+    assert result == 1
+    mock_logger.info.assert_any_call(
+        f"Archive {archive} skipped due to user declining to add older archive."
+    )
+    mock_runner.run.assert_not_called()
+
+
+def test_add_specific_archive_catalog_list_failure_logs_warning(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive = "example_FULL_2025-04-01"
+    (tmp_path / f"{archive}.1.dar").touch()
+    (tmp_path / "example").touch()
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+
+    with patch("dar_backup.manager.subprocess.run", side_effect=subprocess.CalledProcessError(1, "dar_manager")), \
+         patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        result = add_specific_archive(archive, config)
+
+    assert result == 0
+    mock_logger.warning.assert_called_once_with(
+        "Could not determine latest catalog date for chronological check."
+    )
+
+
+def test_add_directory_no_archives_logs_info(tmp_path):
+    from dar_backup.manager import add_directory
+
+    args = SimpleNamespace(add_dir=str(tmp_path))
+    config = SimpleNamespace()
+
+    with patch("dar_backup.manager.logger") as mock_logger, \
+         patch("dar_backup.manager.add_specific_archive") as mock_add:
+        add_directory(args, config)
+
+    mock_logger.info.assert_called_once_with(f"No 'dar' archives found in directory {args.add_dir}")
+    mock_add.assert_not_called()
+
+
+def test_add_directory_missing_dir_raises(tmp_path):
+    from dar_backup.manager import add_directory
+
+    args = SimpleNamespace(add_dir=str(tmp_path / "missing"))
+    config = SimpleNamespace()
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        add_directory(args, config)
+
+
+def test_remove_specific_archive_failure_returns_one(tmp_path):
+    from dar_backup.manager import remove_specific_archive
+
+    config = SimpleNamespace(backup_dir=tmp_path)
+    process = SimpleNamespace(returncode=1, stdout="bad", sterr="oops")
+
+    with patch("dar_backup.manager.backup_def_from_archive", return_value="example"), \
+         patch("dar_backup.manager.cat_no_for_name", return_value=1), \
+         patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = process
+        result = remove_specific_archive("example_FULL_2025-01-01", config)
+
+    assert result == 1
+    mock_logger.error.assert_any_call("bad")
+    mock_logger.error.assert_any_call("oops")
+
+
+def test_create_db_db_dir_missing(tmp_path):
+    from dar_backup.manager import create_db
+
+    missing_dir = tmp_path / "missing"
+    config = SimpleNamespace(backup_dir=str(missing_dir))
+    mock_logger = MagicMock()
+    mock_runner = MagicMock()
+
+    result = create_db("example", config, mock_logger, mock_runner)
+
+    assert result == 1
+    mock_logger.error.assert_called_once_with(f"DB dir does not exist: {missing_dir}")
+
+
+def test_create_db_db_dir_not_directory(tmp_path):
+    from dar_backup.manager import create_db
+
+    db_file = tmp_path / "dbfile"
+    db_file.write_text("not a dir")
+    config = SimpleNamespace(backup_dir=str(db_file))
+    mock_logger = MagicMock()
+    mock_runner = MagicMock()
+
+    result = create_db("example", config, mock_logger, mock_runner)
+
+    assert result == 1
+    mock_logger.error.assert_called_once_with(f"DB path exists but is not a directory: {db_file}")
+
+
+def test_create_db_db_dir_not_writable(tmp_path):
+    from dar_backup.manager import create_db
+
+    db_dir = tmp_path / "dbdir"
+    db_dir.mkdir()
+    config = SimpleNamespace(backup_dir=str(db_dir))
+    mock_logger = MagicMock()
+    mock_runner = MagicMock()
+
+    with patch("dar_backup.manager.os.access", return_value=False):
+        result = create_db("example", config, mock_logger, mock_runner)
+
+    assert result == 1
+    mock_logger.error.assert_called_once_with(f"DB dir is not writable: {db_dir}")
+
+
+def test_list_catalogs_success_runner_parses_and_sorts(tmp_path, capsys):
+    from dar_backup.manager import list_catalogs
+
+    backup_def = "example"
+    db_path = tmp_path / f"{backup_def}.db"
+    db_path.touch()
+
+    config = SimpleNamespace(backup_dir=tmp_path)
+    stdout = "\n".join(
+        [
+            "archive #",
+            "dar path",
+            "1\t/path\tbdef_FULL_2025-01-02",
+            "2\t/path\tadef_FULL_2025-01-03",
+            "3\t/path\tadef_FULL_2025-01-01",
+        ]
+    )
+    process = SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    with patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=process))), \
+         patch("dar_backup.manager.logger", new=MagicMock()):
+        result = list_catalogs(backup_def, config)
+
+    assert result.returncode == 0
+    out_lines = capsys.readouterr().out.strip().splitlines()
+    assert out_lines == [
+        "adef_FULL_2025-01-01",
+        "adef_FULL_2025-01-03",
+        "bdef_FULL_2025-01-02",
+    ]
+    assert "bdef_FULL_2025-01-02" in result.stdout
+
+
+def test_list_catalogs_success_subprocess_parses(tmp_path):
+    import io
+    from dar_backup.manager import list_catalogs
+
+    backup_def = "example"
+    db_path = tmp_path / f"{backup_def}.db"
+    db_path.touch()
+
+    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
+    output = (
+        b"1\t/path\tadef_FULL_2025-01-01\n"
+        b"2\t/path\tbdef_FULL_2025-01-02\n"
+    )
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = io.BytesIO(output)
+            self.stderr = io.BytesIO(b"")
+
+        def wait(self, timeout=None):
+            return None
+
+    with patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
+         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
+         patch("dar_backup.manager.logger", new=MagicMock()), \
+         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+        result = list_catalogs(backup_def, config, suppress_output=True)
+
+    assert result.returncode == 0
+    assert "adef_FULL_2025-01-01" in result.stdout
+
+
+def test_get_db_dir_prefers_manager_db_dir():
+    from dar_backup.manager import get_db_dir
+
+    config = SimpleNamespace(manager_db_dir="/tmp/db", backup_dir="/tmp/backup")
+    assert get_db_dir(config) == "/tmp/db"
 
 
 

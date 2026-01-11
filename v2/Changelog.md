@@ -9,6 +9,8 @@
 - Configurable command output capture cap (`COMMAND_CAPTURE_MAX_BYTES`, default 100 KB) to limit in-memory stdout/stderr while still logging full output.
 - Streaming list output for `dar-backup --list-contents` and `manager --list-archive-contents` to avoid large in-memory buffers.
 - Test coverage additions for config parsing, util helpers, restore-test sampling edge cases, par2 slice helpers, and get_backed_up_files error paths.
+- CommandRunner test coverage for sanitize failure notes, text/binary output handling, timeouts, Popen failures, and TTY restore logic.
+- Manager test coverage for create-db guardrails and catalog listing parsing/sorting across runner/subprocess paths.
 
 ### Changed
 

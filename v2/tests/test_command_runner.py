@@ -5,10 +5,12 @@ import pytest
 import sys
 import re
 import tempfile
+import subprocess
 
 from dar_backup.command_runner import CommandRunner, CommandResult
 from io import StringIO
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 
 
@@ -325,3 +327,288 @@ def test_command_runner_log_output_false_logs_only_command_line(tmp_path):
         lines = f.read().splitlines()
     assert len(lines) == 1
     assert "Executing command:" in lines[0]
+
+
+def test_command_runner_check_true_nonzero_returns_stack(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["/bin/false"], check=True)
+
+    assert result.returncode != 0
+    assert isinstance(result.stack, list)
+    assert result.stack
+
+
+def test_command_runner_text_false_returns_bytes(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\n")
+        f.write("sys.stdout.buffer.write(b'abc')\n")
+        f.write("sys.stderr.buffer.write(b'def')\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], text=False)
+    finally:
+        os.remove(script_path)
+
+    assert result.returncode == 0
+    assert result.stdout == b"abc"
+    assert result.stderr == b"def"
+
+
+def test_command_runner_non_list_cmd_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run("echo")
+
+    assert result.returncode == -1
+    assert "Command must be a list of strings" in result.stderr
+
+
+def test_command_runner_invalid_arg_type_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", 123])
+
+    assert result.returncode == -1
+    assert "Invalid argument type" in result.stderr
+
+
+def test_command_runner_timeout_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    class FakeProcess:
+        def __init__(self):
+            import io
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"")
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired(cmd="echo", timeout=timeout)
+
+        def kill(self):
+            return None
+
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()), \
+         patch.object(runner, "logger") as mock_logger:
+        result = runner.run(["echo", "hello"], timeout=0.01)
+
+    assert result.returncode == -1
+    assert mock_logger.error.called
+
+
+def test_command_runner_popen_failure_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with patch("dar_backup.command_runner.subprocess.Popen", side_effect=OSError("boom")):
+        result = runner.run(["echo", "fail"])
+
+    assert result.returncode == -1
+    assert "boom" in result.stderr
+    assert result.stack is not None
+
+
+def test_command_runner_capture_and_log_output_disabled(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = None
+            self.stderr = None
+
+        def wait(self, timeout=None):
+            return None
+
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()) as mock_popen:
+        result = runner.run(["echo", "ok"], capture_output=False, log_output=False)
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+    called_kwargs = mock_popen.call_args.kwargs
+    assert called_kwargs["stdout"] is None
+    assert called_kwargs["stderr"] is None
+
+
+def test_command_runner_cwd_and_stdin_passed(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = None
+            self.stderr = None
+
+        def wait(self, timeout=None):
+            return None
+
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()) as mock_popen:
+        result = runner.run(
+            ["echo", "ok"],
+            capture_output=False,
+            log_output=False,
+            cwd=str(tmp_path),
+            stdin=subprocess.PIPE,
+        )
+
+    assert result.returncode == 0
+    called_kwargs = mock_popen.call_args.kwargs
+    assert called_kwargs["cwd"] == str(tmp_path)
+    assert called_kwargs["stdin"] == subprocess.PIPE
+
+
+def test_command_runner_text_false_does_not_log_binary(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\n")
+        f.write("sys.stdout.buffer.write(b'abc')\n")
+        f.write("sys.stderr.buffer.write(b'def')\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], text=False)
+    finally:
+        os.remove(script_path)
+
+    assert result.returncode == 0
+    with open(command_log_path) as f:
+        log_contents = f.read()
+    assert "abc" not in log_contents
+    assert "def" not in log_contents
+
+
+def test_command_runner_sanitize_failure_note_includes_command(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "bad;rm"])
+
+    assert result.returncode == -1
+    assert "Sanitizing failed: command: echo bad;rm" in result.note
+
+
+def test_command_runner_non_list_cmd_note_includes_command(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run("echo")
+
+    assert result.returncode == -1
+    assert "Sanitizing failed: command: echo" in result.note
+
+
+def test_command_runner_restores_tty_attrs(monkeypatch, tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    fake_file = MagicMock()
+    fake_file.fileno.return_value = 3
+
+    fake_termios = SimpleNamespace(
+        tcgetattr=MagicMock(return_value=["attrs"]),
+        tcsetattr=MagicMock(),
+        TCSADRAIN=0,
+    )
+
+    monkeypatch.setattr("dar_backup.command_runner.termios", fake_termios)
+    original_exists = os.path.exists
+    original_open = open
+
+    def fake_exists(path):
+        if path == "/dev/tty":
+            return True
+        return original_exists(path)
+
+    def fake_open(path, *args, **kwargs):
+        if path == "/dev/tty":
+            return fake_file
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("dar_backup.command_runner.os.path.exists", fake_exists)
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    result = runner.run(["echo", "ok"])
+
+    assert result.returncode == 0
+    fake_termios.tcsetattr.assert_called_once_with(3, fake_termios.TCSADRAIN, ["attrs"])
+    fake_file.close.assert_called_once()
+
+
+def test_command_runner_termios_none_skips_tty(monkeypatch, tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    monkeypatch.setattr("dar_backup.command_runner.termios", None)
+
+    result = runner.run(["echo", "ok"])
+
+    assert result.returncode == 0
+    assert "ok" in result.stdout
+
+
+def test_command_runner_tty_open_failure_does_not_crash(monkeypatch, tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    fake_termios = SimpleNamespace(
+        tcgetattr=MagicMock(return_value=["attrs"]),
+        tcsetattr=MagicMock(),
+        TCSADRAIN=0,
+    )
+    monkeypatch.setattr("dar_backup.command_runner.termios", fake_termios)
+
+    def fake_exists(path):
+        return path == "/dev/tty"
+
+    def fake_open(*_args, **_kwargs):
+        raise OSError("no tty")
+
+    monkeypatch.setattr("dar_backup.command_runner.os.path.exists", fake_exists)
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    result = runner.run(["echo", "ok"])
+
+    assert result.returncode == 0
+
+
+def test_command_runner_wait_exception_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    class FakeProcess:
+        def __init__(self):
+            import io
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"")
+
+        def wait(self, timeout=None):
+            raise RuntimeError("wait failed")
+
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()), \
+         patch.object(runner, "logger") as mock_logger:
+        result = runner.run(["echo", "ok"])
+
+    assert result.returncode == -1
+    assert result.stack is not None
+    assert mock_logger.error.called
+
+
+def test_command_result_str_handles_binary():
+    result = CommandResult(0, b"abc", b"def")
+
+    text = str(result)
+
+    assert "<3 bytes of binary data>" in text

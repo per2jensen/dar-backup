@@ -171,9 +171,13 @@ class CommandRunner:
             except ValueError as e:
                 stack = traceback.format_exc()
                 self.logger.error(f"Command sanitation failed: {e}")
+                if isinstance(cmd, list):
+                    cmd_text = " ".join(map(str, cmd))
+                else:
+                    cmd_text = str(cmd)
                 return CommandResult(
                     returncode=-1,
-                    note=f"Sanitizing failed: command: {' '.join(cmd)}",
+                    note=f"Sanitizing failed: command: {cmd_text}",
                     stdout='',
                     stderr=str(e),
                     stack=stack,
