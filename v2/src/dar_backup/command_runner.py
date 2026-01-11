@@ -84,11 +84,13 @@ class CommandRunner:
         self,
         logger: Optional[logging.Logger] = None,
         command_logger: Optional[logging.Logger] = None,
-        default_timeout: int = 30
+        default_timeout: int = 30,
+        default_capture_limit_bytes: Optional[int] = None
     ):
         self.logger = logger or get_logger()
         self.command_logger = command_logger or get_logger(command_output_logger=True)
         self.default_timeout = default_timeout
+        self.default_capture_limit_bytes = default_capture_limit_bytes
 
         if not self.logger or not self.command_logger:
             self.logger_fallback()
@@ -129,12 +131,18 @@ class CommandRunner:
         timeout: Optional[int] = None,
         check: bool = False,
         capture_output: bool = True,
+        capture_output_limit_bytes: Optional[int] = None,
+        log_output: bool = True,
         text: bool = True,
         cwd: Optional[str] = None,
         stdin: Optional[int] = subprocess.DEVNULL
     ) -> CommandResult:
         self._text_mode = text
         timeout = timeout or self.default_timeout
+        if capture_output_limit_bytes is None:
+            capture_output_limit_bytes = self.default_capture_limit_bytes
+        if capture_output_limit_bytes is not None and capture_output_limit_bytes < 0:
+            capture_output_limit_bytes = None
 
         tty_fd = None
         tty_file = None
@@ -183,12 +191,15 @@ class CommandRunner:
 
             stdout_lines = []
             stderr_lines = []
+            truncated_stdout = {"value": False}
+            truncated_stderr = {"value": False}
 
             try:
+                use_pipes = capture_output or log_output
                 process = subprocess.Popen(
                     cmd,
-                    stdout=subprocess.PIPE if capture_output else None,
-                    stderr=subprocess.PIPE if capture_output else None,
+                    stdout=subprocess.PIPE if use_pipes else None,
+                    stderr=subprocess.PIPE if use_pipes else None,
                     stdin=stdin,
                     text=False,
                     bufsize=-1,
@@ -203,7 +214,8 @@ class CommandRunner:
                     stack=stack
                 )
 
-            def stream_output(stream, lines, level):
+            def stream_output(stream, lines, level, truncated_flag):
+                captured_bytes = 0
                 try:
                     while True:
                         chunk = stream.read(1024)
@@ -211,10 +223,40 @@ class CommandRunner:
                             break
                         if self._text_mode:
                             decoded = chunk.decode('utf-8', errors='replace')
-                            lines.append(decoded)
-                            self.command_logger.log(level, decoded.strip())
+                            if log_output:
+                                self.command_logger.log(level, decoded.strip())
+                            if capture_output:
+                                if capture_output_limit_bytes is None:
+                                    lines.append(decoded)
+                                else:
+                                    remaining = capture_output_limit_bytes - captured_bytes
+                                    if remaining > 0:
+                                        if len(chunk) <= remaining:
+                                            lines.append(decoded)
+                                            captured_bytes += len(chunk)
+                                        else:
+                                            piece = chunk[:remaining]
+                                            lines.append(piece.decode('utf-8', errors='replace'))
+                                            captured_bytes = capture_output_limit_bytes
+                                            truncated_flag["value"] = True
+                                    else:
+                                        truncated_flag["value"] = True
                         else:
-                            lines.append(chunk)
+                            if capture_output:
+                                if capture_output_limit_bytes is None:
+                                    lines.append(chunk)
+                                else:
+                                    remaining = capture_output_limit_bytes - captured_bytes
+                                    if remaining > 0:
+                                        if len(chunk) <= remaining:
+                                            lines.append(chunk)
+                                            captured_bytes += len(chunk)
+                                        else:
+                                            lines.append(chunk[:remaining])
+                                            captured_bytes = capture_output_limit_bytes
+                                            truncated_flag["value"] = True
+                                    else:
+                                        truncated_flag["value"] = True
                             # Avoid logging raw binary data to prevent garbled logs
                 except Exception as e:
                     self.logger.warning(f"stream_output decode error: {e}")
@@ -222,12 +264,18 @@ class CommandRunner:
                     stream.close()
 
             threads = []
-            if capture_output and process.stdout:
-                t_out = threading.Thread(target=stream_output, args=(process.stdout, stdout_lines, logging.INFO))
+            if (capture_output or log_output) and process.stdout:
+                t_out = threading.Thread(
+                    target=stream_output,
+                    args=(process.stdout, stdout_lines, logging.INFO, truncated_stdout)
+                )
                 t_out.start()
                 threads.append(t_out)
-            if capture_output and process.stderr:
-                t_err = threading.Thread(target=stream_output, args=(process.stderr, stderr_lines, logging.ERROR))
+            if (capture_output or log_output) and process.stderr:
+                t_err = threading.Thread(
+                    target=stream_output,
+                    args=(process.stderr, stderr_lines, logging.ERROR, truncated_stderr)
+                )
                 t_err.start()
                 threads.append(t_err)
 
@@ -254,6 +302,15 @@ class CommandRunner:
                 stdout_combined = b''.join(stdout_lines)
                 stderr_combined = b''.join(stderr_lines)
 
+            note = None
+            if truncated_stdout["value"] or truncated_stderr["value"]:
+                parts = []
+                if truncated_stdout["value"]:
+                    parts.append("stdout truncated")
+                if truncated_stderr["value"]:
+                    parts.append("stderr truncated")
+                note = ", ".join(parts)
+
             if check and process.returncode != 0:
                 self.logger.error(f"Command failed with exit code {process.returncode}")
                 return CommandResult(
@@ -266,7 +323,8 @@ class CommandRunner:
             return CommandResult(
                 process.returncode,
                 stdout_combined,
-                stderr_combined
+                stderr_combined,
+                note=note
             )
         finally:
             if termios is not None and saved_tty_attrs is not None and tty_fd is not None:

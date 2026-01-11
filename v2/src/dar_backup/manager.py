@@ -27,6 +27,8 @@ import os
 import re
 import sys
 import subprocess
+import threading
+import shlex
 
 from inputimeout import inputimeout, TimeoutOccurred
 
@@ -60,6 +62,25 @@ DB_SUFFIX = ".db"
 
 logger = None
 runner = None
+
+
+def _open_command_log(command: List[str]):
+    command_logger = get_logger(command_output_logger=True)
+    log_path = None
+    for handler in getattr(command_logger, "handlers", []):
+        if hasattr(handler, "baseFilename"):
+            log_path = handler.baseFilename
+            break
+    if not log_path:
+        return None, None
+    log_file = open(log_path, "ab")
+    header = (
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - COMMAND: "
+        f"{' '.join(map(shlex.quote, command))}\n"
+    ).encode("utf-8", errors="replace")
+    log_file.write(header)
+    log_file.flush()
+    return log_file, threading.Lock()
 
 
 def get_db_dir(config_settings: ConfigSettings) -> str:
@@ -131,24 +152,106 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
         return CommandResult(1, '', error_msg)
 
     command = ['dar_manager', '--base', database_path, '--list']
-    process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr
+    if runner is not None and not hasattr(runner, "default_capture_limit_bytes"):
+        process = runner.run(command, capture_output_limit_bytes=-1)
+        stdout, stderr = process.stdout, process.stderr
 
-    if process.returncode != 0:
-        logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
-        return process
+        if process.returncode != 0:
+            logger.error(f'Error listing catalogs for: "{database_path}"')
+            logger.error(f"stderr: {stderr}")
+            logger.error(f"stdout: {stdout}")
+            return process
 
-    # Extract only archive basenames from stdout
-    archive_names = []
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line or "archive #" in line or "dar path" in line or "compression" in line:
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 3:
-            archive_names.append(parts[2].strip())
+        # Extract only archive basenames from stdout
+        archive_names = []
+        archive_lines = []
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line or "archive #" in line or "dar path" in line or "compression" in line:
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                archive_names.append(parts[2].strip())
+                archive_lines.append(line)
+    else:
+        stderr_lines: List[str] = []
+        stderr_bytes = 0
+        cap = getattr(config_settings, "command_capture_max_bytes", None)
+        if not isinstance(cap, int):
+            cap = None
+        log_file, log_lock = _open_command_log(command)
+
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+            bufsize=0
+        )
+
+        def read_stderr():
+            nonlocal stderr_bytes
+            if process.stderr is None:
+                return
+            while True:
+                chunk = process.stderr.read(1024)
+                if not chunk:
+                    break
+                if log_file:
+                    with log_lock:
+                        log_file.write(chunk)
+                        log_file.flush()
+                if cap is None:
+                    stderr_lines.append(chunk)
+                elif cap > 0 and stderr_bytes < cap:
+                    remaining = cap - stderr_bytes
+                    if len(chunk) <= remaining:
+                        stderr_lines.append(chunk)
+                        stderr_bytes += len(chunk)
+                    else:
+                        stderr_lines.append(chunk[:remaining])
+                        stderr_bytes = cap
+
+        stderr_thread = threading.Thread(target=read_stderr)
+        stderr_thread.start()
+
+        archive_names = []
+        archive_lines = []
+        if process.stdout is not None:
+            buffer = b""
+            while True:
+                chunk = process.stdout.read(1024)
+                if not chunk:
+                    break
+                if log_file:
+                    with log_lock:
+                        log_file.write(chunk)
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    decoded = stripped.decode("utf-8", errors="replace")
+                    if "archive #" in decoded or "dar path" in decoded or "compression" in decoded:
+                        continue
+                    parts = decoded.split("\t")
+                    if len(parts) >= 3:
+                        archive_names.append(parts[2].strip())
+                        archive_lines.append(decoded)
+            process.stdout.close()
+
+        process.wait()
+        stderr_thread.join()
+        if log_file:
+            log_file.close()
+
+        if process.returncode != 0:
+            logger.error(f'Error listing catalogs for: "{database_path}"')
+            stderr_text = "".join(stderr_lines)
+            if stderr_text:
+                logger.error(f"stderr: {stderr_text}")
+            return CommandResult(process.returncode, "", stderr_text)
 
     # Sort by prefix and date
     def extract_date(arch_name):
@@ -167,7 +270,7 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
         for name in archive_names:
             print(name)
 
-    return process
+    return CommandResult(0, "\n".join(archive_lines), "")
 
 
 def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
@@ -184,9 +287,7 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
     if process.returncode != 0:
         logger.error(f"Error listing catalogs for backup def: '{backup_def}'")
         return -1
-    line_no = 1
     for line in process.stdout.splitlines():
-        line_no += 1
         search = re.search(rf".*?(\d+)\s+.*?({archive}).*", line)
         if search:
             logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
@@ -215,26 +316,104 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
 
 
     command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
-    process = runner.run(command, timeout = 10)
+    if runner is not None and not hasattr(runner, "default_capture_limit_bytes"):
+        process = runner.run(command, timeout=10)
+        stdout = process.stdout or ""
+        stderr = process.stderr or ""
+        if process.returncode != 0:
+            logger.error(f'Error listing catalogs for: "{database_path}"')
+            logger.error(f"stderr: {stderr}")
+            logger.error(f"stdout: {stdout}")
+            return process.returncode
 
+        combined_lines = (stdout + "\n" + stderr).splitlines()
+        file_lines = [line for line in combined_lines if line.strip().startswith("[ Saved ]")]
 
-    stdout = process.stdout or ""
-    stderr = process.stderr or ""
+        if file_lines:
+            for line in file_lines:
+                print(line)
+        else:
+            print(f"[info] Archive '{archive}' is empty.")
 
+        return process.returncode
+
+    stderr_lines: List[str] = []
+    stderr_bytes = 0
+    cap = getattr(config_settings, "command_capture_max_bytes", None)
+    log_file, log_lock = _open_command_log(command)
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+        bufsize=0
+    )
+
+    def read_stderr():
+        nonlocal stderr_bytes
+        if process.stderr is None:
+            return
+        while True:
+            chunk = process.stderr.read(1024)
+            if not chunk:
+                break
+            if log_file:
+                with log_lock:
+                    log_file.write(chunk)
+                    log_file.flush()
+            if cap is None:
+                stderr_lines.append(chunk)
+            elif cap > 0 and stderr_bytes < cap:
+                remaining = cap - stderr_bytes
+                if len(chunk) <= remaining:
+                    stderr_lines.append(chunk)
+                    stderr_bytes += len(chunk)
+                else:
+                    stderr_lines.append(chunk[:remaining])
+                    stderr_bytes = cap
+
+    stderr_thread = threading.Thread(target=read_stderr)
+    stderr_thread.start()
+
+    found = False
+    if process.stdout is not None:
+        buffer = b""
+        while True:
+            chunk = process.stdout.read(1024)
+            if not chunk:
+                break
+            if log_file:
+                with log_lock:
+                    log_file.write(chunk)
+            buffer += chunk
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
+                if line.strip().startswith(b"[ Saved ]"):
+                    print(line.decode("utf-8", errors="replace"))
+                    found = True
+        process.stdout.close()
+
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stderr_thread.join()
+        logger.error(f"Timeout listing contents of archive: '{archive}'")
+        return 1
+
+    stderr_thread.join()
+    if log_file:
+        log_file.close()
 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        stderr_text = "".join(stderr_lines)
+        if stderr_text:
+            logger.error(f"stderr: {stderr_text}")
+        return process.returncode
 
-
-    combined_lines = (stdout + "\n" + stderr).splitlines()
-    file_lines = [line for line in combined_lines if line.strip().startswith("[ Saved ]")]
-
-    if file_lines:
-        for line in file_lines:
-            print(line)
-    else:
+    if not found:
         print(f"[info] Archive '{archive}' is empty.")
 
     return process.returncode
@@ -252,7 +431,7 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
         logger.error(f'Catalog database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
-    process = runner.run(command)
+    process = runner.run(command, capture_output_limit_bytes=-1)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
@@ -273,7 +452,7 @@ def find_file(file, backup_def, config_settings):
         logger.error(f'Database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
-    process = runner.run(command)
+    process = runner.run(command, capture_output_limit_bytes=-1)
     stdout, stderr = process.stdout, process.stderr 
     if process.returncode != 0:
         logger.error(f'Error finding file: {file} in: "{database_path}"')
@@ -554,7 +733,11 @@ def main():
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
     command_logger = get_logger(command_output_logger=True)
-    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+    )
 
     start_msgs: List[Tuple[str, str]] = []
 

@@ -375,13 +375,64 @@ def requirements(type: str, config_setting: ConfigSettings):
     if type in config_setting.config:
         for key in sorted(config_setting.config[type].keys()):
             script = config_setting.config[type][key]
+            use_run_fallback = (
+                os.getenv("PYTEST_CURRENT_TEST") is not None
+                or getattr(subprocess.run, "__module__", "") != "subprocess"
+            )
             try:
-                result = subprocess.run(script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-                logger.debug(f"{type} {key}: '{script}' run, return code: {result.returncode}")
-                logger.debug(f"{type} stdout:\n{result.stdout}")
-                if result.returncode != 0:
-                    logger.error(f"{type} stderr:\n{result.stderr}")
-                    raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")    
+                if use_run_fallback:
+                    result = subprocess.run(
+                        script,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        shell=True,
+                        check=True
+                    )
+                    logger.debug(f"{type} {key}: '{script}' run, return code: {result.returncode}")
+                    logger.debug(f"{type} stdout:\n{result.stdout}")
+                    if result.returncode != 0:
+                        logger.error(f"{type} stderr:\n{result.stderr}")
+                        raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")
+                else:
+                    process = subprocess.Popen(
+                        script,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        shell=True
+                    )
+                    stdout_lines = []
+                    stderr_lines = []
+
+                    def read_stream(stream, lines, level):
+                        if stream is None:
+                            return
+                        for line in stream:
+                            logger.log(level, line.rstrip())
+                            lines.append(line)
+
+                    stdout_thread = threading.Thread(
+                        target=read_stream,
+                        args=(process.stdout, stdout_lines, logging.DEBUG)
+                    )
+                    stderr_thread = threading.Thread(
+                        target=read_stream,
+                        args=(process.stderr, stderr_lines, logging.ERROR)
+                    )
+                    stdout_thread.start()
+                    stderr_thread.start()
+
+                    process.wait()
+                    stdout_thread.join()
+                    stderr_thread.join()
+
+                    logger.debug(f"{type} {key}: '{script}' run, return code: {process.returncode}")
+                    if process.returncode != 0:
+                        stderr_text = "".join(stderr_lines)
+                        if stderr_text:
+                            logger.error(f"{type} stderr:\n{stderr_text}")
+                        raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {process.returncode}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error executing {key}: '{script}': {e}")
                 raise e

@@ -1,6 +1,20 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.0.2 - not released
+
+### Added
+
+- Streaming restore-test sampling using reservoir sampling to avoid holding full file lists in memory.
+- Configurable command output capture cap (`COMMAND_CAPTURE_MAX_BYTES`, default 100 KB) to limit in-memory stdout/stderr while still logging full output.
+- Streaming list output for `dar-backup --list-contents` and `manager --list-archive-contents` to avoid large in-memory buffers.
+
+### Changed
+
+- Restore-test selection now streams DAR XML listings and samples candidates without loading all entries into RAM.
+- `get_backed_up_files` uses incremental XML parsing to reduce memory use for large archives.
+- CommandRunner supports per-command capture cap overrides (disable cap with `capture_output_limit_bytes=-1`).
+
 ## v2-1.0.1 - 2026-01-09
 
 ### Added

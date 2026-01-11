@@ -128,7 +128,11 @@ def run_installer(config_file: str, create_db_flag: bool):
         log_to_stdout=True,
     )
     command_logger = get_logger(command_output_logger=True)
-    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+    )
 
 
     # Create required directories

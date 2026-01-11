@@ -123,6 +123,7 @@ Version **1.0.0** was reached on October 9, 2025.
         - [DISCORD WEBHOOK](#discord-webhook)
         - [Restore test config](#restore-test-config)
         - [Par2](#par2-1)
+      - [1.0.2](#102)
   
 ## My use case
 
@@ -818,6 +819,7 @@ PAR2 notes:
 - If `PAR2_DIR` is unset, par2 files are created next to the archive slices (legacy behavior) and no manifest is written
 - When `PAR2_DIR` is set, dar-backup writes a manifest next to the par2 set:
   `archive_base.par2.manifest.ini`
+- When generating a par2 set, par2 reads all archive slices before writing any output files; for large backups, this initial read can take hours
 - Verify or repair using:
   `par2 verify -B <archive_dir> <par2_set.par2>`
   `par2 repair -B <archive_dir> <par2_set.par2>`
@@ -2036,10 +2038,24 @@ PAR2_RUN_VERIFY = true
 #
 #[etc]
 # Keep global PAR2 settings but tweak ratios for this backup definition
-# RATIO is i percent number
+# RATIO is given in percent (%)
 #PAR2_RATIO_FULL = 15  
 #PAR2_RATIO_DIFF = 8
 #PAR2_RATIO_INCR = 8
 ```
 
 [Per-backup override test case: `tests/test_par2_overrides.py`](v2/tests/test_par2_overrides.py)
+
+#### 1.0.2
+
+- New optional `[MISC]` setting: `COMMAND_CAPTURE_MAX_BYTES` (default 102400).
+  - Limits how much stdout/stderr is kept in memory per command while still logging full output.
+  - Set to `0` to disable buffering entirely. Command output is still streamed to dar-backup-commands.log
+  - If set to `0`, the calling function cannot rely on output from the executed command. The exit value is the only result provided.
+
+Example:
+
+```ini
+[MISC]
+COMMAND_CAPTURE_MAX_BYTES = 102400
+```

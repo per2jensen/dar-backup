@@ -164,3 +164,164 @@ def test_command_runner_stacktrace_on_failure():
     assert "No such file or directory" in result.stderr or result.stdout
     assert result.stack is not None
     assert "Traceback" in result.stack
+
+
+def _make_loggers(tmp_path):
+    main_log = tmp_path / "main.log"
+    command_log = tmp_path / "command.log"
+    logger = logging.getLogger(f"main_logger_{tmp_path}")
+    command_logger = logging.getLogger(f"command_logger_{tmp_path}")
+    logger.setLevel(logging.DEBUG)
+    command_logger.setLevel(logging.DEBUG)
+    logger.addHandler(logging.FileHandler(main_log))
+    command_logger.addHandler(logging.FileHandler(command_log))
+    return logger, command_logger, str(command_log)
+
+
+def test_command_runner_truncates_stdout_and_sets_note(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    script = "print('x' * 1024)"
+    result = runner.run(["python3", "-c", script], capture_output_limit_bytes=100)
+
+    assert result.returncode == 0
+    assert len(result.stdout) == 100
+    assert result.note == "stdout truncated"
+
+    with open(command_log_path) as f:
+        log_contents = f.read()
+    assert "x" in log_contents
+
+
+def test_command_runner_truncates_stderr_and_sets_note(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nsys.stderr.write('y' * 1024)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], capture_output_limit_bytes=100)
+
+        assert result.returncode == 0
+        assert len(result.stderr) == 100
+        assert result.note == "stderr truncated"
+
+        with open(command_log_path) as f:
+            log_contents = f.read()
+        assert "y" in log_contents
+    finally:
+        os.remove(script_path)
+
+
+def test_command_runner_capture_output_zero_still_logs(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "hello"], capture_output_limit_bytes=0)
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.note == "stdout truncated"
+
+    with open(command_log_path) as f:
+        log_contents = f.read()
+    assert "hello" in log_contents
+
+
+def test_command_runner_log_output_false_still_captures(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "quiet"], log_output=False)
+
+    assert result.returncode == 0
+    assert "quiet" in result.stdout
+
+    with open(command_log_path) as f:
+        log_contents = f.read()
+    assert log_contents.count("quiet") == 1
+
+
+def test_command_runner_capture_output_false_still_logs(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "logme"], capture_output=False)
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+    with open(command_log_path) as f:
+        log_contents = f.read()
+    assert "logme" in log_contents
+
+
+def test_command_runner_negative_limit_unlimited(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    script = "print('z' * 1024)"
+    result = runner.run(["python3", "-c", script], capture_output_limit_bytes=-1)
+
+    assert result.returncode == 0
+    assert len(result.stdout) == 1025
+    assert result.note is None
+
+
+def test_command_runner_truncates_stdout_and_stderr_sets_note(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('a' * 200)\nsys.stderr.write('b' * 200)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], capture_output_limit_bytes=50)
+        assert result.returncode == 0
+        assert len(result.stdout) == 50
+        assert len(result.stderr) == 50
+        assert result.note == "stdout truncated, stderr truncated"
+    finally:
+        os.remove(script_path)
+
+
+def test_command_runner_uses_default_capture_limit(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=10
+    )
+
+    result = runner.run(["python3", "-c", "print('c' * 50)"])
+    assert result.returncode == 0
+    assert len(result.stdout) == 10
+    assert result.note == "stdout truncated"
+
+
+def test_command_runner_unsafe_arg_returns_error(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "bad;rm -rf /"])
+    assert result.returncode == -1
+    assert "Unsafe argument detected" in result.stderr
+
+
+def test_command_runner_log_output_false_logs_only_command_line(tmp_path):
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["python3", "-c", "print('out')"], log_output=False)
+    assert result.returncode == 0
+    assert "out" in result.stdout
+
+    with open(command_log_path) as f:
+        lines = f.read().splitlines()
+    assert len(lines) == 1
+    assert "Executing command:" in lines[0]

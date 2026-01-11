@@ -104,9 +104,12 @@ def _delete_par2_files(
 
     par2_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar.*\.par2$")
     files_deleted = False
-    for filename in sorted(os.listdir(par2_dir)):
+    for entry in os.scandir(par2_dir):
+        if not entry.is_file():
+            continue
+        filename = entry.name
         if par2_regex.match(filename):
-            file_path = os.path.join(par2_dir, filename)
+            file_path = entry.path
             try:
                 if dry_run:
                     logger.info(f"Dry run: would delete PAR2 file: {file_path}")
@@ -138,7 +141,10 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
     archives_deleted = {}
 
     dry_run = getattr(args, "dry_run", False) is True
-    for filename in sorted(os.listdir(backup_dir)):
+    for entry in os.scandir(backup_dir):
+        if not entry.is_file():
+            continue
+        filename = entry.name
         if not filename.endswith('.dar'):
             continue
         if backup_definition and not filename.startswith(backup_definition):
@@ -152,7 +158,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                 raise
 
             if file_date < cutoff_date:
-                file_path = os.path.join(backup_dir, filename)
+                file_path = entry.path
                 try:
                     if dry_run:
                         logger.info(f"Dry run: would delete {backup_type} backup: {file_path}")
@@ -190,9 +196,12 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
     # Delete the specified .dar files according to the naming convention
     files_deleted = False
     dry_run = getattr(args, "dry_run", False) is True
-    for filename in sorted(os.listdir(backup_dir)):
+    for entry in os.scandir(backup_dir):
+        if not entry.is_file():
+            continue
+        filename = entry.name
         if archive_regex.match(filename):
-            file_path = os.path.join(backup_dir, filename)
+            file_path = entry.path
             try:
                 if dry_run:
                     logger.info(f"Dry run: would delete archive slice: {file_path}")
@@ -316,7 +325,11 @@ def main():
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
     command_logger = get_logger(command_output_logger = True)
-    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+    )
 
     start_msgs: List[Tuple[str, str]] = []
 

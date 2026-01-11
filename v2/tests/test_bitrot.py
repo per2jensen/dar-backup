@@ -5,6 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.util import CommandResult
@@ -95,7 +96,7 @@ def modify_par2_redundancy(env: EnvData, redundancy: int) -> None:
                 f.write(line)
 
 
-def check_bitrot_recovery(env: EnvData):
+def check_bitrot_recovery(env: EnvData, command_timeout: int):
     """
     Verify the bitrot recovery process.
     This test method performs the following steps:
@@ -104,7 +105,11 @@ def check_bitrot_recovery(env: EnvData):
     3. Uses parchive2 to repair the bitrot.
     4. Verifies that the archive is successfully repaired.
     """
-    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    runner = CommandRunner(
+        logger=env.logger,
+        command_logger=env.command_logger,
+        default_timeout=command_timeout
+    )
     date = datetime.now().strftime('%Y-%m-%d')
     basename_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}")
     backup_dir = os.path.join(env.test_dir, "backups")
@@ -175,7 +180,13 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     Verify the bitrot recovery process with `redundancy_percentage` bitrot.
     Expects to run in a virtual environment with dar-backup installed
     """
-    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    config_settings = ConfigSettings(env.config_file)
+    command_timeout = config_settings.command_timeout_secs
+    runner = CommandRunner(
+        logger=env.logger,
+        command_logger=env.command_logger,
+        default_timeout=command_timeout
+    )
     file_sizes = {
         '100kB': 100 * 1024,
         '1MB': 1024 * 1024,
@@ -201,4 +212,4 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
         raise RuntimeError(f"dar-backup failed to create a full backup")
 
     simulate_bitrot(env, redundancy_percentage)
-    check_bitrot_recovery(env)
+    check_bitrot_recovery(env, command_timeout)

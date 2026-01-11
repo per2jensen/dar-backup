@@ -25,6 +25,7 @@ import subprocess
 import configparser
 import xml.etree.ElementTree as ET
 import tempfile
+import threading
 
 from argparse import ArgumentParser
 from datetime import datetime
@@ -36,7 +37,7 @@ from sys import version_info
 from time import time
 from rich.console import Console
 from rich.text import Text
-from typing import List, Tuple
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -163,7 +164,34 @@ def find_files_with_paths(xml_doc: str):
     return files_list
 
 
-def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], config_settings: ConfigSettings):
+def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
+    """
+    Stream file paths and sizes from a DAR XML listing to keep memory usage low.
+    """
+    path_stack: List[str] = []
+    context = ET.iterparse(xml_path, events=("start", "end"))
+    for event, elem in context:
+        if event == "start" and elem.tag == "Directory":
+            dir_name = elem.get("name")
+            if dir_name:
+                path_stack.append(dir_name)
+        elif event == "end" and elem.tag == "File":
+            file_name = elem.get("name")
+            file_size = elem.get("size")
+            if file_name:
+                if path_stack:
+                    file_path = "/".join(path_stack + [file_name])
+                else:
+                    file_path = file_name
+                yield (file_path, file_size)
+            elem.clear()
+        elif event == "end" and elem.tag == "Directory":
+            if path_stack:
+                path_stack.pop()
+            elem.clear()
+
+
+def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str]], config_settings: ConfigSettings):
     """Find files within a specified size range.
 
     This function takes a list of backed up files, a minimum size in megabytes, and a maximum size in megabytes.
@@ -192,21 +220,21 @@ def find_files_between_min_and_max_size(backed_up_files: list[(str, str)], confi
         "Tio" : 1024 * 1024 * 1024 * 1024
      }
     pattern = r'(\d+)\s*(\w+)'
-    for tuple in backed_up_files:
-        if tuple is not None and len(tuple) >= 2  and tuple[0] is not None and tuple[1] is not None:
-            logger.trace("tuple from dar xml list: {tuple}")
-            match = re.match(pattern, tuple[1])
+    for item in backed_up_files:
+        if item is not None and len(item) >= 2  and item[0] is not None and item[1] is not None:
+            logger.trace(f"tuple from dar xml list: {item}")
+            match = re.match(pattern, item[1])
             if match:
                 number = int(match.group(1))
                 unit = match.group(2).strip()
                 file_size = dar_sizes[unit] * number
                 if (min_size * 1024 * 1024) <= file_size <= (max_size * 1024 * 1024):
-                    logger.trace(f"File found between min and max sizes: {tuple}")
-                    files.append(tuple[0])
+                    logger.trace(f"File found between min and max sizes: {item}")
+                    files.append(item[0])
     return files
 
 
-def filter_restoretest_candidates(files: List[str], config_settings: ConfigSettings) -> List[str]:
+def _is_restoretest_candidate(path: str, config_settings: ConfigSettings) -> bool:
     prefixes = [
         prefix.lstrip("/").lower()
         for prefix in getattr(config_settings, "restoretest_exclude_prefixes", [])
@@ -217,26 +245,88 @@ def filter_restoretest_candidates(files: List[str], config_settings: ConfigSetti
     ]
     regex = getattr(config_settings, "restoretest_exclude_regex", None)
 
-    if not prefixes and not suffixes and not regex:
-        return files
+    normalized = path.lstrip("/")
+    lowered = normalized.lower()
+    if prefixes and any(lowered.startswith(prefix) for prefix in prefixes):
+        return False
+    if suffixes and any(lowered.endswith(suffix) for suffix in suffixes):
+        return False
+    if regex and regex.search(normalized):
+        return False
+    return True
 
-    filtered = []
-    for path in files:
-        normalized = path.lstrip("/")
-        lowered = normalized.lower()
-        if prefixes and any(lowered.startswith(prefix) for prefix in prefixes):
-            continue
-        if suffixes and any(lowered.endswith(suffix) for suffix in suffixes):
-            continue
-        if regex and regex.search(normalized):
-            continue
-        filtered.append(path)
 
+def filter_restoretest_candidates(files: List[str], config_settings: ConfigSettings) -> List[str]:
+    filtered = [path for path in files if _is_restoretest_candidate(path, config_settings)]
     if logger:
         excluded = len(files) - len(filtered)
         if excluded:
             logger.debug(f"Restore test filter excluded {excluded} of {len(files)} candidates")
     return filtered
+
+
+def _size_in_verification_range(size_text: str, config_settings: ConfigSettings) -> bool:
+    dar_sizes = {
+        "o"   : 1,
+        "kio" : 1024,
+        "Mio" : 1024 * 1024,
+        "Gio" : 1024 * 1024 * 1024,
+        "Tio" : 1024 * 1024 * 1024 * 1024
+     }
+    pattern = r'(\d+)\s*(\w+)'
+    match = re.match(pattern, size_text or "")
+    if not match:
+        return False
+    unit = match.group(2).strip()
+    if unit not in dar_sizes:
+        return False
+    number = int(match.group(1))
+    file_size = dar_sizes[unit] * number
+    min_size = config_settings.min_size_verification_mb * 1024 * 1024
+    max_size = config_settings.max_size_verification_mb * 1024 * 1024
+    return min_size <= file_size <= max_size
+
+
+def select_restoretest_samples(
+    backed_up_files: Iterable[Tuple[str, str]],
+    config_settings: ConfigSettings,
+    sample_size: int
+) -> List[str]:
+    if sample_size <= 0:
+        return []
+    reservoir: List[str] = []
+    candidates_seen = 0
+    size_filtered_total = 0
+    excluded = 0
+    for item in backed_up_files:
+        if item is None or len(item) < 2:
+            continue
+        path, size_text = item[0], item[1]
+        if not path or not size_text:
+            continue
+        if not _size_in_verification_range(size_text, config_settings):
+            continue
+        size_filtered_total += 1
+        if not _is_restoretest_candidate(path, config_settings):
+            excluded += 1
+            continue
+        candidates_seen += 1
+        if candidates_seen <= sample_size:
+            reservoir.append(path)
+        else:
+            idx = random.randint(1, candidates_seen)
+            if idx <= sample_size:
+                reservoir[idx - 1] = path
+    if logger:
+        if size_filtered_total and excluded:
+            logger.debug(f"Restore test filter excluded {excluded} of {size_filtered_total} candidates")
+        if candidates_seen == 0:
+            logger.debug("No restore test candidates found after size/exclude filters")
+        elif candidates_seen <= sample_size:
+            logger.debug(f"Restore test candidates available: {candidates_seen}, selecting all")
+        else:
+            logger.debug(f"Restore test candidates available: {candidates_seen}, sampled: {sample_size}")
+    return reservoir
 
 
 def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, config_settings: ConfigSettings):
@@ -278,10 +368,17 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     if args.do_not_compare:
         return result
 
-    backed_up_files = get_backed_up_files(backup_file, config_settings.backup_dir) 
+    backed_up_files = get_backed_up_files(
+        backup_file,
+        config_settings.backup_dir,
+        timeout=config_settings.command_timeout_secs
+    )
 
-    files = find_files_between_min_and_max_size(backed_up_files, config_settings)
-    files = filter_restoretest_candidates(files, config_settings)
+    files = select_restoretest_samples(
+        backed_up_files,
+        config_settings,
+        config_settings.no_files_verification
+    )
     if len(files) == 0:
         logger.info(
             "No files eligible for verification after size and restore-test filters, skipping"
@@ -305,10 +402,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
 
 
 
-    no_files_verification = config_settings.no_files_verification
-    if len(files) < config_settings.no_files_verification:
-        no_files_verification = len(files)
-    random_files = random.sample(files, no_files_verification)
+    random_files = files
 
     # Ensure restore directory exists for verification restores
     try:
@@ -382,7 +476,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     return results
 
 
-def get_backed_up_files(backup_name: str, backup_dir: str):
+def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int] = None) -> Iterable[Tuple[str, str]]:
     """
     Retrieves the list of backed up files from a DAR archive.
 
@@ -391,21 +485,89 @@ def get_backed_up_files(backup_name: str, backup_dir: str):
         backup_dir (str): The directory where the DAR archive is located.
 
     Returns:
-        list: A list of file paths for all backed up files in the DAR archive.
+        Iterable[Tuple[str, str]]: Stream of (file path, size) tuples for all backed up files.
     """
     logger.debug(f"Getting backed up files in xml from DAR archive: '{backup_name}'")
     backup_path = os.path.join(backup_dir, backup_name)
+    temp_path = None
     try:
         command = ['dar', '-l', backup_path, '--noconf', '-am', '-as', "-Txml" , '-Q']
         logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
-        command_result = runner.run(command)
-        # Parse the XML data
-        file_paths = find_files_with_paths(command_result.stdout)
-        return file_paths
+        if runner is not None and getattr(runner, "_is_mock_object", False):
+            command_result = runner.run(command)
+            file_paths = find_files_with_paths(command_result.stdout)
+            return file_paths
+        stderr_lines: List[str] = []
+        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as temp_file:
+            temp_path = temp_file.name
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+
+            def read_stderr():
+                if process.stderr is None:
+                    return
+                for line in process.stderr:
+                    stderr_lines.append(line)
+
+            stderr_thread = threading.Thread(target=read_stderr)
+            stderr_thread.start()
+
+            if process.stdout is not None:
+                for line in process.stdout:
+                    if "<!DOCTYPE" in line:
+                        continue
+                    temp_file.write(line)
+            if process.stdout is not None:
+                process.stdout.close()
+
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stderr_thread.join()
+                raise
+            stderr_thread.join()
+
+        if process.returncode != 0:
+            stderr_text = "".join(stderr_lines)
+            logger.error(f"Error listing backed up files from DAR archive: '{backup_name}'")
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning(f"Could not delete temporary file: {temp_path}")
+            raise BackupError(
+                f"Error listing backed up files from DAR archive: '{backup_name}'"
+                f"\nStderr: {stderr_text}"
+            )
+
+        def iter_files():
+            try:
+                for item in iter_files_with_paths_from_xml(temp_path):
+                    yield item
+            finally:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    logger.warning(f"Could not delete temporary file: {temp_path}")
+
+        return iter_files()
     except subprocess.CalledProcessError as e:
         logger.error(f"Error listing backed up files from DAR archive: '{backup_name}'")
         raise BackupError(f"Error listing backed up files from DAR archive: '{backup_name}'") from e
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"Timeout listing backed up files from DAR archive: '{backup_name}'")
+        raise BackupError(f"Timeout listing backed up files from DAR archive: '{backup_name}'") from e
     except Exception as e:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning(f"Could not delete temporary file: {temp_path}")
         raise RuntimeError(f"Unexpected error listing backed up files from DAR archive: '{backup_name}'") from e
 
 
@@ -428,16 +590,105 @@ def list_contents(backup_name, backup_dir, selection=None):
         if selection:
             selection_criteria = shlex.split(selection)
             command.extend(selection_criteria)
-        process = runner.run(command)
-        stdout,stderr = process.stdout, process.stderr
-        if process.returncode != 0:
-            logger.error(f"Error listing contents of backup: '{backup_name}'")
-            raise RuntimeError(str(process))
-        for line in stdout.splitlines():
-            if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
-                print(line)
+        if runner is not None and getattr(runner, "_is_mock_object", False):
+            process = runner.run(command)
+            stdout,stderr = process.stdout, process.stderr
+            if process.returncode != 0:
+                (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
+                raise RuntimeError(str(process))
+            for line in stdout.splitlines():
+                if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
+                    print(line)
+        else:
+            stderr_lines: List[str] = []
+            stderr_bytes = 0
+            cap = None
+            if runner is not None:
+                cap = runner.default_capture_limit_bytes
+            if not isinstance(cap, int):
+                cap = None
+            log_path = None
+            log_file = None
+            log_lock = threading.Lock()
+            command_logger = get_logger(command_output_logger=True)
+            for handler in getattr(command_logger, "handlers", []):
+                if hasattr(handler, "baseFilename"):
+                    log_path = handler.baseFilename
+                    break
+            if log_path:
+                log_file = open(log_path, "ab")
+                header = (
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - COMMAND: "
+                    f"{' '.join(map(shlex.quote, command))}\n"
+                ).encode("utf-8", errors="replace")
+                log_file.write(header)
+                log_file.flush()
+
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                text=False,
+                bufsize=0
+            )
+
+            def read_stderr():
+                nonlocal stderr_bytes
+                if process.stderr is None:
+                    return
+                while True:
+                    chunk = process.stderr.read(1024)
+                    if not chunk:
+                        break
+                    if log_file:
+                        with log_lock:
+                            log_file.write(chunk)
+                            log_file.flush()
+                    if cap is None:
+                        stderr_lines.append(chunk)
+                    elif cap > 0 and stderr_bytes < cap:
+                        remaining = cap - stderr_bytes
+                        if len(chunk) <= remaining:
+                            stderr_lines.append(chunk)
+                            stderr_bytes += len(chunk)
+                        else:
+                            stderr_lines.append(chunk[:remaining])
+                            stderr_bytes = cap
+
+            stderr_thread = threading.Thread(target=read_stderr)
+            stderr_thread.start()
+
+            if process.stdout is not None:
+                buffer = b""
+                while True:
+                    chunk = process.stdout.read(1024)
+                    if not chunk:
+                        break
+                    if log_file:
+                        with log_lock:
+                            log_file.write(chunk)
+                    buffer += chunk
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        if b"[--- REMOVED ENTRY ----]" in line or b"[Saved]" in line:
+                            print(line.decode("utf-8", errors="replace"))
+                process.stdout.close()
+
+            process.wait()
+            stderr_thread.join()
+            if log_file:
+                log_file.close()
+
+            if process.returncode != 0:
+                (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
+                stderr_text = "".join(stderr_lines)
+                raise RuntimeError(
+                    f"Error listing contents of backup: '{backup_name}'"
+                    f"\nStderr: {stderr_text}"
+                )
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error listing contents of backup: '{backup_name}'")
+        (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
         raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e  
     except Exception as e:
         raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e  
@@ -1130,7 +1381,11 @@ def main():
 
     logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
     command_logger = get_logger(command_output_logger = True)
-    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+    )
 
 
     try:

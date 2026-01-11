@@ -39,6 +39,7 @@ class ConfigSettings:
     min_size_verification_mb: int = field(init=False)
     no_files_verification: int = field(init=False)
     command_timeout_secs: int = field(init=False)
+    command_capture_max_bytes: Optional[int] = field(init=False, default=None)
     backup_dir: str = field(init=False)
     test_restore_dir: str = field(init=False)
     backup_d_dir: str = field(init=False)
@@ -89,6 +90,13 @@ class ConfigSettings:
             "attr": "dar_backup_discord_webhook_url",
             "type": str,
             "default": None,
+        },
+        {
+            "section": "MISC",
+            "key": "COMMAND_CAPTURE_MAX_BYTES",
+            "attr": "command_capture_max_bytes",
+            "type": int,
+            "default": 102400,
         },
         # Add more optional fields here
     ]

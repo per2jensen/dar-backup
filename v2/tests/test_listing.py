@@ -97,3 +97,46 @@ def test_list_dar_archives_short_options(setup_environment, env):
         assert not re.search(pattern, stdout), f"Unexpected pattern {pattern} found in output"
 
 
+def _create_unicode_files(env: EnvData) -> list[str]:
+    filenames = [
+        "dansk_æøå.txt",
+        "DANSK_ÆØÅ.txt",
+        "spansk_ñ.txt",
+        "japanese_日本語.txt",
+        "space name_æøå.txt",
+        "dir with spaces/ø/fil_æøå.txt",
+        "deep/日本語/emoji-🙂.txt",
+    ]
+    for name in filenames:
+        path = os.path.join(env.data_dir, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("unicode test")
+    return filenames
+
+
+def test_list_contents_unicode_filenames(setup_environment, env):
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    filenames = _create_unicode_files(env)
+
+    command = [
+        'dar-backup',
+        '--full-backup',
+        '-d', 'example',
+        '--config-file', env.config_file,
+        '--log-level', 'debug',
+    ]
+    result = runner.run(command)
+    assert result.returncode == 0
+
+    archive_base = f"example_FULL_{env.datestamp}"
+    list_result = runner.run([
+        'dar-backup',
+        '--list-contents',
+        archive_base,
+        '--config-file', env.config_file
+    ])
+    assert list_result.returncode == 0
+    stdout = list_result.stdout
+    for name in filenames:
+        assert name in stdout
