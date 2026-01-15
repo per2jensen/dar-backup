@@ -1143,6 +1143,25 @@ This happens when the shell splits the quoted string or interprets globs before 
 
 > 💡 **Tip:** See [dar's documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS)
 
+>
+> 💡💡 **Tip:** To filter all the empty directories away that `dar` emits when listing  contents, append this grep:
+>
+> ```bash
+> |grep -vE '\s+d[rwx-]{9}\s'
+>```
+>
+>Example using the grep to discard directory noise from `dar's` output:
+>
+> ```bash
+> dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -X '*.xmp'" | grep -vE '\s+d[rwx-]{9}\s'
+>[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
+>[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
+>[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 11:09:04 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
+>[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
+>[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
+>...
+>```
+
 ### select a directory
 
 Select files and sub directories in `home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling`
