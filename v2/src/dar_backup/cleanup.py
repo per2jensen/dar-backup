@@ -356,6 +356,9 @@ def main():
         archive_names = [name.strip() for name in combined if name.strip()]
         logger.info(f"Cleaning up specific archives: {', '.join(archive_names)}")
         for archive_name in archive_names:
+            if not is_archive_name_allowed(archive_name):
+                logger.error(f"Refusing unsafe archive name: {archive_name}")
+                continue
             if "_FULL_" in archive_name:
                 if not confirm_full_archive_deletion(archive_name, args.test_mode):
                     continue

@@ -72,6 +72,80 @@ ENABLED = True
     return config_path
 
 
+def create_test_config_file_with_capture(tmp_path: Path, capture_limit: int) -> Path:
+    config_path = create_test_config_file(tmp_path)
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        "COMMAND_TIMEOUT_SECS = 86400\n",
+        f"COMMAND_TIMEOUT_SECS = 86400\nCOMMAND_CAPTURE_MAX_BYTES = {capture_limit}\n"
+    )
+    config_path.write_text(config_text)
+    return config_path
+
+
+def init_manager_runner(config_path: Path, monkeypatch) -> CommandRunner:
+    import dar_backup.manager as manager
+
+    manager.runner = None
+    manager.logger = None
+
+    monkeypatch.setattr(sys, "argv", ["manager", "--config-file", str(config_path)])
+    monkeypatch.setattr(manager.argcomplete, "autocomplete", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(manager, "setup_logging", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(manager, "get_logger", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(
+        manager,
+        "get_binary_info",
+        lambda *args, **kwargs: {"path": "dar_manager", "version": "0"}
+    )
+
+    def _stop_after_init(*_args, **_kwargs):
+        raise SystemExit(0)
+
+    monkeypatch.setattr(manager, "print_aligned_settings", _stop_after_init)
+
+    with pytest.raises(SystemExit):
+        manager.main()
+
+    return manager.runner
+
+
+def test_manager_command_capture_max_bytes_zero(tmp_path, monkeypatch):
+    config_path = create_test_config_file_with_capture(tmp_path, 0)
+    runner = init_manager_runner(config_path, monkeypatch)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('out')\nprint('err', file=sys.stderr)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path])
+    finally:
+        os.remove(script_path)
+
+    assert runner.default_capture_limit_bytes == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_manager_command_capture_max_bytes_1k_captures_stdout_stderr(tmp_path, monkeypatch):
+    config_path = create_test_config_file_with_capture(tmp_path, 1024)
+    runner = init_manager_runner(config_path, monkeypatch)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('out')\nprint('err', file=sys.stderr)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path])
+    finally:
+        os.remove(script_path)
+
+    assert runner.default_capture_limit_bytes == 1024
+    assert "out" in result.stdout
+    assert "err" in result.stderr
+
+
 def test_manager_create_dbs(setup_environment: None, env: EnvData):
     """
     test that generated catalogs are created

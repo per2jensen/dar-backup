@@ -233,6 +233,75 @@ def test_command_runner_capture_output_zero_still_logs(tmp_path):
     assert "hello" in log_contents
 
 
+def test_command_runner_default_limit_zero_suppresses_stdout_and_stderr(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=0
+    )
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('hello stdout')\nprint('hello stderr', file=sys.stderr)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path])
+
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert result.stderr == ""
+        assert result.note == "stdout truncated, stderr truncated"
+    finally:
+        os.remove(script_path)
+
+
+def test_command_runner_default_limit_captures_stdout_and_stderr(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=1024
+    )
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('hello stdout')\nprint('hello stderr', file=sys.stderr)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path])
+
+        assert result.returncode == 0
+        assert "hello stdout" in result.stdout
+        assert "hello stderr" in result.stderr
+        assert result.note is None
+    finally:
+        os.remove(script_path)
+
+
+def test_command_runner_default_limit_captures_when_log_output_false(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=1024
+    )
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\nprint('quiet stdout')\nprint('quiet stderr', file=sys.stderr)\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], log_output=False)
+
+        assert result.returncode == 0
+        assert "quiet stdout" in result.stdout
+        assert "quiet stderr" in result.stderr
+        assert result.note is None
+    finally:
+        os.remove(script_path)
+
+
 def test_command_runner_log_output_false_still_captures(tmp_path):
     logger, command_logger, command_log_path = _make_loggers(tmp_path)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
@@ -358,6 +427,86 @@ def test_command_runner_text_false_returns_bytes(tmp_path):
     assert result.returncode == 0
     assert result.stdout == b"abc"
     assert result.stderr == b"def"
+
+
+def test_command_runner_binary_truncates_with_limit(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\n")
+        f.write("data = b'\\x00\\xff\\x80abc'\n")
+        f.write("sys.stdout.buffer.write(data)\n")
+        f.write("sys.stderr.buffer.write(data)\n")
+        f.write("sys.stdout.buffer.flush()\n")
+        f.write("sys.stderr.buffer.flush()\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(
+            ["python3", script_path],
+            text=False,
+            capture_output_limit_bytes=2
+        )
+    finally:
+        os.remove(script_path)
+
+    assert result.returncode == 0
+    assert result.stdout == b"\x00\xff"
+    assert result.stderr == b"\x00\xff"
+    assert result.note == "stdout truncated, stderr truncated"
+
+
+def test_command_runner_binary_log_output_false_captures(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\n")
+        f.write("data = b'\\x00\\xff\\x80abc'\n")
+        f.write("sys.stdout.buffer.write(data)\n")
+        f.write("sys.stderr.buffer.write(data)\n")
+        f.write("sys.stdout.buffer.flush()\n")
+        f.write("sys.stderr.buffer.flush()\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], text=False, log_output=False)
+    finally:
+        os.remove(script_path)
+
+    assert result.returncode == 0
+    assert result.stdout == b"\x00\xff\x80abc"
+    assert result.stderr == b"\x00\xff\x80abc"
+    assert result.note is None
+
+
+def test_command_runner_binary_default_limit_truncates(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=2
+    )
+
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py') as f:
+        f.write("import sys\n")
+        f.write("data = b'\\x00\\xff\\x80abc'\n")
+        f.write("sys.stdout.buffer.write(data)\n")
+        f.write("sys.stderr.buffer.write(data)\n")
+        f.write("sys.stdout.buffer.flush()\n")
+        f.write("sys.stderr.buffer.flush()\n")
+        script_path = f.name
+
+    try:
+        result = runner.run(["python3", script_path], text=False)
+    finally:
+        os.remove(script_path)
+
+    assert result.returncode == 0
+    assert result.stdout == b"\x00\xff"
+    assert result.stderr == b"\x00\xff"
+    assert result.note == "stdout truncated, stderr truncated"
 
 
 def test_command_runner_non_list_cmd_returns_error(tmp_path):

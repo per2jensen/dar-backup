@@ -700,3 +700,262 @@ def test_cleanup_invalid_symlink(tmp_path):
 
         assert result is True
         mock_logger.warning.assert_called_once_with("catalog 'example' not found in the database, skipping deletion")
+
+
+def test_cleanup_alternate_dir_missing_exits(monkeypatch, caplog, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    missing_dir = tmp_path / "missing"
+
+    class DummyConfig:
+        logfile_location = "/tmp/dar-backup.log"
+        logfile_max_bytes = 1000
+        logfile_backup_count = 1
+        backup_dir = "/tmp/backup"
+        backup_d_dir = "/tmp/backup.d"
+        diff_age = 1
+        incr_age = 1
+        config = {}
+        command_capture_max_bytes = 1024
+
+    test_logger = logging.getLogger("cleanup_test_missing_dir")
+    test_logger.setLevel(logging.ERROR)
+
+    monkeypatch.setattr(sys, "argv", ["cleanup", "--alternate-archive-dir", str(missing_dir), "--test-mode"])
+    monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
+    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
+    monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
+    monkeypatch.setattr(cleanup, "print_aligned_settings", lambda *a, **k: None)
+
+    caplog.set_level(logging.ERROR, logger="cleanup_test_missing_dir")
+
+    with pytest.raises(SystemExit) as exc:
+        cleanup.main()
+
+    assert exc.value.code == 1
+    assert "Alternate archive directory does not exist" in caplog.text
+
+
+def test_cleanup_alternate_dir_not_directory_exits(monkeypatch, caplog, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    not_dir = tmp_path / "not_dir.txt"
+    not_dir.write_text("nope")
+
+    class DummyConfig:
+        logfile_location = "/tmp/dar-backup.log"
+        logfile_max_bytes = 1000
+        logfile_backup_count = 1
+        backup_dir = "/tmp/backup"
+        backup_d_dir = "/tmp/backup.d"
+        diff_age = 1
+        incr_age = 1
+        config = {}
+        command_capture_max_bytes = 1024
+
+    test_logger = logging.getLogger("cleanup_test_not_dir")
+    test_logger.setLevel(logging.ERROR)
+
+    monkeypatch.setattr(sys, "argv", ["cleanup", "--alternate-archive-dir", str(not_dir), "--test-mode"])
+    monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
+    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
+    monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
+    monkeypatch.setattr(cleanup, "print_aligned_settings", lambda *a, **k: None)
+
+    caplog.set_level(logging.ERROR, logger="cleanup_test_not_dir")
+
+    with pytest.raises(SystemExit) as exc:
+        cleanup.main()
+
+    assert exc.value.code == 1
+    assert "Alternate archive directory is not a directory" in caplog.text
+
+
+def test_cleanup_specific_archives_rejects_unsafe_name(monkeypatch, caplog):
+    import dar_backup.cleanup as cleanup
+
+    class DummyConfig:
+        logfile_location = "/tmp/dar-backup.log"
+        logfile_max_bytes = 1000
+        logfile_backup_count = 1
+        backup_dir = "/tmp/backup"
+        backup_d_dir = "/tmp/backup.d"
+        diff_age = 1
+        incr_age = 1
+        config = {}
+        command_capture_max_bytes = 1024
+
+    test_logger = logging.getLogger("cleanup_test_unsafe_name")
+    test_logger.setLevel(logging.ERROR)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cleanup", "--cleanup-specific-archives", "bad.._INCR_2024-01-01", "--test-mode"],
+    )
+    monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
+    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
+    monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
+    monkeypatch.setattr(cleanup, "print_aligned_settings", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "delete_archive", lambda *_a, **_k: pytest.fail("should not delete"))
+
+    caplog.set_level(logging.ERROR, logger="cleanup_test_unsafe_name")
+
+    with pytest.raises(SystemExit) as exc:
+        cleanup.main()
+
+    assert exc.value.code == 0
+    assert "Refusing unsafe archive name" in caplog.text
+
+
+def test_delete_old_backups_rejects_is_archive_name_allowed(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    archive_name = "example_DIFF_2000-01-01"
+    file_path = backup_dir / f"{archive_name}.1.dar"
+    file_path.write_text("dummy")
+
+    args = SimpleNamespace(dry_run=True)
+
+    delete_catalog = MagicMock()
+    delete_par2 = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", logging.getLogger("cleanup_test_allowed"))
+    monkeypatch.setattr(cleanup, "is_archive_name_allowed", lambda _name: False)
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", delete_par2)
+    monkeypatch.setattr(cleanup, "safe_remove_file", lambda *_a, **_k: pytest.fail("should not delete"))
+
+    with pytest.raises(ValueError):
+        cleanup.delete_old_backups(
+            str(backup_dir),
+            age=30,
+            backup_type="DIFF",
+            args=args,
+            backup_definition=None,
+            config_settings=None,
+        )
+
+    assert delete_catalog.call_count == 0
+    assert delete_par2.call_count == 0
+    assert file_path.exists()
+
+
+def test_delete_par2_files_skips_missing_dir(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    class DummyConfig:
+        def get_par2_config(self, backup_definition):
+            return {"par2_dir": str(tmp_path / "missing")}
+
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", lambda *a, **kw: pytest.fail("should not delete"))
+
+    cleanup._delete_par2_files(
+        "example_DIFF_2000-01-01",
+        str(backup_dir),
+        config_settings=DummyConfig(),
+        backup_definition="example",
+        dry_run=False,
+    )
+
+    assert mock_logger.warning.called
+
+
+def test_delete_par2_files_dry_run_does_not_delete(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    par2_dir = tmp_path / "par2"
+    backup_dir.mkdir()
+    par2_dir.mkdir()
+
+    archive_name = "example_DIFF_2000-01-01"
+    par2_files = [
+        f"{archive_name}.1.dar.vol001.par2",
+        f"{archive_name}.par2",
+        f"{archive_name}.par2.manifest.ini",
+    ]
+    for name in par2_files:
+        (par2_dir / name).write_text("dummy")
+
+    class DummyConfig:
+        def get_par2_config(self, backup_definition):
+            return {"par2_dir": str(par2_dir)}
+
+    mock_logger = MagicMock()
+    mock_remove = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", mock_remove)
+
+    cleanup._delete_par2_files(
+        archive_name,
+        str(backup_dir),
+        config_settings=DummyConfig(),
+        backup_definition="example",
+        dry_run=True,
+    )
+
+    assert mock_remove.call_count == 0
+    for name in par2_files:
+        assert (par2_dir / name).exists()
+
+
+def test_delete_old_backups_rejects_unsafe_archive(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    bad_name = "bad.._DIFF_2000-01-01"
+    (backup_dir / f"{bad_name}.1.dar").write_text("dummy")
+
+    args = MagicMock(dry_run=True)
+
+    monkeypatch.setattr(cleanup, "logger", MagicMock())
+    delete_catalog = MagicMock()
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+
+    with pytest.raises(ValueError):
+        cleanup.delete_old_backups(
+            str(backup_dir),
+            age=30,
+            backup_type="DIFF",
+            args=args,
+            backup_definition=None,
+            config_settings=None,
+        )
+
+    assert delete_catalog.call_count == 0
+
+
+def test_delete_catalog_handles_exception(monkeypatch):
+    import dar_backup.cleanup as cleanup
+
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(
+        cleanup,
+        "runner",
+        MagicMock(run=MagicMock(side_effect=RuntimeError("boom")))
+    )
+
+    result = cleanup.delete_catalog("example", args=SimpleNamespace(config_file="/dev/null"))
+
+    assert result is False
+    assert mock_logger.error.called

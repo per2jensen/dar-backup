@@ -190,3 +190,37 @@ def test_config_settings_repr_omits_none_fields(tmp_path):
     assert "config_file=" in output
     assert "manager_db_dir" not in output
     assert "par2_dir" not in output
+
+
+@pytest.mark.parametrize(
+    "section,key,value",
+    [
+        ("MISC", "COMMAND_CAPTURE_MAX_BYTES", "not-an-int"),
+        ("MISC", "LOGFILE_MAX_BYTES", "not-an-int"),
+        ("MISC", "LOGFILE_BACKUP_COUNT", "not-an-int"),
+        ("PAR2", "PAR2_RATIO_FULL", "not-an-int"),
+    ],
+)
+def test_config_settings_invalid_optional_ints_raise(tmp_path, section, key, value):
+    misc_overrides = None
+    par2_overrides = None
+    if section == "MISC":
+        misc_overrides = {key: value}
+    if section == "PAR2":
+        par2_overrides = {key: value}
+
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides=misc_overrides,
+        par2_overrides=par2_overrides,
+    )
+
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    message = str(exc_info.value).lower()
+    if section.lower() == "par2":
+        assert "invalid value in config" in message
+        assert "not-an-int" in message
+    else:
+        assert key.lower() in message

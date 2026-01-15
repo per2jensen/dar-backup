@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import logging
+import configparser
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +40,20 @@ def test_setup_logging_stdout_and_file(tmp_path):
     assert logfile.exists()
     assert "Hello" in logfile.read_text()
     assert command_output_file.exists()
+
+
+def test_setup_logging_exits_on_handler_failure(tmp_path, monkeypatch):
+    logfile = tmp_path / "boom.log"
+    command_output_file = tmp_path / "command.log"
+
+    def raise_handler(*_args, **_kwargs):
+        raise OSError("handler boom")
+
+    monkeypatch.setattr(util, "RotatingFileHandler", raise_handler)
+    monkeypatch.setattr(util.traceback, "print_exc", lambda: None)
+
+    with pytest.raises(SystemExit):
+        util.setup_logging(logfile, command_output_file)
 
 def list_backups(backup_dir: Path) -> list:
     if not backup_dir.exists() or not backup_dir.is_dir():
@@ -114,6 +129,41 @@ def test_get_invocation_command_line_negative(monkeypatch):
     assert "error" in result.lower()
     assert "could not read" in result.lower()
 
+
+def test_get_invocation_command_line_empty(monkeypatch):
+    def mock_open(*_args, **_kwargs):
+        from io import BytesIO
+        return BytesIO(b"")
+
+    monkeypatch.setattr("builtins.open", mock_open)
+    result = get_invocation_command_line()
+
+    assert "empty" in result.lower()
+
+
+def test_default_completer_logfile_without_getuid(monkeypatch):
+    def raise_attr():
+        raise AttributeError("no getuid")
+
+    monkeypatch.setattr(util.os, "getuid", raise_attr)
+    logfile = util._default_completer_logfile()
+    assert logfile.endswith("_unknown.log")
+
+
+def test_setup_completer_logger_fallbacks_to_nullhandler(monkeypatch):
+    completer = logging.getLogger("completer")
+    original_handlers = list(completer.handlers)
+    completer.handlers = []
+
+    def raise_handler(*_args, **_kwargs):
+        raise OSError("no file handler")
+
+    try:
+        monkeypatch.setattr(logging, "FileHandler", raise_handler)
+        logger = util._setup_completer_logger(logfile="/tmp/nowhere.log")
+        assert any(isinstance(handler, logging.NullHandler) for handler in logger.handlers)
+    finally:
+        completer.handlers = original_handlers
 
 def test_is_under_base_dir_positive(tmp_path):
     base_dir = tmp_path / "base"
@@ -326,6 +376,21 @@ def test_send_discord_message_http_error_logs_and_returns_false(monkeypatch):
     assert "http error 429" in fake_logger.error.call_args[0][0].lower()
 
 
+def test_send_discord_message_unexpected_error_logs_and_returns_false(monkeypatch):
+    fake_logger = MagicMock()
+    monkeypatch.setattr(util, "logger", fake_logger)
+    monkeypatch.setenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", "https://example/webhook")
+
+    def fake_urlopen(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(util.urllib.request, "urlopen", fake_urlopen)
+
+    assert util.send_discord_message("hello") is False
+    fake_logger.error.assert_called_once()
+    assert "failed to send discord webhook message" in fake_logger.error.call_args[0][0].lower()
+
+
 def test_add_specific_archive_completer_filters_existing_db_entries(tmp_path):
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
@@ -425,3 +490,56 @@ def test_patch_config_file_replaces_only_matching_keys(tmp_path):
 def test_normalize_dir_strips_trailing_separator(tmp_path):
     raw = str(tmp_path / "dir") + "/"
     assert util.normalize_dir(raw) == str(tmp_path / "dir")
+
+
+def test_requirements_uses_popen_path_success(monkeypatch):
+    config = configparser.ConfigParser()
+    config["PREREQ"] = {"001": "echo ok"}
+    config_setting = SimpleNamespace(config=config)
+
+    def getenv_override(key, default=None):
+        if key == "PYTEST_CURRENT_TEST":
+            return None
+        return os.getenv(key, default)
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+            self.stdout = io.StringIO("ok\n")
+            self.stderr = io.StringIO("")
+
+        def wait(self):
+            return None
+
+    monkeypatch.setattr(util, "logger", MagicMock())
+    monkeypatch.setattr(util.os, "getenv", getenv_override)
+    monkeypatch.setattr(util.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+
+    util.requirements("PREREQ", config_setting)
+
+
+def test_requirements_uses_popen_path_failure(monkeypatch):
+    config = configparser.ConfigParser()
+    config["PREREQ"] = {"001": "echo nope"}
+    config_setting = SimpleNamespace(config=config)
+
+    def getenv_override(key, default=None):
+        if key == "PYTEST_CURRENT_TEST":
+            return None
+        return os.getenv(key, default)
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 1
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("nope\n")
+
+        def wait(self):
+            return None
+
+    monkeypatch.setattr(util, "logger", MagicMock())
+    monkeypatch.setattr(util.os, "getenv", getenv_override)
+    monkeypatch.setattr(util.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+
+    with pytest.raises(RuntimeError):
+        util.requirements("PREREQ", config_setting)

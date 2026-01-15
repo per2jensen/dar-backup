@@ -1,6 +1,7 @@
 import os
 import pytest
-from dar_backup.util import get_binary_info 
+from dar_backup.util import get_binary_info
+import dar_backup.util as util
 from tests.envdata import EnvData
 
 @pytest.mark.parametrize("binary_name", ["dar", "dar_manager"])
@@ -26,3 +27,27 @@ def test_binary_version_detected_and_valid(binary_name, env):
     
     # Optionally ensure version contains numeric values
     assert any(char.isdigit() for char in info["version"]), f"{binary_name} version string looks invalid: {info['version']}"
+
+
+def test_binary_info_not_found(monkeypatch):
+    monkeypatch.setattr(util.shutil, "which", lambda _cmd: None)
+
+    info = get_binary_info("missing-binary")
+
+    assert info["path"] == "Not found"
+    assert info["version"] == "unknown"
+    assert info["full_output"] == ""
+
+
+def test_binary_info_handles_run_exception(monkeypatch):
+    monkeypatch.setattr(util.shutil, "which", lambda _cmd: "/bin/fake")
+
+    def raise_oserror(*_args, **_kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(util.subprocess, "run", raise_oserror)
+
+    info = get_binary_info("fake-binary")
+
+    assert info["version"] == "error"
+    assert "boom" in info["full_output"]

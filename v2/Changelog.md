@@ -10,6 +10,7 @@
 - Streaming list output for `dar-backup --list-contents` and `manager --list-archive-contents` to avoid large in-memory buffers.
 - Test coverage additions for config parsing, util helpers, restore-test sampling edge cases, par2 slice helpers, and get_backed_up_files error paths.
 - CommandRunner test coverage for sanitize failure notes, text/binary output handling, timeouts, Popen failures, and TTY restore logic.
+- Tests for COMMAND_CAPTURE_MAX_BYTES defaults (0 and 1k) and binary stdout/stderr capture with truncation and log_output disabled.
 - Manager test coverage for create-db guardrails and catalog listing parsing/sorting across runner/subprocess paths.
 
 ### Changed
@@ -17,6 +18,7 @@
 - Restore-test selection now streams DAR XML listings and samples candidates without loading all entries into RAM.
 - `get_backed_up_files` uses incremental XML parsing to reduce memory use for large archives.
 - CommandRunner supports per-command capture cap overrides (disable cap with `capture_output_limit_bytes=-1`).
+- Cleanup now rejects unsafe archive names when `--cleanup-specific-archives` is used to prevent accidental deletions.
 - Removed deprecated PAR2 layout/mode settings and simplified PAR2 cleanup to delete all matching .par2 artifacts.
 - Config templates/docs updated to drop PAR2_LAYOUT/PAR2_MODE references.
 
