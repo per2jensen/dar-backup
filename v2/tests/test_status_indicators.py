@@ -3,7 +3,7 @@ import os
 from sys import path
 from threading import Event
 from unittest.mock import patch, MagicMock, mock_open
-from dar_backup.rich_progress import show_log_driven_bar
+from dar_backup.rich_progress import show_log_driven_bar, is_terminal, tail_log_file, get_green_shade
 
 # Ensure the test directory is in the Python path
 path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -74,3 +74,86 @@ def test_show_log_driven_bar_updates_progress(
 
     combined_text = " ".join(extract_plain_text(u) for u in updates)
     assert "📂 /etc" in combined_text or "📂 /home" in combined_text
+
+
+def test_is_terminal_uses_console_flag():
+    with patch("dar_backup.rich_progress.Console") as mock_console:
+        mock_console.return_value.is_terminal = True
+        assert is_terminal() is True
+
+        mock_console.return_value.is_terminal = False
+        assert is_terminal() is False
+
+
+def test_get_green_shade_bounds():
+    assert get_green_shade(0, 10) == "rgb(0,180,0)"
+    assert get_green_shade(10, 10) == "rgb(0,20,0)"
+
+
+def test_show_log_driven_bar_skips_when_not_terminal():
+    stop_event = Event()
+    mock_console = MagicMock()
+    mock_console.is_terminal = False
+
+    with patch("dar_backup.rich_progress.Console", return_value=mock_console):
+        show_log_driven_bar("/tmp/missing.log", stop_event, "marker", 10)
+
+    mock_console.log.assert_called_once()
+
+
+def test_tail_log_file_yields_after_marker(tmp_path, monkeypatch):
+    log_path = tmp_path / "log.txt"
+    log_path.write_text(
+        "before marker\n"
+        "=== START SESSION ===\n"
+        "line one\n"
+        "line two\n",
+        encoding="utf-8",
+    )
+
+    stop_event = Event()
+    monkeypatch.setattr("dar_backup.rich_progress.time.sleep", lambda *_: None)
+
+    gen = tail_log_file(str(log_path), stop_event, session_marker="=== START SESSION ===")
+    first_line = next(gen)
+    stop_event.set()
+
+    assert first_line == "line one"
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_tail_log_file_missing_path_stops(monkeypatch):
+    stop_event = Event()
+
+    def fake_sleep(_):
+        stop_event.set()
+
+    monkeypatch.setattr("dar_backup.rich_progress.os.path.exists", lambda *_: False)
+    monkeypatch.setattr("dar_backup.rich_progress.time.sleep", fake_sleep)
+
+    gen = tail_log_file("/tmp/missing.log", stop_event, session_marker=None)
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_tail_log_file_logs_read_error(monkeypatch, capsys):
+    stop_event = Event()
+
+    def fake_sleep(_):
+        stop_event.set()
+
+    monkeypatch.setattr("dar_backup.rich_progress.os.path.exists", lambda *_: True)
+
+    def boom(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr("builtins.open", boom)
+    monkeypatch.setattr("dar_backup.rich_progress.time.sleep", fake_sleep)
+
+    gen = tail_log_file("/tmp/log.txt", stop_event, session_marker=None)
+    with pytest.raises(StopIteration):
+        next(gen)
+
+    out = capsys.readouterr().out
+    assert "Error reading log" in out

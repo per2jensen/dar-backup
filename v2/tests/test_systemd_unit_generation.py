@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, mock_open
 from pathlib import Path
 import os
+import sys
 from sys import path as path
 
 # Add src directory to path
@@ -12,6 +13,7 @@ from dar_backup.dar_backup_systemd import (
     generate_timer,
     generate_cleanup_service,
     build_exec_command,
+    enable_and_start_unit,
     FLAGS,
     TIMINGS
 )
@@ -82,6 +84,63 @@ def test_write_unit_files_triggers_enable_and_start(monkeypatch, tmp_path):
     assert ["systemctl", "--user", "daemon-reload"] in calls
 
 
+def test_enable_and_start_unit_runs_systemctl(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, check=False, **kwargs):
+        calls.append((cmd, check))
+
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.subprocess.run", fake_run)
+
+    enable_and_start_unit("dar-full-backup.timer")
+
+    assert calls == [
+        (["systemctl", "--user", "enable", "dar-full-backup.timer"], False),
+        (["systemctl", "--user", "start", "dar-full-backup.timer"], False),
+    ]
+
+
+def test_write_unit_files_no_install_writes_to_cwd(monkeypatch, tmp_path):
+    written = []
+
+    def fake_write_unit_file(path, filename, content):
+        written.append((path, filename, content))
+
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.write_unit_file", fake_write_unit_file)
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.Path.cwd", lambda: tmp_path)
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.subprocess.run", MagicMock())
+
+    write_unit_files("/fake/venv", None, install=False)
+
+    assert len(written) == (len(FLAGS) * 2 + 2)
+    assert all(path == tmp_path for path, _, _ in written)
+    names = {name for _, name, _ in written}
+    assert "dar-full-backup.service" in names
+    assert "dar-full-backup.timer" in names
+    assert "dar-diff-backup.service" in names
+    assert "dar-incr-backup.timer" in names
+    assert "dar-cleanup.service" in names
+    assert "dar-cleanup.timer" in names
+
+    full_service = next(content for _, name, content in written if name == "dar-full-backup.service")
+    assert ". /fake/venv/bin/activate" in full_service
+    assert "PATH=" not in full_service
+
+
+def test_main_passes_args_to_write_unit_files(monkeypatch):
+    calls = []
+
+    def fake_write_unit_files(venv, dar_path, install=False):
+        calls.append((venv, dar_path, install))
+
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.write_unit_files", fake_write_unit_files)
+    monkeypatch.setattr(sys, "argv", ["prog", "--venv", "/opt/venv", "--dar-path", "/opt/dar", "--install"])
+
+    from dar_backup.dar_backup_systemd import main as systemd_main
+
+    systemd_main()
+
+    assert calls == [("/opt/venv", "/opt/dar", True)]
 
 
 if __name__ == '__main__':
