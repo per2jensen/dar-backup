@@ -37,17 +37,22 @@ DAR_BACKUP_DIR = util.normalize_dir(util.expand_path("~/dar-backup"))
 
 def check_directories(args, vars_map: Dict[str,str]) -> bool:
     """
-    Check if the directories exist and create them if they don't.
+    Check if target paths already exist and are directories.
 
     Returns:
-        bool: True if the directories were created successfully, False otherwise.
+        bool: True if it is safe to proceed, False otherwise.
     """
     result = True
     for key in ("DAR_BACKUP_DIR","BACKUP_DIR","TEST_RESTORE_DIR","CONFIG_DIR","BACKUP_D_DIR"):
         path = Path(vars_map[key])
-        if path.exists() and not args.override:
-            print(f"Directory '{path}' already exists")
-            result = False
+        if path.exists():
+            if not path.is_dir():
+                print(f"Error: '{path}' exists and is not a directory")
+                result = False
+                continue
+            if not args.override:
+                print(f"Directory '{path}' already exists")
+                result = False
     return result
 
 
@@ -72,12 +77,17 @@ def generate_file(args, template: str, file_path: Path, vars_map: Dict[str, str]
     if rendered is None:
         print(f"Error: Template '{template}' could not be rendered.")
         return False    
-    if os.path.exists(file_path) and not args.override:
-        print(f"Error: File '{file_path}' already exists. Use --override to overwrite.")
-        return False
+    if file_path.exists():
+        if file_path.is_dir():
+            print(f"Error: '{file_path}' is a directory, expected a file.")
+            return False
+        if not args.override:
+            print(f"Error: File '{file_path}' already exists. Use --override to overwrite.")
+            return False
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(rendered)
     print(f"File generated at '{file_path}'")
+    return True
 
 
 
@@ -152,7 +162,6 @@ def main():
         parser.error(
             "Options --root-dir, --dir-to-backup must all be specified together."
         )
-        exit(1)
 
     args.root_dir = util.normalize_dir(util.expand_path(args.root_dir)) if args.root_dir else None
     args.backup_dir = util.normalize_dir(util.expand_path(args.backup_dir)) if args.backup_dir else None

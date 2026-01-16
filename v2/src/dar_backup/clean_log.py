@@ -30,6 +30,44 @@ LICENSE = '''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file.'''
 
+TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\b")
+CLEAN_MESSAGE_PREFIXES = (
+    "Inspecting directory",
+    "Finished Inspecting",
+    "<File",
+    "</File",
+    "<Attributes",
+    "</Attributes",
+    "<Directory",
+    "</Directory",
+    "<Catalog",
+    "</Catalog",
+    "<Symlink",
+    "</Symlink",
+)
+
+def _split_level_and_message(line):
+    line = line.rstrip("\n")
+    if " - " not in line:
+        return None, None
+
+    parts = line.split(" - ")
+    if len(parts) >= 3 and TIMESTAMP_RE.match(parts[0].strip()):
+        level = parts[1]
+        message = " - ".join(parts[2:])
+    else:
+        level = parts[0]
+        message = " - ".join(parts[1:])
+
+    return level.strip(), message
+
+def _should_remove_line(line):
+    level, message = _split_level_and_message(line)
+    if level != "INFO" or message is None:
+        return False
+    message = message.lstrip()
+    return any(message.startswith(prefix) for prefix in CLEAN_MESSAGE_PREFIXES)
+
 def clean_log_file(log_file_path, dry_run=False):
     """Removes specific log lines from the given file using a memory-efficient streaming approach."""
 
@@ -42,7 +80,7 @@ def clean_log_file(log_file_path, dry_run=False):
         print(f"No read permission for '{log_file_path}'")
         sys.exit(1)
 
-    if not os.access(log_file_path, os.W_OK):
+    if not dry_run and not os.access(log_file_path, os.W_OK):
         print(f"Error: No write permission for '{log_file_path}'")
         sys.exit(1)
 
@@ -51,46 +89,19 @@ def clean_log_file(log_file_path, dry_run=False):
         print(f"Performing a dry run on: {log_file_path}")
 
     temp_file_path = log_file_path + ".tmp"
-    
-    patterns = [
-        r"INFO\s*-\s*Inspecting\s*directory",
-        r"INFO\s*-\s*Finished\s*Inspecting",
-        r"INFO\s*-\s*<File",
-        r"INFO\s*-\s*</File",
-        r"INFO\s*-\s*<Attributes",
-        r"INFO\s*-\s*</Attributes",
-        r"INFO\s*-\s*</Directory",
-        r"INFO\s*-\s*<Directory",
-        r"INFO\s*-\s*<Catalog",
-        r"INFO\s*-\s*</Catalog",
-        r"INFO\s*-\s*<Symlink",
-        r"INFO\s*-\s*</Symlink",
-    ]
 
     try:
+        if dry_run:
+            with open(log_file_path, "r", errors="ignore") as infile:
+                for line in infile:
+                    if _should_remove_line(line):
+                        print(f"Would remove: {line.strip()}")
+            return
+
         with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
-
             for line in infile:
-                original_line = line  # Store the original line before modifying it
-                matched = False  # Track if a pattern is matched
-
-                for pattern in patterns:
-                    if re.search(pattern, line):  # Check if the pattern matches
-                        if dry_run:
-                            print(f"Would remove: {original_line.strip()}")  # Print full line for dry-run
-                        matched = True  # Mark that a pattern matched
-                        break  # No need to check other patterns if one matches
-
-                if not dry_run and not matched:  # In normal mode, only write non-empty lines
+                if not _should_remove_line(line):
                     outfile.write(line.rstrip() + "\n")
-
-                if dry_run and matched:
-                    continue  # In dry-run mode, skip writing (since we’re just showing)
-
-        
-        # Ensure the temp file exists before renaming
-        if not os.path.exists(temp_file_path):
-            open(temp_file_path, "w").close()  # Create an empty file if nothing was written
 
         os.replace(temp_file_path, log_file_path)
         print(f"Successfully cleaned log file: {log_file_path}")
@@ -133,40 +144,48 @@ def main():
 
     config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
 
-    if not args.file:
-        args.file = [config_settings.logfile_location]
+    files_to_clean = args.file if args.file else [config_settings.logfile_location]
+    logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))
+    validated_files = []
 
-    for file_path in args.file:
+    for file_path in files_to_clean:
+        if not isinstance(file_path, (str, bytes, os.PathLike)):
+            print(f"Error: Invalid file path type: {file_path}")
+            sys.exit(1)
+
+        file_path = os.fspath(file_path)
+        if isinstance(file_path, bytes):
+            file_path = os.fsdecode(file_path)
+
+        if file_path.strip() == "":
+            print(f"Error: Invalid empty filename '{file_path}'.")
+            sys.exit(1)
 
         if ".." in os.path.normpath(file_path).split(os.sep):
             print(f"Error: Path traversal is not allowed: '{file_path}'")
             sys.exit(1)
 
-        logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))
         resolved_path = os.path.realpath(file_path)
 
         if not resolved_path.startswith(logfile_dir + os.sep):
             print(f"Error: File is outside allowed directory: '{file_path}'")
             sys.exit(1)
 
-        # Validate the file path type and existence        
-        if not isinstance(file_path, (str, bytes, os.PathLike)):
-            print(f"Error: Invalid file path type: {file_path}")
-            sys.exit(1)
-
         if not os.path.exists(file_path):
             print(f"Error: Log file '{file_path}' does not exist.")
             sys.exit(1)
 
-        if file_path.strip() == "":
-            print(f"Error: Invalid empty filename '{file_path}'.")
-            sys.exit(1)
+        validated_files.append(file_path)
 
 
     # Run the log file cleaning function
-    for log_file in args.file:
+    for log_file in validated_files:
         clean_log_file(log_file, dry_run=args.dry_run)
-    print(f"Log file '{args.file}' has been cleaned successfully.")
+    file_list = ", ".join(validated_files)
+    if args.dry_run:
+        print(f"Dry run complete for: {file_list}")
+    else:
+        print(f"Log file '{file_list}' has been cleaned successfully.")
 
 
 if __name__ == "__main__":

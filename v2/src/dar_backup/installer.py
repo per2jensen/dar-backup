@@ -43,6 +43,9 @@ def install_autocompletion():
 
     # ensure RC file and parent directory exist
     rc_file.parent.mkdir(parents=True, exist_ok=True)
+    if rc_file.exists() and rc_file.is_dir():
+        print(f"Error: RC path is a directory: {rc_file}")
+        return
     if not rc_file.exists():
         rc_file.touch()
 
@@ -76,11 +79,17 @@ def uninstall_autocompletion() -> str:
     if not rc_file.exists():
         print(f"❌ RC file not found: {rc_file}")
         return
+    if rc_file.is_dir():
+        print(f"Error: RC path is a directory: {rc_file}")
+        return
 
     content = rc_file.read_text()
     if marker not in content:
         print(f"No autocompletion block found in {rc_file}")
         return f"No autocompletion block found in {rc_file}"  # for unit test
+    if end_marker not in content:
+        print(f"Error: Autocompletion end marker not found in {rc_file}")
+        return f"Autocompletion end marker not found in {rc_file}"
 
     lines = content.splitlines(keepends=True)
     new_lines = []
@@ -155,6 +164,10 @@ def run_installer(config_file: str, create_db_flag: bool):
     # Optionally create databases for all backup definitions
     if create_db_flag:
         for file in os.listdir(config_settings.backup_d_dir):
+            file_path = os.path.join(config_settings.backup_d_dir, file)
+            if not os.path.isfile(file_path):
+                logger.info(f"Skipping non-file backup definition: {file}")
+                continue
             backup_def = os.path.basename(file)
             print(f"Creating catalog for: {backup_def}")
             result = create_db(backup_def, config_settings, logger, runner)

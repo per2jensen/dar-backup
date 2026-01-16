@@ -69,6 +69,7 @@ def test_run_installer_with_create_db_prints_results(tmp_path, capsys):
     backup_d_dir.mkdir(parents=True)
     (backup_d_dir / "photos").write_text("", encoding="utf-8")
     (backup_d_dir / "docs").write_text("", encoding="utf-8")
+    (backup_d_dir / "nested").mkdir()
 
     dummy_cfg = DummyCfg(str(tmp_path / "backups"), str(tmp_path / "restore"), str(backup_d_dir))
 
@@ -88,6 +89,7 @@ def test_run_installer_with_create_db_prints_results(tmp_path, capsys):
     assert "✔️  Catalog created" in out
     assert "Creating catalog for: docs" in out
     assert "❌ Failed to create catalog" in out
+    assert "nested" not in out
 
 
 def test_run_installer_blocks_unsafe_path(tmp_path):
@@ -120,6 +122,32 @@ def test_installer_main_missing_config_prints_and_returns(monkeypatch, tmp_path,
     assert "Config file does not exist" in out
 
 
+def test_installer_main_calls_run_installer(monkeypatch, tmp_path):
+    cfg = tmp_path / "dar-backup.conf"
+    cfg.write_text("dummy", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", ["installer", "--config", str(cfg), "--create-db"])
+
+    with patch.object(installer, "run_installer") as run_mock:
+        installer.main()
+
+    run_mock.assert_called_once_with(str(cfg), True)
+
+
+def test_installer_main_install_autocompletion(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["installer", "--install-autocompletion"])
+    with patch.object(installer, "install_autocompletion") as install_mock:
+        installer.main()
+    install_mock.assert_called_once()
+
+
+def test_installer_main_remove_autocompletion(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["installer", "--remove-autocompletion"])
+    with patch.object(installer, "uninstall_autocompletion") as uninstall_mock:
+        installer.main()
+    uninstall_mock.assert_called_once()
+
+
 # --- autocompletion install/uninstall ----------------------------------------
 
 def test_install_autocompletion_appends_and_is_idempotent(monkeypatch, tmp_path):
@@ -141,6 +169,30 @@ def test_install_autocompletion_appends_and_is_idempotent(monkeypatch, tmp_path)
     assert content2.count("dar-backup") == content1.count("dar-backup")
 
 
+def test_install_autocompletion_uses_bash_profile(monkeypatch, tmp_path):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    bash_profile = tmp_path / ".bash_profile"
+    bash_profile.write_text("# profile\n", encoding="utf-8")
+
+    installer.install_autocompletion()
+
+    assert "# >>> dar-backup autocompletion >>>" in bash_profile.read_text(encoding="utf-8")
+    assert not (tmp_path / ".bashrc").exists()
+
+
+def test_install_autocompletion_uses_zsh(monkeypatch, tmp_path):
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    installer.install_autocompletion()
+
+    zshrc = tmp_path / ".zshrc"
+    assert zshrc.exists()
+    assert "# >>> dar-backup autocompletion >>>" in zshrc.read_text(encoding="utf-8")
+
+
 def test_uninstall_autocompletion_removes_block(monkeypatch, tmp_path):
     monkeypatch.setenv("SHELL", "/bin/bash")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -155,6 +207,71 @@ def test_uninstall_autocompletion_removes_block(monkeypatch, tmp_path):
     installer.uninstall_autocompletion()
     text = rc.read_text(encoding="utf-8")
     assert "dar-backup" not in text
+
+
+def test_uninstall_autocompletion_no_marker(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.write_text("# nothing to see\n", encoding="utf-8")
+
+    result = installer.uninstall_autocompletion()
+
+    out = capsys.readouterr().out
+    assert "No autocompletion block found" in out
+    assert "No autocompletion block found" in result
+    assert rc.read_text(encoding="utf-8") == "# nothing to see\n"
+
+
+def test_install_autocompletion_rc_is_dir(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    rc = tmp_path / ".bashrc"
+    rc.mkdir()
+
+    installer.install_autocompletion()
+
+    out = capsys.readouterr().out
+    assert "RC path is a directory" in out
+
+
+def test_uninstall_autocompletion_missing_rc(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    installer.uninstall_autocompletion()
+
+    out = capsys.readouterr().out
+    assert "RC file not found" in out
+
+
+def test_uninstall_autocompletion_rc_is_dir(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.mkdir()
+
+    installer.uninstall_autocompletion()
+
+    out = capsys.readouterr().out
+    assert "RC path is a directory" in out
+
+
+def test_uninstall_autocompletion_end_marker_missing(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.write_text("# >>> dar-backup autocompletion >>>\n# no end marker\n", encoding="utf-8")
+
+    result = installer.uninstall_autocompletion()
+
+    out = capsys.readouterr().out
+    assert "end marker not found" in out
+    assert "end marker not found" in result
+    assert "# >>> dar-backup autocompletion >>>" in rc.read_text(encoding="utf-8")
 
 
 
@@ -205,4 +322,3 @@ def test_installer_creates_catalog(setup_environment, env, use_manager_db_dir):
     ]
     for d in expected_dirs:
         assert os.path.isdir(d), f"Expected directory not found: {d}"
-
