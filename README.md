@@ -96,7 +96,6 @@ Version **1.0.0** was reached on October 9, 2025.
     - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
     - [Separate log file for command output](#separate-log-file-for-command-output)
     - [Skipping cache directories](#skipping-cache-directories)
-    - [Progress bar and current directory](#progress-bar-and-current-directory)
     - [Shell autocompletion](#shell-autocompletion)
       - [Use it](#use-it)
       - [Archive name completion (smart, context-aware)](#archive-name-completion-smart-context-aware)
@@ -1526,16 +1525,6 @@ The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cached
 
 If the option is not in the backup definition, the cache directories are backed up as any other.
 
-### Progress bar and current directory
-
-If you run dar-backup interactively in a "normal" console on your computer,
-dar-backup displays 2 visual artifacts to show progress.
-
-1. a progress bar that fills up and starts over
-2. a status line showing the directory being backed up. If the directory is big and takes time to backup, the line is not changing, but you will probably know there is a lot to backup.
-
-The indicators are not shown if dar-backup is run from systemd or if it is used in terminal multiplexers like `tmux` or `screen`. So no polluting of journald logs.
-
 ### Shell autocompletion
 
 The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-completion, making them easier and faster to use.
@@ -1719,7 +1708,6 @@ pytest                   # run the test suite
 
 - Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars
   `dar-backup` could do so and feed the result to `dar`.
-- When run interactively, a progress bar during test and par2 generation would be nice.
 - Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
 

@@ -66,7 +66,7 @@ description = """A script to do full, differential and incremental backups using
 readme = "README.md"
 readme-content-type = "text/markdown"
 license = { file="LICENSE", name="GPL-3.0-or-later" }
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",

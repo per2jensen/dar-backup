@@ -21,6 +21,7 @@
 - Cleanup now rejects unsafe archive names when `--cleanup-specific-archives` is used to prevent accidental deletions.
 - Removed deprecated PAR2 layout/mode settings and simplified PAR2 cleanup to delete all matching .par2 artifacts.
 - Config templates/docs updated to drop PAR2_LAYOUT/PAR2_MODE references.
+- [Snyk] Python 3.11 required in pyproject.toml. Snyk has flagged a vulnerabilly in an xml parser that requires the bump to 3.11.
 
 ## v2-1.0.1 - 2026-01-09
 
