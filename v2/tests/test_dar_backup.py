@@ -82,6 +82,45 @@ def test_verify_filecmp_permission_error_logged(env):
         assert mock_logger.error.called
 
 
+def test_verify_missing_source_file_logs_warning(env):
+    """Ensure missing source file during filecmp is caught and logged."""
+    args = SimpleNamespace(
+        verbose=False,
+        do_not_compare=False,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        test_restore_dir=env.restore_dir,
+        logfile_location=env.log_file,
+        verify_files=["/some/file.txt"],
+        command_timeout_secs=86400,
+        backup_dir=env.backup_dir,
+        min_size_verification_mb=0,
+        max_size_verification_mb=20,
+        no_files_verification=5
+    )
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+    mock_definition_content = "-R /\n-s 10G\n"
+    restored_file = "/some/file.txt"
+    source_path = os.path.join("/", restored_file.lstrip("/"))
+
+    with patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.get_backed_up_files", return_value=[(restored_file, "10 Mio")]), \
+         patch("dar_backup.dar_backup.filecmp.cmp", side_effect=FileNotFoundError(2, "No such file", source_path)), \
+         patch("dar_backup.dar_backup.logger") as mock_logger, \
+         patch("builtins.open", mock_open(read_data=mock_definition_content)):
+
+        result = verify(args, "mock-backup", env.config_file, config)
+
+        assert result is False
+        mock_logger.warning.assert_any_call(
+            f"Restore verification skipped for '{restored_file}': source file missing: '{source_path}'"
+        )
+
+
 
 
 from unittest.mock import patch, MagicMock
@@ -270,6 +309,46 @@ def test_perform_backup_handles_failed_verification(env):
         results = perform_backup(args, config, "FULL")
 
     assert any("Verification of" in r[0] for r in results)
+
+
+def test_perform_backup_runs_par2_after_verify(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    call_order = []
+
+    def fake_verify(*args, **kwargs):
+        call_order.append("verify")
+        return True
+
+    def fake_par2(*args, **kwargs):
+        call_order.append("par2")
+        return None
+
+    with patch("dar_backup.dar_backup.verify", side_effect=fake_verify), \
+         patch("dar_backup.dar_backup.generate_par2_files", side_effect=fake_par2), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=[]), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.send_discord_message", return_value=True), \
+         patch("dar_backup.dar_backup.logger"):
+        perform_backup(args, config, "FULL")
+
+    assert "verify" in call_order
+    assert "par2" in call_order
+    assert call_order.index("verify") < call_order.index("par2")
 
 
 def test_perform_backup_sends_warning_for_existing_backup(env):

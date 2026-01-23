@@ -411,6 +411,8 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         raise BackupError(f"Cannot create restore directory '{config_settings.test_restore_dir}': {exc}") from exc
 
     for restored_file_path in random_files:
+        restore_path = os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/"))
+        source_path = os.path.join(root_path, restored_file_path.lstrip("/"))
         try:
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf',  '-Q', '-B', args.darrc, 'restore-options']
@@ -419,7 +421,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             if process.returncode != 0:
                 raise Exception(str(process))
 
-            if filecmp.cmp(os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/")), os.path.join(root_path, restored_file_path.lstrip("/")), shallow=False):
+            if filecmp.cmp(restore_path, source_path, shallow=False):
                 args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
             else:
                 result = False
@@ -428,6 +430,21 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             result = False
             logger.exception(f"Permission error while comparing files, continuing....")
             logger.error("Exception details:", exc_info=True)
+        except FileNotFoundError as exc:
+            result = False
+            missing_path = exc.filename or "unknown path"
+            if missing_path == source_path:
+                logger.warning(
+                    f"Restore verification skipped for '{restored_file_path}': source file missing: '{source_path}'"
+                )
+            elif missing_path == restore_path:
+                logger.warning(
+                    f"Restore verification skipped for '{restored_file_path}': restored file missing: '{restore_path}'"
+                )
+            else:
+                logger.warning(
+                    f"Restore verification skipped for '{restored_file_path}': file not found: '{missing_path}'"
+                )
     return result
 
 
