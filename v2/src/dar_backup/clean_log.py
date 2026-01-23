@@ -23,8 +23,11 @@ import re
 import os
 import sys 
 
+from datetime import datetime
+
 from dar_backup import __about__ as about
 from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import send_discord_message
 
 LICENSE = '''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -142,7 +145,14 @@ def main():
 
     args = parser.parse_args()
 
-    config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
+    try:
+        config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
+    except Exception as exc:
+        msg = f"Config error: {exc}"
+        print(msg, file=sys.stderr)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - clean-log: FAILURE - {msg}")
+        sys.exit(127)
 
     files_to_clean = args.file if args.file else [config_settings.logfile_location]
     logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))

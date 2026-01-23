@@ -1361,7 +1361,14 @@ def main():
         raise SystemExit(127)
 
     args.config_file = config_settings_path
-    config_settings = ConfigSettings(args.config_file)
+    try:
+        config_settings = ConfigSettings(args.config_file)
+    except Exception as exc:
+        msg = f"Config error: {exc}"
+        print(msg, file=stderr)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}")
+        exit(127)
 
     if args.list_definitions:
         try:

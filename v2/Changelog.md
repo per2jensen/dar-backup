@@ -13,6 +13,7 @@
 - CommandRunner test coverage for sanitize failure notes, text/binary output handling, timeouts, Popen failures, and TTY restore logic.
 - Tests for COMMAND_CAPTURE_MAX_BYTES defaults (0 and 1k) and binary stdout/stderr capture with truncation and log_output disabled.
 - Manager test coverage for create-db guardrails and catalog listing parsing/sorting across runner/subprocess paths.
+- Cleanup now reports PREREQ/POSTREQ failures cleanly and sends Discord failure notifications when configured.
 
 ### Changed
 
@@ -24,6 +25,7 @@
 - Removed deprecated PAR2 layout/mode settings and simplified PAR2 cleanup to delete all matching .par2 artifacts.
 - Config templates/docs updated to drop PAR2_LAYOUT/PAR2_MODE references.
 - [Snyk] Python 3.11 required in pyproject.toml. Snyk has flagged a vulnerabilly in an xml parser that requires the bump to 3.11.
+- Config parsing errors now emit concise messages (no stack trace) and trigger Discord failure notifications in CLI tools.
 
 ## v2-1.0.1 - 2026-01-09
 

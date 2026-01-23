@@ -48,6 +48,7 @@ from dar_backup.util import is_archive_name_allowed
 from dar_backup.util import is_safe_filename
 from dar_backup.util import safe_remove_file
 from dar_backup.util import show_scriptname
+from dar_backup.util import send_discord_message
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
@@ -297,7 +298,14 @@ def main():
             raise SystemExit(127)
     args.config_file = config_settings_path
 
-    config_settings = ConfigSettings(args.config_file)
+    try:
+        config_settings = ConfigSettings(args.config_file)
+    except Exception as exc:
+        msg = f"Config error: {exc}"
+        print(msg, file=stderr)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - cleanup: FAILURE - {msg}")
+        sys.exit(127)
 
     start_time=int(time())
 
@@ -334,7 +342,14 @@ def main():
     print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords, quiet=not args.verbose)
 
     # run PREREQ scripts
-    requirements('PREREQ', config_settings)
+    try:
+        requirements('PREREQ', config_settings)
+    except Exception as exc:
+        msg = f"PREREQ failed: {exc}"
+        logger.error(msg)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
+        sys.exit(1)
 
     if args.alternate_archive_dir:
         if not os.path.exists(args.alternate_archive_dir):
@@ -395,7 +410,14 @@ def main():
             )
 
     # run POST scripts
-    requirements('POSTREQ', config_settings)
+    try:
+        requirements('POSTREQ', config_settings)
+    except Exception as exc:
+        msg = f"POSTREQ failed: {exc}"
+        logger.error(msg)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
+        sys.exit(1)
 
 
     end_time=int(time())

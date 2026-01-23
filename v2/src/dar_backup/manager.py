@@ -38,6 +38,7 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging
 from dar_backup.util import CommandResult
 from dar_backup.util import get_config_file
+from dar_backup.util import send_discord_message
 from dar_backup.util import get_logger
 from dar_backup.util import get_binary_info
 from dar_backup.util import show_version
@@ -723,7 +724,14 @@ def main():
         raise SystemExit(127)
     args.config_file = config_settings_path
 
-    config_settings = ConfigSettings(args.config_file)
+    try:
+        config_settings = ConfigSettings(args.config_file)
+    except Exception as exc:
+        msg = f"Config error: {exc}"
+        print(msg, file=stderr)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - manager: FAILURE - {msg}")
+        sys.exit(127)
 
     if not os.path.dirname(config_settings.logfile_location):
         print(f"Directory for log file '{config_settings.logfile_location}' does not exist, exiting")
