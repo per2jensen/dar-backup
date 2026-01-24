@@ -414,6 +414,11 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         restore_path = os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/"))
         source_path = os.path.join(root_path, restored_file_path.lstrip("/"))
         try:
+            if os.path.exists(restore_path):
+                try:
+                    os.remove(restore_path)
+                except OSError:
+                    pass
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf',  '-Q', '-B', args.darrc, 'restore-options']
             args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
@@ -887,10 +892,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                     latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)
                     logger.info(f"Using alternate reference archive: {latest_base_backup}")
                     if not os.path.exists(latest_base_backup + '.1.dar'):
-                        msg = f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, exiting..."
+                        msg = f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, skipping..."
                         logger.error(msg)
                         results.append((msg, 1))
-                        return results
+                        continue
                 else:
                     base_backups = sorted(
                         [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
@@ -1273,6 +1278,49 @@ def list_definitions(backup_d_dir: str) -> List[str]:
     return sorted([entry.name for entry in dir_path.iterdir() if entry.is_file()])
 
 
+def clean_restore_test_directory(config_settings: ConfigSettings):
+    """
+    Cleans up the restore test directory to ensure a clean slate.
+    """
+    restore_dir = getattr(config_settings, "test_restore_dir", None)
+    if not restore_dir:
+        return
+
+    restore_dir = os.path.expanduser(os.path.expandvars(restore_dir))
+    
+    if not os.path.exists(restore_dir):
+        return
+
+    # Safety: Do not delete if it resolves to a critical path
+    critical_paths = ["/", "/home", "/root", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin", "/boot", "/dev", "/proc", "/sys", "/run"]
+    normalized = os.path.realpath(restore_dir)
+    
+    # Check exact matches
+    if normalized in critical_paths:
+        logger.warning(f"Refusing to clean critical directory: {normalized}")
+        return
+        
+    # Check if it's the user's home directory
+    home = os.path.expanduser("~")
+    if normalized == home:
+        logger.warning(f"Refusing to clean user home directory: {normalized}")
+        return
+
+    logger.debug(f"Cleaning restore test directory: {restore_dir}")
+    try:
+        for item in os.listdir(restore_dir):
+            item_path = os.path.join(restore_dir, item)
+            try:
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove {item_path}: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to clean restore directory {restore_dir}: {e}")
+
+
 def main():
     global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
@@ -1422,6 +1470,8 @@ def main():
         command_logger=command_logger,
         default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
     )
+
+    clean_restore_test_directory(config_settings)
 
 
     try:

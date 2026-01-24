@@ -168,6 +168,7 @@ def setup_logging(
         secondary_logger = logging.getLogger("command_output_logger")
         secondary_logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
         secondary_logger.addHandler(command_handler)
+        secondary_logger.addHandler(trace_handler)
 
         if log_to_stdout:
             stdout_handler = logging.StreamHandler(sys.stdout)

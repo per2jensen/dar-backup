@@ -18,6 +18,8 @@
 
 ### Changed
 
+- BUGFIX: Ensure existing files are removed before restore verification to prevent false positives.
+- Clears out restore-test directory on program start to ensure a clean slate.
 - Restore-test selection now streams DAR XML listings and samples candidates without loading all entries into RAM.
 - `get_backed_up_files` uses incremental XML parsing to reduce memory use for large archives.
 - Restore verification now logs a warning and continues when a source or restored file is missing during comparison.
