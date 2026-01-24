@@ -54,6 +54,8 @@ class ConfigSettings:
     par2_run_verify: Optional[bool] = field(init=False, default=None)
     logfile_max_bytes: int = field(init=False)
     logfile_no_count: int = field(init=False)    
+    trace_log_max_bytes: int = field(init=False)
+    trace_log_backup_count: int = field(init=False)
     dar_backup_discord_webhook_url: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
@@ -84,6 +86,20 @@ class ConfigSettings:
         },
         {
             "section": "MISC",
+            "key": "TRACE_LOG_MAX_BYTES",
+            "attr": "trace_log_max_bytes",
+            "type": int,
+            "default": 10485760, # 10 MB
+        },
+        {
+            "section": "MISC",
+            "key": "TRACE_LOG_BACKUP_COUNT",
+            "attr": "trace_log_backup_count",
+            "type": int,
+            "default": 1,
+        },
+        {
+            "section": "MISC",
             "key": "DAR_BACKUP_DISCORD_WEBHOOK_URL",
             "attr": "dar_backup_discord_webhook_url",
             "type": str,
@@ -104,7 +120,7 @@ class ConfigSettings:
             raise ConfigSettingsError("`config_file` must be specified.")
 
         try:
-            self.config = configparser.ConfigParser()
+            self.config = configparser.ConfigParser(inline_comment_prefixes=['#'])
             loaded_files = self.config.read(self.config_file)
             if not loaded_files:
                 raise RuntimeError(f"Configuration file not found or unreadable: '{self.config_file}'")

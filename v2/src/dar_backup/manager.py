@@ -739,7 +739,16 @@ def main():
         return
 
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
+    logger = setup_logging(
+        config_settings.logfile_location,
+        command_output_log,
+        args.log_level,
+        args.log_stdout,
+        logfile_max_bytes=config_settings.logfile_max_bytes,
+        logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
+        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
+    )
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(
         logger=logger,
@@ -817,63 +826,70 @@ def main():
         return
 
     # --- Modify settings ---
-    if args.alternate_archive_dir:
-        if not os.path.exists(args.alternate_archive_dir):
-            logger.error(f"Alternate archive dir '{args.alternate_archive_dir}' does not exist, exiting")
-            sys.exit(1)
+    try:
+        if args.alternate_archive_dir:
+            if not os.path.exists(args.alternate_archive_dir):
+                logger.error(f"Alternate archive dir '{args.alternate_archive_dir}' does not exist, exiting")
+                sys.exit(1)
+                return
+            config_settings.backup_dir = args.alternate_archive_dir
+
+        # --- Functional logic ---
+        if args.create_db:
+            if args.backup_def:
+                sys.exit(create_db(args.backup_def, config_settings, logger, runner))
+                return
+            else:
+                for root, dirs, files in os.walk(config_settings.backup_d_dir):
+                    for file in files:
+                        current_backupdef = os.path.basename(file)
+                        logger.debug(f"Create catalog db for backup definition: '{current_backupdef}'")
+                        result = create_db(current_backupdef, config_settings, logger, runner)
+                        if result != 0:
+                            sys.exit(result)
+                            return
+
+        if args.add_specific_archive:
+            sys.exit(add_specific_archive(args.add_specific_archive, config_settings))
             return
-        config_settings.backup_dir = args.alternate_archive_dir
 
-    # --- Functional logic ---
-    if args.create_db:
-        if args.backup_def:
-            sys.exit(create_db(args.backup_def, config_settings, logger, runner))
+        if args.add_dir:
+            sys.exit(add_directory(args, config_settings))
             return
-        else:
-            for root, dirs, files in os.walk(config_settings.backup_d_dir):
-                for file in files:
-                    current_backupdef = os.path.basename(file)
-                    logger.debug(f"Create catalog db for backup definition: '{current_backupdef}'")
-                    result = create_db(current_backupdef, config_settings, logger, runner)
-                    if result != 0:
-                        sys.exit(result)
-                        return
 
-    if args.add_specific_archive:
-        sys.exit(add_specific_archive(args.add_specific_archive, config_settings))
-        return
+        if args.remove_specific_archive:
+            return remove_specific_archive(args.remove_specific_archive, config_settings)
 
-    if args.add_dir:
-        sys.exit(add_directory(args, config_settings))
-        return
+        if args.list_catalogs:
+            if args.backup_def:
+                process = list_catalogs(args.backup_def, config_settings)
+                result = process.returncode
+            else:
+                result = 0
+                for root, dirs, files in os.walk(config_settings.backup_d_dir):
+                    for file in files:
+                        current_backupdef = os.path.basename(file)
+                        if list_catalogs(current_backupdef, config_settings).returncode != 0:
+                            result = 1
+            sys.exit(result)
+            return
 
-    if args.remove_specific_archive:
-        return remove_specific_archive(args.remove_specific_archive, config_settings)
-
-    if args.list_catalogs:
-        if args.backup_def:
-            process = list_catalogs(args.backup_def, config_settings)
-            result = process.returncode
-        else:
-            result = 0
-            for root, dirs, files in os.walk(config_settings.backup_d_dir):
-                for file in files:
-                    current_backupdef = os.path.basename(file)
-                    if list_catalogs(current_backupdef, config_settings).returncode != 0:
-                        result = 1
-        sys.exit(result)
-        return
-
-    if args.list_archive_contents:
-        result = list_archive_contents(args.list_archive_contents, config_settings)
-        sys.exit(result)
-        return
+        if args.list_archive_contents:
+            result = list_archive_contents(args.list_archive_contents, config_settings)
+            sys.exit(result)
+            return
 
 
-    if args.find_file:
-        result = find_file(args.find_file, args.backup_def, config_settings)
-        sys.exit(result)
-        return
+        if args.find_file:
+            result = find_file(args.find_file, args.backup_def, config_settings)
+            sys.exit(result)
+            return
+    except Exception as e:
+        msg = f"Unexpected error during manager operation: {e}"
+        logger.error(msg, exc_info=True)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - manager: FAILURE - {msg}", config_settings=config_settings)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

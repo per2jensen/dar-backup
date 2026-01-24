@@ -110,6 +110,9 @@ packaging = [
  "twine>=6.1.0",
 ]
 
+[tool.coverage.run]
+data_file = "/tmp/.coverage"
+
 [project.urls]
 "GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
 Homepage = "https://github.com/per2jensen/dar-backup/tree/main/v2"

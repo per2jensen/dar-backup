@@ -47,6 +47,26 @@ from typing import Tuple
 logger=None
 secondary_logger=None   
 
+class CleanFormatter(logging.Formatter):
+    """
+    Formatter that ignores exception tracebacks.
+    """
+    def format(self, record):
+        # Save original exception info
+        orig_exc_info = record.exc_info
+        orig_exc_text = record.exc_text
+        
+        # Temporarily hide it
+        record.exc_info = None
+        record.exc_text = None
+        
+        try:
+            return super().format(record)
+        finally:
+            # Restore it so other handlers (like the trace handler) can use it
+            record.exc_info = orig_exc_info
+            record.exc_text = orig_exc_text
+
 #def setup_logging(log_file: str, command_output_log_file: str, log_level: str = "info", log_to_stdout: bool = False) -> logging.Logger:
 def setup_logging(
     log_file: str,
@@ -55,10 +75,15 @@ def setup_logging(
     log_to_stdout: bool = False,
     logfile_max_bytes: int = 26214400,
     logfile_backup_count: int = 5,
+    trace_log_file: str = None,
+    trace_log_max_bytes: int = 10485760,
+    trace_log_backup_count: int = 1
 ) -> logging.Logger:
 
     """
     Sets up logging for the main program and a separate secondary logfile for command outputs.
+    
+    Also sets up a trace log file that captures all logs at DEBUG level including stack traces.
 
     Args:
         log_file (str): The path to the main log file.
@@ -67,6 +92,9 @@ def setup_logging(
         log_to_stdout (bool): If True, log messages will be printed to the console. Defaults to False.
         logfile_max_bytes: max file size of a log file, defailt = 26214400.
         logfile_backup_count: max numbers of logs files, default = 5.
+        trace_log_file (str): Optional path for the trace log file. Defaults to log_file with ".trace.log" suffix.
+        trace_log_max_bytes: max file size of the trace log file, default = 10485760 (10MB).
+        trace_log_backup_count: max numbers of trace log files, default = 1.
 
     Returns:
         a RotatingFileHandler logger instance.
@@ -85,12 +113,30 @@ def setup_logging(
 
         logging.Logger.trace = trace
 
+        # Main log file handler (clean logs)
         file_handler = RotatingFileHandler(
             log_file,
             maxBytes=logfile_max_bytes,
             backupCount=logfile_backup_count,
             encoding="utf-8",
         )
+
+        # Trace log file handler (full details)
+        if not trace_log_file:
+            if log_file == "/dev/null":
+                trace_log_file = "/dev/null"
+            else:
+                base, ext = os.path.splitext(log_file)
+                trace_log_file = f"{base}.trace{ext}"
+            
+        trace_handler = RotatingFileHandler(
+            trace_log_file,
+            maxBytes=trace_log_max_bytes,
+            backupCount=trace_log_backup_count,
+            encoding="utf-8",
+        )
+        # Trace handler gets everything (DEBUG level) and keeps tracebacks
+        trace_handler.setLevel(logging.DEBUG)
 
         command_handler = RotatingFileHandler(
             command_output_log_file,
@@ -99,15 +145,24 @@ def setup_logging(
             encoding="utf-8",
         )
 
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        command_handler.setFormatter(formatter)
+        standard_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        clean_formatter = CleanFormatter('%(asctime)s - %(levelname)s - %(message)s')
+        
+        file_handler.setFormatter(clean_formatter)
+        trace_handler.setFormatter(standard_formatter)
+        command_handler.setFormatter(standard_formatter)
 
 
         # Setup main logger
         logger = logging.getLogger("main_logger")
-        logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
+        # Ensure logger captures everything so trace_handler can see DEBUG messages even if main log_level is INFO
+        logger.setLevel(logging.DEBUG) 
+        
+        # Configure file_handler level based on user preference
+        file_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
+        
         logger.addHandler(file_handler)
+        logger.addHandler(trace_handler)
 
         # Setup secondary logger for command outputs
         secondary_logger = logging.getLogger("command_output_logger")
@@ -116,7 +171,8 @@ def setup_logging(
 
         if log_to_stdout:
             stdout_handler = logging.StreamHandler(sys.stdout)
-            stdout_handler.setFormatter(formatter)
+            stdout_handler.setFormatter(clean_formatter)
+            stdout_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
             logger.addHandler(stdout_handler)
 
         return logger

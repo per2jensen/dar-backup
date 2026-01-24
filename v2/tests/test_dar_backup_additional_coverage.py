@@ -447,7 +447,7 @@ def test_perform_backup_alternate_reference_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "logger", MagicMock())
     monkeypatch.setattr(db, "send_discord_message", MagicMock(return_value=True))
 
-    results = db.perform_backup(args, config, "DIFF")
+    results = db.perform_backup(args, config, "DIFF", [])
 
     assert any("Alternate reference archive" in msg for msg, _ in results)
 

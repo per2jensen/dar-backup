@@ -27,7 +27,7 @@ from datetime import datetime
 
 from dar_backup import __about__ as about
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import send_discord_message
+from dar_backup.util import send_discord_message, get_logger
 
 LICENSE = '''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -154,49 +154,59 @@ def main():
         send_discord_message(f"{ts} - clean-log: FAILURE - {msg}")
         sys.exit(127)
 
-    files_to_clean = args.file if args.file else [config_settings.logfile_location]
-    logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))
-    validated_files = []
+    try:
+        files_to_clean = args.file if args.file else [config_settings.logfile_location]
+        logfile_dir = os.path.dirname(os.path.realpath(config_settings.logfile_location))
+        validated_files = []
 
-    for file_path in files_to_clean:
-        if not isinstance(file_path, (str, bytes, os.PathLike)):
-            print(f"Error: Invalid file path type: {file_path}")
-            sys.exit(1)
+        for file_path in files_to_clean:
+            if not isinstance(file_path, (str, bytes, os.PathLike)):
+                print(f"Error: Invalid file path type: {file_path}")
+                sys.exit(1)
 
-        file_path = os.fspath(file_path)
-        if isinstance(file_path, bytes):
-            file_path = os.fsdecode(file_path)
+            file_path = os.fspath(file_path)
+            if isinstance(file_path, bytes):
+                file_path = os.fsdecode(file_path)
 
-        if file_path.strip() == "":
-            print(f"Error: Invalid empty filename '{file_path}'.")
-            sys.exit(1)
+            if file_path.strip() == "":
+                print(f"Error: Invalid empty filename '{file_path}'.")
+                sys.exit(1)
 
-        if ".." in os.path.normpath(file_path).split(os.sep):
-            print(f"Error: Path traversal is not allowed: '{file_path}'")
-            sys.exit(1)
+            if ".." in os.path.normpath(file_path).split(os.sep):
+                print(f"Error: Path traversal is not allowed: '{file_path}'")
+                sys.exit(1)
 
-        resolved_path = os.path.realpath(file_path)
+            resolved_path = os.path.realpath(file_path)
 
-        if not resolved_path.startswith(logfile_dir + os.sep):
-            print(f"Error: File is outside allowed directory: '{file_path}'")
-            sys.exit(1)
+            if not resolved_path.startswith(logfile_dir + os.sep):
+                print(f"Error: File is outside allowed directory: '{file_path}'")
+                sys.exit(1)
 
-        if not os.path.exists(file_path):
-            print(f"Error: Log file '{file_path}' does not exist.")
-            sys.exit(1)
+            if not os.path.exists(file_path):
+                print(f"Error: Log file '{file_path}' does not exist.")
+                sys.exit(1)
 
-        validated_files.append(file_path)
-
-
-    # Run the log file cleaning function
-    for log_file in validated_files:
-        clean_log_file(log_file, dry_run=args.dry_run)
-    file_list = ", ".join(validated_files)
-    if args.dry_run:
-        print(f"Dry run complete for: {file_list}")
-    else:
-        print(f"Log file '{file_list}' has been cleaned successfully.")
+            validated_files.append(file_path)
 
 
+        # Run the log file cleaning function
+        for log_file in validated_files:
+            clean_log_file(log_file, dry_run=args.dry_run)
+        file_list = ", ".join(validated_files)
+        if args.dry_run:
+            print(f"Dry run complete for: {file_list}")
+        else:
+            print(f"Log file '{file_list}' has been cleaned successfully.")
+    except Exception as e:
+        msg = f"Unexpected error during clean-log: {e}"
+        logger = get_logger()
+        if logger:
+            logger.error(msg, exc_info=True)
+        else:
+            print(msg, file=sys.stderr)
+        
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - clean-log: FAILURE - {msg}", config_settings=config_settings)
+        sys.exit(1)
 if __name__ == "__main__":
     main()

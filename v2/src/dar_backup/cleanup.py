@@ -311,7 +311,16 @@ def main():
 
 #    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
+    logger = setup_logging(
+        config_settings.logfile_location,
+        command_output_log,
+        args.log_level,
+        args.log_stdout,
+        logfile_max_bytes=config_settings.logfile_max_bytes,
+        logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
+        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
+    )
     command_logger = get_logger(command_output_logger = True)
     runner = CommandRunner(
         logger=logger,
@@ -351,63 +360,70 @@ def main():
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 
-    if args.alternate_archive_dir:
-        if not os.path.exists(args.alternate_archive_dir):
-            logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
-            sys.exit(1) 
-        if  not os.path.isdir(args.alternate_archive_dir):
-            logger.error(f"Alternate archive directory is not a directory, exiting")
-            sys.exit(1) 
-        config_settings.backup_dir = args.alternate_archive_dir
+    try:
+        if args.alternate_archive_dir:
+            if not os.path.exists(args.alternate_archive_dir):
+                logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
+                sys.exit(1) 
+            if  not os.path.isdir(args.alternate_archive_dir):
+                logger.error(f"Alternate archive directory is not a directory, exiting")
+                sys.exit(1) 
+            config_settings.backup_dir = args.alternate_archive_dir
 
-    if args.cleanup_specific_archives is None and args.test_mode:
-        logger.info("No --cleanup-specific-archives provided; skipping specific archive deletion in test mode.")
+        if args.cleanup_specific_archives is None and args.test_mode:
+            logger.info("No --cleanup-specific-archives provided; skipping specific archive deletion in test mode.")
 
-    if args.cleanup_specific_archives or args.cleanup_specific_archives_list:
-        combined = []
-        if args.cleanup_specific_archives:
-            combined.extend(args.cleanup_specific_archives.split(','))
-        combined.extend(args.cleanup_specific_archives_list or [])
-        archive_names = [name.strip() for name in combined if name.strip()]
-        logger.info(f"Cleaning up specific archives: {', '.join(archive_names)}")
-        for archive_name in archive_names:
-            if not is_archive_name_allowed(archive_name):
-                logger.error(f"Refusing unsafe archive name: {archive_name}")
-                continue
-            if "_FULL_" in archive_name:
-                if not confirm_full_archive_deletion(archive_name, args.test_mode):
+        if args.cleanup_specific_archives or args.cleanup_specific_archives_list:
+            combined = []
+            if args.cleanup_specific_archives:
+                combined.extend(args.cleanup_specific_archives.split(','))
+            combined.extend(args.cleanup_specific_archives_list or [])
+            archive_names = [name.strip() for name in combined if name.strip()]
+            logger.info(f"Cleaning up specific archives: {', '.join(archive_names)}")
+            for archive_name in archive_names:
+                if not is_archive_name_allowed(archive_name):
+                    logger.error(f"Refusing unsafe archive name: {archive_name}")
                     continue
-            archive_path = os.path.join(config_settings.backup_dir, archive_name.strip())
-            logger.info(f"Deleting archive: {archive_path}")
-            delete_archive(config_settings.backup_dir, archive_name.strip(), args, config_settings)
-    elif args.list:
-        list_backups(config_settings.backup_dir, args.backup_definition)
-    else:
-        backup_definitions = []
-        if args.backup_definition:
-            backup_definitions.append(args.backup_definition)
+                if "_FULL_" in archive_name:
+                    if not confirm_full_archive_deletion(archive_name, args.test_mode):
+                        continue
+                archive_path = os.path.join(config_settings.backup_dir, archive_name.strip())
+                logger.info(f"Deleting archive: {archive_path}")
+                delete_archive(config_settings.backup_dir, archive_name.strip(), args, config_settings)
+        elif args.list:
+            list_backups(config_settings.backup_dir, args.backup_definition)
         else:
-            for root, _, files in os.walk(config_settings.backup_d_dir):
-                for file in files:
-                    backup_definitions.append(file.split('.')[0])
+            backup_definitions = []
+            if args.backup_definition:
+                backup_definitions.append(args.backup_definition)
+            else:
+                for root, _, files in os.walk(config_settings.backup_d_dir):
+                    for file in files:
+                        backup_definitions.append(file.split('.')[0])
 
-        for definition in backup_definitions:
-            delete_old_backups(
-                config_settings.backup_dir,
-                config_settings.diff_age,
-                'DIFF',
-                args,
-                backup_definition=definition,
-                config_settings=config_settings
-            )
-            delete_old_backups(
-                config_settings.backup_dir,
-                config_settings.incr_age,
-                'INCR',
-                args,
-                backup_definition=definition,
-                config_settings=config_settings
-            )
+            for definition in backup_definitions:
+                delete_old_backups(
+                    config_settings.backup_dir,
+                    config_settings.diff_age,
+                    'DIFF',
+                    args,
+                    backup_definition=definition,
+                    config_settings=config_settings
+                )
+                delete_old_backups(
+                    config_settings.backup_dir,
+                    config_settings.incr_age,
+                    'INCR',
+                    args,
+                    backup_definition=definition,
+                    config_settings=config_settings
+                )
+    except Exception as e:
+        msg = f"Unexpected error during cleanup: {e}"
+        logger.error(msg, exc_info=True)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
+        sys.exit(1)
 
     # run POST scripts
     try:

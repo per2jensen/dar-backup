@@ -832,7 +832,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     return True
 
 
-def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str) -> List[str]:
+def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str, stats_accumulator: list) -> List[str]:
     """
     Perform backup operation.
 
@@ -840,6 +840,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         args: Command-line arguments.
         config_settings: An instance of the ConfigSettings class.
         backup_type: Type of backup (FULL, DIFF, INCR).
+        stats_accumulator: List to collect backup statuses.
 
     Returns:
       List[tuples] - each tuple consists of (<str message>, <exit code>)
@@ -925,8 +926,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             logger.info("par2 files completed successfully.")
 
         except Exception as e:
-            results.append((repr(e), 1))
-            logger.exception(f"Error during {backup_type} backup process, continuing to next backup definition.")
+            results.append((f"Exception: {e}", 1))
+            logger.error(f"Error during {backup_type} backup process for {backup_definition}: {e}", exc_info=True)
             success = False
         finally:
             # Determine status based on new results for this backup definition
@@ -938,7 +939,7 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
             # Avoid spamming from example/demo backup definitions
             if backup_definition.lower() == "example":
-                logger.debug("Skipping Discord notification for example backup definition.")
+                logger.debug("Skipping stats collection for example backup definition.")
                 continue
 
             if has_error:
@@ -947,10 +948,14 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 status = "WARNING"
             else:
                 status = "SUCCESS"
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
-            message = f"{timestamp} - dar-backup, {backup_definition}: {status}"
-            if not send_discord_message(message, config_settings=config_settings):
-                logger.debug(f"Discord notification not sent for {backup_definition}: {status}")
+            
+            # Aggregate stats instead of sending immediately
+            stats_accumulator.append({
+                "definition": backup_definition,
+                "status": status,
+                "type": backup_type,
+                "timestamp": datetime.now().strftime("%Y-%m-%d_%H:%M")
+            })
 
     logger.trace(f"perform_backup() results[]: {results}")
     return results
@@ -1401,7 +1406,16 @@ def main():
     if command_output_log == config_settings.logfile_location:
         print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
 
-    logger = setup_logging(config_settings.logfile_location, command_output_log, args.log_level, args.log_stdout, logfile_max_bytes=config_settings.logfile_max_bytes, logfile_backup_count=config_settings.logfile_backup_count)
+    logger = setup_logging(
+        config_settings.logfile_location,
+        command_output_log,
+        args.log_level,
+        args.log_stdout,
+        logfile_max_bytes=config_settings.logfile_max_bytes,
+        logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
+        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
+    )
     command_logger = get_logger(command_output_logger = True)
     runner = CommandRunner(
         logger=logger,
@@ -1478,6 +1492,8 @@ def main():
 
         requirements('PREREQ', config_settings)
 
+        stats: List[dict] = []
+
         if args.list:
             list_filter = args.backup_definition
             if isinstance(args.list, str):
@@ -1488,11 +1504,11 @@ def main():
                     list_filter = args.list
             list_backups(config_settings.backup_dir, list_filter)
         elif args.full_backup and not args.differential_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "FULL"))
+            results.extend(perform_backup(args, config_settings, "FULL", stats))
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "DIFF"))
+            results.extend(perform_backup(args, config_settings, "DIFF", stats))
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
-            results.extend(perform_backup(args, config_settings, "INCR"))
+            results.extend(perform_backup(args, config_settings, "INCR", stats))
             logger.debug(f"results from perform_backup(): {results}")
         elif args.list_contents:
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
@@ -1504,11 +1520,42 @@ def main():
 
         logger.debug(f"results[]: {results}")
 
+        # Send aggregated Discord notification if stats were collected
+        if stats:
+            total = len(stats)
+            failures = [s for s in stats if s['status'] == 'FAILURE']
+            warnings = [s for s in stats if s['status'] == 'WARNING']
+            successes = [s for s in stats if s['status'] == 'SUCCESS']
+            
+            ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+            
+            if failures or warnings:
+                msg_lines = [f"{ts} - dar-backup Run Completed"]
+                msg_lines.append(f"Total: {total}, Success: {len(successes)}, Warning: {len(warnings)}, Failure: {len(failures)}")
+                
+                if failures:
+                    msg_lines.append("\nFailures:")
+                    for f in failures:
+                        msg_lines.append(f"- {f['definition']} ({f['type']})")
+                
+                if warnings:
+                    msg_lines.append("\nWarnings:")
+                    for w in warnings:
+                        msg_lines.append(f"- {w['definition']} ({w['type']})")
+                
+                send_discord_message("\n".join(msg_lines), config_settings=config_settings)
+            else:
+                # All successful
+                send_discord_message(f"{ts} - dar-backup: SUCCESS - All {total} backups completed successfully.", config_settings=config_settings)
+
         requirements('POSTREQ', config_settings)
 
 
     except Exception as e:
-        logger.error("Exception details:", exc_info=True)
+        msg = f"Unexpected error: {e}"
+        logger.error(msg, exc_info=True)
+        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}", config_settings=config_settings)
         results.append((repr(e), 1))
     finally:
         end_time=int(time())

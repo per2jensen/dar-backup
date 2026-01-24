@@ -14,6 +14,7 @@
 - Tests for COMMAND_CAPTURE_MAX_BYTES defaults (0 and 1k) and binary stdout/stderr capture with truncation and log_output disabled.
 - Manager test coverage for create-db guardrails and catalog listing parsing/sorting across runner/subprocess paths.
 - Cleanup now reports PREREQ/POSTREQ failures cleanly and sends Discord failure notifications when configured.
+- New trace logger that always logs at DEBUG and captures stacktraces if they happens. Default max size is 10MB + 1 rollover file.
 
 ### Changed
 

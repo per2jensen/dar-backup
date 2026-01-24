@@ -95,6 +95,7 @@ Version **1.0.0** was reached on October 9, 2025.
     - [Performance tip due to par2](#performance-tip-due-to-par2)
     - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
     - [Separate log file for command output](#separate-log-file-for-command-output)
+    - [Trace Logging (Debug details)](#trace-logging-debug-details)
     - [Skipping cache directories](#skipping-cache-directories)
     - [Shell autocompletion](#shell-autocompletion)
       - [Use it](#use-it)
@@ -123,6 +124,8 @@ Version **1.0.0** was reached on October 9, 2025.
         - [Restore test config](#restore-test-config)
         - [Par2](#par2-1)
       - [1.0.2](#102)
+        - [Trace Logging](#trace-logging)
+        - [Command output Capture](#command-output-capture)
   
 ## My use case
 
@@ -1517,6 +1520,22 @@ In order to not clutter that log file with the output of commands being run, a n
 
 The secondary log file can get quite cluttered, if you want to remove the clutter, run the `clean-log`script with the `--file` option, or simply delete it.
 
+### Trace Logging (Debug details)
+
+To keep the main log file clean while preserving essential debugging information, `dar-backup` creates a separate trace log file (e.g., `dar-backup.trace.log`) alongside the main log.
+
+- **Main Log (`dar-backup.log`)**: Contains clean, human-readable INFO/ERROR messages. Stack traces are suppressed here.
+- **Trace Log (`dar-backup.trace.log`)**: Captures ALL messages at `DEBUG` level, including full exception stack traces. Use this file for debugging crashes or unexpected behavior.
+
+You can configure the rotation of this file in `[MISC]`:
+
+```ini
+[MISC]
+# ... other settings ...
+TRACE_LOG_MAX_BYTES = 10485760  # 10 MB default
+TRACE_LOG_BACKUP_COUNT = 1      # Keep 1 old trace file (default)
+```
+
 ### Skipping cache directories
 
 The author uses the `--cache-directory-tagging` option in his [backup definitions](#backup-definition-example).
@@ -2052,6 +2071,26 @@ PAR2_RUN_VERIFY = true
 [Per-backup override test case: `tests/test_par2_overrides.py`](v2/tests/test_par2_overrides.py)
 
 #### 1.0.2
+
+##### Trace Logging
+
+To support debugging without cluttering the main log file, a secondary trace log is now created (e.g., `dar-backup.trace.log`).
+This file captures all `DEBUG` level messages and full exception stack traces.
+
+You can configure its rotation in the `[MISC]` section:
+
+- `TRACE_LOG_MAX_BYTES`: Max size of the trace log file in bytes. Default is `10485760` (10 MB).
+- `TRACE_LOG_BACKUP_COUNT`: Number of rotated trace log files to keep. Default is `1`.
+
+Example:
+
+```ini
+[MISC]
+TRACE_LOG_MAX_BYTES = 10485760
+TRACE_LOG_BACKUP_COUNT = 1
+```
+
+##### Command output Capture
 
 - New optional `[MISC]` setting: `COMMAND_CAPTURE_MAX_BYTES` (default 102400).
   - Limits how much stdout/stderr is kept in memory per command while still logging full output.
