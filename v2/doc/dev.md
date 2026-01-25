@@ -37,6 +37,13 @@ python3 -m build && pip install --force-reinstall dist/dar_backup-${VERSION}-py3
 
 ## Howto use pytest in venv
 
+The simplest way to run the test suite
+
+```` bash
+# assumes the venc is activated, see above
+pytest
+````
+
 A pytest.ini is located in the v2 directory, so that pytest writes out captures to  console.
 
 That is useful when working with a single test and is the default
