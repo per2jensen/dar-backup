@@ -2,21 +2,6 @@
 requires = ['hatchling']
 build-backend = "hatchling.build"
 
-#[tool.pytest.ini_options]
-# test the deployed package
-#pythonpath = "venv/lib/python3.12/site-packages"
-#addopts = [
-#    "--import-mode=importlib",
-#    "--cov=dar_backup",
-#    "--cov-report=xml",
-#    "--no-cov-on-fail"
-#]
-
-#addopts = [
-#    "--import-mode=importlib",
-#]
-
-
 [tool.hatch.build]
 include = [
   "src/dar_backup/**",
@@ -41,6 +26,10 @@ path = "src/dar_backup/__about__.py"
 gpg_key_id =      "B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"
 gpg_fingerprint = "B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1"
 gpg_key_url =     "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEFFD084502B85CCEC7E16814A36E"
+
+
+[tool.ruff]
+
 
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"
@@ -78,6 +67,7 @@ classifiers = [
 
 
 dependencies = [
+    "dateparser>=1.2.0",
     "inputimeout>=1.0.4",
     "rich>=13.0.0",
     "argcomplete>=3.6.2",
@@ -86,7 +76,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest",
+  "pytest>=8.0.0",
+  "pytest-mock",
+  "ruff",
+  "mypy",
   "wheel>=0.45.1",
   "requests>=2.32.2",
   "coverage>=7.8.2",

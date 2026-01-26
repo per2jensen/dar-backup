@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch
 from inputimeout import TimeoutOccurred
 import dar_backup.manager as manager

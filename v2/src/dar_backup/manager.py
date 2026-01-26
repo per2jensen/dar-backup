@@ -48,12 +48,12 @@ from dar_backup.util import show_scriptname
 
 from dar_backup.command_runner import CommandRunner   
 from dar_backup.command_runner import CommandResult
-from dar_backup.util import backup_definition_completer, list_archive_completer, archive_content_completer, add_specific_archive_completer
+from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
 from datetime import datetime
 from sys import stderr
 from time import time
-from typing import Dict, List, NamedTuple, Tuple
+from typing import Dict, List, Tuple
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -804,7 +804,7 @@ def main():
         return
 
     if args.backup_def and not args.backup_def.strip():
-        logger.error(f"No backup definition given to --backup-def")
+        logger.error("No backup definition given to --backup-def")
         sys.exit(1)
         return
 
@@ -816,12 +816,12 @@ def main():
             return
 
     if args.list_archive_contents and not args.list_archive_contents.strip():
-        logger.error(f"--list-archive-contents <param> not given, exiting")
+        logger.error("--list-archive-contents <param> not given, exiting")
         sys.exit(1)
         return
 
     if args.find_file and not args.backup_def:
-        logger.error(f"--find-file requires the --backup-def, exiting")
+        logger.error("--find-file requires the --backup-def, exiting")
         sys.exit(1)
         return
 

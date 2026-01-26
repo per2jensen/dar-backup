@@ -1,17 +1,14 @@
 # modified: 2021-07-25 to be a pytest test
-import re
 import os
 import sys
 import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 
-from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
 
 
 import tempfile
-from pathlib import Path
 
 def test_stdout_1MB(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)

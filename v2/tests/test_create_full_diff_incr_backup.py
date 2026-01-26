@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import logging
-import re
 import shutil
 import sys
 
@@ -13,7 +11,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from pathlib import Path
 
 from dar_backup.command_runner import CommandRunner
-from tests.envdata import EnvData
 from tests.conftest import test_files 
 from testdata_verification import verify_backup_contents, verify_restore_contents,run_backup_script
 
@@ -84,7 +81,7 @@ def test_backup_functionality(setup_environment, env):
         list_catalog_db(env)
 
 
-    except Exception as e:
+    except Exception:
         env.logger.exception("Backup functionality test failed")
         sys.exit(1)
     env.logger.info("test_backup_functionality() finished successfully")
@@ -144,7 +141,7 @@ def test_backup_functionality_short_options(setup_environment, env):
 
         list_catalog_db(env)
 
-    except Exception as e:
+    except Exception:
         env.logger.exception("Backup functionality test failed")
         sys.exit(1)
     env.logger.info("test_backup_functionality() finished successfully")

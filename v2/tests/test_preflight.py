@@ -1,4 +1,3 @@
-import os
 from types import SimpleNamespace
 from textwrap import dedent
 

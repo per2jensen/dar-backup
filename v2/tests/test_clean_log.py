@@ -54,7 +54,7 @@ ENABLED = True
 def sample_log_file(env: EnvData):
     """Creates a sample log file for testing."""
     log_file_path = os.path.join(env.test_dir, "test.log")
-    sample_content = f"""
+    sample_content = """
     INFO - <File example.txt>
     INFO - <Attributes modified>
     INFO - </Directory>
@@ -87,8 +87,8 @@ def test_version(setup_environment, env: EnvData):
     env.logger.info("clean-log -v:\n" + process.stdout)
 
 
-    assert f"clean-log version {about.__version__}" in process.stdout, f"Version # not found in output"
-    assert f'Licensed under GNU GENERAL PUBLIC LICENSE v3' in process.stdout, f"License not found in output"
+    assert f"clean-log version {about.__version__}" in process.stdout, "Version # not found in output"
+    assert 'Licensed under GNU GENERAL PUBLIC LICENSE v3' in process.stdout, "License not found in output"
 
 
 

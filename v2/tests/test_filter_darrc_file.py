@@ -1,7 +1,5 @@
 import os
-import pytest
 import logging
-from pathlib import Path
 
 from dar_backup.dar_backup import filter_darrc_file
 from tests.envdata import EnvData

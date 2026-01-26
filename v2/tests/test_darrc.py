@@ -14,7 +14,7 @@ from tests.test_bitrot import generate_datafiles
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")
     test_files = {
-        f'dummy_FULL_.1.dar': 'dummy',
+        'dummy_FULL_.1.dar': 'dummy',
     }
     for filename, content in test_files.items():
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
@@ -89,7 +89,7 @@ def test_verify_filtering(setup_environment, env):
                     assert False, f"'{line}' filtered option found in filtered .darrc '{path_filtered_darrc}'"
 
     except:
-        env.logger.error(f"Failed to filter out options", exc_info=True)
+        env.logger.error("Failed to filter out options", exc_info=True)
         assert False
     finally:
         # Clean up

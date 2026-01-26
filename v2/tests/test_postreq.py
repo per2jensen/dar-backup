@@ -19,7 +19,7 @@ def delete_backups(env: EnvData):
             try:
                 os.remove(file_path)
                 env.logger.info(f"Removed: {file_path}")
-            except Exception as e:
+            except Exception:
                 pass
 
 def test_postreq(setup_environment, env):
@@ -52,7 +52,7 @@ def test_postreq(setup_environment, env):
         command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-stdout' ]
         process = runner.run(command)
         assert process.returncode != 0, "dar-backup must fail when a postreq command fails"    
-    except Exception as e:
+    except Exception:
         env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")
         assert False, "dar-backup must fail when a prereq command fails"
         

@@ -238,7 +238,7 @@ def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corrupti
     with open(img_file, 'r+b') as f:
         f.seek(1024)
         f.write(os.urandom(1024))
-    env.logger.info(f"[+] Superblock corrupted at offset 1024, size 1024 bytes.")
+    env.logger.info("[+] Superblock corrupted at offset 1024, size 1024 bytes.")
 
     with open(img_file, 'r+b') as f:
         f.seek(0, os.SEEK_END)

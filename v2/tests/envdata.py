@@ -4,7 +4,6 @@ import os
 
 from dataclasses import dataclass
 from datetime import datetime
-from dar_backup.util import setup_logging
 
 @dataclass
 class EnvData():

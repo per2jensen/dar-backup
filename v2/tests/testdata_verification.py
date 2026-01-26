@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from envdata import EnvData
 from dar_backup.command_runner import CommandRunner, CommandResult
-from tests.conftest import test_files
 
 
 def run_backup_script(type: str, env: EnvData) -> CommandResult:

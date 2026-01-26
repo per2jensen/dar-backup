@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 from pathlib import Path
 import os
 import sys
@@ -14,8 +14,7 @@ from dar_backup.dar_backup_systemd import (
     generate_cleanup_service,
     build_exec_command,
     enable_and_start_unit,
-    FLAGS,
-    TIMINGS
+    FLAGS
 )
 
 class TestDarBackupUnitGenerator(unittest.TestCase):

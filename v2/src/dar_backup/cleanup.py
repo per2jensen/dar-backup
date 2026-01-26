@@ -16,10 +16,8 @@ This script removes old DIFF and INCR archives + accompanying .par2 files accord
 
 import argcomplete
 import argparse
-import logging
 import os
 import re
-import subprocess
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -29,7 +27,7 @@ from inputimeout import inputimeout, TimeoutOccurred
 from pathlib import Path
 from sys import stderr
 from time import time
-from typing import Dict, List, NamedTuple, Tuple
+from typing import List, NamedTuple, Tuple
 import glob
 
 
@@ -147,7 +145,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                         safe_remove_file(file_path, base_dir=Path(backup_dir))
                         logger.info(f"Deleted {backup_type} backup: {file_path}")
                     archive_name = filename.split('.')[0]
-                    if not archive_name in archives_deleted:
+                    if archive_name not in archives_deleted:
                         logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
                     archives_deleted[archive_name] = True
                 except Exception as e:
@@ -209,7 +207,7 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
     """
     Call `manager.py` to delete the specified catalog in it's database
     """
-    command = [f"manager", "--remove-specific-archive", catalog_name, "--config-file", args.config_file, '--log-level', 'debug', '--log-stdout']
+    command = ["manager", "--remove-specific-archive", catalog_name, "--config-file", args.config_file, '--log-level', 'debug', '--log-stdout']
     logger.info(f"Deleting catalog '{catalog_name}' using config file: '{args.config_file}'")
     try:
         result:CommandResult = runner.run(command)
@@ -366,7 +364,7 @@ def main():
                 logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
                 sys.exit(1) 
             if  not os.path.isdir(args.alternate_archive_dir):
-                logger.error(f"Alternate archive directory is not a directory, exiting")
+                logger.error("Alternate archive directory is not a directory, exiting")
                 sys.exit(1) 
             config_settings.backup_dir = args.alternate_archive_dir
 

@@ -1,5 +1,3 @@
-import os
-import pytest
 from unittest.mock import MagicMock, patch, mock_open
 from types import SimpleNamespace
 from dar_backup.dar_backup import verify

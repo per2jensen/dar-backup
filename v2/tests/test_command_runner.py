@@ -2,9 +2,7 @@ import logging
 import tempfile
 import os
 import pytest
-import sys
 import re
-import tempfile
 import subprocess
 
 from dar_backup.command_runner import CommandRunner, CommandResult
@@ -126,7 +124,6 @@ def test_logger_fallback_warns_to_stderr():
 
 
 
-from dar_backup.command_runner import CommandRunner
 def test_command_runner_fallback_logger(monkeypatch):
     runner = CommandRunner(logger=None, command_logger=None)
     assert runner.logger is not None

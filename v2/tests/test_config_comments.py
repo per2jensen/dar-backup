@@ -1,7 +1,3 @@
-import pytest
-import os
-from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
 from dar_backup.config_settings import ConfigSettings
 
 def test_config_inline_comments(tmp_path):

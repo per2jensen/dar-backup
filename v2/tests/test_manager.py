@@ -6,7 +6,6 @@ import sys
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import re
-import dar_backup.config_settings
 import envdata
 import test_bitrot
 import tempfile
@@ -23,7 +22,7 @@ from envdata import EnvData
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 
 
@@ -182,7 +181,7 @@ def test_manager_create_dbs(setup_environment: None, env: EnvData):
 
     [is_catalog(element, config_settings, env) for element in backup_definitions]
 
-    env.logger.info(f"All generated backup definitions have catalog databases created")
+    env.logger.info("All generated backup definitions have catalog databases created")
 
 
 def is_catalog(generated_definition: Dict, config_settings: ConfigSettings, env: EnvData) -> bool:
@@ -466,9 +465,9 @@ def run_manager_adding(command: List[str], env: EnvData, generate: bool=True):
         raise Exception(f"Command failed: {command}")
 
     if not generate:
-        if not re.search(f"No 'dar' archives found in directory", stdout):
-            raise Exception(f"A note on no dar archives found should have been produced")
-        env.logger.info(f"OK: Notice on no dar archives found was emitted")
+        if not re.search("No 'dar' archives found in directory", stdout):
+            raise Exception("A note on no dar archives found should have been produced")
+        env.logger.info("OK: Notice on no dar archives found was emitted")
         return
 
 
@@ -528,7 +527,7 @@ def generate_test_data_and_full_backup(env: envdata.EnvData) -> Dict:
     if process.returncode != 0:
         print(f"dar stdout: {stdout}")
         print(f"dar stderr: {stderr}")
-        raise RuntimeError(f"dar-backup failed to create a full backup") 
+        raise RuntimeError("dar-backup failed to create a full backup") 
     return file_sizes
 
 
@@ -954,9 +953,6 @@ def test_add_specific_archive_failure(tmp_path):
 
 # =================00
 
-import pytest
-from types import SimpleNamespace
-from unittest.mock import patch
 from dar_backup.manager import add_specific_archive
 
 def test_add_specific_archive_unexpected_error(tmp_path):
@@ -978,10 +974,7 @@ def test_add_specific_archive_unexpected_error(tmp_path):
 
 
 
-import pytest
 from dar_backup.manager import main as manager_main
-import sys
-import os
 
 def test_list_archive_contents_arg(monkeypatch, tmp_path):
     """
@@ -1032,9 +1025,6 @@ ENABLED = true
 
 
 
-import pytest
-from dar_backup.manager import main as manager_main
-import sys
 
 def _test_list_archive_contents_arg(monkeypatch):
     test_args = ["manager", "--list-archive-contents", "1", "-d", "example", "--config-file", "dummy.conf"]
@@ -1044,8 +1034,6 @@ def _test_list_archive_contents_arg(monkeypatch):
 
 
 
-import pytest
-import sys
 from dar_backup import manager
 
 @pytest.mark.parametrize("cli_args, expected_error", [
@@ -1075,14 +1063,10 @@ def test_manager_sanity_checks_exit(setup_environment, env, monkeypatch, caplog,
 
 
 import pytest
-from unittest.mock import patch, MagicMock
-from dar_backup.manager import list_catalog_contents
 from dar_backup.config_settings import ConfigSettings  # Corrected import
 
 
-from unittest.mock import patch, MagicMock
 import pytest
-from dar_backup.manager import list_catalog_contents
 from dar_backup.config_settings import ConfigSettings
 
 @pytest.fixture
@@ -1669,7 +1653,6 @@ def test_manager_skips_existing_catalogs(env, setup_environment, tmp_path):
     """
     Test that manager skips existing catalog databases and only creates missing ones.
     """
-    import shutil
 
     valid_db_dir = tmp_path / "valid_db_dir"
     valid_db_dir.mkdir(parents=True, exist_ok=True)

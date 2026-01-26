@@ -1,7 +1,4 @@
 import logging
-import os
-import shutil
-from pathlib import Path
 from dar_backup.util import setup_logging
 
 def test_dual_logging_trace_suppression(tmp_path):

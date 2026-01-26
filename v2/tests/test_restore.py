@@ -5,16 +5,14 @@ modified: 2021-07-25 to be a pytest test
 see more restore tests/verifications in v2/tests/test_create_full_diff_incr_backup.py
 """
 
-import os
 import re
 import shutil
 import tempfile
 
-from tests.envdata import EnvData
 from tests.conftest import test_files
 from dar_backup.command_runner import CommandRunner
 from dar_backup.util import CommandResult
-from testdata_verification import verify_restore_contents, verify_backup_contents, run_backup_script 
+from testdata_verification import verify_restore_contents, run_backup_script 
 
 def test_restoredir_requires_value(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
@@ -22,7 +20,7 @@ def test_restoredir_requires_value(setup_environment, env):
     process = runner.run(command)
     env.logger.info(f"process.returncode={process.returncode}")
     if process.returncode == 0:
-        raise Exception(f'dar-backup must fail because value to --restore-dir is not given')
+        raise Exception('dar-backup must fail because value to --restore-dir is not given')
     else:
         stdout, stderr = process.stdout, process.stderr
         if not re.search('usage: dar-backup', stderr):
@@ -35,7 +33,7 @@ def test_restore_requires_value(setup_environment, env):
     process = runner.run(command)
     env.logger.info(f"process.returncode={process.returncode}")
     if process.returncode == 0:
-        raise Exception(f'dar-backup must fail because a value to --restore is not given')
+        raise Exception('dar-backup must fail because a value to --restore is not given')
     else:
         stdout, stderr = process.stdout, process.stderr
         if not re.search('usage: dar-backup', stderr):

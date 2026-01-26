@@ -1,11 +1,9 @@
 import os
 import pytest
-import configparser
-import re
 
 
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import logging
 
 from pathlib import Path
@@ -112,7 +110,6 @@ def test_list_archive_completer_all_archives(tmp_path,setup_environment, env):
 
 
 def test_archive_content_completer_with_mocked_db(setup_environment, env):
-    from dar_backup.util import archive_content_completer
     from types import SimpleNamespace
     from unittest.mock import patch
 
@@ -155,7 +152,6 @@ def test_archive_content_completer_with_mocked_db(setup_environment, env):
     
 
 def test_archive_content_completer_global_prefix_match(tmp_path):
-    from dar_backup.util import archive_content_completer
 
     # -- 1. Create dummy config file with required sections
     dummy_config = tmp_path / "dummy.conf"
@@ -222,7 +218,6 @@ ENABLED = false
 
 
 def test_archive_content_completer_sorting(tmp_path):
-    from dar_backup.util import archive_content_completer
     from types import SimpleNamespace
     from unittest.mock import patch
 
@@ -279,9 +274,6 @@ ENABLED = false
 
     assert result == expected_order
 
-import os
-import shutil
-import subprocess
 import unittest.mock
 from dar_backup.util import add_specific_archive_completer
 

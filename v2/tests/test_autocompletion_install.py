@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 import pytest
 from dar_backup.installer import install_autocompletion, uninstall_autocompletion
 

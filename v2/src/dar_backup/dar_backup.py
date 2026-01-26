@@ -27,12 +27,10 @@ import xml.etree.ElementTree as ET
 import tempfile
 import threading
 
-from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 from sys import exit
 from sys import stderr
-from sys import argv
 from sys import version_info
 from time import time
 from rich.console import Console
@@ -54,14 +52,11 @@ from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
-from dar_backup.util import print_debug
 from dar_backup.util import send_discord_message
 
 from dar_backup.command_runner import CommandRunner   
-from dar_backup.command_runner import CommandResult
 
 
-from argcomplete.completers import FilesCompleter
 
 logger = None
 runner = None
@@ -126,7 +121,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during backup")
+        logger.exception("Unexpected error during backup")
         raise BackupError(f"Unexpected error during backup: {e}") from e
     
 
@@ -433,7 +428,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
         except PermissionError:
             result = False
-            logger.exception(f"Permission error while comparing files, continuing....")
+            logger.exception("Permission error while comparing files, continuing....")
             logger.error("Exception details:", exc_info=True)
         except FileNotFoundError as exc:
             result = False

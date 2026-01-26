@@ -1,7 +1,5 @@
 import pytest
-import subprocess
-import io
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 from dar_backup.dar_backup import generic_backup
 from dar_backup.config_settings import ConfigSettings
 from tests.envdata import EnvData

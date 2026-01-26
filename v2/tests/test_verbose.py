@@ -1,5 +1,4 @@
 # modified: 2021-07-25 to be a pytest test
-import importlib
 import re
 import sys
 import os
@@ -15,7 +14,7 @@ from dar_backup.command_runner import CommandRunner
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")
     test_files = {
-        f'dummy_FULL_.1.dar': 'dummy',
+        'dummy_FULL_.1.dar': 'dummy',
     }
     for filename, content in test_files.items():
         with open(os.path.join(env.test_dir, 'backups', filename), 'w') as f:
@@ -90,6 +89,6 @@ def test_verbose_error_reporting(setup_environment, env):
         assert process.returncode != 0
         assert "CalledProcessError(127, 'command-does-not-exist /tmp')" in process.stdout
 
-    except Exception as e:
+    except Exception:
         env.logger.exception("Expected exception: dar-backup must fail when a prereq command fails")
         assert True

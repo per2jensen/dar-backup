@@ -14,7 +14,6 @@ from configparser import ConfigParser, NoSectionError
 from dar_backup.util import setup_logging
 from datetime import datetime
 from tests.envdata import EnvData
-from dar_backup.util import setup_logging
 from dar_backup.command_runner import CommandRunner
 from dar_backup.util import get_logger as get_command_logger
 
@@ -112,7 +111,7 @@ def setup_environment(request, logger):
     # Create the directories as described in the template config file
     try:
         create_directories_from_template(env)
-    except Exception as e:
+    except Exception:
         env.logger.exception("Failed to create directories from template")
         raise
 
@@ -121,7 +120,7 @@ def setup_environment(request, logger):
     # Put .darrc in test directory
     try:
         copy_dar_rc(env)
-    except Exception as e:
+    except Exception:
         env.logger.exception("Failed to copy .darrc to test directory")
         raise
     
@@ -147,7 +146,7 @@ def setup_environment(request, logger):
     try:
         teardown_environment(env)
         pass
-    except Exception as e:
+    except Exception:
         env.logger.exception("Failed to tear down environment")
 
 
@@ -269,7 +268,7 @@ def teardown_environment(env: EnvData):
         if os.path.exists(normalized_path):
             shutil.rmtree(normalized_path)
 
-    except Exception as e:
+    except Exception:
         env.logger.exception("Failed to clean up environment")
         raise
 
