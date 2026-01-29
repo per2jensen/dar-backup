@@ -1,6 +1,16 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.1.0 - not released
+
+### Added
+
+- Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can’t resolve a dated restore.
+
+### Changed
+
+- [Snyk]  An XML parsing function now strips DTD to avoid a class of XXE vulnerabilities
+
 ## v2-1.0.2 - 2026-01-25
 
 ### Added

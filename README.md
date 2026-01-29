@@ -72,6 +72,7 @@ Version **1.0.0** was reached on October 9, 2025.
     - [a single file](#a-single-file)
     - [a directory](#a-directory)
     - [.NEF from a specific date](#nef-from-a-specific-date)
+    - [Point-in-Time Recovery (PITR)](#point-in-time-recovery-pitr)
     - [restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
     - [restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
   - [Par2](#par2)
@@ -1266,6 +1267,27 @@ Filtering:
 dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/user/tmp/LUT-play"
 deactivate
 ```
+
+### Point-in-Time Recovery (PITR)
+
+Use the `manager` CLI to restore files as they existed at a specific time:
+
+```bash
+. <the virtual env>/bin/activate
+manager --config-file <dar-backup.conf> \
+  --backup-def <definition> \
+  --restore-path tmp/path/to/file.txt \
+  --when "2026-01-29 15:00:39" \
+  --target /tmp/restore_pitr \
+  --log-stdout --verbose
+deactivate
+```
+
+Notes:
+- `--restore-path` must be a relative path as stored in the catalog (no leading slash).
+- `--target` is required to avoid accidental restores into the current working directory.
+- Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
+- If `dar_manager -w` cannot restore a file at the requested time, the manager will fall back to a best-match archive and log the approximation (and can send a short Discord notice if configured).
 
 ### restore test fails with exit code 4
 
