@@ -159,12 +159,37 @@ def find_files_with_paths(xml_doc: str):
     return files_list
 
 
+class DoctypeStripper:
+    """
+    File-like wrapper that strips DOCTYPE lines to prevent XXE.
+    """
+    def __init__(self, path):
+        self.f = open(path, "r", encoding="utf-8")
+        self.buf = ""
+    def read(self, n=-1):
+        if n is None or n < 0:
+            out = []
+            for line in self.f:
+                if "<!DOCTYPE" not in line:
+                    out.append(line)
+            return "".join(out)
+        while len(self.buf) < n:
+            line = self.f.readline()
+            if not line:
+                break
+            if "<!DOCTYPE" not in line:
+                self.buf += line
+        result, self.buf = self.buf[:n], self.buf[n:]
+        return result
+
+
 def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
     """
     Stream file paths and sizes from a DAR XML listing to keep memory usage low.
     """
     path_stack: List[str] = []
-    context = ET.iterparse(xml_path, events=("start", "end"))
+    # Disable XXE by stripping DOCTYPE
+    context = ET.iterparse(DoctypeStripper(xml_path), events=("start", "end"))
     for event, elem in context:
         if event == "start" and elem.tag == "Directory":
             dir_name = elem.get("name")
