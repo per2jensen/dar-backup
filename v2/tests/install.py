@@ -5,7 +5,6 @@ Install dar-backup.py parallel to the bash version
 """
 import os
 import shutil
-import logging
 
 INSTALL_DIR = os.path.expanduser(os.path.expandvars('~/programmer/dar-backup.py'))
 ARCHIVES_DIR = os.path.join(INSTALL_DIR, 'archives')

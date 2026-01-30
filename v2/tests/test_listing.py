@@ -13,13 +13,13 @@ from dar_backup.command_runner import CommandRunner
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")
     test_files = {
-        f'example_FULL_.1.dar': 'dummy',
-        f'example.1.dar': 'dummy',
-        f'example_DIFF_199_01-01.1.dar': 'dummy',
-        f'example.txt': 'dummy',
-        f'example_FULL_2024-07-25.1.dar': 'dummy',
-        f'example_DIFF_2024-07-25.1.dar': 'dummy',
-        f'example_INCR_2024-07-25.1.dar': 'dummy',
+        'example_FULL_.1.dar': 'dummy',
+        'example.1.dar': 'dummy',
+        'example_DIFF_199_01-01.1.dar': 'dummy',
+        'example.txt': 'dummy',
+        'example_FULL_2024-07-25.1.dar': 'dummy',
+        'example_DIFF_2024-07-25.1.dar': 'dummy',
+        'example_INCR_2024-07-25.1.dar': 'dummy',
 
     }
     for filename, content in test_files.items():

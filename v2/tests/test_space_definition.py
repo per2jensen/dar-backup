@@ -6,7 +6,6 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from tests.envdata import EnvData
-from datetime import datetime
 from dar_backup.command_runner import CommandRunner
 
 
@@ -34,7 +33,7 @@ def generate_datafiles(env: EnvData) -> None:
         # Create files
         for name, size in env.file_sizes.items():
             create_random_data_file(env, name, size)
-    except Exception as e:
+    except Exception:
         env.logger.exception("data file generation failed")
         raise
 

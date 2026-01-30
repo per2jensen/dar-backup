@@ -10,7 +10,6 @@ from dar_backup.util import expand_path
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import dar_backup.installer as installer

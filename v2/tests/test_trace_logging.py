@@ -1,9 +1,7 @@
 import logging
 import os
-import shutil
 import tempfile
-import pytest
-from dar_backup.util import setup_logging, get_logger
+from dar_backup.util import setup_logging
 from dar_backup.command_runner import CommandRunner
 
 def test_trace_logging_captures_all_levels_and_commands():

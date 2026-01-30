@@ -1,5 +1,4 @@
 import os
-import shutil
 import pytest
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace

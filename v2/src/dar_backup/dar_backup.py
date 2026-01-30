@@ -27,12 +27,10 @@ import xml.etree.ElementTree as ET
 import tempfile
 import threading
 
-from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 from sys import exit
 from sys import stderr
-from sys import argv
 from sys import version_info
 from time import time
 from rich.console import Console
@@ -54,14 +52,11 @@ from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
-from dar_backup.util import print_debug
 from dar_backup.util import send_discord_message
 
 from dar_backup.command_runner import CommandRunner   
-from dar_backup.command_runner import CommandResult
 
 
-from argcomplete.completers import FilesCompleter
 
 logger = None
 runner = None
@@ -126,7 +121,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
-        logger.exception(f"Unexpected error during backup")
+        logger.exception("Unexpected error during backup")
         raise BackupError(f"Unexpected error during backup: {e}") from e
     
 
@@ -164,12 +159,37 @@ def find_files_with_paths(xml_doc: str):
     return files_list
 
 
+class DoctypeStripper:
+    """
+    File-like wrapper that strips DOCTYPE lines to prevent XXE.
+    """
+    def __init__(self, path):
+        self.f = open(path, "r", encoding="utf-8")
+        self.buf = ""
+    def read(self, n=-1):
+        if n is None or n < 0:
+            out = []
+            for line in self.f:
+                if "<!DOCTYPE" not in line:
+                    out.append(line)
+            return "".join(out)
+        while len(self.buf) < n:
+            line = self.f.readline()
+            if not line:
+                break
+            if "<!DOCTYPE" not in line:
+                self.buf += line
+        result, self.buf = self.buf[:n], self.buf[n:]
+        return result
+
+
 def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
     """
     Stream file paths and sizes from a DAR XML listing to keep memory usage low.
     """
     path_stack: List[str] = []
-    context = ET.iterparse(xml_path, events=("start", "end"))
+    # Disable XXE by stripping DOCTYPE
+    context = ET.iterparse(DoctypeStripper(xml_path), events=("start", "end"))
     for event, elem in context:
         if event == "start" and elem.tag == "Directory":
             dir_name = elem.get("name")
@@ -433,7 +453,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
         except PermissionError:
             result = False
-            logger.exception(f"Permission error while comparing files, continuing....")
+            logger.exception("Permission error while comparing files, continuing....")
             logger.error("Exception details:", exc_info=True)
         except FileNotFoundError as exc:
             result = False
@@ -1118,7 +1138,8 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
 def filter_darrc_file(darrc_path):
     """
     Filters the .darrc file to remove lines containing the options: -vt, -vs, -vd, -vf, and -va.
-    The filtered version is stored in a uniquely named file in the home directory of the user running the script.
+    The filtered version is stored in a uniquely named file alongside the source .darrc
+    (or a writable temp directory if needed).
     The file permissions are set to 440.
     
     Params:
@@ -1133,29 +1154,36 @@ def filter_darrc_file(darrc_path):
     # Define options to filter out
     options_to_remove = {"-vt", "-vs", "-vd", "-vf", "-va"}
 
-    # Get the user's home directory
-    home_dir = os.path.expanduser("~")
+    candidate_dirs = [
+        os.path.dirname(os.path.abspath(darrc_path)),
+        os.path.expanduser("~"),
+        tempfile.gettempdir(),
+    ]
+    last_error = None
 
-    # Create a unique file name in the home directory
-    filtered_darrc_path = os.path.join(home_dir, f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc")
+    for candidate_dir in candidate_dirs:
+        filtered_darrc_path = os.path.join(
+            candidate_dir,
+            f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc",
+        )
+        try:
+            with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
+                for line in infile:
+                    # Check if any unwanted option is in the line
+                    if not any(option in line for option in options_to_remove):
+                        outfile.write(line)
 
-    try:
-        with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
-            for line in infile:
-                # Check if any unwanted option is in the line
-                if not any(option in line for option in options_to_remove):
-                    outfile.write(line)
-        
-        # Set file permissions to 440 (read-only for owner and group, no permissions for others)
-        os.chmod(filtered_darrc_path, 0o440)
+            # Set file permissions to 440 (read-only for owner and group, no permissions for others)
+            os.chmod(filtered_darrc_path, 0o440)
 
-        return filtered_darrc_path
+            return filtered_darrc_path
 
-    except Exception as e:
-        # If anything goes wrong, clean up the temp file if it was created
-        if os.path.exists(filtered_darrc_path):
-            os.remove(filtered_darrc_path)
-        raise RuntimeError(f"Error filtering .darrc file: {e}")
+        except Exception as e:
+            last_error = e
+            if os.path.exists(filtered_darrc_path):
+                os.remove(filtered_darrc_path)
+
+    raise RuntimeError(f"Error filtering .darrc file: {last_error}")
 
 
 
@@ -1474,6 +1502,8 @@ def main():
     clean_restore_test_directory(config_settings)
 
 
+    filtered_darrc_path = None
+
     try:
         if not args.darrc:
             current_script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1488,7 +1518,8 @@ def main():
 
         if args.suppress_dar_msg:
             logger.info("Suppressing dar messages, do not use options: -vt, -vs, -vd, -vf, -va")
-            args.darrc = filter_darrc_file(args.darrc)
+            filtered_darrc_path = filter_darrc_file(args.darrc)
+            args.darrc = filtered_darrc_path
             logger.debug(f"Filtered .darrc file: {args.darrc}")
 
         start_msgs: List[Tuple[str, str]] = []
@@ -1611,10 +1642,9 @@ def main():
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
         # Clean up
-        if os.path.exists(args.darrc) and (os.path.dirname(args.darrc) == os.path.expanduser("~")):
-            if os.path.basename(args.darrc).startswith("filtered_darrc_"):
-                if os.remove(args.darrc):
-                    logger.debug(f"Removed filtered .darrc: {args.darrc}")
+        if filtered_darrc_path and os.path.exists(filtered_darrc_path):
+            os.remove(filtered_darrc_path)
+            logger.debug(f"Removed filtered .darrc: {filtered_darrc_path}")
 
 
     # Determine exit code 

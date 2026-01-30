@@ -11,7 +11,6 @@ See section 15 and section 16 in the supplied "LICENSE" file
 """
 import typing
 import locale
-import configparser
 import inspect
 import logging
 import json
@@ -31,9 +30,7 @@ import dar_backup.__about__ as about
 
 
 
-from argcomplete.completers import ChoicesCompleter
 from datetime import datetime, date
-from datetime import date 
 from dar_backup.config_settings import ConfigSettings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -177,7 +174,7 @@ def setup_logging(
             logger.addHandler(stdout_handler)
 
         return logger
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         sys.exit(1)
 
@@ -421,7 +418,7 @@ def requirements(type: str, config_setting: ConfigSettings):
     """
     
     if type is None or config_setting is None:
-        raise RuntimeError(f"requirements: 'type' or config_setting is None")
+        raise RuntimeError("requirements: 'type' or config_setting is None")
 
     allowed_types = ['PREREQ', 'POSTREQ'] 
     if type not in allowed_types:
@@ -760,9 +757,7 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
     try:
         from dar_backup.config_settings import ConfigSettings
         import subprocess
-        import re
         import os
-        from datetime import datetime
 
         # Expand config path
         config_file = get_config_file(parsed_args)
@@ -821,7 +816,6 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         import subprocess
         import re
         import os
-        from datetime import datetime
 
         config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file=config_file)

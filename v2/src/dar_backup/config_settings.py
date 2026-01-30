@@ -4,7 +4,6 @@ import configparser
 import re
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
-from pathlib import Path
 from typing import Optional, Pattern
 
 from dar_backup.exceptions import ConfigSettingsError

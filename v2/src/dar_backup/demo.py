@@ -19,7 +19,6 @@ User can set ROOT_DIR, DIR_TO_BACKUP and BACKUP_DIR (destination for backups) vi
 
 import argparse
 import os
-import shutil
 import sys 
 
 from . import __about__ as about
@@ -201,7 +200,7 @@ def main():
         Path(vars_map["TEST_RESTORE_DIR"]).mkdir(parents=True, exist_ok=True)
         Path(vars_map["CONFIG_DIR"]).mkdir(parents=True, exist_ok=True)
         Path(vars_map["BACKUP_D_DIR"]).mkdir(parents=True, exist_ok=True)
-        print(f"Directories created.")
+        print("Directories created.")
 
         generate_file(args, "demo_backup_def.j2", Path(vars_map["BACKUP_D_DIR"]).joinpath("demo"), vars_map, opts_dict)
         generate_file(args, "dar-backup.conf.j2", Path(vars_map["CONFIG_DIR"]).joinpath("dar-backup.conf"), vars_map, opts_dict)

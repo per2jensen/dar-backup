@@ -1,4 +1,3 @@
-import os
 from configparser import ConfigParser
 
 from dar_backup.config_settings import ConfigSettings

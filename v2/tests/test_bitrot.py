@@ -40,7 +40,7 @@ def generate_datafiles(env: EnvData, file_sizes: dict) -> None:
         # Create files
         for name, size in file_sizes.items():
             create_random_data_file(env, name, size)
-    except Exception as e:
+    except Exception:
         env.logger.exception("data file generation failed")
         raise
 
@@ -129,7 +129,7 @@ def check_bitrot_recovery(env: EnvData, command_timeout: int):
             for keyword in ("crc", "error", "corrupt", "checksum")
         ), "Expected bitrot error not found in stderr"
         logging.info("dar detected archive corruption as expected.")
-    except AssertionError as ae:
+    except AssertionError:
         logging.exception("Bitrot was not detected as expected")
         sys.exit(1)
 
@@ -201,7 +201,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     logging.info(f"stderr:\n{process.stderr}")
     stdout,stderr = process.stdout, process.stderr
     if process.returncode != 0:
-        raise RuntimeError(f"dar-backup failed to create a full backup")
+        raise RuntimeError("dar-backup failed to create a full backup")
     
     command = ['ls', '-hl', os.path.join(env.test_dir, 'backups')]
     stdout,stderr = process.stdout, process.stderr
@@ -209,7 +209,7 @@ def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
     logging.info(f"stdout:\n{process.stdout}")
     logging.info(f"stderr:\n{process.stderr}")
     if process.returncode != 0:
-        raise RuntimeError(f"dar-backup failed to create a full backup")
+        raise RuntimeError("dar-backup failed to create a full backup")
 
     simulate_bitrot(env, redundancy_percentage)
     check_bitrot_recovery(env, command_timeout)

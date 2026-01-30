@@ -1,9 +1,6 @@
 # modified: 2021-07-25 to be a pytest test
-import glob
-import importlib
 import os
 import pytest
-import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +34,8 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
     env.logger.info(f"LOGFILE_LOCATION: {LOGFILE_LOCATION}")
     config_path = os.path.join(env.test_dir, env.config_file)
     env.logger.info(f"config file path: {config_path}")
+    original_home = os.environ.get("HOME")
+    os.environ["HOME"] = env.test_dir
     with open(config_path, 'r') as f:
         lines = f.readlines()
     with open(config_path, 'w') as f:
@@ -46,6 +45,10 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
             else:
                 f.write(line)
     yield {'LOGFILE_LOCATION': LOGFILE_LOCATION}
+    if original_home is None:
+        os.environ.pop("HOME", None)
+    else:
+        os.environ["HOME"] = original_home
     if os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
         os.remove(os.path.expanduser(LOGFILE_LOCATION))
         env.logger.info(f"Removed: {LOGFILE_LOCATION}")
@@ -116,7 +119,7 @@ def _test_env_vars_in_backup_definition(setup_environment, env: EnvData):
 
     # Create the backup definition content
     # Use shell-style environment variable references ($VAR or ${VAR})
-    backup_definition = f"""
+    backup_definition = """
 -R "$TEST_ROOT"
 -s 10G
 -z6
@@ -468,10 +471,8 @@ def setup_env(env: EnvData):
     """Auto-use the env fixture to prepare environment."""
     pass
 
-import io
 import sys
 import pytest
-from dar_backup.util import print_aligned_settings
 from tests.envdata import EnvData
 
 def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
@@ -534,7 +535,6 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
 
 
 # Custom RotatingFileHandler that announces rotation
-import logging
 from logging.handlers import RotatingFileHandler
 
 class AnnounceRotatingFileHandler(RotatingFileHandler):

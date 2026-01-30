@@ -4,14 +4,11 @@ import logging
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from pathlib import Path
 from datetime import timedelta
 from datetime import datetime
 from dar_backup.command_runner import CommandRunner
-from tests.envdata import EnvData
 from unittest.mock import MagicMock
 from dar_backup.util import requirements
-from typing import NamedTuple
 
 import pytest
 from dar_backup.cleanup import confirm_full_archive_deletion
@@ -93,9 +90,9 @@ def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
     process = runner.run(command)
     env.logger.debug(f"return code from 'db created': {process.returncode}")
     if process.returncode == 0:
-        env.logger.info(f'Database created')
+        env.logger.info('Database created')
     else:
-        env.logger.error(f'Something went wrong creating the database')
+        env.logger.error('Something went wrong creating the database')
         stdout, stderr = process.stdout, process.stderr 
         env.logger.error(f"stderr: {stderr}")
         env.logger.error(f"stdout: {stdout}")
@@ -304,7 +301,7 @@ def _test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatc
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
-            f'example_FULL_1970-01-01.1.dar': 'dummy'
+            'example_FULL_1970-01-01.1.dar': 'dummy'
         }
 
     for filename, content in test_files.items():
@@ -317,7 +314,7 @@ def _test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatc
     result = subprocess.run(command, text=True, capture_output=True, timeout=1)
     env.logger.info(result.stdout)
 
-    assert "User did not answer 'yes' to confirm deletion of FULL archive: " in result.stdout, f"Expected confirmation message not found in stdout"
+    assert "User did not answer 'yes' to confirm deletion of FULL archive: " in result.stdout, "Expected confirmation message not found in stdout"
     assert result.returncode == 0, f"Cleanup script failed with return code {result.returncode}"
     assert os.path.exists(os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')), f"File {os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')} was deleted"
 
@@ -325,8 +322,8 @@ def _test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatc
 def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
-            f'example_FULL_1970-01-01.1.dar': 'dummy',
-            f'example_FULL_1970-01-01.1.dar.par2': 'dummy',
+            'example_FULL_1970-01-01.1.dar': 'dummy',
+            'example_FULL_1970-01-01.1.dar.par2': 'dummy',
         }
 
     for filename, content in test_files.items():
@@ -339,7 +336,7 @@ def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
     result = subprocess.run(command, text=True, capture_output=True, timeout=30)
     env.logger.info(result.stdout)
 
-    assert result.returncode == 0, f"Cleanup script failed to delete the FULL archive"
+    assert result.returncode == 0, "Cleanup script failed to delete the FULL archive"
     for file in test_files:
         assert not os.path.exists(os.path.join(env.test_dir, 'backups', file)), f"File {os.path.join(env.test_dir, 'backups', file)} was not deleted"
     
@@ -438,7 +435,6 @@ def test_cleanup_confirmation_timeout(monkeypatch, caplog):
 
 
 
-import logging
 
 def test_cleanup_confirmation_timeout(monkeypatch, caplog):
     monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01"])
@@ -682,7 +678,6 @@ def test_postreq_script_failure(monkeypatch, env, caplog):
     assert "mocked failure" in caplog.text
 
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import patch
 from dar_backup.cleanup import delete_catalog

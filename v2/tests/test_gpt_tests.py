@@ -4,12 +4,8 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import shutil
-import re
-import random
 from pathlib import Path
 from dar_backup.command_runner import CommandRunner
-from dar_backup.command_runner import CommandResult
-from tests.envdata import EnvData
 from tests.conftest import test_files
 from testdata_verification import (
     verify_backup_contents, 
@@ -40,7 +36,7 @@ def test_restore_functionality(setup_environment, env):
         # Verify restored content
         verify_restore_contents(test_files, backup_name, env)
         env.logger.info("Restore verification succeeded")
-    except Exception as e:
+    except Exception:
         env.logger.exception("Restore functionality test failed")
         pytest.fail("Restore test encountered an exception")
 
@@ -56,7 +52,7 @@ def test_invalid_backup_handling(setup_environment, env):
         
         assert result.returncode != 0, "Expected failure on restoring nonexistent backup"
         env.logger.info("Handled invalid backup correctly")
-    except Exception as e:
+    except Exception:
         env.logger.exception("Invalid backup handling test failed")
         pytest.fail("Invalid backup test encountered an exception")
 
@@ -76,7 +72,7 @@ def test_backup_with_large_files(setup_environment, env):
         backup_name = f"example_FULL_{env.datestamp}"
         verify_backup_contents(['data/large_file.bin'], backup_name, env)
         env.logger.info("Backup with large files verification succeeded")
-    except Exception as e:
+    except Exception:
         env.logger.exception("Large file backup test failed")
         pytest.fail("Large file backup test encountered an exception")
 
@@ -115,7 +111,7 @@ def test_par2_repair_bit_rot(setup_environment, env):
         assert result.returncode == 0, "Restore failed after PAR2 repair!"
         
         env.logger.info("PAR2 successfully repaired bit rot corruption using dar-backup's generated files")
-    except Exception as e:
+    except Exception:
         env.logger.exception("PAR2 repair test failed")
         pytest.fail("PAR2 repair test encountered an exception")
 
@@ -155,7 +151,7 @@ def test_par2_insufficient_redundancy(setup_environment, env):
         assert result.returncode != 0, "PAR2 unexpectedly succeeded despite excessive corruption!"
         
         env.logger.info("PAR2 correctly failed due to insufficient redundancy")
-    except Exception as e:
+    except Exception:
         env.logger.exception("PAR2 excessive corruption test failed")
         pytest.fail("PAR2 excessive corruption test encountered an exception")
 
@@ -181,7 +177,7 @@ def test_extreme_restore_failure(setup_environment, env):
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite extreme corruption!"
         env.logger.info("dar correctly failed due to extreme corruption")
-    except Exception as e:
+    except Exception:
         env.logger.exception("Extreme restore failure test failed")
         pytest.fail("Extreme restore failure test encountered an exception")
 
@@ -207,6 +203,6 @@ def test_metadata_corruption_failure(setup_environment, env):
         
         assert result.returncode != 0, "dar unexpectedly succeeded despite metadata corruption!"
         env.logger.info("dar correctly failed due to metadata corruption")
-    except Exception as e:
+    except Exception:
         env.logger.exception("Metadata corruption failure test failed")
         pytest.fail("Metadata corruption failure test encountered an exception")

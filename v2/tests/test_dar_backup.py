@@ -5,11 +5,10 @@ from types import SimpleNamespace
 from dar_backup.util import BackupError
 from dar_backup.dar_backup import verify
 import dar_backup.dar_backup as db
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open
 import subprocess
 from datetime import datetime
 from dar_backup.dar_backup import restore_backup, RestoreError
-import dar_backup.dar_backup as db
 from pathlib import Path 
 
 
@@ -123,9 +122,6 @@ def test_verify_missing_source_file_logs_warning(env):
 
 
 
-from unittest.mock import patch, MagicMock
-from types import SimpleNamespace
-from dar_backup.dar_backup import verify
 
 def test_verify_do_not_compare_skips_verification(env):
     """Verify that --do-not-compare skips file comparison and exits cleanly."""
@@ -202,7 +198,6 @@ def test_verify_success_path_with_verbose_logging(env):
 
 
 
-from types import SimpleNamespace
 from dar_backup.dar_backup import perform_backup
 
 def test_perform_backup_skips_definition_with_underscore_in_args(env):
@@ -245,8 +240,6 @@ def test_perform_backup_skips_files_with_underscore_in_directory(env):
 
 
 
-from types import SimpleNamespace
-from dar_backup.dar_backup import perform_backup
 
 def test_perform_backup_skips_diff_when_no_base_backup(env):
     args = SimpleNamespace(
@@ -458,7 +451,6 @@ def test_list_contents_handles_nonzero_returncode(env):
     mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
 
 
-import subprocess
 
 def test_list_contents_raises_backup_error_on_called_process_error(env):
     backup_name = "error_backup"
@@ -625,11 +617,6 @@ def test_catalog_add_failure_handled(env):
 
 
 
-import pytest
-from types import SimpleNamespace
-from unittest.mock import patch, mock_open
-from dar_backup.dar_backup import verify
-from dar_backup.util import BackupError
 
 def test_verify_raises_error_if_no_root_path(env):
     """
@@ -685,7 +672,6 @@ def test_restore_backup_raises_if_restore_dir_none(tmp_path):
 
 
 
-import subprocess
 import sys
 
 def test_main_fails_when_definition_file_missing(tmp_path):
@@ -733,10 +719,6 @@ def test_main_fails_when_definition_file_missing(tmp_path):
     assert result.returncode == 127
 
 
-import pytest
-from unittest.mock import patch, MagicMock
-from types import SimpleNamespace
-from pathlib import Path
 
 def test_main_defensive_check_invalid_result_format(env, setup_environment):
     from dar_backup.dar_backup import main
@@ -803,7 +785,6 @@ def test_test_restore_cli(monkeypatch):
 
 
 
-from types import SimpleNamespace
 from dar_backup.dar_backup import find_files_between_min_and_max_size
 
 def test_find_files_within_min_max_range(env):
@@ -935,14 +916,7 @@ def test_restoretest_filters_and_verifies_all_good_files(env):
 
 
 # tests/test_dar_backup.py
-import os
-import pytest
-import subprocess
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
-import dar_backup.dar_backup as db
-from dar_backup.util import BackupError
 
 
 # 1) generic_backup(): inner try/except when runner raises a generic Exception

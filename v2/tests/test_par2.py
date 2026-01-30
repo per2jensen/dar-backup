@@ -3,7 +3,6 @@ import re
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
@@ -39,7 +38,7 @@ def generate_datafiles(env: EnvData, file_sizes: dict) -> None:
         # Create files
         for name, size in file_sizes.items():
             create_random_data_file(env, name, size)
-    except Exception as e:
+    except Exception:
         env.logger.exception("data file generation failed")
         raise
 
@@ -100,7 +99,7 @@ def test_ordered_by_slicenumber(setup_environment, env):
     slice_pattern = re.compile(r'\.(\d+)\.dar(?:\s|$)')
     slice_numbers = [int(num) for num in slice_pattern.findall(par2_command_lines[0])]
     assert slice_numbers, f"No slice numbers found in par2 command: {par2_command_lines[0]}"
-    assert len(slice_numbers) > 0, f"There must at least be 1 dar slice, got 0"
+    assert len(slice_numbers) > 0, "There must at least be 1 dar slice, got 0"
 
     # Verify that slice numbers are in increasing order
     assert slice_numbers == sorted(slice_numbers), f"Slices are not processed in order: {slice_numbers}"

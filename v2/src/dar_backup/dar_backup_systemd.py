@@ -100,7 +100,7 @@ def write_unit_files(venv, dar_path, install=False):
 
     write_unit_file(output_path, "dar-cleanup.service", generate_cleanup_service(venv, dar_path))
     write_unit_file(output_path, "dar-cleanup.timer", CLEANUP_TIMER)
-    print(f"  → Fires on: *-*-* 21:07:00")
+    print("  → Fires on: *-*-* 21:07:00")
 
     if install:
         for mode in FLAGS:
