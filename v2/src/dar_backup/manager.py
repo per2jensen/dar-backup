@@ -1279,6 +1279,7 @@ def main():
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
+        default_timeout=getattr(config_settings, "command_timeout_secs", 30) or 30,
         default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
     )
 
