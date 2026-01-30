@@ -24,6 +24,17 @@ You can see the [v2 Changelog](v2/Changelog.md) for details on features and prog
 
 Version **1.0.0** was reached on October 9, 2025.
 
+**High-level flow**
+
+[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](#dar-backup-principles)
+
+**Quick links**
+
+- [Quick Guide](#quick-guide)
+- [Redundancy to fix bitrot](#par2)
+- [Point In Time Recovery](#point-in-time-recovery-pitr)
+
+
 ## Table of Contents
 
 - [`dar-backup`](#dar-backup)
