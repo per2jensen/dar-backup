@@ -630,6 +630,74 @@ def _parse_archive_map(list_output: str) -> Dict[int, str]:
     return archives
 
 
+def _parse_archive_info(archive_map: Dict[int, str]) -> List[Tuple[int, datetime, str]]:
+    info: List[Tuple[int, datetime, str]] = []
+    pattern = re.compile(r"^(.*)_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})(?:_(\d{6}))?(?:_.*)?$")
+    for catalog_no, path in archive_map.items():
+        base = os.path.basename(path)
+        match = pattern.match(base)
+        if not match:
+            continue
+        _, archive_type, date_str, time_str = match.groups()
+        try:
+            if time_str:
+                archive_date = datetime.strptime(f"{date_str}_{time_str}", "%Y-%m-%d_%H%M%S")
+            else:
+                archive_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            continue
+        info.append((catalog_no, archive_date, archive_type))
+    return info
+
+
+def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt: datetime) -> List[int]:
+    order = {"FULL": 0, "DIFF": 1, "INCR": 2}
+    candidates = [
+        (catalog_no, date, archive_type)
+        for catalog_no, date, archive_type in archive_info
+        if date <= when_dt
+    ]
+    candidates.sort(key=lambda item: (item[1], order.get(item[2], 99), item[0]))
+    last_full = None
+    last_full_key = None
+    for catalog_no, date, archive_type in candidates:
+        if archive_type == "FULL":
+            last_full = catalog_no
+            last_full_key = (date, order["FULL"], catalog_no)
+    if last_full is None:
+        return []
+
+    last_diff = None
+    last_diff_key = None
+    for catalog_no, date, archive_type in candidates:
+        key = (date, order.get(archive_type, 99), catalog_no)
+        if key <= last_full_key:
+            continue
+        if archive_type == "DIFF":
+            last_diff = catalog_no
+            last_diff_key = key
+
+    base_key = last_diff_key or last_full_key
+    last_incr = None
+    for catalog_no, date, archive_type in candidates:
+        key = (date, order.get(archive_type, 99), catalog_no)
+        if key <= base_key:
+            continue
+        if archive_type == "INCR":
+            last_incr = catalog_no
+
+    chain = [last_full]
+    if last_diff is not None:
+        chain.append(last_diff)
+    if last_incr is not None:
+        chain.append(last_incr)
+    return chain
+
+
+def _is_directory_path(path: str) -> bool:
+    return os.path.isdir(os.path.join(os.sep, path))
+
+
 def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
     versions: List[Tuple[int, datetime]] = []
     for line in file_output.splitlines():
@@ -678,13 +746,54 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         logger.error("Could not determine archive list from dar_manager output.")
         return 1
     logger.debug("PITR fallback archive map: %s", ", ".join(f"#{k}={v}" for k, v in sorted(archive_map.items())))
+    archive_info = _parse_archive_info(archive_map)
 
     darrc_path = _guess_darrc_path(config_settings)
     failures = 0
     successes = 0
+    missing_archives = set()
 
     for path in paths:
         file_result = runner.run(['dar_manager', '--base', database_path, '-f', path])
+        if _is_directory_path(path):
+            chain = _select_archive_chain(archive_info, when_dt)
+            if not chain:
+                logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
+                failures += 1
+                continue
+            logger.info(
+                "PITR fallback restoring directory '%s' using archive chain: %s",
+                path,
+                ", ".join(f"#{num}" for num in chain),
+            )
+            restored = True
+            for catalog_no in chain:
+                archive_path = archive_map.get(catalog_no)
+                if not archive_path:
+                    logger.warning(f"Archive number {catalog_no} missing from archive list; skipping.")
+                    continue
+                if not os.path.exists(f"{archive_path}.1.dar"):
+                    missing_archives.add(f"{archive_path}.1.dar")
+                    logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
+                    restored = False
+                    break
+                cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
+                if target:
+                    cmd.extend(['-R', target])
+                if darrc_path:
+                    cmd.extend(['-B', darrc_path, 'restore-options'])
+                logger.info("Applying archive #%d for '%s'.", catalog_no, path)
+                result = runner.run(cmd, timeout=config_settings.command_timeout_secs)
+                if result.returncode != 0:
+                    logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
+                    restored = False
+                    break
+            if restored:
+                successes += 1
+            else:
+                failures += 1
+            continue
+
         versions = _parse_file_versions(file_result.stdout)
         candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
         candidates.sort(key=lambda item: item[1], reverse=True)
@@ -704,8 +813,13 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             if not archive_path:
                 logger.warning(f"Archive number {catalog_no} missing from archive list; skipping.")
                 continue
+            if not os.path.exists(f"{archive_path}.1.dar"):
+                missing_archives.add(f"{archive_path}.1.dar")
+                logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
+                restored = False
+                break
             logger.info("PITR fallback selected archive #%d (%s) for '%s'.", catalog_no, dt, path)
-            cmd = ['dar', '-x', archive_path, '-g', path, '--noconf', '-Q']
+            cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
             if target:
                 cmd.extend(['-R', target])
             if darrc_path:
@@ -722,6 +836,16 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             failures += 1
 
     logger.info("PITR fallback summary: %d succeeded, %d failed.", successes, failures)
+    if missing_archives:
+        missing_list = sorted(missing_archives)
+        sample = ", ".join(missing_list[:3])
+        extra = f" (+{len(missing_list) - 3} more)" if len(missing_list) > 3 else ""
+        logger.error("Missing archive slices detected during PITR fallback: %s%s", sample, extra)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        send_discord_message(
+            f"{ts} - manager: PITR fallback missing archive slices ({len(missing_list)} missing).",
+            config_settings=config_settings,
+        )
     if failures:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         send_discord_message(

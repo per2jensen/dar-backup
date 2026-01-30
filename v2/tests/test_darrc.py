@@ -113,9 +113,12 @@ def test_backup_with_filtered_darrc(setup_environment, env):
     
     # verify the temporary filtered darrc is removed
     darrc_location = None
-    for line in stdout.split("\n"):
-        if ".darrc location: " in line:
-            darrc_location = line.split(".darrc location: ")[1].strip()
+    stdout_lines = stdout.split("\n")
+    for idx, line in enumerate(stdout_lines):
+        if ".darrc location:" in line:
+            darrc_location = line.split(".darrc location:", 1)[1].strip()
+            if not darrc_location and idx + 1 < len(stdout_lines):
+                darrc_location = stdout_lines[idx + 1].strip()
             env.logger.info(f"Extracted .darrc location: {darrc_location}")
             break
 
@@ -137,4 +140,3 @@ def test_backup_with_filtered_darrc(setup_environment, env):
         env.logger.error(f"Command failed: {command}")
         env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Command failed: {command}")
-

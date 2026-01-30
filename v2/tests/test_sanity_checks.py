@@ -34,6 +34,8 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
     env.logger.info(f"LOGFILE_LOCATION: {LOGFILE_LOCATION}")
     config_path = os.path.join(env.test_dir, env.config_file)
     env.logger.info(f"config file path: {config_path}")
+    original_home = os.environ.get("HOME")
+    os.environ["HOME"] = env.test_dir
     with open(config_path, 'r') as f:
         lines = f.readlines()
     with open(config_path, 'w') as f:
@@ -43,6 +45,10 @@ def modify_config_file_tilde(env: EnvData) -> Generator[dict, None, None]:
             else:
                 f.write(line)
     yield {'LOGFILE_LOCATION': LOGFILE_LOCATION}
+    if original_home is None:
+        os.environ.pop("HOME", None)
+    else:
+        os.environ["HOME"] = original_home
     if os.path.exists(os.path.expanduser(LOGFILE_LOCATION)):
         os.remove(os.path.expanduser(LOGFILE_LOCATION))
         env.logger.info(f"Removed: {LOGFILE_LOCATION}")

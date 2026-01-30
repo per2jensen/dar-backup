@@ -247,6 +247,7 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
+         patch("os.path.exists", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None):
 
         when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)

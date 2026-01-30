@@ -1138,7 +1138,8 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
 def filter_darrc_file(darrc_path):
     """
     Filters the .darrc file to remove lines containing the options: -vt, -vs, -vd, -vf, and -va.
-    The filtered version is stored in a uniquely named file in the home directory of the user running the script.
+    The filtered version is stored in a uniquely named file alongside the source .darrc
+    (or a writable temp directory if needed).
     The file permissions are set to 440.
     
     Params:
@@ -1153,29 +1154,36 @@ def filter_darrc_file(darrc_path):
     # Define options to filter out
     options_to_remove = {"-vt", "-vs", "-vd", "-vf", "-va"}
 
-    # Get the user's home directory
-    home_dir = os.path.expanduser("~")
+    candidate_dirs = [
+        os.path.dirname(os.path.abspath(darrc_path)),
+        os.path.expanduser("~"),
+        tempfile.gettempdir(),
+    ]
+    last_error = None
 
-    # Create a unique file name in the home directory
-    filtered_darrc_path = os.path.join(home_dir, f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc")
+    for candidate_dir in candidate_dirs:
+        filtered_darrc_path = os.path.join(
+            candidate_dir,
+            f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc",
+        )
+        try:
+            with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
+                for line in infile:
+                    # Check if any unwanted option is in the line
+                    if not any(option in line for option in options_to_remove):
+                        outfile.write(line)
 
-    try:
-        with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
-            for line in infile:
-                # Check if any unwanted option is in the line
-                if not any(option in line for option in options_to_remove):
-                    outfile.write(line)
-        
-        # Set file permissions to 440 (read-only for owner and group, no permissions for others)
-        os.chmod(filtered_darrc_path, 0o440)
+            # Set file permissions to 440 (read-only for owner and group, no permissions for others)
+            os.chmod(filtered_darrc_path, 0o440)
 
-        return filtered_darrc_path
+            return filtered_darrc_path
 
-    except Exception as e:
-        # If anything goes wrong, clean up the temp file if it was created
-        if os.path.exists(filtered_darrc_path):
-            os.remove(filtered_darrc_path)
-        raise RuntimeError(f"Error filtering .darrc file: {e}")
+        except Exception as e:
+            last_error = e
+            if os.path.exists(filtered_darrc_path):
+                os.remove(filtered_darrc_path)
+
+    raise RuntimeError(f"Error filtering .darrc file: {last_error}")
 
 
 
@@ -1494,6 +1502,8 @@ def main():
     clean_restore_test_directory(config_settings)
 
 
+    filtered_darrc_path = None
+
     try:
         if not args.darrc:
             current_script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1508,7 +1518,8 @@ def main():
 
         if args.suppress_dar_msg:
             logger.info("Suppressing dar messages, do not use options: -vt, -vs, -vd, -vf, -va")
-            args.darrc = filter_darrc_file(args.darrc)
+            filtered_darrc_path = filter_darrc_file(args.darrc)
+            args.darrc = filtered_darrc_path
             logger.debug(f"Filtered .darrc file: {args.darrc}")
 
         start_msgs: List[Tuple[str, str]] = []
@@ -1631,10 +1642,9 @@ def main():
         end_time=int(time())
         logger.info(f"END TIME: {end_time}")
         # Clean up
-        if os.path.exists(args.darrc) and (os.path.dirname(args.darrc) == os.path.expanduser("~")):
-            if os.path.basename(args.darrc).startswith("filtered_darrc_"):
-                if os.remove(args.darrc):
-                    logger.debug(f"Removed filtered .darrc: {args.darrc}")
+        if filtered_darrc_path and os.path.exists(filtered_darrc_path):
+            os.remove(filtered_darrc_path)
+            logger.debug(f"Removed filtered .darrc: {filtered_darrc_path}")
 
 
     # Determine exit code 
