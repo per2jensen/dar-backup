@@ -41,6 +41,7 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
 from dar_backup.util import setup_logging
+from dar_backup.util import derive_trace_log_path
 from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
@@ -1482,6 +1483,7 @@ def main():
     if command_output_log == config_settings.logfile_location:
         print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
 
+    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
     logger = setup_logging(
         config_settings.logfile_location,
         command_output_log,
@@ -1489,6 +1491,7 @@ def main():
         args.log_stdout,
         logfile_max_bytes=config_settings.logfile_max_bytes,
         logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_file=trace_log_file,
         trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
         trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
     )
@@ -1553,6 +1556,7 @@ def main():
         args.verbose and start_msgs.append(("Restore dir:", restore_dir))
 
         args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
+        args.verbose and start_msgs.append(("Trace log:", trace_log_file))
         args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
         args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
 

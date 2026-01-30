@@ -9,6 +9,7 @@
 - PITR integration torture tests for rename/mtime traps and catalog rebuild after DB loss.
 - PITR dry-run chain report (`manager --pitr-report`) to preview archive selection and detect missing archives.
 - PITR fallback now reports missing archive slices and can notify via Discord when configured.
+- CommandRunner debug diagnostics now include process PID and elapsed time for each executed command.
 
 ### Changed
 
@@ -18,6 +19,7 @@
 - Filtered `.darrc` temp files are created in a writable location and cleaned up reliably after runs.
 - PITR fallback now validates chain completeness instead of skipping missing archives.
 - `COMMAND_TIMEOUT_SECS = -1` disables timeouts for long-running operations.
+- Catalog rebuild (`manager --add-dir`) now adds archives in FULL → DIFF → INCR order for the same date to avoid dar_manager prompts.
 
 ## v2-1.0.2 - 2026-01-25
 

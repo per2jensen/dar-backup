@@ -29,6 +29,7 @@ import sys
 import subprocess
 import threading
 import shlex
+import time as time_module
 import dateparser
 
 from inputimeout import inputimeout, TimeoutOccurred
@@ -37,6 +38,7 @@ from inputimeout import inputimeout, TimeoutOccurred
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging
+from dar_backup.util import derive_trace_log_path
 from dar_backup.util import CommandResult
 from dar_backup.util import get_config_file
 from dar_backup.util import send_discord_message
@@ -491,6 +493,14 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
+    logger.debug(
+        "PITR restore requested: backup_def=%s paths=%d when=%s target=%s db=%s",
+        backup_def,
+        len(paths),
+        when,
+        target,
+        database_path,
+    )
 
     if not os.path.exists(database_path):
         logger.error(f'Database not found: "{database_path}"')
@@ -513,6 +523,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             # We'll use YYYY/MM/DD-HH:MM:SS which is unambiguous
             date_arg = parsed_date.strftime("%Y/%m/%d-%H:%M:%S")
             logger.info(f"Restoring files as of: {date_arg} (from input '{when}')")
+            logger.debug("Parsed PITR timestamp: %s -> %s", when, date_arg)
         else:
             logger.error(f"Could not parse date: '{when}'")
             return 1
@@ -529,14 +540,18 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     # Target directory handling: pass -R and -n via dar_manager's -e option so dar
     # rebases paths and fails fast instead of prompting to overwrite.
     if target:
+        logger.debug("PITR target directory: %s (cwd=%s)", target, os.getcwd())
         if not os.path.exists(target):
             try:
                 os.makedirs(target, exist_ok=True)
             except Exception as e:
                 logger.error(f"Could not create target directory '{target}': {e}")
                 return 1
+            logger.debug("Created target directory: %s", target)
         # Fail fast if any requested paths already exist under target.
         normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
+        if normalized_paths:
+            logger.debug("Normalized restore paths count=%d sample=%s", len(normalized_paths), normalized_paths[:3])
         existing = []
         for rel_path in normalized_paths:
             if not rel_path or rel_path == ".":
@@ -564,7 +579,16 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
 
     logger.info(f"Executing restore command for {len(paths)} path(s) in cwd={os.getcwd()}")
     timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    logger.debug("PITR restore command: %s", " ".join(shlex.quote(arg) for arg in command))
+    logger.debug("PITR restore timeout: %s", "none" if timeout is None else f"{timeout}s")
+    start_time = time_module.monotonic()
     process = runner.run(command, timeout=timeout)
+    duration = time_module.monotonic() - start_time
+    logger.debug(
+        "PITR restore finished: returncode=%s duration=%.2fs",
+        process.returncode,
+        duration,
+    )
     
     if process.returncode == 0:
         logger.info("Restore completed successfully.")
@@ -1144,27 +1168,30 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1.dar$') # just read slice #1 of an archive
     # List of DAR archives with their dates and base names
     dar_archives = []
+    type_order = {"FULL": 0, "DIFF": 1, "INCR": 2}
 
     for filename in os.listdir(args.add_dir):
         logger.debug(f"check if '{filename}' is a dar archive slice #1?")
         match = dar_pattern.match(filename)
         if match:
             base_name = match.group(1)
+            archive_type = match.group(2)
             date_str = match.group(3)
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            dar_archives.append((date_obj, base_name))
-            logger.debug(f" -> yes: base name: {base_name}, date: {date_str}")
+            dar_archives.append((date_obj, type_order.get(archive_type, 99), base_name, archive_type))
+            logger.debug(f" -> yes: base name: {base_name}, type: {archive_type}, date: {date_str}")
 
     if not dar_archives or len(dar_archives) == 0:
         logger.info(f"No 'dar' archives found in directory {args.add_dir}")
         return
 
-    # Sort the DAR archives by date
+    # Sort the DAR archives by date then type (FULL -> DIFF -> INCR) to avoid interactive ordering prompts.
     dar_archives.sort()
+    logger.debug("Sorted archives for add-dir: %s", [(d.strftime("%Y-%m-%d"), t, n) for d, t, n, _ in dar_archives])
 
     # Loop over the sorted DAR archives and process them
     result: List[Dict] = []
-    for date_obj, base_name in dar_archives:
+    for _date_obj, _type_order, base_name, _archive_type in dar_archives:
         logger.info(f"Adding dar archive: '{base_name}' to it's catalog database")
         result_archive = add_specific_archive(base_name, config_settings, args.add_dir)
         result.append({ f"{base_name}" : result_archive})
@@ -1315,6 +1342,7 @@ def main():
         return
 
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
+    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
     logger = setup_logging(
         config_settings.logfile_location,
         command_output_log,
@@ -1322,6 +1350,7 @@ def main():
         args.log_stdout,
         logfile_max_bytes=config_settings.logfile_max_bytes,
         logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_file=trace_log_file,
         trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
         trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
     )
@@ -1344,6 +1373,7 @@ def main():
     start_msgs.append(("Config file:", args.config_file))
     args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
     start_msgs.append(("Logfile:", config_settings.logfile_location))
+    args.verbose and start_msgs.append(("Trace log:", trace_log_file))
     args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
     args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))

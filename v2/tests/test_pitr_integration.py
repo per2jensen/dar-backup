@@ -6,6 +6,7 @@ import random
 import shutil
 import sys
 import time
+from configparser import ConfigParser
 from datetime import datetime, timedelta
 
 # Add src to sys.path
@@ -14,6 +15,38 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from tests.testdata_verification import run_backup_script
+
+
+def _disable_par2(env) -> None:
+    config = ConfigParser()
+    config.read(env.config_file)
+    if "PAR2" not in config:
+        config["PAR2"] = {}
+    config["PAR2"]["ENABLED"] = "False"
+    with open(env.config_file, "w") as config_file:
+        config.write(config_file)
+
+
+def _apply_fast_pitr_config(env) -> None:
+    config = ConfigParser()
+    config.read(env.config_file)
+    if "PAR2" not in config:
+        config["PAR2"] = {}
+    config["PAR2"]["ENABLED"] = "False"
+    if "MISC" not in config:
+        config["MISC"] = {}
+    config["MISC"]["COMMAND_TIMEOUT_SECS"] = "300"
+    with open(env.config_file, "w") as config_file:
+        config.write(config_file)
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _pitr_integration_config(setup_environment, env):
+    _apply_fast_pitr_config(env)
+    yield
 
 def test_pitr_integration_flow(setup_environment, env):
     """

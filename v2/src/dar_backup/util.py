@@ -179,6 +179,13 @@ def setup_logging(
         sys.exit(1)
 
 
+def derive_trace_log_path(log_file: str) -> str:
+    if log_file == "/dev/null":
+        return "/dev/null"
+    base, ext = os.path.splitext(log_file)
+    return f"{base}.trace{ext}"
+
+
 
 def get_logger(command_output_logger: bool = False) -> logging.Logger:
     """

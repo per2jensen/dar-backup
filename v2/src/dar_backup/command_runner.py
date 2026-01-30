@@ -13,6 +13,7 @@ try:
 except ImportError:
     termios = None
 import tempfile
+import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 from typing import List, Optional, Union
 from dar_backup.util import get_logger
@@ -211,6 +212,7 @@ class CommandRunner:
             truncated_stderr = {"value": False}
 
             try:
+                start_time = time.monotonic()
                 use_pipes = capture_output or log_output
                 process = subprocess.Popen(
                     cmd,
@@ -220,6 +222,18 @@ class CommandRunner:
                     text=False,
                     bufsize=-1,
                     cwd=cwd
+                )
+                pid = getattr(process, "pid", None)
+                if log_output:
+                    self.command_logger.debug(
+                        "Process started pid=%s cwd=%s",
+                        pid if pid is not None else "unknown",
+                        cwd or os.getcwd(),
+                    )
+                self.logger.debug(
+                    "Process started pid=%s cwd=%s",
+                    pid if pid is not None else "unknown",
+                    cwd or os.getcwd(),
                 )
             except Exception as e:
                 stack = traceback.format_exc()
@@ -299,7 +313,12 @@ class CommandRunner:
                 process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 process.kill()
-                log_msg = f"Command timed out after {timeout} seconds: {' '.join(cmd)}:\n"
+                duration = time.monotonic() - start_time
+                pid = getattr(process, "pid", None)
+                log_msg = (
+                    f"Command timed out after {timeout} seconds: {' '.join(cmd)} "
+                    f"(pid={pid if pid is not None else 'unknown'}, elapsed={duration:.2f}s):\n"
+                )
                 self.logger.error(log_msg)
                 return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
             except Exception as e:
@@ -310,6 +329,21 @@ class CommandRunner:
 
             for t in threads:
                 t.join()
+            duration = time.monotonic() - start_time
+            pid = getattr(process, "pid", None)
+            if log_output:
+                self.command_logger.debug(
+                    "Process finished pid=%s returncode=%s elapsed=%.2fs",
+                    pid if pid is not None else "unknown",
+                    process.returncode,
+                    duration,
+                )
+            self.logger.debug(
+                "Process finished pid=%s returncode=%s elapsed=%.2fs",
+                pid if pid is not None else "unknown",
+                process.returncode,
+                duration,
+            )
 
             if self._text_mode:
                 stdout_combined = ''.join(stdout_lines)

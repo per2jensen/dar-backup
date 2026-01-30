@@ -1423,6 +1423,35 @@ def test_add_directory_missing_dir_raises(tmp_path):
         add_directory(args, config)
 
 
+def test_add_directory_sorts_by_date_then_type(tmp_path):
+    from dar_backup.manager import add_directory
+
+    args = SimpleNamespace(add_dir=str(tmp_path))
+    config = SimpleNamespace()
+    filenames = [
+        "example_DIFF_2025-01-02.1.dar",
+        "example_FULL_2025-01-02.1.dar",
+        "example_INCR_2025-01-02.1.dar",
+        "example_INCR_2025-01-01.1.dar",
+        "example_DIFF_2025-01-01.1.dar",
+        "example_FULL_2025-01-01.1.dar",
+    ]
+
+    with patch("dar_backup.manager.os.listdir", return_value=filenames), \
+         patch("dar_backup.manager.add_specific_archive") as mock_add, \
+         patch("dar_backup.manager.logger"):
+        add_directory(args, config)
+
+    called_archives = [call.args[0] for call in mock_add.call_args_list]
+    assert called_archives == [
+        "example_FULL_2025-01-01",
+        "example_DIFF_2025-01-01",
+        "example_INCR_2025-01-01",
+        "example_FULL_2025-01-02",
+        "example_DIFF_2025-01-02",
+        "example_INCR_2025-01-02",
+    ]
+
 def test_remove_specific_archive_failure_returns_one(tmp_path):
     from dar_backup.manager import remove_specific_archive
 
