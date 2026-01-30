@@ -67,12 +67,12 @@ Version **1.0.0** was reached on October 9, 2025.
     - [select a directory](#select-a-directory)
     - [select files with "Z50" in the file name and exclude .xmp files](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
   - [Restoring](#restoring)
+    - [Point-in-Time Recovery (PITR)](#point-in-time-recovery-pitr)
     - [default location for restores](#default-location-for-restores)
     - [--restore-dir option](#--restore-dir-option)
     - [a single file](#a-single-file)
     - [a directory](#a-directory)
     - [.NEF from a specific date](#nef-from-a-specific-date)
-    - [Point-in-Time Recovery (PITR)](#point-in-time-recovery-pitr)
     - [restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
     - [restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
   - [Par2](#par2)
@@ -1213,6 +1213,81 @@ gives something like
 
 ## Restoring
 
+### Point-in-Time Recovery (PITR)
+
+Use the `manager` CLI to restore files as they existed at a specific time:
+
+```bash
+. <the virtual env>/bin/activate
+manager --config-file <dar-backup.conf> \
+  --backup-def <definition> \
+  --restore-path tmp/path/to/file.txt \
+  --when "2026-01-29 15:00:39" \
+  --target /tmp/restore_pitr \
+  --log-stdout --verbose
+deactivate
+```
+
+Restore a directory (same idea, but the path is a directory):
+
+```bash
+. <the virtual env>/bin/activate
+manager --config-file <dar-backup.conf> \
+  --backup-def <definition> \
+  --restore-path tmp/path/to/directory \
+  --when "2026-01-29 15:00:39" \
+  --target /tmp/restore_pitr \
+  --log-stdout --verbose
+deactivate
+```
+
+Dry-run the archive chain selection before restoring:
+
+```bash
+. <the virtual env>/bin/activate
+manager --config-file <dar-backup.conf> \
+  --backup-def <definition> \
+  --restore-path tmp/path/to/directory \
+  --when "2026-01-29 15:00:39" \
+  --pitr-report \
+  --log-stdout --verbose
+deactivate
+```
+
+Notes:
+- `--restore-path` must be a relative path as stored in the catalog (no leading slash).
+- `--target` is required to avoid accidental restores into the current working directory.
+- Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
+- `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
+- If `dar_manager -w` cannot restore a file at the requested time, the manager will fall back to a best-match archive and log the approximation (and can send a short Discord notice if configured).
+- Why the fallback exists (simple explanation):
+  - `dar_manager -w` decides what to restore based on **file and directory timestamps**, not on “which archive was created when”.
+  - Directories get a **new mtime** when files inside them are added/removed.
+  - That means a directory can look “too new” for a date you ask for, even though the directory and its files really existed at that time.
+  - When that happens, `dar_manager` can return “nothing to restore” for a directory path even though the data is in the archive.
+  - The fallback fixes this by restoring from the correct archive chain (FULL → DIFF → INCR) and applying them in order.
+- Missing archives:
+  - The fallback uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
+  - If any archive slice in that chain is missing on disk, PITR restore **fails** and logs which archive slices are missing.
+  - A short Discord notice is sent (if configured) so missing archives are visible immediately.
+- Rebuilding a catalog after archive loss:
+  - If PITR fails due to missing archives, the catalog may no longer match what is actually on disk.
+  - You can rebuild the catalog from the remaining archives and then retry PITR (with the understanding that older restore points may no longer be possible).
+  - Example:
+    - `manager --create-db --config-file <dar-backup.conf>`
+    - `manager --add-dir <backup_dir> --backup-def <definition> --config-file <dar-backup.conf>`
+  - Or add individual archives:
+    - `manager --add-specific-archive <path/to/archive> --config-file <dar-backup.conf>`
+
+Example of the issue:
+1) FULL backup at 10:00 with `/data/photos/`  
+2) You add files at 11:00 (directory mtime updates)  
+3) DIFF backup at 11:05  
+4) You request PITR restore of `/data/photos/` at 10:30  
+
+`dar_manager -w` may say “directory did not exist before that time” because the directory mtime is now 11:00+.  
+The fallback still restores the correct tree as of 10:30 by applying the archive chain.
+
 ### default location for restores
 
 dar-backup will use the TEST_RESTORE_DIR location as the Root for restores, if the --restore-dir option has not been supplied.
@@ -1267,54 +1342,6 @@ Filtering:
 dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/user/tmp/LUT-play"
 deactivate
 ```
-
-### Point-in-Time Recovery (PITR)
-
-Use the `manager` CLI to restore files as they existed at a specific time:
-
-```bash
-. <the virtual env>/bin/activate
-manager --config-file <dar-backup.conf> \
-  --backup-def <definition> \
-  --restore-path tmp/path/to/file.txt \
-  --when "2026-01-29 15:00:39" \
-  --target /tmp/restore_pitr \
-  --log-stdout --verbose
-deactivate
-```
-
-Notes:
-- `--restore-path` must be a relative path as stored in the catalog (no leading slash).
-- `--target` is required to avoid accidental restores into the current working directory.
-- Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
-- If `dar_manager -w` cannot restore a file at the requested time, the manager will fall back to a best-match archive and log the approximation (and can send a short Discord notice if configured).
-- Why the fallback exists (simple explanation):
-  - `dar_manager -w` decides what to restore based on **file and directory timestamps**, not on “which archive was created when”.
-  - Directories get a **new mtime** when files inside them are added/removed.
-  - That means a directory can look “too new” for a date you ask for, even though the directory and its files really existed at that time.
-  - When that happens, `dar_manager` can return “nothing to restore” for a directory path even though the data is in the archive.
-  - The fallback fixes this by restoring from the correct archive chain (FULL → DIFF → INCR) and applying them in order.
-- Missing archives:
-  - The fallback uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
-  - If any archive slice in that chain is missing on disk, PITR restore **fails** and logs which archive slices are missing.
-  - A short Discord notice is sent (if configured) so missing archives are visible immediately.
-- Rebuilding a catalog after archive loss:
-  - If PITR fails due to missing archives, the catalog may no longer match what is actually on disk.
-  - You can rebuild the catalog from the remaining archives and then retry PITR (with the understanding that older restore points may no longer be possible).
-  - Example:
-    - `manager --create-db --config-file <dar-backup.conf>`
-    - `manager --add-dir <backup_dir> --backup-def <definition> --config-file <dar-backup.conf>`
-  - Or add individual archives:
-    - `manager --add-specific-archive <path/to/archive> --config-file <dar-backup.conf>`
-
-Example of the issue:
-1) FULL backup at 10:00 with `/data/photos/`  
-2) You add files at 11:00 (directory mtime updates)  
-3) DIFF backup at 11:05  
-4) You request PITR restore of `/data/photos/` at 10:30  
-
-`dar_manager -w` may say “directory did not exist before that time” because the directory mtime is now 11:00+.  
-The fallback still restores the correct tree as of 10:30 by applying the archive chain.
 
 ### restore test fails with exit code 4
 

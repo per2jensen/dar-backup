@@ -7,6 +7,7 @@
 
 - Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can’t resolve a dated restore.
 - PITR integration torture tests for rename/mtime traps and catalog rebuild after DB loss.
+- PITR dry-run chain report (`manager --pitr-report`) to preview archive selection and detect missing archives.
 - PITR fallback now reports missing archive slices and can notify via Discord when configured.
 
 ### Changed
@@ -15,6 +16,7 @@
 - PITR fallback now restores via the latest FULL → DIFF → INCR chain and fails fast when required archives are missing.
 - PITR restore now requires `--target` and blocks unsafe restore targets by default.
 - Filtered `.darrc` temp files are created in a writable location and cleaned up reliably after runs.
+- PITR fallback now validates chain completeness instead of skipping missing archives.
 
 ## v2-1.0.2 - 2026-01-25
 

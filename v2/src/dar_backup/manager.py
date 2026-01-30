@@ -698,6 +698,126 @@ def _is_directory_path(path: str) -> bool:
     return os.path.isdir(os.path.join(os.sep, path))
 
 
+def _format_chain_item(
+    catalog_no: int,
+    info_by_no: Dict[int, Tuple[datetime, str]],
+    status: str,
+) -> str:
+    info = info_by_no.get(catalog_no)
+    if info:
+        dt, archive_type = info
+        return f"#{catalog_no} {archive_type}@{dt} [{status}]"
+    return f"#{catalog_no} [unknown] [{status}]"
+
+
+def _missing_chain_elements(chain: List[int], archive_map: Dict[int, str]) -> List[str]:
+    missing = []
+    for catalog_no in chain:
+        archive_path = archive_map.get(catalog_no)
+        if not archive_path:
+            missing.append(f"catalog #{catalog_no} missing from archive map")
+            continue
+        slice_path = f"{archive_path}.1.dar"
+        if not os.path.exists(slice_path):
+            missing.append(slice_path)
+    return missing
+
+
+def _pitr_chain_report(
+    backup_def: str,
+    paths: List[str],
+    when: str,
+    config_settings: ConfigSettings,
+) -> int:
+    """
+    Report the PITR archive chain that would be used for a restore at `when`,
+    without performing any restore actions. Returns non-zero if required
+    archives are missing or no chain/candidates can be determined.
+    """
+    if not when:
+        logger.error("PITR report requires --when.")
+        return 1
+
+    parsed_date = dateparser.parse(when)
+    if not parsed_date:
+        logger.error(f"Could not parse date: '{when}'")
+        return 1
+
+    database = f"{backup_def}{DB_SUFFIX}"
+    database_path = os.path.join(get_db_dir(config_settings), database)
+    list_result = runner.run(['dar_manager', '--base', database_path, '--list'])
+    archive_map = _parse_archive_map(list_result.stdout)
+    if not archive_map:
+        logger.error("Could not determine archive list from dar_manager output.")
+        return 1
+
+    archive_info = _parse_archive_info(archive_map)
+    info_by_no = {catalog_no: (dt, archive_type) for catalog_no, dt, archive_type in archive_info}
+    failures = 0
+    successes = 0
+
+    for path in paths:
+        if _is_directory_path(path):
+            chain = _select_archive_chain(archive_info, parsed_date)
+            if not chain:
+                logger.error(f"No FULL archive found at or before {parsed_date} for '{path}'")
+                failures += 1
+                continue
+            missing = []
+            chain_display_parts = []
+            for catalog_no in chain:
+                archive_path = archive_map.get(catalog_no)
+                status = "ok"
+                if not archive_path:
+                    status = "missing"
+                    missing.append(f"catalog #{catalog_no} missing from archive map")
+                else:
+                    slice_path = f"{archive_path}.1.dar"
+                    if not os.path.exists(slice_path):
+                        status = "missing"
+                        missing.append(slice_path)
+                chain_display_parts.append(_format_chain_item(catalog_no, info_by_no, status))
+            chain_display = ", ".join(chain_display_parts)
+            logger.info("PITR chain report for '%s': %s", path, chain_display)
+            if missing:
+                for item in missing:
+                    logger.error("PITR chain report missing archive: %s", item)
+                failures += 1
+            else:
+                successes += 1
+            continue
+
+        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path])
+        versions = _parse_file_versions(file_result.stdout)
+        candidates = [(num, dt) for num, dt in versions if dt <= parsed_date]
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        logger.info(
+            "PITR chain report candidates for '%s': %s",
+            path,
+            ", ".join(f"#{num}@{dt}" for num, dt in candidates) or "<none>",
+        )
+        if not candidates:
+            logger.error(f"No archive version found for '{path}' at or before {parsed_date}")
+            failures += 1
+            continue
+        catalog_no, dt = candidates[0]
+        archive_path = archive_map.get(catalog_no)
+        if not archive_path:
+            logger.error("PITR chain report missing archive map entry for #%d (%s)", catalog_no, path)
+            failures += 1
+            continue
+        slice_path = f"{archive_path}.1.dar"
+        if not os.path.exists(slice_path):
+            logger.error("PITR chain report missing archive slice: %s", slice_path)
+            failures += 1
+            continue
+        logger.info("PITR chain report selected archive #%d (%s) for '%s'.", catalog_no, dt, path)
+        successes += 1
+
+    logger.info("PITR chain report summary: %d ok, %d failed.", successes, failures)
+    return 0 if failures == 0 else 1
+
+
 def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
     versions: List[Tuple[int, datetime]] = []
     for line in file_output.splitlines():
@@ -761,6 +881,13 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
                 failures += 1
                 continue
+            missing = _missing_chain_elements(chain, archive_map)
+            if missing:
+                for item in missing:
+                    missing_archives.add(item)
+                    logger.error("PITR fallback missing archive in chain for '%s': %s", path, item)
+                failures += 1
+                continue
             logger.info(
                 "PITR fallback restoring directory '%s' using archive chain: %s",
                 path,
@@ -770,8 +897,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             for catalog_no in chain:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
-                    logger.warning(f"Archive number {catalog_no} missing from archive list; skipping.")
-                    continue
+                    missing_archives.add(f"catalog #{catalog_no} missing from archive map")
+                    logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
+                    restored = False
+                    break
                 if not os.path.exists(f"{archive_path}.1.dar"):
                     missing_archives.add(f"{archive_path}.1.dar")
                     logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
@@ -811,8 +940,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         for catalog_no, dt in candidates:
             archive_path = archive_map.get(catalog_no)
             if not archive_path:
-                logger.warning(f"Archive number {catalog_no} missing from archive list; skipping.")
-                continue
+                missing_archives.add(f"catalog #{catalog_no} missing from archive map")
+                logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
+                restored = False
+                break
             if not os.path.exists(f"{archive_path}.1.dar"):
                 missing_archives.add(f"{archive_path}.1.dar")
                 logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
@@ -840,10 +971,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         missing_list = sorted(missing_archives)
         sample = ", ".join(missing_list[:3])
         extra = f" (+{len(missing_list) - 3} more)" if len(missing_list) > 3 else ""
-        logger.error("Missing archive slices detected during PITR fallback: %s%s", sample, extra)
+        logger.error("Missing archives detected during PITR fallback: %s%s", sample, extra)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         send_discord_message(
-            f"{ts} - manager: PITR fallback missing archive slices ({len(missing_list)} missing).",
+            f"{ts} - manager: PITR fallback missing archives ({len(missing_list)} missing).",
             config_settings=config_settings,
         )
     if failures:
@@ -1078,6 +1209,7 @@ def build_arg_parser():
     parser.add_argument('--restore-path', nargs='+', help="Restore specific path(s) (Point-in-Time Recovery).")
     parser.add_argument('--when', type=str, help="Date/time for restoration (used with --restore-path).")
     parser.add_argument('--target', type=str, default=None, help="Target directory for restoration (default: current dir).")
+    parser.add_argument('--pitr-report', action='store_true', help="Report PITR archive chain for --restore-path/--when without restoring.")
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
@@ -1223,10 +1355,20 @@ def main():
         logger.error("--restore-path requires the --backup-def, exiting")
         sys.exit(1)
 
-    if args.restore_path and not args.target:
+    if args.restore_path and not args.target and not args.pitr_report:
         logger.error("--restore-path requires the --target directory, exiting")
         sys.exit(1)
         return
+
+    if args.pitr_report:
+        if not args.restore_path:
+            logger.error("--pitr-report requires --restore-path, exiting")
+            sys.exit(1)
+            return
+        if not args.when:
+            logger.error("--pitr-report requires --when, exiting")
+            sys.exit(1)
+            return
 
     # --- Modify settings ---
     try:
@@ -1288,6 +1430,11 @@ def main():
             sys.exit(result)
             return
             
+        if args.pitr_report:
+            result = _pitr_chain_report(args.backup_def, args.restore_path, args.when, config_settings)
+            sys.exit(result)
+            return
+
         if args.restore_path:
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings, verbose=args.verbose)
             sys.exit(result)
