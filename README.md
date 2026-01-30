@@ -33,6 +33,7 @@ Version **1.0.0** was reached on October 9, 2025.
 - [Quick Guide](#quick-guide)
 - [Redundancy to fix bitrot](#par2)
 - [Point In Time Recovery](#point-in-time-recovery-pitr)
+- [500+ unit tests & integration tests](#test-coverage)
 
 ## Table of Contents
 
@@ -1854,35 +1855,33 @@ One backup definition per file
 Running
 
 ```bash
-pytest --cov=dar_backup tests/
+pytest
 ```
 
-Results for version 1.0.0 in this report:
+Results for version 1.1.0 (pre-release, Jan 30, 2026) in this report:
 
 ```text
-====================================== tests coverage ======================================
-_____________________ coverage: platform linux, python 3.12.3-final-0 ______________________
+======================================== tests coverage ========================================
+_______________________ coverage: platform linux, python 3.12.3-final-0 ________________________
 
 Name                                   Stmts   Miss Branch BrPart  Cover
 ------------------------------------------------------------------------
-src/dar_backup/__about__.py                2      0      0      0   100%
+src/dar_backup/__about__.py                3      0      0      0   100%
 src/dar_backup/__init__.py                 0      0      0      0   100%
-src/dar_backup/clean_log.py               76     15     40      7    81%
-src/dar_backup/cleanup.py                203     16     66      7    91%
-src/dar_backup/command_runner.py         129     16     26      5    86%
-src/dar_backup/config_settings.py         73      3     18      1    96%
-src/dar_backup/dar_backup.py             551     28    180     21    93%
-src/dar_backup/dar_backup_systemd.py      56      7     10      2    86%
-src/dar_backup/demo.py                    92     20     26      6    75%
+src/dar_backup/clean_log.py              114     10     46      2    91%
+src/dar_backup/cleanup.py                294     42    100      9    87%
+src/dar_backup/command_runner.py         231     20     82     10    90%
+src/dar_backup/config_settings.py        162      9     62     10    92%
+src/dar_backup/dar_backup.py            1027     55    420     49    92%
+src/dar_backup/dar_backup_systemd.py      56      1     10      1    97%
+src/dar_backup/demo.py                   100      1     34      2    98%
 src/dar_backup/exceptions.py               2      0      0      0   100%
-src/dar_backup/installer.py              107     14     46      9    82%
-src/dar_backup/manager.py                427     42    152     15    90%
-src/dar_backup/rich_progress.py           70      7     30      4    89%
-src/dar_backup/util.py                   339     41     88     21    85%
+src/dar_backup/installer.py              120      4     54      4    95%
+src/dar_backup/manager.py               1032    124    418     50    87%
+src/dar_backup/rich_progress.py           70      2     30      2    96%
+src/dar_backup/util.py                   521     43    142     24    90%
 ------------------------------------------------------------------------
-TOTAL                                   2127    209    682     98    89%
-Coverage XML written to file coverage.xml
-======================== 257 passed, 1 skipped in 223.21s (0:03:43) ========================
+TOTAL                                   3732    311   1398    163    90%
 ```
 
 ### Dar-backup options
