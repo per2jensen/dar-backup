@@ -15,6 +15,10 @@ Please complete the sections below to help us review your changes.
 - [ ] Code is documented (docstrings, comments)
 - [ ] Documentation updated if needed (`README.md` or `doc/`)
 - [ ] CI checks pass (GitHub Actions)
+- [ ] I confirm that my contribution is licensed under GPL-3.0-or-later
+
+## License confirmation in words
+<!-- State here in words that your contribution is licensed under GPL-3 or later -->
 
 ## Notes
 <!-- Add context if reviewers need setup steps, screenshots, or other details -->
