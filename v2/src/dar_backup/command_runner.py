@@ -95,6 +95,8 @@ class CommandRunner:
         if not self.logger or not self.command_logger:
             self.logger_fallback()
 
+        if self.default_timeout is not None and self.default_timeout <= 0:
+            self.default_timeout = None
 
     def logger_fallback(self):
         """
@@ -138,7 +140,10 @@ class CommandRunner:
         stdin: Optional[int] = subprocess.DEVNULL
     ) -> CommandResult:
         self._text_mode = text
-        timeout = timeout or self.default_timeout
+        if timeout is None:
+            timeout = self.default_timeout
+        if timeout is not None and timeout <= 0:
+            timeout = None
         if capture_output_limit_bytes is None:
             capture_output_limit_bytes = self.default_capture_limit_bytes
         if capture_output_limit_bytes is not None and capture_output_limit_bytes < 0:

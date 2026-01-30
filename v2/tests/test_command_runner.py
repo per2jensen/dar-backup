@@ -550,6 +550,33 @@ def test_command_runner_timeout_returns_error(tmp_path):
     assert mock_logger.error.called
 
 
+def test_command_runner_negative_timeout_disables_timeout(tmp_path):
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    class FakeProcess:
+        def __init__(self):
+            import io
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"")
+            self.timeout_used = "unset"
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            self.timeout_used = timeout
+            return None
+
+        def kill(self):
+            return None
+
+    fake_process = FakeProcess()
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=fake_process):
+        result = runner.run(["echo", "hello"], timeout=-1)
+
+    assert result.returncode == 0
+    assert fake_process.timeout_used is None
+
+
 def test_command_runner_popen_failure_returns_error(tmp_path):
     logger, command_logger, _ = _make_loggers(tmp_path)
     runner = CommandRunner(logger=logger, command_logger=command_logger)

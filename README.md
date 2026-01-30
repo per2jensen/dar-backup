@@ -784,6 +784,7 @@ NO_FILES_VERIFICATION = 5
 # timeout in seconds for backup, test, restore and par2 operations
 # The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
 # If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
+# Use -1 to disable timeouts.
 COMMAND_TIMEOUT_SECS = 86400
 
 [DIRECTORIES]

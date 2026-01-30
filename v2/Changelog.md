@@ -17,6 +17,7 @@
 - PITR restore now requires `--target` and blocks unsafe restore targets by default.
 - Filtered `.darrc` temp files are created in a writable location and cleaned up reliably after runs.
 - PITR fallback now validates chain completeness instead of skipping missing archives.
+- `COMMAND_TIMEOUT_SECS = -1` disables timeouts for long-running operations.
 
 ## v2-1.0.2 - 2026-01-25
 

@@ -1179,7 +1179,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
-        process: CommandResult = runner.run(command)
+        process: CommandResult = runner.run(command, timeout=config_settings.command_timeout_secs)
         logger.info(f"CommandResult: {process}")
     else:
         logger.warning(f"archive: '{archive}' not found in it's catalog database: {database_path}")
