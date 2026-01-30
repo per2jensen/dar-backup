@@ -164,7 +164,10 @@ def test_cli_restore_path_requires_backup_def(capsys):
     # Simulate sys.argv
     with patch.object(sys, 'argv', ["manager", "--restore-path", "file.txt"]), \
          patch("dar_backup.manager.setup_logging"), \
-         patch("dar_backup.manager.ConfigSettings"): # Mock config load
+         patch("dar_backup.manager.ConfigSettings"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True), \
+         patch("os.path.dirname", return_value="/tmp"): # Mock config load
         
         # We expect a SystemExit(1)
         with pytest.raises(SystemExit) as excinfo:
