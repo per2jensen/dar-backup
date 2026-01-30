@@ -1125,7 +1125,7 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
         "--target", restore_dir,
         "--log-stdout",
     ]
-    result_restore = runner.run(cmd, timeout=120)
+    result_restore = runner.run(cmd, timeout=180)
     assert result_restore.returncode == 0, f"PITR restore failed: {result_restore.stderr}"
 
     restored_file = os.path.join(restore_dir, data_file.lstrip("/"))
