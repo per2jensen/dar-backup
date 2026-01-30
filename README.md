@@ -34,7 +34,6 @@ Version **1.0.0** was reached on October 9, 2025.
 - [Redundancy to fix bitrot](#par2)
 - [Point In Time Recovery](#point-in-time-recovery-pitr)
 
-
 ## Table of Contents
 
 - [`dar-backup`](#dar-backup)
@@ -138,6 +137,7 @@ Version **1.0.0** was reached on October 9, 2025.
       - [1.0.2](#102)
         - [Trace Logging](#trace-logging)
         - [Command output Capture](#command-output-capture)
+      - [1.1.0](#110)
   
 ## My use case
 
@@ -2191,3 +2191,7 @@ Example:
 [MISC]
 COMMAND_CAPTURE_MAX_BYTES = 102400
 ```
+
+#### 1.1.0
+
+COMMAND_TIMEOUT_SECS=-1 now disables timeout for commands executed.
