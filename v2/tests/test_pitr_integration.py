@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.config_settings import ConfigSettings
 from tests.testdata_verification import run_backup_script
 
 def test_pitr_integration_flow(setup_environment, env):
@@ -1068,6 +1069,7 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
     - Verify PITR restore works using rebuilt catalog
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    config_settings = ConfigSettings(env.config_file)
 
     # Clean out any default test data from fixture setup
     for name in os.listdir(env.data_dir):
@@ -1115,6 +1117,8 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
 
     # PITR restore using rebuilt catalog
     restore_dir = os.path.join(env.test_dir, "restore_rebuild_catalog")
+    if os.path.exists(restore_dir):
+        shutil.rmtree(restore_dir)
     os.makedirs(restore_dir, exist_ok=True)
     cmd = [
         "manager",
@@ -1125,7 +1129,7 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
         "--target", restore_dir,
         "--log-stdout",
     ]
-    result_restore = runner.run(cmd, timeout=180)
+    result_restore = runner.run(cmd, timeout=config_settings.command_timeout_secs)
     assert result_restore.returncode == 0, f"PITR restore failed: {result_restore.stderr}"
 
     restored_file = os.path.join(restore_dir, data_file.lstrip("/"))

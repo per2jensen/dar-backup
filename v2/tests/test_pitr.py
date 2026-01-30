@@ -44,9 +44,16 @@ def test_restore_at_basic_success(mock_config, mock_runner, mock_logger):
     when = "2023-10-27 14:30"
     target = "/tmp/restore_target"
     
+    def _exists(path):
+        if path == "/tmp/db_dir/test_backup.db":
+            return True
+        if path == target:
+            return True
+        return False
+
     # Mocking filesystem and runner
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
-         patch("os.path.exists", return_value=True), \
+         patch("os.path.exists", side_effect=_exists), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger):
         
@@ -58,7 +65,7 @@ def test_restore_at_basic_success(mock_config, mock_runner, mock_logger):
         args, _ = mock_runner.run.call_args
         cmd = args[0]
         
-        # Expected: dar_manager --base ... -w YYYY/MM/DD-HH:MM:SS -o -R target -r path
+        # Expected: dar_manager --base ... -w YYYY/MM/DD-HH:MM:SS -e "-R target -n" -r path
         assert cmd[0] == "dar_manager"
         assert "--base" in cmd
         assert "/tmp/db_dir/test_backup.db" in cmd
@@ -72,7 +79,7 @@ def test_restore_at_basic_success(mock_config, mock_runner, mock_logger):
         # Verify target is passed via dar_manager restore options
         assert "-e" in cmd
         idx_e = cmd.index("-e")
-        assert cmd[idx_e + 1] == f"-R {target}"
+        assert cmd[idx_e + 1] == f"-R {target} -n"
         
         # Verify paths
         assert "-r" in cmd
@@ -128,9 +135,16 @@ def test_restore_at_dar_manager_fail(mock_config, mock_runner, mock_logger):
     """Test when the underlying dar_manager command fails."""
     
     mock_runner.run.return_value = CommandResult(5, "", "Error restoring", note=None)
+
+    def _exists(path):
+        if path == "/tmp/db_dir/def.db":
+            return True
+        if path == "/tmp":
+            return True
+        return False
     
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
-         patch("os.path.exists", return_value=True), \
+         patch("os.path.exists", side_effect=_exists), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger):
         
@@ -138,6 +152,58 @@ def test_restore_at_dar_manager_fail(mock_config, mock_runner, mock_logger):
         
         assert ret == 5
         mock_logger.error.assert_called()
+
+
+def test_restore_at_existing_target_paths_abort(tmp_path, mock_config, mock_runner, mock_logger):
+    """Test restore aborts when target already contains requested paths."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    (target / "tmp").mkdir(parents=True)
+    (target / "tmp" / "file.txt").write_text("existing")
+
+    mock_runner.run.return_value = CommandResult(1, "stdout", "stderr", note=None)
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["tmp/file.txt"], "now", str(target), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
+            "without overwriting existing files. Use a clean/empty target.",
+            str(target),
+            "tmp/file.txt",
+            "",
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_restore_at_empty_target_allows_restore(tmp_path, mock_config, mock_runner, mock_logger):
+    """Test restore proceeds when target does not contain requested paths."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    target.mkdir()
+
+    mock_runner.run.return_value = CommandResult(0, "ok", "", note=None)
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["tmp/file.txt"], "now", str(target), mock_config)
+
+        assert ret == 0
+        mock_runner.run.assert_called_once()
 
 
 def test_restore_at_multiple_paths_and_no_target(mock_config, mock_runner, mock_logger):
@@ -233,8 +299,15 @@ def test_restore_at_logs_fallback_when_no_files_restored(mock_config, mock_runne
         note=None,
     )
 
+    def _exists(path):
+        if path == "/tmp/db_dir/def.db":
+            return True
+        if path == "/tmp/restore":
+            return True
+        return False
+    
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
-         patch("os.path.exists", return_value=True), \
+         patch("os.path.exists", side_effect=_exists), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \

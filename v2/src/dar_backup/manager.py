@@ -526,8 +526,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     if date_arg:
         command.extend(['-w', date_arg])
 
-    # Target directory handling: pass -R via dar_manager's -e option so dar rebases paths.
-    # This ensures restored files land under the requested target directory.
+    # Target directory handling: pass -R and -n via dar_manager's -e option so dar
+    # rebases paths and fails fast instead of prompting to overwrite.
     if target:
         if not os.path.exists(target):
             try:
@@ -535,14 +535,36 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             except Exception as e:
                 logger.error(f"Could not create target directory '{target}': {e}")
                 return 1
-        command.extend(["-e", f"-R {target}"])
+        # Fail fast if any requested paths already exist under target.
+        normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
+        existing = []
+        for rel_path in normalized_paths:
+            if not rel_path or rel_path == ".":
+                continue
+            candidate = os.path.join(target, rel_path)
+            if os.path.exists(candidate):
+                existing.append(rel_path)
+        if existing:
+            sample = ", ".join(existing[:3])
+            extra = f" (+{len(existing) - 3} more)" if len(existing) > 3 else ""
+            logger.error(
+                "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
+                "without overwriting existing files. Use a clean/empty target.",
+                target,
+                sample,
+                extra,
+            )
+            return 1
+
+        command.extend(["-e", f"-R {target} -n"])
 
     # Restore action
     command.append('-r')
     command.extend(paths)
 
     logger.info(f"Executing restore command for {len(paths)} path(s) in cwd={os.getcwd()}")
-    process = runner.run(command)
+    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    process = runner.run(command, timeout=timeout)
     
     if process.returncode == 0:
         logger.info("Restore completed successfully.")
@@ -552,6 +574,16 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
         logger.error(f"Restore failed with code {process.returncode}")
         logger.error(f"stdout: {process.stdout}")
         logger.error(f"stderr: {process.stderr}")
+        if target and os.path.isdir(target):
+            try:
+                if os.listdir(target):
+                    logger.error(
+                        "Restore target '%s' is not empty. For safety, PITR restores abort without overwriting "
+                        "existing files. Use a clean/empty target directory.",
+                        target,
+                    )
+            except OSError:
+                logger.warning("Could not inspect restore target '%s' for existing files.", target)
 
     if date_arg and _restore_needs_fallback(process):
         logger.warning(
@@ -611,6 +643,22 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
     if any(target_norm.startswith(prefix + os.sep) for prefix in protected_prefixes):
         return f"Restore target '{target_norm}' is under a protected system directory. Choose a safer location."
 
+    return None
+
+
+def _coerce_timeout(value: Optional[int]) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return None if value <= 0 else value
+    if isinstance(value, str):
+        try:
+            value_int = int(value)
+        except ValueError:
+            return None
+        return None if value_int <= 0 else value_int
     return None
 
 
@@ -745,7 +793,8 @@ def _pitr_chain_report(
 
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
-    list_result = runner.run(['dar_manager', '--base', database_path, '--list'])
+    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(list_result.stdout)
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
@@ -787,7 +836,7 @@ def _pitr_chain_report(
                 successes += 1
             continue
 
-        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path])
+        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
         versions = _parse_file_versions(file_result.stdout)
         candidates = [(num, dt) for num, dt in versions if dt <= parsed_date]
         candidates.sort(key=lambda item: item[1], reverse=True)
@@ -859,8 +908,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
-
-    list_result = runner.run(['dar_manager', '--base', database_path, '--list'])
+    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(list_result.stdout)
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
@@ -874,7 +923,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     missing_archives = set()
 
     for path in paths:
-        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path])
+        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
         if _is_directory_path(path):
             chain = _select_archive_chain(archive_info, when_dt)
             if not chain:
@@ -912,7 +961,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 if darrc_path:
                     cmd.extend(['-B', darrc_path, 'restore-options'])
                 logger.info("Applying archive #%d for '%s'.", catalog_no, path)
-                result = runner.run(cmd, timeout=config_settings.command_timeout_secs)
+                result = runner.run(cmd, timeout=timeout)
                 if result.returncode != 0:
                     logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
                     restored = False
@@ -956,7 +1005,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             if darrc_path:
                 cmd.extend(['-B', darrc_path, 'restore-options'])
             logger.info(f"Restoring '{path}' from archive #{catalog_no} ({dt}) using dar.")
-            result = runner.run(cmd, timeout=config_settings.command_timeout_secs)
+            result = runner.run(cmd, timeout=timeout)
             if result.returncode == 0:
                 restored = True
                 successes += 1
@@ -1179,7 +1228,8 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
-        process: CommandResult = runner.run(command, timeout=config_settings.command_timeout_secs)
+        timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+        process: CommandResult = runner.run(command, timeout=timeout)
         logger.info(f"CommandResult: {process}")
     else:
         logger.warning(f"archive: '{archive}' not found in it's catalog database: {database_path}")

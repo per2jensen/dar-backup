@@ -89,6 +89,13 @@ class CommandRunner:
     ):
         self.logger = logger or get_logger()
         self.command_logger = command_logger or get_logger(command_output_logger=True)
+        if default_timeout is not None:
+            try:
+                default_timeout = int(default_timeout)
+            except (TypeError, ValueError):
+                default_timeout = 30
+            if not isinstance(default_timeout, int):
+                default_timeout = 30
         self.default_timeout = default_timeout
         self.default_capture_limit_bytes = default_capture_limit_bytes
 
