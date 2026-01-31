@@ -21,8 +21,8 @@
       "label": "Daily max: 124"
     }
   ],
-  "total_clones": 5436,
-  "unique_clones": 3167,
+  "total_clones": 5458,
+  "unique_clones": 3179,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -1358,6 +1358,11 @@
       "timestamp": "2026-01-28T00:00:00Z",
       "count": 36,
       "uniques": 18
+    },
+    {
+      "timestamp": "2026-01-29T00:00:00Z",
+      "count": 22,
+      "uniques": 12
     }
   ]
 }
