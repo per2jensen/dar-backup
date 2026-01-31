@@ -5,9 +5,18 @@ import tempfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
 
 import dar_backup.dar_backup as db
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def test_iter_files_with_paths_from_xml_streams_paths(tmp_path):

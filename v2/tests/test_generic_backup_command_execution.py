@@ -1,14 +1,23 @@
-import pytest
 from unittest.mock import patch, MagicMock
 from dar_backup.dar_backup import generic_backup
 from dar_backup.config_settings import ConfigSettings
 from tests.envdata import EnvData
+import pytest
+
+pytestmark = pytest.mark.component
+
+
+
+
+
+
+
 
 @pytest.fixture
-def mock_envdata():
+def mock_envdata(tmp_path):
     logger = MagicMock()
     command_logger = MagicMock()
-    return EnvData(test_case_name="GenericBackupTest", logger=logger, command_logger=command_logger)
+    return EnvData(test_case_name="GenericBackupTest", logger=logger, command_logger=command_logger, base_dir=tmp_path)
 
 @pytest.fixture
 def mock_config():

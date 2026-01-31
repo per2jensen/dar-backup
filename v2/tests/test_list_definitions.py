@@ -3,6 +3,16 @@
 import os
 
 from dar_backup.command_runner import CommandRunner
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+
+
+
+
+
 
 
 def test_list_definitions_outputs_backup_d_entries(setup_environment, env):

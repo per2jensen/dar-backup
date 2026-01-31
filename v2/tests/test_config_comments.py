@@ -1,4 +1,14 @@
 from dar_backup.config_settings import ConfigSettings
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 def test_config_inline_comments(tmp_path):
     """

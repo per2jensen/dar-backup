@@ -1,6 +1,16 @@
 from unittest.mock import patch
 from inputimeout import TimeoutOccurred
 import dar_backup.manager as manager
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+
+
+
+
+
 
 def test_confirm_add_old_archive_yes(setup_environment, env):
     manager.logger = env.logger

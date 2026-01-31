@@ -5,9 +5,13 @@ import os
 import random
 import shutil
 import sys
-import time
+from typing import Optional
 from configparser import ConfigParser
 from datetime import datetime, timedelta
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 
 # Add src to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -15,6 +19,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from tests.testdata_verification import run_backup_script
+
+
 
 
 def _disable_par2(env) -> None:
@@ -40,7 +46,32 @@ def _apply_fast_pitr_config(env) -> None:
         config.write(config_file)
 
 
-import pytest
+
+
+
+
+
+
+class TestClock:
+    __test__ = False
+    def __init__(self, start: Optional[datetime] = None):
+        self._current = start or datetime.now()
+
+    def tick(self, seconds: int = 1) -> datetime:
+        self._current += timedelta(seconds=seconds)
+        return self._current
+
+    def touch(self, path: str, seconds: int = 1) -> datetime:
+        ts = self.tick(seconds).timestamp()
+        os.utime(path, (ts, ts))
+        return datetime.fromtimestamp(ts)
+
+    def touch_many(self, paths, seconds: int = 1) -> datetime:
+        ts = self.tick(seconds).timestamp()
+        for path in paths:
+            if os.path.exists(path):
+                os.utime(path, (ts, ts))
+        return datetime.fromtimestamp(ts)
 
 
 @pytest.fixture(autouse=True)
@@ -63,15 +94,17 @@ def test_pitr_integration_flow(setup_environment, env):
     """
     
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
     data_file = os.path.join(env.data_dir, "pitr_test_file.txt")
+    clock = TestClock()
     
     # --- Step 1: Version 1 ---
     env.logger.info("Creating Version 1 of file")
     with open(data_file, "w") as f:
         f.write("Version 1 content")
     
-    # Sleep to ensure file mtime is clearly before the backup time
-    time.sleep(2)
+    # Ensure a deterministic mtime for the initial version
+    clock.touch(data_file, seconds=1)
     
     # --- Step 2: Full Backup ---
     env.logger.info("Running FULL backup")
@@ -80,24 +113,21 @@ def test_pitr_integration_flow(setup_environment, env):
     # Capture timestamp *after* full backup but *before* modification
     # This will be our target time for restoring Version 1
     # We add a small buffer to ensure we are "after" the backup creation
-    time.sleep(2)
-    restore_time_v1 = datetime.now()
+    restore_time_v1 = clock.tick(1)
     env.logger.info(f"Target Restore Time for V1: {restore_time_v1}")
-    time.sleep(2)
 
     # --- Step 3: Version 2 ---
     env.logger.info("Creating Version 2 of file (modification)")
     with open(data_file, "w") as f:
         f.write("Version 2 content")
         
-    time.sleep(2)
+    clock.touch(data_file, seconds=1)
     
     # --- Step 4: Differential Backup ---
     env.logger.info("Running DIFFERENTIAL backup")
     run_backup_script("--differential-backup", env)
     
-    time.sleep(2)
-    restore_time_v2 = datetime.now()
+    restore_time_v2 = clock.tick(1)
     env.logger.info(f"Target Restore Time for V2: {restore_time_v2}")
     
     # --- Step 5: Restore V1 ---
@@ -106,8 +136,8 @@ def test_pitr_integration_flow(setup_environment, env):
     
     # Relative path for restore (as stored in backup)
     # dar stores absolute paths relative to root, but -R rebases them.
-    # If we backed up env.data_dir (e.g., /tmp/unit-test/.../data),
-    # the file in backup is /tmp/unit-test/.../data/pitr_test_file.txt
+    # If we backed up env.data_dir (e.g., <temp>/.../data),
+    # the file in backup is <temp>/.../data/pitr_test_file.txt
     # We must pass the full path to --restore-path
     
     restore_path = data_file.lstrip("/")
@@ -206,14 +236,13 @@ def test_pitr_integration_flow(setup_environment, env):
     with open(data_file, "w") as f:
         f.write("Version 3 content")
 
-    time.sleep(2)
+    clock.touch(data_file, seconds=1)
 
     # --- Step 8: Incremental Backup ---
     env.logger.info("Running INCREMENTAL backup")
     run_backup_script("--incremental-backup", env)
 
-    time.sleep(2)
-    restore_time_v3 = datetime.now()
+    restore_time_v3 = clock.tick(1)
     env.logger.info(f"Target Restore Time for V3: {restore_time_v3}")
 
     # --- Step 9: Restore V3 ---
@@ -259,6 +288,7 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     - verify tree structure after FULL, DIFF, and INCR via PITR restores
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
 
     # Clean out any default test data from fixture setup
     for name in os.listdir(env.data_dir):
@@ -394,8 +424,7 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     # --- Step 2: FULL backup ---
     env.logger.info("Running FULL backup for tree structure test")
     run_backup_script("--full-backup", env)
-    time.sleep(2)
-    restore_time_v1 = datetime.now()
+    restore_time_v1 = clock.tick(1)
 
     restore_and_verify(restore_time_v1, os.path.join(env.test_dir, "restore_tree_v1"), restore_roots)
 
@@ -428,8 +457,7 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     # --- Step 4: DIFF backup ---
     env.logger.info("Running DIFFERENTIAL backup for tree structure test")
     run_backup_script("--differential-backup", env)
-    time.sleep(2)
-    restore_time_v2 = datetime.now()
+    restore_time_v2 = clock.tick(1)
 
     restore_and_verify(restore_time_v2, os.path.join(env.test_dir, "restore_tree_v2"), restore_roots)
 
@@ -452,13 +480,13 @@ def test_pitr_integration_tree_structure(setup_environment, env):
 
     assert modified + deleted >= 50
 
-    time.sleep(2)
+    modified_paths = [os.path.join(env.data_dir, rel) for rel in (deep_files[:15] + new_files[:15])]
+    clock.touch_many(modified_paths, seconds=1)
 
     # --- Step 6: INCR backup ---
     env.logger.info("Running INCREMENTAL backup for tree structure test")
     run_backup_script("--incremental-backup", env)
-    time.sleep(2)
-    restore_time_v3 = datetime.now()
+    restore_time_v3 = clock.tick(1)
 
     restore_and_verify(restore_time_v3, os.path.join(env.test_dir, "restore_tree_v3"), restore_roots)
 
@@ -473,6 +501,7 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     - attempt restores for timestamps between backups
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
     backup_def_path = os.path.join(env.backup_d_dir, "example")
 
     # Clean out any default test data from fixture setup
@@ -594,7 +623,8 @@ def test_pitr_integration_torture_chain(setup_environment, env):
         return True
 
     def create_archive(backup_type: str, seq: int, base_archive: str = None):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        archive_time = clock.tick(1)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
         archive_base = os.path.join(env.backup_dir, f"example_{backup_type}_{timestamp}_{seq:02d}")
         cmd = [
             "dar", "-c", archive_base,
@@ -617,7 +647,7 @@ def test_pitr_integration_torture_chain(setup_environment, env):
         add_result = runner.run(add_cmd, timeout=300)
         if add_result.returncode != 0:
             raise RuntimeError(f"manager add-specific-archive failed: {add_result.stderr}")
-        return archive_base, datetime.now()
+        return archive_base, archive_time
 
     def apply_mutations(round_id: int):
         added = 0
@@ -644,6 +674,9 @@ def test_pitr_integration_torture_chain(setup_environment, env):
         for idx, rel in enumerate(all_files[:10]):
             modify_file(rel, f"modified r{round_id} {idx}")
             modified += 1
+        if modified:
+            modified_paths = [os.path.join(env.data_dir, rel) for rel in all_files[:10]]
+            clock.touch_many(modified_paths, seconds=1)
 
         for rel in list(all_files[10:15]):
             remove_entry(rel)
@@ -688,7 +721,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     latest_diff = None
 
     # FULL
-    time.sleep(1)
     full_archive, full_time = create_archive("FULL", 1)
     latest_full = full_archive
     archives.append(("FULL", full_archive))
@@ -696,7 +728,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(full_time)
 
     apply_mutations(1)
-    time.sleep(1)
 
     # DIFF
     diff1, diff_time = create_archive("DIFF", 2, base_archive=latest_full)
@@ -706,7 +737,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(diff_time)
 
     apply_mutations(2)
-    time.sleep(1)
 
     # INCR
     incr1, incr_time = create_archive("INCR", 3, base_archive=latest_diff)
@@ -715,7 +745,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(incr_time)
 
     apply_mutations(3)
-    time.sleep(1)
 
     # INCR
     incr2, incr_time2 = create_archive("INCR", 4, base_archive=latest_diff)
@@ -724,7 +753,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(incr_time2)
 
     apply_mutations(4)
-    time.sleep(1)
 
     # DIFF
     diff2, diff_time2 = create_archive("DIFF", 5, base_archive=latest_full)
@@ -734,7 +762,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(diff_time2)
 
     apply_mutations(5)
-    time.sleep(1)
 
     # INCR
     incr3, incr_time3 = create_archive("INCR", 6, base_archive=latest_diff)
@@ -743,7 +770,6 @@ def test_pitr_integration_torture_chain(setup_environment, env):
     restore_times.append(incr_time3)
 
     apply_mutations(6)
-    time.sleep(1)
 
     # INCR
     incr4, incr_time4 = create_archive("INCR", 7, base_archive=latest_diff)
@@ -827,6 +853,7 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
     - PITR restores must match expected tree at each time point
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
     backup_def_path = os.path.join(env.backup_d_dir, "example")
 
     # Clean out any default test data from fixture setup
@@ -952,7 +979,8 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         return actual
 
     def create_archive(backup_type: str, seq: int, base_archive: str = None):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        archive_time = clock.tick(1)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
         archive_base = os.path.join(env.backup_dir, f"example_{backup_type}_{timestamp}_{seq:02d}")
         cmd = [
             "dar", "-c", archive_base,
@@ -975,7 +1003,7 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         add_result = runner.run(add_cmd, timeout=300)
         if add_result.returncode != 0:
             raise RuntimeError(f"manager add-specific-archive failed: {add_result.stderr}")
-        return archive_base, datetime.now()
+        return archive_base, archive_time
 
     def restore_and_verify(restore_time: datetime, restore_dir: str, restore_paths, expected_snapshot):
         os.makedirs(restore_dir, exist_ok=True)
@@ -1056,7 +1084,8 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         add_file(temp_path, f"temp {top}")
         remove_entry(temp_path)
 
-    time.sleep(2)
+    dir_paths = [os.path.join(env.data_dir, top) for top in top_dirs]
+    clock.touch_many(dir_paths, seconds=1)
 
     # --- DIFF backup ---
     env.logger.info("Running DIFFERENTIAL backup for rename/mtime torture test")
@@ -1080,7 +1109,8 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
     for rel in list(all_files[-3:]):
         remove_entry(rel)
 
-    time.sleep(2)
+    modified_paths = [os.path.join(env.data_dir, rel) for rel in all_files[:5]]
+    clock.touch_many(modified_paths, seconds=1)
 
     # --- INCR backup ---
     env.logger.info("Running INCREMENTAL backup for rename/mtime torture test")
@@ -1102,6 +1132,7 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
     - Verify PITR restore works using rebuilt catalog
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
     config_settings = ConfigSettings(env.config_file)
 
     # Clean out any default test data from fixture setup
@@ -1118,18 +1149,15 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
     # Version 1 + FULL
     with open(data_file, "w") as f:
         f.write("Version 1 content")
-    time.sleep(2)
+    clock.touch(data_file, seconds=1)
     run_backup_script("--full-backup", env)
-    time.sleep(2)
-    restore_time_v1 = datetime.now()
-    time.sleep(2)
+    restore_time_v1 = clock.tick(1)
 
     # Version 2 + DIFF
     with open(data_file, "w") as f:
         f.write("Version 2 content")
-    time.sleep(2)
+    clock.touch(data_file, seconds=1)
     run_backup_script("--differential-backup", env)
-    time.sleep(2)
 
     # Delete the catalog DB to simulate loss
     db_path = os.path.join(env.backup_dir, "example.db")

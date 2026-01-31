@@ -1,6 +1,16 @@
 from configparser import ConfigParser
 
 from dar_backup.config_settings import ConfigSettings
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def test_par2_overrides_are_applied(tmp_path):

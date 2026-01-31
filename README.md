@@ -1832,6 +1832,35 @@ source venv/bin/activate # activate the virtual env
 pytest                   # run the test suite
 ```
 
+### Test selection with markers
+
+The test suite is annotated with these markers:
+
+- `unit` (fast, pure logic)
+- `component` (subprocess boundary with mocks/lightweight commands)
+- `integration` (end-to-end workflows; external tools)
+- `slow` (long-running/heavier integration)
+- `live_discord` (sends real webhook messages; opt-in only)
+
+Common runs:
+
+```bash
+# Fast local loop (unit + component)
+pytest -m "unit or component"
+
+# Integration (exclude slow + live webhook)
+pytest -m "integration and not slow and not live_discord"
+
+# Slow-only
+pytest -m slow
+
+# Full suite (default pytest.ini already excludes live_discord)
+pytest -m "not live_discord"
+
+# Live webhook (requires DAR_BACKUP_DISCORD_WEBHOOK_URL)
+pytest -m live_discord
+```
+
 ## Todo
 
 - Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars

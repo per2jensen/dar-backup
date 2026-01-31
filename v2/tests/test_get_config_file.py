@@ -2,6 +2,16 @@ import os
 from types import SimpleNamespace
 
 from dar_backup.util import get_config_file
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def _expected_path(raw_path: str) -> str:

@@ -2,9 +2,12 @@
 
 import os
 import sys
+import pytest
+
+pytestmark = pytest.mark.integration
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-import pytest
 import shutil
 from types import SimpleNamespace
 from tests.envdata import EnvData
@@ -207,11 +210,17 @@ def test_clean_log_non_existent_file(setup_environment, env: EnvData):
 import os
 import stat
 
+
+
 def test_clean_log_read_only_file(setup_environment, env: EnvData, sample_log_file):
     """Test `clean-log` on a read-only file (should fail)."""
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
     import stat
+
+
+
+
     os.chmod(sample_log_file, stat.S_IREAD)  # Make file read-only
 
     command = ["clean-log", "-f", sample_log_file, '-c', env.config_file]
@@ -300,7 +309,7 @@ def test_clean_log_dry_run(setup_environment, env: EnvData, sample_log_file):
 def test_clean_log_uses_config_file_when_no_file_provided(setup_environment, env: EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
-    logfile_path = "/tmp/unit-test/dar-backup.log"
+    logfile_path = os.path.join(env.test_root, "dar-backup.log")
     os.makedirs(os.path.dirname(logfile_path), exist_ok=True)
     with open(logfile_path, "w") as f:
         f.write("INFO - <File should be removed>\nERROR - Keep this\n")

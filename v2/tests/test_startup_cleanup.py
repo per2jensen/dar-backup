@@ -1,9 +1,14 @@
 import os
-import pytest
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 from dar_backup.dar_backup import clean_restore_test_directory
 import dar_backup.dar_backup as db
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
 
 def test_clean_restore_test_directory_removes_files(tmp_path):
     # Setup
@@ -151,6 +156,10 @@ def test_main_calls_clean_restore_test_directory(monkeypatch, tmp_path):
     Integration test ensuring main() actually calls clean_restore_test_directory.
     """
     from dar_backup import dar_backup
+
+
+
+
     
     # Mock sys.argv
     config_file = tmp_path / "dar-backup.conf"

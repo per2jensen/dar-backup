@@ -1,6 +1,9 @@
-import pytest
 import os
 import sys
+import pytest
+
+pytestmark = pytest.mark.integration
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import shutil
@@ -8,6 +11,12 @@ from pathlib import Path
 from dar_backup.command_runner import CommandRunner
 from tests.conftest import test_files
 from testdata_verification import (
+
+
+
+
+
+
     verify_backup_contents, 
     verify_restore_contents, run_backup_script
 )

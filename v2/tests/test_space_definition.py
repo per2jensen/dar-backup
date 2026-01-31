@@ -1,12 +1,22 @@
 import logging
 import sys
 import os
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 # Ensure the test directory is in the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
+
+
+
+
+
+
 
 
 def create_random_data_file(env: EnvData, name: str, size: int) -> None:

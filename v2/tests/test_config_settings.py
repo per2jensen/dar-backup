@@ -1,10 +1,19 @@
 import os
 from configparser import ConfigParser
 
-import pytest
 
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.exceptions import ConfigSettingsError
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def write_config(

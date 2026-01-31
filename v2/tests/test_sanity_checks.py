@@ -1,12 +1,15 @@
 # modified: 2021-07-25 to be a pytest test
 import os
-import pytest
 import shutil
 import subprocess
 import sys
 import tempfile
 from time import time
 from typing import Generator
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 # Add src directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -462,7 +465,6 @@ def test_script_shows_version(script_name, script_path):
 
 import io
 import sys
-import pytest
 from dar_backup.util import print_aligned_settings
 from tests.envdata import EnvData
 
@@ -472,7 +474,6 @@ def setup_env(env: EnvData):
     pass
 
 import sys
-import pytest
 from tests.envdata import EnvData
 
 def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
@@ -537,6 +538,8 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
 # Custom RotatingFileHandler that announces rotation
 from logging.handlers import RotatingFileHandler
 
+
+
 class AnnounceRotatingFileHandler(RotatingFileHandler):
     def doRollover(self):
         print(f"[TEST] Rotating log: {self.baseFilename}")
@@ -564,6 +567,10 @@ def test_logfile_rotation_and_content_integrity(setup_environment, env: 'EnvData
 
         # Use the global loggers as set by util.py
         from dar_backup.util import logger as main_logger, secondary_logger
+
+
+
+
 
         # Write lots of lines to both loggers, uniquely numbered
         msg = "0123456789" * 20  # About 200 bytes per line

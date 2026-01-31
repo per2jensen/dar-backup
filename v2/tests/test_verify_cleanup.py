@@ -1,6 +1,14 @@
 from unittest.mock import MagicMock, patch, mock_open
 from types import SimpleNamespace
 from dar_backup.dar_backup import verify
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+
+
+
 
 def test_verify_removes_existing_file_before_restore(env, tmp_path):
     """

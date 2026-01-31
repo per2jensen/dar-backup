@@ -1,7 +1,16 @@
 import os
-import pytest
 from dar_backup.util import get_binary_info
 import dar_backup.util as util
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+
+
+
+
+
 
 @pytest.mark.parametrize("binary_name", ["dar", "dar_manager"])
 def test_binary_path_exists_and_executable(binary_name):

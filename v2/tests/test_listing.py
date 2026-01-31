@@ -2,6 +2,10 @@
 import re
 import os
 import sys
+import pytest
+
+pytestmark = pytest.mark.integration
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 # Ensure the test directory is in the Python path
@@ -9,6 +13,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
+
+
+
+
+
+
 
 def create_test_files(env: EnvData) -> dict:
     env.logger.info("Creating test dummy archive files...")

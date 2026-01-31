@@ -2,6 +2,10 @@ import logging
 import random
 import sys
 import os
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner
@@ -9,6 +13,12 @@ from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.util import CommandResult
+
+
+
+
+
+
 
 """
 This module contains unit tests for detecting bitrot and fixing it in dar archives.
@@ -61,19 +71,20 @@ def simulate_bitrot(env: EnvData, bitrot: int = 5):
     if os.path.exists(archive_path):
         archive_size = os.path.getsize(archive_path)
         logging.info(f"Size of archive: {archive_path} is {archive_size} bytes")
-        # Generate random bytes
-        random_bytes = bytearray(random.getrandbits(8) for _ in range(int(archive_size*(bitrot/100)*0.98))) 
+        rng = random.Random(0)
+        # Generate deterministic bytes
+        random_bytes = bytearray(rng.getrandbits(8) for _ in range(int(archive_size * (bitrot / 100) * 0.98)))
         # Open the file in write mode
         with open(archive_path, "r+b") as file:
-            # Seek to random position between 0 - 70% of file size
-            random_position = random.randint(0, int(archive_size * 0.7))
+            # Seek to deterministic position between 0 - 70% of file size
+            random_position = rng.randint(0, int(archive_size * 0.7))
             file.seek(random_position)
             # Write the random bytes
             file.write(random_bytes)
         env.logger.info(f"{bitrot}% bitrot created in {archive_path}")
     else:
         env.logger.error(f"File {archive_path} does not exist.")
-        sys.exit(1)
+        raise FileNotFoundError(f"{archive_path} does not exist")
 
 
 def modify_par2_redundancy(env: EnvData, redundancy: int) -> None:
@@ -131,7 +142,7 @@ def check_bitrot_recovery(env: EnvData, command_timeout: int):
         logging.info("dar detected archive corruption as expected.")
     except AssertionError:
         logging.exception("Bitrot was not detected as expected")
-        sys.exit(1)
+        raise
 
     # Step 2: Repair
     try:
@@ -150,7 +161,7 @@ def check_bitrot_recovery(env: EnvData, command_timeout: int):
         logging.info(f"Archive successfully repaired and verified: {archive_path}")
     except Exception:
         logging.exception("Unexpected error during recovery or verification")
-        sys.exit(1)
+        raise
 
 
 

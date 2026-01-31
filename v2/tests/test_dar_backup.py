@@ -1,4 +1,3 @@
-import pytest
 import os
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -10,6 +9,10 @@ import subprocess
 from datetime import datetime
 from dar_backup.dar_backup import restore_backup, RestoreError
 from pathlib import Path 
+import pytest
+
+pytestmark = pytest.mark.component
+
 
 
 
@@ -787,6 +790,8 @@ def test_test_restore_cli(monkeypatch):
 
 from dar_backup.dar_backup import find_files_between_min_and_max_size
 
+
+
 def test_find_files_within_min_max_range(env):
     files = [
         ("tiny.txt", "0 o"),
@@ -1361,6 +1366,10 @@ def test_get_backup_type_from_archive_base_invalid_format_raises():
 
 def test_get_par2_ratio_prefers_specific_ratio():
     from dar_backup.dar_backup import _get_par2_ratio
+
+
+
+
 
     par2_config = {
         "par2_ratio_full": 12,

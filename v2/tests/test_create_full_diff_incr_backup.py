@@ -3,6 +3,10 @@
 import os
 import shutil
 import sys
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 
 # Add src to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -13,6 +17,12 @@ from pathlib import Path
 from dar_backup.command_runner import CommandRunner
 from tests.conftest import test_files 
 from testdata_verification import verify_backup_contents, verify_restore_contents,run_backup_script
+
+
+
+
+
+
 
 def list_catalog_db(env):  
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
@@ -83,7 +93,7 @@ def test_backup_functionality(setup_environment, env):
 
     except Exception:
         env.logger.exception("Backup functionality test failed")
-        sys.exit(1)
+        raise
     env.logger.info("test_backup_functionality() finished successfully")
 
 
@@ -143,7 +153,7 @@ def test_backup_functionality_short_options(setup_environment, env):
 
     except Exception:
         env.logger.exception("Backup functionality test failed")
-        sys.exit(1)
+        raise
     env.logger.info("test_backup_functionality() finished successfully")
 
 
@@ -257,7 +267,7 @@ def test_config_with_invalid_boolean_value(setup_environment, env):
 
     invalid_config = f"""
 [MISC]
-LOGFILE_LOCATION = /tmp/unit-test/dar-backup.log
+LOGFILE_LOCATION = {env.log_file}
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 0
 NO_FILES_VERIFICATION = 5
@@ -470,4 +480,3 @@ ENABLED = True
     
     assert result.returncode != 0
     assert "INCR_AGE" in result.stderr.upper() or "MANDATORY" in result.stderr.upper()
-

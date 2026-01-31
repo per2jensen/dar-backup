@@ -6,9 +6,18 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 import dar_backup.manager as manager
+import pytest
+
+pytestmark = pytest.mark.component
+
+
+
+
+
+
+
 
 
 def make_config(tmp_path: Path, logfile_name: str = "dar-backup.log") -> Path:

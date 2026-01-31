@@ -1,8 +1,17 @@
 import os
 import sys
-import pytest
 
 import dar_backup.dar_backup as dar_backup
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def _write_min_config(path, *, logfile_location):

@@ -3,6 +3,14 @@ import os
 import tempfile
 from dar_backup.util import setup_logging
 from dar_backup.command_runner import CommandRunner
+import pytest
+
+pytestmark = pytest.mark.component
+
+
+
+
+
 
 def test_trace_logging_captures_all_levels_and_commands():
     # Setup temp directories and files

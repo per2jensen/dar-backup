@@ -1,4 +1,8 @@
 ""
+import pytest
+
+pytestmark = pytest.mark.integration
+
 """
 modified: 2021-07-25 to be a pytest test
 
@@ -13,6 +17,12 @@ from tests.conftest import test_files
 from dar_backup.command_runner import CommandRunner
 from dar_backup.util import CommandResult
 from testdata_verification import verify_restore_contents, run_backup_script 
+
+
+
+
+
+
 
 def test_restoredir_requires_value(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
@@ -29,7 +39,7 @@ def test_restoredir_requires_value(setup_environment, env):
 
 def test_restore_requires_value(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    command = ['dar-backup', '--restore', '--restore-dir', '/tmp/unit-test' , '--log-stdout', '--log-level', 'debug', '--config-file', env.config_file]
+    command = ['dar-backup', '--restore', '--restore-dir', env.test_dir , '--log-stdout', '--log-level', 'debug', '--config-file', env.config_file]
     process = runner.run(command)
     env.logger.info(f"process.returncode={process.returncode}")
     if process.returncode == 0:

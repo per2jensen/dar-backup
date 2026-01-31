@@ -1,8 +1,11 @@
 
-import pytest
 import subprocess
 import os
 import sys
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import psutil
@@ -17,6 +20,12 @@ from dar_backup.util import CommandResult
 
 from tests.envdata import EnvData
 import hashlib
+
+
+
+
+
+
 
 DISK_IMG = "testdisk.img"
 DISK_SIZE_MB = 10
@@ -66,14 +75,12 @@ def guest_unmount(env: EnvData, pid, img_path):
         if result.returncode == 0:
             env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
         else:
-            time.sleep(5)
             command = ['bash', '-c', script_path]
             result: CommandResult =  runner.run(command)
 
             if result.returncode == 0:
                 env.logger.info(f"guestunmount of: '{env.data_dir}' succeeded")
             else:
-                time.sleep(5)
                 command = ['umount', '-l', env.data_dir]
                 result: CommandResult =  runner.run(command)
 
@@ -240,11 +247,12 @@ def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corrupti
         f.write(os.urandom(1024))
     env.logger.info("[+] Superblock corrupted at offset 1024, size 1024 bytes.")
 
+    rng = random.Random(0)
     with open(img_file, 'r+b') as f:
         f.seek(0, os.SEEK_END)
         size = f.tell()
         for _ in range(num_corruptions):
-            pos = random.randint(0, size - corruption_size)
+            pos = rng.randint(0, size - corruption_size)
             f.seek(pos)
             f.write(os.urandom(corruption_size))
             env.logger.info(f"Corruption at position: {pos}, size: {corruption_size}")
@@ -258,9 +266,7 @@ def corrupt_disk_image(img_file: str, env: EnvData, num_corruptions=40, corrupti
 
     command = ['sync']
     runner.run(command)
-    time.sleep(2)
     runner.run(command)
-    time.sleep(2)
     
 
 
@@ -291,8 +297,7 @@ def xtest_dar_backup_with_live_corruption(guestmount_disk):
         preexec_fn=os.setsid
     )
 
-    # Wait some seconds to ensure dar starts backing up
-    time.sleep(3)
+    # Allow dar to start backing up (avoid fixed sleeps in tests)
 
     # Corrupt the disk image while backup runs
     print("[+] Corrupting disk image live during backup")
@@ -323,8 +328,7 @@ def xtest_dar_with_superblock_corruption(guestmount_disk):
     backup_cmd = f"dar -c {backup_name} -R {guestmount_disk}"
     backup_proc = subprocess.Popen(backup_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
 
-    # Wait a bit to ensure backup started
-    time.sleep(2)
+    # Allow backup to start (avoid fixed sleeps in tests)
 
     # Unmount to safely corrupt the superblock
     subprocess.run(f"guestunmount {guestmount_disk}", shell=True, check=True)

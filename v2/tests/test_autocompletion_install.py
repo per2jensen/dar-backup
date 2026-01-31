@@ -1,5 +1,14 @@
-import pytest
 from dar_backup.installer import install_autocompletion, uninstall_autocompletion
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 @pytest.fixture(autouse=True)
 def isolate_home(tmp_path, monkeypatch):

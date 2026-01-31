@@ -1,7 +1,6 @@
 import logging
 import tempfile
 import os
-import pytest
 import re
 import subprocess
 
@@ -9,6 +8,12 @@ from dar_backup.command_runner import CommandRunner, CommandResult
 from io import StringIO
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
+import pytest
+
+pytestmark = pytest.mark.component
+
+
+
 
 
 
@@ -764,6 +769,10 @@ def test_command_runner_wait_exception_returns_error(tmp_path):
     class FakeProcess:
         def __init__(self):
             import io
+
+
+
+
             self.stdout = io.BytesIO(b"")
             self.stderr = io.BytesIO(b"")
 

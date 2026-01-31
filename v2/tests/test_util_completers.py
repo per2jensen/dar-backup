@@ -1,5 +1,4 @@
 import os
-import pytest
 
 
 from types import SimpleNamespace
@@ -16,6 +15,10 @@ from dar_backup.util import (
     list_archive_completer,
     archive_content_completer
 )
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 
 
@@ -277,6 +280,8 @@ ENABLED = false
 import unittest.mock
 from dar_backup.util import add_specific_archive_completer
 
+
+
 def test_add_specific_archive_completer_full_coverage(setup_environment, env):
     # Setup
     backup_def = "example"
@@ -292,6 +297,8 @@ def test_add_specific_archive_completer_full_coverage(setup_environment, env):
 
     from types import SimpleNamespace
     from pathlib import Path
+
+
 
     test_backups_dir = str(Path(env.test_dir) / "backups")
 

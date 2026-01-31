@@ -3,11 +3,21 @@ import logging
 
 from dar_backup.dar_backup import filter_darrc_file
 from tests.envdata import EnvData
+import pytest
 
-def test_filter_darrc_file_removes_verbose_flags(monkeypatch):
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
+
+def test_filter_darrc_file_removes_verbose_flags(monkeypatch, tmp_path):
     logger = logging.getLogger("test_logger")
     command_logger = logging.getLogger("command_logger")
-    env = EnvData("FilterDarrcVerboseTest", logger, command_logger)
+    env = EnvData("FilterDarrcVerboseTest", logger, command_logger, base_dir=tmp_path)
 
     # Create test .darrc content with verbose flags and valid entries
     verbose_lines = [
@@ -43,4 +53,3 @@ def test_filter_darrc_file_removes_verbose_flags(monkeypatch):
     # These should remain
     for kept in ["+ /important/data", "- /tmp", "-v", "--", "+ /extra"]:
         assert kept in filtered_lines
-

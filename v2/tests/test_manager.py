@@ -9,7 +9,6 @@ import re
 import envdata
 import test_bitrot
 import tempfile
-import pytest
 import subprocess
 
 
@@ -23,6 +22,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List
 from unittest.mock import patch, MagicMock
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 
@@ -1062,12 +1065,12 @@ def test_manager_sanity_checks_exit(setup_environment, env, monkeypatch, caplog,
 
 
 
-import pytest
 from dar_backup.config_settings import ConfigSettings  # Corrected import
 
 
-import pytest
 from dar_backup.config_settings import ConfigSettings
+
+
 
 @pytest.fixture
 def mock_config(tmp_path):
@@ -1594,6 +1597,10 @@ def test_manager_db_dir_invalid_path_without_backup_def(env, setup_environment, 
     Negative test: MANAGER_DB_DIR is invalid and --backup-def is omitted; catalog creation should fail.
     """
     import shutil
+
+
+
+
 
     invalid_db_dir = tmp_path / "nonexistent" / "unwritable"
 

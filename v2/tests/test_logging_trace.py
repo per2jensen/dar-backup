@@ -1,5 +1,15 @@
 import logging
 from dar_backup.util import setup_logging
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 def test_dual_logging_trace_suppression(tmp_path):
     """

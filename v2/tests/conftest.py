@@ -56,42 +56,39 @@ def sample_log_file(env: EnvData):
 
 
 
-# Session-scoped fixture for the logger
-@pytest.fixture(scope='session')
-def logger():
-    os.path.exists("/tmp/unit-test") or os.makedirs("/tmp/unit-test")
-
-    test_log =                "/tmp/unit-test/test.log"
-    test_command_output_log = "/tmp/unit-test/test_command_output.log"
+# Function-scoped fixture for the logger (per-test log files)
+@pytest.fixture(scope='function')
+def logger(tmp_path):
+    test_log = os.path.join(tmp_path, "test.log")
+    test_command_output_log = os.path.join(tmp_path, "test_command_output.log")
 
     logger = setup_logging(test_log, test_command_output_log, "debug", False)
-    command_logger = get_command_logger(command_output_logger=True) 
-    return {"logger" : logger,
-            "command_logger" : command_logger}
+    command_logger = get_command_logger(command_output_logger=True)
+    return {"logger": logger, "command_logger": command_logger}
 
 
 
 
 @pytest.fixture(scope='function')
-def env(request, logger):
+def env(request, logger, tmp_path):
     """
     Setup the EnvData dataclass for each test case before the "yield" statement.
     """
     test_name = safe_test_name(request.node.name)
-    env = EnvData(test_name, logger["logger"], logger["command_logger"]) # name of test case
+    env = EnvData(test_name, logger["logger"], logger["command_logger"], base_dir=tmp_path) # name of test case
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
     yield env
 
 
 @pytest.fixture(scope='function')
-def setup_environment(request, logger):
+def setup_environment(request, logger, tmp_path):
     """
     Setup the environment for each test case before the "yield" statement.
     Tear down the environment after the "yield" statement.
     """
     test_name = safe_test_name(request.node.name)
-    env = EnvData(test_name,  logger["logger"], logger["command_logger"]) # name of test case
+    env = EnvData(test_name,  logger["logger"], logger["command_logger"], base_dir=tmp_path) # name of test case
 
     env.logger.info("================================================================")
     env.logger.info("               Configure test environment")
@@ -100,7 +97,11 @@ def setup_environment(request, logger):
 
     env.datestamp = datetime.now().strftime('%Y-%m-%d')
 
-    if env.test_dir.startswith("/tmp/") and os.path.exists(env.test_dir) and not env.test_dir.endswith("unit-test/"):
+    if os.path.exists(env.test_dir):
+        test_root = os.path.normpath(env.test_root)
+        normalized_test_dir = os.path.normpath(env.test_dir)
+        if not normalized_test_dir.startswith(test_root + os.sep):
+            raise RuntimeError(f"Refusing to delete unexpected test directory: {normalized_test_dir}")
         shutil.rmtree(env.test_dir)
 
     # Create the unit test directory
@@ -174,7 +175,9 @@ def create_backup_definitions(env : EnvData) -> None:
 def create_directories_from_template(env : EnvData):
     try:
         with open(env.template_config_file, 'r') as template_file:
-            config_content = template_file.read().replace('@@test-case-name@@', env.test_case_name.lower())
+            config_content = template_file.read()
+            config_content = config_content.replace("/tmp/unit-test", env.test_root)
+            config_content = config_content.replace('@@test-case-name@@', env.test_case_name.lower())
     except FileNotFoundError:
         env.logger.exception("Template config file not found")
         raise RuntimeError(f"Template config file { env.template_config_file} not found")
@@ -261,7 +264,8 @@ def teardown_environment(env: EnvData):
             raise RuntimeError(f"Attempt to delete a critical directory: {normalized_path}")
 
         # Check for other unsafe paths (e.g., parent of the home directory)
-        if not normalized_path.startswith("/tmp/unit-test/"):
+        test_root = os.path.normpath(env.test_root)
+        if not normalized_path.startswith(test_root + os.sep):
             raise RuntimeError(f"Refusing to delete an unsafe directory: {normalized_path}")
 
         # Only delete the directory if all checks are passed
@@ -285,6 +289,7 @@ def copy_dar_rc(env : EnvData):
 
 def print_variables(env : EnvData):
     env.logger.info(f"Test case name: {env.test_case_name}")
+    env.logger.info(f"Test root: {env.test_root}")
     env.logger.info(f"Test directory: {env.test_dir}")
     env.logger.info(f"Template config file: {env.template_config_file}")
     env.logger.info(f"Config file: {env.config_file}")

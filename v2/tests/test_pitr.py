@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-import pytest
 from unittest.mock import MagicMock, patch
 import os
 import sys
@@ -8,6 +7,16 @@ import datetime
 from dar_backup.manager import restore_at, main, _restore_with_dar, _pitr_chain_report, relocate_archive_paths
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.command_runner import CommandResult
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 # --- Fixtures ---
 

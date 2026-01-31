@@ -2,6 +2,10 @@ import os
 import subprocess
 import logging
 import sys
+import pytest
+
+pytestmark = pytest.mark.integration
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from datetime import timedelta
@@ -10,7 +14,6 @@ from dar_backup.command_runner import CommandRunner
 from unittest.mock import MagicMock
 from dar_backup.util import requirements
 
-import pytest
 from dar_backup.cleanup import confirm_full_archive_deletion
 from inputimeout import TimeoutOccurred
 
@@ -96,7 +99,7 @@ def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
         stdout, stderr = process.stdout, process.stderr 
         env.logger.error(f"stderr: {stderr}")
         env.logger.error(f"stdout: {stdout}")
-        sys.exit(1)
+        raise RuntimeError("Failed to create database")
 
 
 
@@ -232,7 +235,7 @@ def test_cleanup_specific_archives_dry_run(setup_environment, env):
 def test_cleanup_alternate_dir(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     alternate_dir = os.path.join(env.test_dir, 'backups-alternate')
-    if not alternate_dir.startswith('/tmp/unit-test'):
+    if not alternate_dir.startswith(env.test_root):
         raise RuntimeError("Alternate directory is not a temporary directory")
 
     os.makedirs(alternate_dir, exist_ok=True)
@@ -682,6 +685,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from dar_backup.cleanup import delete_catalog
 
+
+
 def test_cleanup_invalid_symlink(tmp_path):
     broken_link = tmp_path / "broken_symlink"
     broken_link.symlink_to("/nonexistent/target")
@@ -941,6 +946,10 @@ def test_delete_old_backups_rejects_unsafe_archive(monkeypatch, tmp_path):
 
 def test_delete_catalog_handles_exception(monkeypatch):
     import dar_backup.cleanup as cleanup
+
+
+
+
 
     mock_logger = MagicMock()
     monkeypatch.setattr(cleanup, "logger", mock_logger)

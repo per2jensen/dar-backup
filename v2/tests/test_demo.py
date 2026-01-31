@@ -3,9 +3,18 @@ import sys
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
-import pytest
 
 import dar_backup.demo as demo
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def _ns(**kw):

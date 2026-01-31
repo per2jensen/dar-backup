@@ -1,8 +1,18 @@
 import os
 import sys
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
+
+
+
+
+
+
 
 
 def create_many_tiny_files(env: EnvData, count=5000):

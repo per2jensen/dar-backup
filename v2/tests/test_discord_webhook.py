@@ -2,9 +2,18 @@ import json
 import os
 from types import SimpleNamespace
 
-import pytest
 
 import dar_backup.util as util
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 class DummyResponse:

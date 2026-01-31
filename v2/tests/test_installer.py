@@ -1,6 +1,5 @@
 
 import os
-import pytest
 from  dar_backup.config_settings import ConfigSettings
 from dar_backup.installer import run_installer
 from dar_backup.manager import get_db_dir
@@ -13,6 +12,16 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import dar_backup.installer as installer
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 # --- Helpers -----------------------------------------------------------------

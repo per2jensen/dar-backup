@@ -4,6 +4,10 @@ from pathlib import Path
 import os
 import sys
 from sys import path as path
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 # Add src directory to path
 path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -61,6 +65,8 @@ class TestDarBackupUnitGenerator(unittest.TestCase):
 
 from dar_backup.dar_backup_systemd import write_unit_files
 from unittest.mock import MagicMock
+
+
 
 def test_write_unit_files_triggers_enable_and_start(monkeypatch, tmp_path):
     venv = tmp_path / "venv"
@@ -136,6 +142,8 @@ def test_main_passes_args_to_write_unit_files(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["prog", "--venv", "/opt/venv", "--dar-path", "/opt/dar", "--install"])
 
     from dar_backup.dar_backup_systemd import main as systemd_main
+
+
 
     systemd_main()
 

@@ -3,12 +3,22 @@ import importlib
 import re
 import sys
 import os
+import pytest
+
+pytestmark = pytest.mark.integration
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.dar_backup import filter_darrc_file
 from tests.envdata import EnvData
 from tests.test_bitrot import generate_datafiles
+
+
+
+
+
+
 
 
 def create_test_files(env: EnvData) -> dict:

@@ -1,4 +1,14 @@
 import xml.etree.ElementTree as ET
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 xml_data = """<?xml version="1.0"?>
 <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>

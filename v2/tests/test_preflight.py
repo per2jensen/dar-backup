@@ -3,6 +3,16 @@ from textwrap import dedent
 
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.dar_backup import preflight_check
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
+
+
 
 
 def write_config(path, backup_dir, backup_d_dir, test_restore_dir, par2_enabled="false"):

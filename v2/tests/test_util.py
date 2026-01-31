@@ -3,12 +3,15 @@ import os
 import sys
 import logging
 import configparser
-import pytest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from urllib.error import HTTPError
 from dar_backup import util
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 
 @pytest.fixture
@@ -97,6 +100,8 @@ def test_list_backups_ignores_files(tmp_path, capsys):
 
 from dar_backup.util import get_invocation_command_line
 
+
+
 def test_get_invocation_command_line_positive(monkeypatch):
     """
     Positive test:
@@ -133,6 +138,8 @@ def test_get_invocation_command_line_negative(monkeypatch):
 def test_get_invocation_command_line_empty(monkeypatch):
     def mock_open(*_args, **_kwargs):
         from io import BytesIO
+
+
         return BytesIO(b"")
 
     monkeypatch.setattr("builtins.open", mock_open)

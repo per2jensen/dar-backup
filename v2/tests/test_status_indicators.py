@@ -1,9 +1,14 @@
-import pytest
 import os
 from sys import path
 from threading import Event
 from unittest.mock import patch, MagicMock, mock_open
 from dar_backup.rich_progress import show_log_driven_bar, is_terminal, tail_log_file, get_green_shade
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
 
 # Ensure the test directory is in the Python path
 path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -34,7 +39,13 @@ def test_show_log_driven_bar_updates_progress(
 
     # Setup Live mock
     mock_live = MagicMock()
+    update_event = Event()
+
+    def mark_update(*_args, **_kwargs):
+        update_event.set()
+
     mock_live_class.return_value.__enter__.return_value = mock_live
+    mock_live.update.side_effect = mark_update
 
     # Setup mocked file behavior
     mock_file_handle = mock_file.return_value.__enter__.return_value
@@ -44,6 +55,10 @@ def test_show_log_driven_bar_updates_progress(
     stop_event = Event()
 
     import threading
+
+
+
+
     thread = threading.Thread(
         target=show_log_driven_bar,
         args=("/mock/path.log", stop_event, "=== START BACKUP SESSION: 1234", 10),
@@ -51,8 +66,7 @@ def test_show_log_driven_bar_updates_progress(
     )
     thread.start()
 
-    import time
-    time.sleep(1)
+    assert update_event.wait(timeout=1), "Progress bar update not observed"
     stop_event.set()
     thread.join()
 

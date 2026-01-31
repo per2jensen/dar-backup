@@ -1,5 +1,13 @@
 import xml.etree.ElementTree as ET
 import os
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+
+
+
 
 payload = """<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>\n<root>&xxe;</root>"""
 
