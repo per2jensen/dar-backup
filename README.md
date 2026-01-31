@@ -1272,17 +1272,24 @@ Notes:
 - `--target` is required to avoid accidental restores into the current working directory.
 - Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
 - `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
-- If `dar_manager -w` cannot restore a file at the requested time, the manager will fall back to a best-match archive and log the approximation (and can send a short Discord notice if configured).
-- Why the fallback exists (simple explanation):
-  - `dar_manager -w` decides what to restore based on **file and directory timestamps**, not on “which archive was created when”.
-  - Directories get a **new mtime** when files inside them are added/removed.
-  - That means a directory can look “too new” for a date you ask for, even though the directory and its files really existed at that time.
-  - When that happens, `dar_manager` can return “nothing to restore” for a directory path even though the data is in the archive.
-  - The fallback fixes this by restoring from the correct archive chain (FULL → DIFF → INCR) and applying them in order.
+- PITR restores use the catalog to select the correct archive chain (FULL → DIFF → INCR) and then restore **directly with `dar`** in that order.
+  - This avoids interactive `dar_manager` prompts (e.g., non‑monotonic mtimes often seen on pCloud/FUSE).
+  - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look “too new”.
 - Missing archives:
-  - The fallback uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
+  - PITR uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
   - If any archive slice in that chain is missing on disk, PITR restore **fails** and logs which archive slices are missing.
   - A short Discord notice is sent (if configured) so missing archives are visible immediately.
+- Relocating archive paths in the catalog:
+  - The catalog stores **absolute archive paths**. If archives move (or a mountpoint changes), the catalog will still point to the old path.
+  - This can happen when manager DBs are moved to another disk and the archives are re-added from a different mountpoint.
+  - Use the built-in relocate command to rewrite a path prefix in-place:
+    - Dry run:
+      - `manager --relocate-archive-path /old/path /new/path --relocate-archive-path-dry-run --backup-def <definition>`
+    - Apply:
+      - `manager --relocate-archive-path /old/path /new/path --backup-def <definition>`
+  - Example (move `/home/pj/mnt/dar` to `/mnt/dar`):
+    - `manager --relocate-archive-path /home/pj/mnt/dar /mnt/dar --backup-def pCloudDrive`
+  - Alternative quick fix: create a symlink from the old path to the new path.
 - Rebuilding a catalog after archive loss:
   - If PITR fails due to missing archives, the catalog may no longer match what is actually on disk.
   - You can rebuild the catalog from the remaining archives and then retry PITR (with the understanding that older restore points may no longer be possible).

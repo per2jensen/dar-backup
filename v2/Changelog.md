@@ -10,6 +10,9 @@
 - PITR dry-run chain report (`manager --pitr-report`) to preview archive selection and detect missing archives.
 - PITR fallback now reports missing archive slices and can notify via Discord when configured.
 - CommandRunner debug diagnostics now include process PID and elapsed time for each executed command.
+- Manager command to relocate archive paths inside catalog databases (`--relocate-archive-path`, with dry-run).
+- PITR restore logging now includes the exact archive chain (FULL/DIFF/INCR + timestamps + basenames).
+- Tests covering PITR direct-restore flow and relocate-archive-path CLI safeguards.
 
 ### Changed
 
@@ -20,6 +23,7 @@
 - PITR fallback now validates chain completeness instead of skipping missing archives.
 - `COMMAND_TIMEOUT_SECS = -1` disables timeouts for long-running operations.
 - Catalog rebuild (`manager --add-dir`) now adds archives in FULL → DIFF → INCR order for the same date to avoid dar_manager prompts.
+- PITR restores now always use direct `dar` chain application (skipping `dar_manager -w` restores) to avoid interactive prompts on non-monotonic mtimes.
 
 ## v2-1.0.2 - 2026-01-25
 
