@@ -1247,7 +1247,7 @@ Restore a directory (same idea, but the path is a directory):
 . <the virtual env>/bin/activate
 manager --config-file <dar-backup.conf> \
   --backup-def <definition> \
-  --restore-path tmp/path/to/directory \
+  --restore-path tmp/path/to/directory/ \
   --when "2026-01-29 15:00:39" \
   --target /tmp/restore_pitr \
   --log-stdout --verbose
@@ -1269,9 +1269,22 @@ deactivate
 
 Notes:
 - `--restore-path` must be a relative path as stored in the catalog (no leading slash).
+- If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
+  - Example (directory name has no extension):
+    - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - iPhone/2026/01/" --when "now" --target /tmp/restore_pitr`
 - `--target` is required to avoid accidental restores into the current working directory.
 - Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
 - `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
+- `--pitr-report-first` runs the same chain report before a restore and aborts if any archive is missing (useful as a safety preflight).
+- `--when` accepts natural-language date expressions via `dateparser`. Examples:
+  - `"now"`
+  - `"2 weeks ago"`
+  - `"Sunday first week in October 2025"`
+  - `"2025-10-05 14:30"`
+  - `start of today`
+  - `yesterday 23:00`
+  - `now minus 90 minutes`
+  - `2 weeks ago at midnight`
 - PITR restores use the catalog to select the correct archive chain (FULL → DIFF → INCR) and then restore **directly with `dar`** in that order.
   - This avoids interactive `dar_manager` prompts (e.g., non‑monotonic mtimes often seen on pCloud/FUSE).
   - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look “too new”.

@@ -13,6 +13,7 @@
 - Manager command to relocate archive paths inside catalog databases (`--relocate-archive-path`, with dry-run).
 - PITR restore logging now includes the exact archive chain (FULL/DIFF/INCR + timestamps + basenames).
 - Tests covering PITR direct-restore flow and relocate-archive-path CLI safeguards.
+- PITR preflight flag `--pitr-report-first` to run a chain report before restore and fail fast on missing archives.
 
 ### Changed
 

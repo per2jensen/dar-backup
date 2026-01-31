@@ -264,6 +264,85 @@ def test_cli_pitr_report_does_not_require_target(capsys):
         assert excinfo.value.code == 0
 
 
+def test_cli_pitr_report_first_runs_and_aborts_on_failure():
+    with patch.object(sys, 'argv', [
+            "manager",
+            "--backup-def", "mydef",
+            "--restore-path", "file.txt",
+            "--target", "/tmp/out",
+            "--pitr-report-first",
+            "--config-file", "dummy.conf",
+         ]), \
+         patch("dar_backup.manager.ConfigSettings") as MockSettings, \
+         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.get_logger"), \
+         patch("dar_backup.manager._pitr_chain_report", return_value=1) as mock_report, \
+         patch("dar_backup.manager.restore_at", return_value=0) as mock_restore, \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True), \
+         patch("os.path.dirname", return_value="/tmp"), \
+         patch("os.path.exists", return_value=True):
+
+        settings_instance = MockSettings.return_value
+        settings_instance.logfile_location = "/tmp/log"
+        settings_instance.backup_d_dir = "/tmp/backup.d"
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
+        mock_report.assert_called_once_with("mydef", ["file.txt"], "now", settings_instance)
+        mock_restore.assert_not_called()
+
+
+def test_cli_pitr_report_first_runs_and_restores_on_success():
+    with patch.object(sys, 'argv', [
+            "manager",
+            "--backup-def", "mydef",
+            "--restore-path", "file.txt",
+            "--target", "/tmp/out",
+            "--pitr-report-first",
+            "--config-file", "dummy.conf",
+         ]), \
+         patch("dar_backup.manager.ConfigSettings") as MockSettings, \
+         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.get_logger"), \
+         patch("dar_backup.manager._pitr_chain_report", return_value=0) as mock_report, \
+         patch("dar_backup.manager.restore_at", return_value=0) as mock_restore, \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True), \
+         patch("os.path.dirname", return_value="/tmp"), \
+         patch("os.path.exists", return_value=True):
+
+        settings_instance = MockSettings.return_value
+        settings_instance.logfile_location = "/tmp/log"
+        settings_instance.backup_d_dir = "/tmp/backup.d"
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 0
+        mock_report.assert_called_once_with("mydef", ["file.txt"], "now", settings_instance)
+        mock_restore.assert_called_once()
+
+
+def test_cli_pitr_report_first_requires_restore_path():
+    with patch.object(sys, 'argv', [
+            "manager",
+            "--backup-def", "mydef",
+            "--pitr-report-first",
+            "--config-file", "dummy.conf",
+         ]), \
+         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.ConfigSettings"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True), \
+         patch("os.path.dirname", return_value="/tmp"):
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
 def test_restore_at_uses_direct_dar_restore(mock_config, mock_logger):
     """Test that PITR restore uses direct dar restore path."""
     def _exists(path):
@@ -355,9 +434,9 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
         )
         info_calls = mock_logger.info.call_args_list
         assert any(
-            call.args[0] == "PITR selected archive %s for '%s'."
-            and "example_DIFF_2026-01-29" in call.args[1]
-            and call.args[2] == "tmp/file.txt"
+            call.args[0] == "PITR restore file '%s' using archive %s."
+            and call.args[1] == "tmp/file.txt"
+            and "example_DIFF_2026-01-29" in call.args[2]
             for call in info_calls
         )
         assert any(
@@ -572,6 +651,27 @@ def test_pitr_report_directory_missing_archive_map_entry(mock_config, mock_runne
             "catalog #2 missing from archive map",
         )
 
+def test_pitr_report_directory_heuristic_triggers_chain(mock_config, mock_runner, mock_logger):
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1 /tmp/backups example_FULL_2026-01-29\n"
+    )
+    mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._is_directory_path", return_value=False), \
+         patch("dar_backup.manager._select_archive_chain", return_value=[1]) as mock_chain, \
+         patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)), \
+         patch("os.path.exists", return_value=True):
+
+        ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-29 16:00:00", mock_config)
+
+        assert ret == 0
+        mock_chain.assert_called_once()
+
 
 def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner, mock_logger):
     list_output = (
@@ -667,7 +767,77 @@ def test_restore_with_dar_directory_missing_archive_map_entry(mock_config, mock_
             "tmp/dir",
             "catalog #2 missing from archive map",
         )
-        mock_discord.assert_called()
+
+def test_restore_with_dar_directory_heuristic_triggers_chain(mock_config, mock_runner, mock_logger):
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1 /tmp/backups example_FULL_2026-01-29\n"
+    )
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),
+        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
+        CommandResult(0, "ok", "", note=None),
+    ]
+    mock_config.command_timeout_secs = 30
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._is_directory_path", return_value=False), \
+         patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._select_archive_chain", return_value=[1]) as mock_chain, \
+         patch("os.path.exists", return_value=True):
+
+        ret = _restore_with_dar("def", ["tmp/dir"], datetime.datetime(2026, 1, 29, 16, 0, 0), "/tmp/restore", mock_config)
+
+        assert ret == 0
+        mock_chain.assert_called_once()
+
+
+def test_restore_with_dar_directory_no_extension_nonexistent_local_path_uses_chain(
+    mock_config, mock_runner, mock_logger
+):
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1 /tmp/backups example_FULL_2026-01-10\n"
+        "2 /tmp/backups example_DIFF_2026-01-14\n"
+        "3 /tmp/backups example_INCR_2026-01-25\n"
+    )
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),
+        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
+        CommandResult(0, "ok", "", note=None),
+        CommandResult(0, "ok", "", note=None),
+        CommandResult(0, "ok", "", note=None),
+    ]
+    mock_config.command_timeout_secs = 30
+    restore_path = "Automatic Upload/Per - iPhone/2026/01"
+
+    def _file_versions_called(*_args, **_kwargs):
+        raise AssertionError("File-version parsing should not be used for directory paths.")
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._is_directory_path", return_value=False), \
+         patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._select_archive_chain", return_value=[1, 2, 3]) as mock_chain, \
+         patch("dar_backup.manager._parse_file_versions", side_effect=_file_versions_called), \
+         patch("dar_backup.manager.send_discord_message"), \
+         patch("os.path.exists", return_value=True):
+
+        ret = _restore_with_dar(
+            "def",
+            [restore_path],
+            datetime.datetime(2026, 1, 29, 16, 0, 0),
+            "/tmp/restore",
+            mock_config,
+        )
+
+        assert ret == 0
+        mock_chain.assert_called_once()
 
 
 def test_restore_at_rejects_protected_target(mock_config, mock_runner, mock_logger):

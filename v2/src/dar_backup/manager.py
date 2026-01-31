@@ -795,6 +795,27 @@ def _is_directory_path(path: str) -> bool:
     return os.path.isdir(os.path.join(os.sep, path))
 
 
+def _looks_like_directory(path: str) -> bool:
+    if not path:
+        return False
+    normalized = path.rstrip(os.sep)
+    if not normalized:
+        return True
+    if path.endswith(os.sep):
+        return True
+    base = os.path.basename(normalized)
+    _, ext = os.path.splitext(base)
+    return ext == ""
+
+
+def _treat_as_directory(path: str) -> bool:
+    if _is_directory_path(path):
+        return True
+    if _looks_like_directory(path):
+        logger.debug("Treating restore path '%s' as directory (heuristic).", path)
+        return True
+    return False
+
 def _format_chain_item(
     catalog_no: int,
     info_by_no: Dict[int, Tuple[datetime, str]],
@@ -870,7 +891,7 @@ def _pitr_chain_report(
     successes = 0
 
     for path in paths:
-        if _is_directory_path(path):
+        if _treat_as_directory(path):
             chain = _select_archive_chain(archive_info, parsed_date)
             if not chain:
                 logger.error(f"No FULL archive found at or before {parsed_date} for '{path}'")
@@ -989,7 +1010,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
 
     for path in paths:
         file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-        if _is_directory_path(path):
+        if _treat_as_directory(path):
             chain = _select_archive_chain(archive_info, when_dt)
             if not chain:
                 logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
@@ -1068,9 +1089,9 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 restored = False
                 break
             logger.info(
-                "PITR selected archive %s for '%s'.",
-                _describe_archive(catalog_no, archive_map, info_by_no),
+                "PITR restore file '%s' using archive %s.",
                 path,
+                _describe_archive(catalog_no, archive_map, info_by_no),
             )
             cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
             if target:
@@ -1341,6 +1362,11 @@ def build_arg_parser():
     parser.add_argument('--target', type=str, default=None, help="Target directory for restoration (default: current dir).")
     parser.add_argument('--pitr-report', action='store_true', help="Report PITR archive chain for --restore-path/--when without restoring.")
     parser.add_argument(
+        '--pitr-report-first',
+        action='store_true',
+        help="Run PITR chain report before restore and abort if missing archives.",
+    )
+    parser.add_argument(
         '--relocate-archive-path',
         nargs=2,
         metavar=("OLD", "NEW"),
@@ -1526,6 +1552,11 @@ def main():
             sys.exit(1)
             return
 
+    if args.pitr_report_first and not args.restore_path:
+        logger.error("--pitr-report-first requires --restore-path, exiting")
+        sys.exit(1)
+        return
+
     # --- Modify settings ---
     try:
         if args.alternate_archive_dir:
@@ -1604,6 +1635,12 @@ def main():
             return
 
         if args.restore_path:
+            if args.pitr_report_first:
+                report_when = args.when or "now"
+                result = _pitr_chain_report(args.backup_def, args.restore_path, report_when, config_settings)
+                if result != 0:
+                    sys.exit(result)
+                    return
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings, verbose=args.verbose)
             sys.exit(result)
             return
