@@ -17,12 +17,12 @@
       "label": "v1.0.0 release"
     },
     {
-      "date": "2025-05-20",
-      "label": "Daily max: 124"
+      "date": "2026-01-30",
+      "label": "Daily max: 128"
     }
   ],
-  "total_clones": 5458,
-  "unique_clones": 3179,
+  "total_clones": 5586,
+  "unique_clones": 3218,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -1363,6 +1363,11 @@
       "timestamp": "2026-01-29T00:00:00Z",
       "count": 22,
       "uniques": 12
+    },
+    {
+      "timestamp": "2026-01-30T00:00:00Z",
+      "count": 128,
+      "uniques": 39
     }
   ]
 }
