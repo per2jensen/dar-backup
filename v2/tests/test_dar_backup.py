@@ -372,7 +372,6 @@ def test_perform_backup_sends_warning_for_existing_backup(env):
     with patch("dar_backup.dar_backup.send_discord_message", return_value=True) as mock_send, \
          patch("dar_backup.dar_backup.logger") as mock_logger:
         results = perform_backup(args, config, "FULL", [])
-
     assert any(code == 2 for _, code in results)
     # The warning message is now just logged, not sent to discord directly in the loop for failures,
     # BUT for warnings/skips it might still rely on the logic. 
@@ -913,14 +912,6 @@ def test_restoretest_filters_and_verifies_all_good_files(env):
     mock_logger.debug.assert_any_call(
         "Restore test filter excluded 4 of 6 candidates"
     )
-
-
-
-####################################################
-# 2025-10-08
-
-
-# tests/test_dar_backup.py
 
 
 

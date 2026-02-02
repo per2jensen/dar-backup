@@ -17,14 +17,7 @@ from dar_backup.command_runner import CommandRunner
 from tests.envdata import EnvData
 import pytest
 
-pytestmark = pytest.mark.integration
-
-
-
-
-
-
-
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
 def _write_random_file(path: str, size: int) -> None:

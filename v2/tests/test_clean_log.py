@@ -89,9 +89,9 @@ def test_version(setup_environment, env: EnvData):
         raise Exception(f"Command failed {command}")
     env.logger.info("clean-log -v:\n" + process.stdout)
 
-
-    assert f"clean-log version {about.__version__}" in process.stdout, "Version # not found in output"
-    assert 'Licensed under GNU GENERAL PUBLIC LICENSE v3' in process.stdout, "License not found in output"
+    stdout_normalized = " ".join(process.stdout.split())
+    assert f"clean-log version {about.__version__}" in stdout_normalized, "Version # not found in output"
+    assert 'Licensed under GNU GENERAL PUBLIC LICENSE v3' in stdout_normalized, "License not found in output"
 
 
 

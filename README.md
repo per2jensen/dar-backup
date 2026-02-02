@@ -33,7 +33,8 @@ Version **1.0.0** was reached on October 9, 2025.
 - [Quick Guide](#quick-guide)
 - [Redundancy to fix bitrot](#par2)
 - [Point In Time Recovery](#point-in-time-recovery-pitr)
-- [500+ unit tests & integration tests](#test-coverage)
+- [550+ unit tests & integration tests](#test-coverage)
+  - dar2 repair proof, full/diff/incr with restore, PITR verifactions, ...  
 
 ## Table of Contents
 
@@ -115,12 +116,13 @@ Version **1.0.0** was reached on October 9, 2025.
       - [Enabling Bash completion](#enabling-bash-completion)
       - [Enable Zsh Completion](#enable-zsh-completion)
   - [Easy development setup](#easy-development-setup)
+    - [Test selection with markers](#test-selection-with-markers)
   - [Todo](#todo)
   - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
   - [Projects these scripts benefit from](#projects-these-scripts-benefit-from)
   - [Reference](#reference)
     - [CLI Tools Overview](#cli-tools-overview)
-    - [test coverage](#test-coverage)
+    - [Test coverage](#test-coverage)
     - [Dar-backup options](#dar-backup-options)
       - [Dar-backup exit codes](#dar-backup-exit-codes)
       - [Dar-backup env vars](#dar-backup-env-vars)
@@ -1899,7 +1901,9 @@ One backup definition per file
 | [installer](#installer-options) | Set up directories and optionally create catalog databases according to a config file |
 | [demo](#demo-options) | Set up required directories and config files for a demo|
 
-### test coverage
+### Test coverage
+
+Test cases are classfied in various catagories, see [the categories here](#test-selection-with-markers)
 
 Running
 
@@ -1907,11 +1911,77 @@ Running
 pytest
 ```
 
-Results for version 1.1.0 (pre-release, Jan 30, 2026) in this report:
+Results for version 1.1.0 (pre-release, Feb 1, 2026) in this report:
 
 ```text
-======================================== tests coverage ========================================
-_______________________ coverage: platform linux, python 3.12.3-final-0 ________________________
+===================================== test session starts =====================================
+platform linux -- Python 3.12.3, pytest-8.4.0, pluggy-1.6.0
+rootdir: /home/pj/git/dar-backup/v2
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.9.0, timeout-2.4.0, cov-6.1.1, mock-3.15.1
+timeout: 1800.0s
+timeout method: signal
+timeout func_only: False
+collected 559 items / 1 deselected / 558 selected                                             
+
+tests/test_add_old_archive_confirmation.py ....                                         [  0%]
+tests/test_alternate_reference_archive.py ...                                           [  1%]
+tests/test_autocompletion_install.py ...                                                [  1%]
+tests/test_binary_info.py ......                                                        [  2%]
+tests/test_bitrot.py ..                                                                 [  3%]
+tests/test_clean_log.py ....................                                            [  6%]
+tests/test_cleanup.py ...............................                                   [ 12%]
+tests/test_command_runner.py .........................................                  [ 19%]
+tests/test_config_comments.py .                                                         [ 19%]
+tests/test_config_settings.py ..............                                            [ 22%]
+tests/test_create_backup_command.py ...                                                 [ 22%]
+tests/test_create_full_diff_incr_backup.py ..........                                   [ 24%]
+tests/test_dar_backup.py .......................................................        [ 34%]
+tests/test_dar_backup_additional_coverage.py .......................                    [ 38%]
+tests/test_dar_backup_startup.py ..                                                     [ 39%]
+tests/test_darrc.py ..                                                                  [ 39%]
+tests/test_demo.py .............                                                        [ 41%]
+tests/test_discord_webhook.py ..                                                        [ 42%]
+tests/test_filter_darrc_file.py .                                                       [ 42%]
+tests/test_generic_backup_command_execution.py .                                        [ 42%]
+tests/test_get_config_file.py .......                                                   [ 43%]
+tests/test_gpt_file_compression.py .                                                    [ 43%]
+tests/test_gpt_tests.py .......                                                         [ 45%]
+tests/test_installer.py ..................                                              [ 48%]
+tests/test_links.py .                                                                   [ 48%]
+tests/test_list_definitions.py .                                                        [ 48%]
+tests/test_listing.py ...                                                               [ 49%]
+tests/test_logging_trace.py ..                                                          [ 49%]
+tests/test_manager.py ................................................................. [ 61%]
+                                                                                        [ 61%]
+tests/test_manager_coverage.py ..................................                       [ 67%]
+tests/test_par2.py .                                                                    [ 67%]
+tests/test_par2_manifest.py .                                                           [ 67%]
+tests/test_par2_multi_definitions.py .                                                  [ 67%]
+tests/test_par2_overrides.py .                                                          [ 68%]
+tests/test_pitr.py ..............................................                       [ 76%]
+tests/test_pitr_integration.py .....                                                    [ 77%]
+tests/test_postreq.py .                                                                 [ 77%]
+tests/test_preflight.py ...                                                             [ 77%]
+tests/test_prereq.py .                                                                  [ 78%]
+tests/test_readme_changelog.py ..........                                               [ 79%]
+tests/test_restore.py ....                                                              [ 80%]
+tests/test_run_command.py ......s                                                       [ 81%]
+tests/test_sanity_checks.py .................                                           [ 84%]
+tests/test_space_definition.py .                                                        [ 85%]
+tests/test_startup_cleanup.py .......                                                   [ 86%]
+tests/test_status_indicators.py .......                                                 [ 87%]
+tests/test_stress.py .                                                                  [ 87%]
+tests/test_systemd_unit_generation.py ..........                                        [ 89%]
+tests/test_trace_logging.py ..                                                          [ 89%]
+tests/test_util.py ..........................................                           [ 97%]
+tests/test_util_completers.py ..........                                                [ 99%]
+tests/test_verbose.py ...                                                               [ 99%]
+tests/test_verify_cleanup.py .                                                          [100%]
+
+======================================= tests coverage ========================================
+_______________________ coverage: platform linux, python 3.12.3-final-0 _______________________
 
 Name                                   Stmts   Miss Branch BrPart  Cover
 ------------------------------------------------------------------------
@@ -1926,11 +1996,13 @@ src/dar_backup/dar_backup_systemd.py      56      1     10      1    97%
 src/dar_backup/demo.py                   100      1     34      2    98%
 src/dar_backup/exceptions.py               2      0      0      0   100%
 src/dar_backup/installer.py              120      4     54      4    95%
-src/dar_backup/manager.py               1032    124    418     50    87%
-src/dar_backup/rich_progress.py           70      2     30      2    96%
+src/dar_backup/manager.py               1105     91    454     38    91%
+src/dar_backup/rich_progress.py           70      2     30      3    95%
 src/dar_backup/util.py                   521     43    142     24    90%
 ------------------------------------------------------------------------
-TOTAL                                   3732    311   1398    163    90%
+TOTAL                                   3805    278   1434    152    91%
+Coverage XML written to file /tmp/coverage.xml
+================== 557 passed, 1 skipped, 1 deselected in 409.66s (0:06:49) ===================
 ```
 
 ### Dar-backup options
