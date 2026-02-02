@@ -116,13 +116,15 @@ Version **1.0.0** was reached on October 9, 2025.
       - [Enabling Bash completion](#enabling-bash-completion)
       - [Enable Zsh Completion](#enable-zsh-completion)
   - [Easy development setup](#easy-development-setup)
-    - [Test selection with markers](#test-selection-with-markers)
   - [Todo](#todo)
   - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
   - [Projects these scripts benefit from](#projects-these-scripts-benefit-from)
   - [Reference](#reference)
     - [CLI Tools Overview](#cli-tools-overview)
     - [Test coverage](#test-coverage)
+      - [Test selection with markers](#test-selection-with-markers)
+      - [Common runs](#common-runs)
+      - [Run all tests](#run-all-tests)
     - [Dar-backup options](#dar-backup-options)
       - [Dar-backup exit codes](#dar-backup-exit-codes)
       - [Dar-backup env vars](#dar-backup-env-vars)
@@ -1834,35 +1836,6 @@ source venv/bin/activate # activate the virtual env
 pytest                   # run the test suite
 ```
 
-### Test selection with markers
-
-The test suite is annotated with these markers:
-
-- `unit` (fast, pure logic)
-- `component` (subprocess boundary with mocks/lightweight commands)
-- `integration` (end-to-end workflows; external tools)
-- `slow` (long-running/heavier integration)
-- `live_discord` (sends real webhook messages; opt-in only)
-
-Common runs:
-
-```bash
-# Fast local loop (unit + component)
-pytest -m "unit or component"
-
-# Integration (exclude slow + live webhook)
-pytest -m "integration and not slow and not live_discord"
-
-# Slow-only
-pytest -m slow
-
-# Full suite (default pytest.ini already excludes live_discord)
-pytest -m "not live_discord"
-
-# Live webhook (requires DAR_BACKUP_DISCORD_WEBHOOK_URL)
-pytest -m live_discord
-```
-
 ## Todo
 
 - Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars
@@ -1903,9 +1876,36 @@ One backup definition per file
 
 ### Test coverage
 
-Test cases are classfied in various catagories, see [the categories here](#test-selection-with-markers)
+#### Test selection with markers
 
-Running
+The test suite is annotated with these markers:
+
+- `unit` (fast, pure logic)
+- `component` (subprocess boundary with mocks/lightweight commands)
+- `integration` (end-to-end workflows; external tools)
+- `slow` (long-running/heavier integration)
+- `live_discord` (sends real webhook messages; opt-in only)
+
+#### Common runs
+
+```bash
+# Fast local loop (unit + component)
+pytest -m "unit or component"
+
+# Integration (exclude slow + live webhook)
+pytest -m "integration and not slow and not live_discord"
+
+# Slow-only
+pytest -m slow
+
+# Full suite (default pytest.ini already excludes live_discord)
+pytest -m "not live_discord"
+
+# Live webhook (requires DAR_BACKUP_DISCORD_WEBHOOK_URL)
+pytest -m live_discord
+```
+
+#### Run all tests
 
 ```bash
 pytest

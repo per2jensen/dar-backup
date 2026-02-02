@@ -1,3 +1,6 @@
+# =========================
+# .github/workflows/py-tests.yml
+# =========================
 name: Pytest
 permissions:
   contents: read
@@ -42,9 +45,7 @@ jobs:
           if [[ -d venv* ]]; then
             rm -rf venv*
           fi
-
           ./build.sh
-
 
       # ensure subprocess coverage is enabled before running tests
       - name: Enable coverage in subprocesses
@@ -60,23 +61,39 @@ jobs:
           print("installed:", dst)
           PY
 
-      - name: Run pytest with coverage
+      - name: Run pytest report (full) and generate artifacts
         working-directory: v2
         run: |
+          set -euo pipefail
           . venv*/bin/activate
           export COVERAGE_PROCESS_START="$PWD/.coveragerc"
           export PYTHONPATH="$PWD:$PYTHONPATH"
-          coverage erase
-          python -c "import sitecustomize; print('sitecustomize OK')"
-          pytest --cov=src --cov-config=.coveragerc --cov-report=term --cov-report=xml:coverage.xml
-          coverage combine || true
-          coverage xml -i
 
+          mkdir -p doc/test-report
 
+          # Run the report script (must produce JSON + TXT + collect output)
+          scripts/pytest_report.sh full
+
+          # If your script does not already write coverage.xml to v2/coverage.xml,
+          # keep these lines so Codecov still works:
+          if [[ -f ".coverage" || -f ".coverage.*" ]]; then
+            coverage combine || true
+            coverage xml -i -o coverage.xml
+          fi
+
+      - name: Upload pytest reports as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report-full-${{ github.sha }}
+          path: |
+            v2/doc/test-report/*.json
+            v2/doc/test-report/*.txt
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos
-          files: ./v2/coverage.xml
+          files: ./v2/doc/test-report/coverage.xml
           verbose: true
