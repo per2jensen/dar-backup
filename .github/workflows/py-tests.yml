@@ -84,10 +84,10 @@ jobs:
       - name: Upload pytest reports as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-report-full-${{ github.sha }}
+          name: pytest-report-fast-${{ github.sha }}
           path: |
-            v2/doc/test-report/*.json
-            v2/doc/test-report/*.txt
+            ./v2/doc/test-report/*.json
+            ./v2/doc/test-report/*.txt
           if-no-files-found: error
           retention-days: 30
 
