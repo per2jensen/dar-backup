@@ -17,7 +17,9 @@
 
 ### Changed
 
-- [Snyk]  An XML parsing function now strips DTD to avoid a class of XXE vulnerabilities
+- The release.sh script is more strict and runs the full pytest suite and commits test reports to doc/test-report
+- Github `pytest` workflow uploads test reports in .json and .txt formats
+- [Snyk] An XML parsing function now strips DTD to avoid a class of XXE vulnerabilities
 - PITR fallback now restores via the latest FULL → DIFF → INCR chain and fails fast when required archives are missing.
 - PITR restore now requires `--target` and blocks unsafe restore targets by default.
 - Filtered `.darrc` temp files are created in a writable location and cleaned up reliably after runs.

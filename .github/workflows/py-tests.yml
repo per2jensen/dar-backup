@@ -72,7 +72,7 @@ jobs:
           mkdir -p doc/test-report
 
           # Run the report script (must produce JSON + TXT + collect output)
-          scripts/pytest_report.sh full
+          scripts/pytest_report.sh fast
 
           # If your script does not already write coverage.xml to v2/coverage.xml,
           # keep these lines so Codecov still works:
