@@ -81,8 +81,8 @@ echo
 # Define coverage output next to the other artifacts
 COV_XML="${OUTDIR}/coverage.xml"
 
-# 1) Collection inventory
-pytest -q --collect-only -m "$MARKS" | tee "$COLLECT"
+# 1) Collection inventory (skip coverage to avoid noisy reports)
+pytest -q --collect-only --no-cov -m "$MARKS" | tee "$COLLECT"
 
 # 2) Execution (TXT + JSON)
 pytest -q -m "$MARKS" \
@@ -91,15 +91,36 @@ pytest -q -m "$MARKS" \
   | tee "$TXT"
 
 # 3) Coverage XML (only if coverage data exists)
-if ls .coverage .coverage.* >/dev/null 2>&1; then
+if [[ ! -f "$COV_XML" ]]; then
+get_cov_data_file() {
+  if [[ -n "${COVERAGE_FILE:-}" ]]; then
+    echo "${COVERAGE_FILE}"
+    return
+  fi
+  if [[ -f ".coveragerc" ]]; then
+    python - <<'PY'
+import configparser
+cfg = configparser.ConfigParser()
+cfg.read(".coveragerc")
+print(cfg.get("run", "data_file", fallback=".coverage"))
+PY
+    return
+  fi
+  echo ".coverage"
+}
+
+COV_DATA_FILE="$(get_cov_data_file)"
+
+if ls "${COV_DATA_FILE}" "${COV_DATA_FILE}".* >/dev/null 2>&1; then
   coverage combine || true
   coverage xml -i -o "$COV_XML"
   echo "Coverage XML written to file $COV_XML"
 
   # Cleanup intermediate coverage data
-  rm -f .coverage .coverage.*
+  rm -f "${COV_DATA_FILE}" "${COV_DATA_FILE}".*
 else
-  echo "Coverage data not found (.coverage*); skipping coverage xml generation"
+  echo "Coverage data not found (${COV_DATA_FILE}*); skipping coverage xml generation"
+fi
 fi
 
 echo
