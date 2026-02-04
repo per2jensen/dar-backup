@@ -205,7 +205,14 @@ green "Running full pytest suite with report generation..."
 mkdir -p doc/test-report
 
 export COVERAGE_PROCESS_START="$PWD/.coveragerc"
-export PYTHONPATH="$PWD:$PYTHONPATH"
+
+# set -u is enabled; PYTHONPATH may be unset in a clean shell
+# Prepend repo root to PYTHONPATH only if it already exists.
+if [[ -n "${PYTHONPATH:-}" ]]; then
+    export PYTHONPATH="$PWD:$PYTHONPATH"
+else
+    export PYTHONPATH="$PWD"
+fi
 
 # This MUST abort the release on test failure.
 # - release.sh has: set -euo pipefail
