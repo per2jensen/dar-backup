@@ -223,6 +223,74 @@ else
 fi
 
 ########################################
+# Safety check: only allow tag move if the ONLY changes between
+# the existing tag commit and current HEAD are inside doc/test-report/
+
+# At this point we just created a commit (HEAD) that should only touch doc/test-report/.
+# Enforce that invariant before moving the tag.
+
+OLD_TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
+NEW_HEAD_COMMIT="$(git rev-parse HEAD)"
+
+# List all changed paths between the old tag commit and HEAD.
+# (This includes all commits between them, which should be exactly the test-report commit.)
+CHANGED_PATHS="$(
+  git diff --name-only "${OLD_TAG_COMMIT}..${NEW_HEAD_COMMIT}" || true
+)"
+
+# If there are no changed paths, something is off (we claimed we committed changes).
+if [[ -z "${CHANGED_PATHS}" ]]; then
+    red "❌ Safety check failed: expected changes between ${TAG} and HEAD, but diff is empty"
+    exit 1
+fi
+
+# Ensure every changed path is under doc/test-report/
+# Any path not matching that prefix is a hard abort.
+VIOLATIONS="$(
+  printf '%s\n' "${CHANGED_PATHS}" | awk 'NF && $0 !~ /^doc\/test-report\// {print}'
+)"
+
+if [[ -n "${VIOLATIONS}" ]]; then
+    red "❌ Safety check failed: changes outside doc/test-report/ detected between ${TAG} and HEAD"
+    echo "Old tag commit: ${OLD_TAG_COMMIT}"
+    echo "New HEAD commit: ${NEW_HEAD_COMMIT}"
+    echo ""
+    echo "Violating paths:"
+    printf '%s\n' "${VIOLATIONS}"
+    echo ""
+    echo "Aborting WITHOUT moving tag."
+    exit 1
+fi
+
+green "✅ Safety check passed: only doc/test-report/ changed between ${TAG} and HEAD"
+
+########################################
+# Now move the tag 
+########################################
+green "Moving tag ${TAG} to include test-report commit..."
+TAG_OBJ_TYPE="$(git cat-file -t "refs/tags/${TAG}")"
+
+if [[ "${TAG_OBJ_TYPE}" == "tag" ]]; then
+    TAG_MSG="$(git for-each-ref --format='%(contents)' "refs/tags/${TAG}")"
+    git tag -f -a "${TAG}" -m "${TAG_MSG}" HEAD
+else
+    git tag -f "${TAG}" HEAD
+fi
+
+# Re-assert invariant
+TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
+HEAD_COMMIT="$(git rev-parse HEAD)"
+if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+    red "❌ Failed to move tag ${TAG} to new HEAD"
+    echo "Tag commit:  ${TAG_COMMIT}"
+    echo "HEAD commit: ${HEAD_COMMIT}"
+    exit 1
+fi
+
+green "✅ Tag ${TAG} now points at release commit ${HEAD_COMMIT}"
+
+
+########################################
 # Build
 ########################################
 rm -rf "$DIST_DIR" || { red "❌ Error: Failed to remove $DIST_DIR"; exit 1; }
