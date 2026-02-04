@@ -34,7 +34,7 @@ Version **1.0.0** was reached on October 9, 2025.
 - [Redundancy to fix bitrot](#par2)
 - [Point In Time Recovery](#point-in-time-recovery-pitr)
 - [550+ unit tests & integration tests](#test-coverage)
-  - dar2 repair proof, full/diff/incr with restore, PITR verifactions, ...  
+  - par2 bitrot repair proof, full/diff/incr with restore, PITR verifications, ...  
 
 ## Table of Contents
 
