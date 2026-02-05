@@ -73,6 +73,31 @@ def test_restore_at_basic_success(mock_config, mock_logger):
         mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config)
 
 
+def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
+    """Test timezone-aware --when values are normalized to local naive time."""
+    def _exists(path):
+        if path == "/tmp/db_dir/def.db":
+            return True
+        if path == "/tmp":
+            return True
+        return False
+
+    aware_date = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    expected_date = datetime.datetime(2026, 1, 1, 0, 0, 0)
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("os.path.exists", side_effect=_exists), \
+         patch("dateparser.parse", return_value=aware_date), \
+         patch("dar_backup.manager._local_tzinfo", return_value=datetime.timezone.utc), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+        ret = restore_at("def", ["file"], "2026-01-01 00:00Z", "/tmp", mock_config)
+
+        assert ret == 0
+        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config)
+
+
 def test_restore_at_invalid_date(mock_config, mock_runner, mock_logger):
     """Test that an unparseable date returns an error."""
     

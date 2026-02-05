@@ -239,6 +239,17 @@ fi
 OLD_TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
 NEW_HEAD_COMMIT="$(git rev-parse HEAD)"
 
+# Allow release.sh to run from a subdirectory inside a larger repo.
+# We compute the path prefix to this working directory relative to the git root,
+# and require test-report changes under that prefix.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_REL="$(realpath --relative-to="${REPO_ROOT}" "${PWD}")"
+if [[ "${REPO_REL}" == "." ]]; then
+    REPORT_PREFIX="doc/test-report/"
+else
+    REPORT_PREFIX="${REPO_REL}/doc/test-report/"
+fi
+
 # List all changed paths between the old tag commit and HEAD.
 # (This includes all commits between them, which should be exactly the test-report commit.)
 CHANGED_PATHS="$(
@@ -251,10 +262,10 @@ if [[ -z "${CHANGED_PATHS}" ]]; then
     exit 1
 fi
 
-# Ensure every changed path is under doc/test-report/
+# Ensure every changed path is under the computed doc/test-report prefix.
 # Any path not matching that prefix is a hard abort.
 VIOLATIONS="$(
-  printf '%s\n' "${CHANGED_PATHS}" | awk 'NF && $0 !~ /^doc\/test-report\// {print}'
+  printf '%s\n' "${CHANGED_PATHS}" | awk -v prefix="${REPORT_PREFIX}" 'NF && index($0, prefix) != 1 {print}'
 )"
 
 if [[ -n "${VIOLATIONS}" ]]; then
@@ -306,6 +317,10 @@ python3 -m build
 ########################################
 # Sign + verify
 ########################################
+echo ""
+echo "About to sign release artifacts with GPG."
+read -r -p "Press Enter to continue (or Ctrl+C to abort)..." _
+
 for f in $DIST_DIR/*.{whl,tar.gz}; do
     if gpg --batch --yes --detach-sign -a --local-user "$SIGNING_SUBKEY" "$f"; then
         green "✅ Signed: $f"
@@ -349,4 +364,3 @@ else
     echo  "To upload, run:"
     echo  "  ./release.sh --tag ${TAG} --upload-to-pypi"
 fi
-
