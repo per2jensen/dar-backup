@@ -8,10 +8,11 @@ N days to pick up PyPI Stats corrections.
 
 import argparse
 import json
+import math
 import urllib.request
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 # --- CONFIGURATION ---
 PACKAGE_NAME = "dar-backup"
@@ -110,11 +111,9 @@ def _build_output(
     recent: dict,
     mirrors: bool,
     annotations: Iterable[dict],
+    rollups: dict,
 ) -> dict:
-    daily = [
-        {"timestamp": f"{date_str}T00:00:00Z", "count": daily_map[date_str]}
-        for date_str in sorted(daily_map.keys())
-    ]
+    daily = _build_daily_list(daily_map)
     total_downloads = sum(daily_map.values())
     return {
         "package": package,
@@ -122,9 +121,94 @@ def _build_output(
         "updated": datetime.now(UTC).strftime("%Y-%m-%d"),
         "recent": recent,
         "total_downloads": total_downloads,
+        "rollups": rollups,
         "daily": daily,
         "annotations": list(annotations),
     }
+
+
+def _build_daily_list(daily_map: Dict[str, int]) -> List[dict]:
+    return [
+        {"timestamp": f"{date_str}T00:00:00Z", "count": daily_map[date_str]}
+        for date_str in sorted(daily_map.keys())
+    ]
+
+
+def _compute_rollups(daily: List[dict]) -> dict:
+    counts = [item.get("count", 0) for item in daily]
+    if not counts:
+        return {"last_7_days": 0, "last_30_days": 0, "avg_7_days": 0, "avg_30_days": 0}
+
+    def _sum_last(n: int) -> int:
+        return sum(counts[-n:]) if len(counts) >= n else sum(counts)
+
+    def _avg_last(n: int) -> float:
+        window = counts[-n:] if len(counts) >= n else counts
+        return round(sum(window) / len(window), 2) if window else 0.0
+
+    return {
+        "last_7_days": _sum_last(7),
+        "last_30_days": _sum_last(30),
+        "avg_7_days": _avg_last(7),
+        "avg_30_days": _avg_last(30),
+    }
+
+
+def _compute_spike_annotations(
+    daily: List[dict],
+    window: int = 30,
+    threshold_mad: float = 5.0,
+    min_count: int = 50,
+) -> List[dict]:
+    counts = [item.get("count", 0) for item in daily]
+    if len(counts) < 3:
+        return []
+
+    spikes = []
+    for idx, item in enumerate(daily):
+        if idx < window:
+            continue
+        window_counts = counts[idx - window:idx]
+        if not window_counts:
+            continue
+        med = _median(window_counts)
+        mad = _median([abs(x - med) for x in window_counts])
+        scaled_mad = 1.4826 * mad
+        if scaled_mad == 0:
+            continue
+        threshold = med + (threshold_mad * scaled_mad)
+        count = item.get("count", 0)
+        if count >= min_count and count > threshold:
+            date_str = str(item.get("timestamp", "")).split("T", 1)[0]
+            if date_str:
+                spikes.append({"date": date_str, "label": f"Spike: {count} (>5*MAD)"})
+
+    return spikes
+
+
+def _median(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    values_sorted = sorted(values)
+    mid = len(values_sorted) // 2
+    if len(values_sorted) % 2 == 1:
+        return float(values_sorted[mid])
+    return (values_sorted[mid - 1] + values_sorted[mid]) / 2.0
+
+
+def _merge_annotations(existing: Iterable[dict], spike_annotations: Iterable[dict]) -> List[dict]:
+    manual = []
+    for entry in existing or []:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("label", ""))
+        if label.startswith("Spike:"):
+            continue
+        manual.append(entry)
+
+    merged = manual + list(spike_annotations)
+    merged.sort(key=lambda item: str(item.get("date", "")))
+    return merged
 
 
 def _parse_args() -> argparse.Namespace:
@@ -158,12 +242,18 @@ def main() -> int:
     cutoff = today - timedelta(days=args.days_back)
 
     merged = _merge_daily(existing_daily_map, overall_daily, cutoff)
+    daily_list = _build_daily_list(merged)
+    rollups = _compute_rollups(daily_list)
+    spike_annotations = _compute_spike_annotations(daily_list)
+    annotations = _merge_annotations(existing_annotations, spike_annotations)
+
     output = _build_output(
         args.package,
         merged,
         recent,
         mirrors=MIRRORS,
-        annotations=existing_annotations,
+        annotations=annotations,
+        rollups=rollups,
     )
     if output["daily"]:
         summed = sum(item.get("count", 0) for item in output["daily"])

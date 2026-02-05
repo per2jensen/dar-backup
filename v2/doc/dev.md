@@ -73,6 +73,13 @@ from the PyPI Stats API and writes `downloads.json` in a time-series format
 Default behavior:
 - Re-fetches the last 31 days on each run to catch PyPI corrections.
 - Preserves existing `annotations` in `downloads.json`.
+- Adds `rollups` (last 7/30 days and averages).
+- Adds spike annotations using a rolling median + MAD rule (Hampel-style) with a
+  30‑day window, threshold `> 5 * MAD`, and `min_count >= 50`. The MAD is scaled
+  by `1.4826` to match the standard deviation for normally distributed data.
+  - Auto spike annotations use the label prefix `Spike:` and are regenerated on each run.
+  - Manual annotations (any label not starting with `Spike:`) are preserved.
+  - If too many spikes appear, increase the MAD threshold or minimum count.
 
 Manual run:
 
@@ -89,6 +96,14 @@ python track_downloads.py --days-back 60
 ````
 
 The GitHub workflow `update_downloads.yml` runs this on a daily schedule.
+
+References:
+
+```` text
+https://en.wikipedia.org/wiki/Median_absolute_deviation
+https://en.wikipedia.org/wiki/Hampel_test
+https://en.wikipedia.org/wiki/Moving_average
+````
 
 ## Release to PyPI
 
