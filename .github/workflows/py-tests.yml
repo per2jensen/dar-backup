@@ -47,20 +47,6 @@ jobs:
           fi
           ./build.sh
 
-      # ensure subprocess coverage is enabled before running tests
-      - name: Enable coverage in subprocesses
-        working-directory: v2
-        run: |
-          . venv*/bin/activate
-          export COVERAGE_PROCESS_START="$PWD/.coveragerc"
-          export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
-          python - <<'PY'
-          import site, shutil, pathlib
-          dst = pathlib.Path(next(p for p in site.getsitepackages() if 'site-packages' in p))/'sitecustomize.py'
-          shutil.copyfile('sitecustomize.py', dst)
-          print("installed:", dst)
-          PY
-
       - name: Run pytest report (full) and generate artifacts
         working-directory: v2
         run: |
@@ -74,13 +60,6 @@ jobs:
           # Run the report script (must produce JSON + TXT + collect output)
           scripts/pytest_report.sh full
 
-          # If your script does not already write coverage.xml to v2/coverage.xml,
-          # keep these lines so Codecov still works:
-          if [[ -f ".coverage" || -f ".coverage.*" ]]; then
-            coverage combine || true
-            coverage xml -i -o coverage.xml
-          fi
-
       - name: Upload pytest reports as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -90,6 +69,13 @@ jobs:
             ./v2/doc/test-report/*.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Ensure coverage.xml exists
+        run: |
+          if [[ ! -f "./v2/doc/test-report/coverage.xml" ]]; then
+            echo "coverage.xml not found at ./v2/doc/test-report/coverage.xml"
+            exit 1
+          fi
 
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
