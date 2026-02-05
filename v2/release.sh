@@ -228,11 +228,11 @@ else
     REPORT_PREFIX="${REPO_REL}/doc/test-report/"
 fi
 
-REPORT_STATUS="$(git status --porcelain -- "${REPORT_PREFIX}")"
+REPORT_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- "${REPORT_PREFIX}")"
 if [[ -n "${REPORT_STATUS}" ]]; then
     TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-    git add "${REPORT_PREFIX}"
-    git commit -m "test-report: dar-backup ${VERSION} full ${TS}"
+    git -C "${REPO_ROOT}" add "${REPORT_PREFIX}"
+    git -C "${REPO_ROOT}" commit -m "test-report: dar-backup ${VERSION} full ${TS}"
     green "Committed test reports to doc/test-report/"
 else
     green "No changes in doc/test-report/; nothing to commit"
