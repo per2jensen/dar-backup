@@ -64,6 +64,32 @@ or for specific file with test cases
 PYTHONPATH=src pytest -c pytest-minimal.ini tests/test_verbose.py
 ````
 
+## PyPI download stats
+
+The repo root includes `track_downloads.py` which fetches daily download counts
+from the PyPI Stats API and writes `downloads.json` in a time-series format
+(similar to `clonepulse/fetch_clones.json`).
+
+Default behavior:
+- Re-fetches the last 31 days on each run to catch PyPI corrections.
+- Preserves existing `annotations` in `downloads.json`.
+
+Manual run:
+
+```` bash
+cd <path/to/dar-backup>
+python track_downloads.py
+````
+
+Override the correction window:
+
+```` bash
+cd <path/to/dar-backup>
+python track_downloads.py --days-back 60
+````
+
+The GitHub workflow `update_downloads.yml` runs this on a daily schedule.
+
 ## Release to PyPI
 
 ```bash
