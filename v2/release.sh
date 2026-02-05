@@ -219,10 +219,19 @@ fi
 # - pytest_report.sh must have: set -euo pipefail
 scripts/pytest_report.sh full || { red "❌ Test suite failed; aborting release"; exit 1; }
 
-# Commit generated reports (only if there are changes)
-if ! git diff --quiet -- doc/test-report/; then
+# Commit generated reports (include untracked files)
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_REL="$(realpath --relative-to="${REPO_ROOT}" "${PWD}")"
+if [[ "${REPO_REL}" == "." ]]; then
+    REPORT_PREFIX="doc/test-report/"
+else
+    REPORT_PREFIX="${REPO_REL}/doc/test-report/"
+fi
+
+REPORT_STATUS="$(git status --porcelain -- "${REPORT_PREFIX}")"
+if [[ -n "${REPORT_STATUS}" ]]; then
     TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-    git add doc/test-report/
+    git add "${REPORT_PREFIX}"
     git commit -m "test-report: dar-backup ${VERSION} full ${TS}"
     green "Committed test reports to doc/test-report/"
 else
@@ -242,14 +251,6 @@ NEW_HEAD_COMMIT="$(git rev-parse HEAD)"
 # Allow release.sh to run from a subdirectory inside a larger repo.
 # We compute the path prefix to this working directory relative to the git root,
 # and require test-report changes under that prefix.
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-REPO_REL="$(realpath --relative-to="${REPO_ROOT}" "${PWD}")"
-if [[ "${REPO_REL}" == "." ]]; then
-    REPORT_PREFIX="doc/test-report/"
-else
-    REPORT_PREFIX="${REPO_REL}/doc/test-report/"
-fi
-
 # List all changed paths between the old tag commit and HEAD.
 # (This includes all commits between them, which should be exactly the test-report commit.)
 CHANGED_PATHS="$(
