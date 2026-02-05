@@ -5,10 +5,14 @@ import os
 import re
 import shutil
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-# Ensure the test directory is in the Python path
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+tests_dir = os.path.abspath(os.path.dirname(__file__))
+project_dir = os.path.abspath(os.path.join(tests_dir, ".."))
+
+# Ensure project and src are importable regardless of pytest import mode.
+sys.path.insert(0, os.path.join(project_dir, "src"))
+sys.path.insert(0, project_dir)
+sys.path.append(tests_dir)
 
 from configparser import ConfigParser, NoSectionError
 from dar_backup.util import setup_logging

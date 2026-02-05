@@ -1286,16 +1286,35 @@ def print_markdown(source: str, from_string: bool = False, pretty: bool = True):
 
 
 
+def _resolve_doc_path(path: Optional[str], filename: str) -> Path:
+    if path:
+        return Path(path)
+
+    candidates = [
+        Path.cwd() / "src" / "dar_backup" / filename,
+        Path(__file__).parent / filename,
+    ]
+
+    try:
+        candidates.append(Path(__file__).resolve().parents[2] / filename)
+    except IndexError:
+        pass
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
+
+
 def print_changelog(path: str = None, pretty: bool = True):
-    if path is None:
-        path = Path(__file__).parent / "Changelog.md"
-    print_markdown(str(path), pretty=pretty)
+    resolved_path = _resolve_doc_path(path, "Changelog.md")
+    print_markdown(str(resolved_path), pretty=pretty)
 
 
 def print_readme(path: str = None, pretty: bool = True):
-    if path is None:
-        path = Path(__file__).parent / "README.md"
-    print_markdown(str(path), pretty=pretty)
+    resolved_path = _resolve_doc_path(path, "README.md")
+    print_markdown(str(resolved_path), pretty=pretty)
 
 def list_definitions(backup_d_dir: str) -> List[str]:
     """

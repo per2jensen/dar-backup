@@ -53,7 +53,7 @@ from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 from sys import stderr
 from time import time
 from typing import Dict, List, Tuple, Optional
@@ -517,7 +517,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     # Parse date (or default to "now" for latest restore)
     parsed_date = None
     if when:
-        parsed_date = dateparser.parse(when)
+        parsed_date = _parse_when(when)
         if parsed_date:
             date_arg = parsed_date.strftime("%Y/%m/%d-%H:%M:%S")
             logger.info("Restoring files as of: %s (from input '%s')", date_arg, when)
@@ -606,6 +606,27 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
         return f"Restore target '{target_norm}' is under a protected system directory. Choose a safer location."
 
     return None
+
+
+def _local_tzinfo() -> tzinfo:
+    return datetime.now().astimezone().tzinfo
+
+
+def _normalize_when_dt(dt: datetime) -> datetime:
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt
+    local_tz = _local_tzinfo()
+    return dt.astimezone(local_tz).replace(tzinfo=None)
+
+
+def _parse_when(when: str) -> Optional[datetime]:
+    parsed = dateparser.parse(when)
+    if not parsed:
+        return None
+    normalized = _normalize_when_dt(parsed)
+    if normalized is not parsed:
+        logger.debug("Normalized PITR timestamp with timezone: %s -> %s", parsed, normalized)
+    return normalized
 
 
 def _coerce_timeout(value: Optional[int]) -> Optional[int]:
@@ -871,7 +892,7 @@ def _pitr_chain_report(
         logger.error("PITR report requires --when.")
         return 1
 
-    parsed_date = dateparser.parse(when)
+    parsed_date = _parse_when(when)
     if not parsed_date:
         logger.error(f"Could not parse date: '{when}'")
         return 1

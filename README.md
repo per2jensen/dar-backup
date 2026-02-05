@@ -1271,7 +1271,7 @@ manager --config-file <dar-backup.conf> \
 deactivate
 ```
 
-Notes:
+**Notes**:
 - `--restore-path` must be a relative path as stored in the catalog (no leading slash).
 - If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
   - Example (directory name has no extension):
@@ -1283,12 +1283,8 @@ Notes:
 - `--when` accepts natural-language date expressions via `dateparser`. Examples:
   - `"now"`
   - `"2 weeks ago"`
-  - `"Sunday first week in October 2025"`
   - `"2025-10-05 14:30"`
-  - `start of today`
   - `yesterday 23:00`
-  - `now minus 90 minutes`
-  - `2 weeks ago at midnight`
 - PITR restores use the catalog to select the correct archive chain (FULL → DIFF → INCR) and then restore **directly with `dar`** in that order.
   - This avoids interactive `dar_manager` prompts (e.g., non‑monotonic mtimes often seen on pCloud/FUSE).
   - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look “too new”.
@@ -2074,6 +2070,13 @@ Available options:
 -l, --list-catalogs                  List catalogs in databases for all backup definitions.
 --list-archive-contents <archive>    List the contents of an archive’s catalog by archive name.
 --find-file <file>                   Search catalogs for a specific file.
+--restore-path <path> [<path> ...]   Restore specific path(s) (Point-in-Time Recovery).
+--when <timestamp>                   Date/time for restoration (used with --restore-path).
+--target <path>                      Target directory for restoration (default: current dir).
+--pitr-report                        Report PITR archive chain for --restore-path/--when without restoring.
+--pitr-report-first                  Run PITR chain report before restore and abort if missing archives.
+--relocate-archive-path <old> <new>  Rewrite archive path prefix in the catalog DB (requires --backup-def).
+--relocate-archive-path-dry-run      Show archive path changes without applying them (use with --relocate-archive-path).
 --verbose                            Enable verbose output.
 --log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
 
