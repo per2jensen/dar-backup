@@ -103,6 +103,7 @@ Version **1.0.0** was reached on October 9, 2025.
         - [Example: Manual Restore Using `dar`](#example-manual-restore-using-dar)
         - [🧪 How to Locate Files with Forbidden Characters](#-how-to-locate-files-with-forbidden-characters)
       - [Summary](#summary)
+    - [Backup fails with error code 2](#backup-fails-with-error-code-2)
     - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
     - [dar manager databases](#dar-manager-databases)
     - [Performance tip due to par2](#performance-tip-due-to-par2)
@@ -1578,7 +1579,44 @@ This will help you identify files that require manual restoration.
 - ✅ Files containing these characters are **still archived and restorable**.
 - 🛠 Use `dar` directly for full manual control when restoring such files.
 
+### Backup fails with error code 2
 
+If you see something like this in the log file
+
+````bash
+2026-02-07 20:03:45,763 - INFO - ===> Starting INCR backup for /opt/dar-backup/backup.d/user-homedir
+2026-02-07 20:03:45,878 - ERROR - Unexpected error during backup
+2026-02-07 20:03:45,880 - ERROR - Error during INCR backup process for user-homedir: Unexpected error during backup: CommandResult:
+  Return code: 2
+  Note: <none>
+  STDOUT: Error met while opening the last slice: Data corruption met at end of slice, unknown flag found. Trying to open the archive using the first slice.
+````
+
+it could be the DIFF file the INCR job is inspecting that has an error.
+
+In this instance it was due to me doing a hard reboot during the DIFF backup due to a nfs issue, and did not clean up afterwards.
+
+I looked at the trace log file to get more information and found this
+
+````bash
+2026-02-07 20:03:45,763 - DEBUG - Executing command: dar -c /mnt/dar/user-homedir_INCR_2026-02-07 -N -B /opt/dar-backup/venv/lib/python3.12/site-packages/dar_backup/.darrc -B /opt/dar-backup/backup.d/user-homedir -Q compress-exclusion verbose -A /mnt/dar/user-homedir_DIFF_2026-02-01 (timeout=86400s)
+2026-02-07 20:03:45,764 - DEBUG - Process started pid=93372 cwd=/root
+2026-02-07 20:03:45,840 - ERROR - FATAL error, aborting operation: Data corruption met at end of slice, unknown flag found
+````
+
+Running a test of the DIFF archive showed the error
+
+````bash
+dar -t /mnt/dar/user-homedir_DIFF_2026-02-01
+````
+
+which showed the archive is not healthy, so instead of making an INCR, I did a DIFF
+
+````bash
+dar-backup -D -d user-homedir --log-stdout
+````
+
+Now all is well again :-)
 
 ### Merge FULL with DIFF, creating new FULL
 
