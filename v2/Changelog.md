@@ -9,6 +9,7 @@
 
 - Discord reporting improved
 - Error "code 2" during backup documented with example
+- PITR integration tests now enforce a minimum time spacing between versions to avoid flaky restores on fast systems/CI.
 
 ## v2-1.1.0 - 2026-02-05
 

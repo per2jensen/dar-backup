@@ -1,7 +1,0 @@
-[run]
-data_file = /tmp/.coverage
-branch = True
-source = src
-relative_files = True
-parallel = True
-concurrency = multiprocessing,thread

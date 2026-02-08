@@ -5,12 +5,15 @@ import os
 import random
 import shutil
 import sys
+import time
 from typing import Optional
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
+PITR_STEP_SECONDS = 2
 
 
 # Add src to sys.path
@@ -57,17 +60,32 @@ class TestClock:
     def __init__(self, start: Optional[datetime] = None):
         self._current = start or datetime.now()
 
-    def tick(self, seconds: int = 1) -> datetime:
+    def _advance(self, seconds: int = 1) -> datetime:
+        if seconds < 0:
+            raise ValueError("seconds must be non-negative")
+        now = datetime.now()
+        if self._current < now:
+            self._current = now
         self._current += timedelta(seconds=seconds)
+        # Avoid returning timestamps in the future; wait until real time catches up.
+        while True:
+            now = datetime.now()
+            if now >= self._current:
+                break
+            sleep_for = (self._current - now).total_seconds()
+            time.sleep(min(0.1, max(0.01, sleep_for)))
         return self._current
 
+    def tick(self, seconds: int = 1) -> datetime:
+        return self._advance(seconds)
+
     def touch(self, path: str, seconds: int = 1) -> datetime:
-        ts = self.tick(seconds).timestamp()
+        ts = self._advance(seconds).timestamp()
         os.utime(path, (ts, ts))
         return datetime.fromtimestamp(ts)
 
     def touch_many(self, paths, seconds: int = 1) -> datetime:
-        ts = self.tick(seconds).timestamp()
+        ts = self._advance(seconds).timestamp()
         for path in paths:
             if os.path.exists(path):
                 os.utime(path, (ts, ts))
@@ -104,7 +122,7 @@ def test_pitr_integration_flow(setup_environment, env):
         f.write("Version 1 content")
     
     # Ensure a deterministic mtime for the initial version
-    clock.touch(data_file, seconds=1)
+    clock.touch(data_file, seconds=PITR_STEP_SECONDS)
     
     # --- Step 2: Full Backup ---
     env.logger.info("Running FULL backup")
@@ -113,7 +131,7 @@ def test_pitr_integration_flow(setup_environment, env):
     # Capture timestamp *after* full backup but *before* modification
     # This will be our target time for restoring Version 1
     # We add a small buffer to ensure we are "after" the backup creation
-    restore_time_v1 = clock.tick(1)
+    restore_time_v1 = clock.tick(PITR_STEP_SECONDS)
     env.logger.info(f"Target Restore Time for V1: {restore_time_v1}")
 
     # --- Step 3: Version 2 ---
@@ -121,13 +139,13 @@ def test_pitr_integration_flow(setup_environment, env):
     with open(data_file, "w") as f:
         f.write("Version 2 content")
         
-    clock.touch(data_file, seconds=1)
+    clock.touch(data_file, seconds=PITR_STEP_SECONDS)
     
     # --- Step 4: Differential Backup ---
     env.logger.info("Running DIFFERENTIAL backup")
     run_backup_script("--differential-backup", env)
     
-    restore_time_v2 = clock.tick(1)
+    restore_time_v2 = clock.tick(PITR_STEP_SECONDS)
     env.logger.info(f"Target Restore Time for V2: {restore_time_v2}")
     
     # --- Step 5: Restore V1 ---
@@ -236,13 +254,13 @@ def test_pitr_integration_flow(setup_environment, env):
     with open(data_file, "w") as f:
         f.write("Version 3 content")
 
-    clock.touch(data_file, seconds=1)
+    clock.touch(data_file, seconds=PITR_STEP_SECONDS)
 
     # --- Step 8: Incremental Backup ---
     env.logger.info("Running INCREMENTAL backup")
     run_backup_script("--incremental-backup", env)
 
-    restore_time_v3 = clock.tick(1)
+    restore_time_v3 = clock.tick(PITR_STEP_SECONDS)
     env.logger.info(f"Target Restore Time for V3: {restore_time_v3}")
 
     # --- Step 9: Restore V3 ---
@@ -424,7 +442,7 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     # --- Step 2: FULL backup ---
     env.logger.info("Running FULL backup for tree structure test")
     run_backup_script("--full-backup", env)
-    restore_time_v1 = clock.tick(1)
+    restore_time_v1 = clock.tick(PITR_STEP_SECONDS)
 
     restore_and_verify(restore_time_v1, os.path.join(env.test_dir, "restore_tree_v1"), restore_roots)
 
@@ -457,7 +475,7 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     # --- Step 4: DIFF backup ---
     env.logger.info("Running DIFFERENTIAL backup for tree structure test")
     run_backup_script("--differential-backup", env)
-    restore_time_v2 = clock.tick(1)
+    restore_time_v2 = clock.tick(PITR_STEP_SECONDS)
 
     restore_and_verify(restore_time_v2, os.path.join(env.test_dir, "restore_tree_v2"), restore_roots)
 
@@ -481,12 +499,12 @@ def test_pitr_integration_tree_structure(setup_environment, env):
     assert modified + deleted >= 50
 
     modified_paths = [os.path.join(env.data_dir, rel) for rel in (deep_files[:15] + new_files[:15])]
-    clock.touch_many(modified_paths, seconds=1)
+    clock.touch_many(modified_paths, seconds=PITR_STEP_SECONDS)
 
     # --- Step 6: INCR backup ---
     env.logger.info("Running INCREMENTAL backup for tree structure test")
     run_backup_script("--incremental-backup", env)
-    restore_time_v3 = clock.tick(1)
+    restore_time_v3 = clock.tick(PITR_STEP_SECONDS)
 
     restore_and_verify(restore_time_v3, os.path.join(env.test_dir, "restore_tree_v3"), restore_roots)
 
@@ -623,7 +641,7 @@ def test_pitr_integration_torture_chain(setup_environment, env):
         return True
 
     def create_archive(backup_type: str, seq: int, base_archive: str = None):
-        archive_time = clock.tick(1)
+        archive_time = clock.tick(PITR_STEP_SECONDS)
         timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
         archive_base = os.path.join(env.backup_dir, f"example_{backup_type}_{timestamp}_{seq:02d}")
         cmd = [
@@ -676,7 +694,7 @@ def test_pitr_integration_torture_chain(setup_environment, env):
             modified += 1
         if modified:
             modified_paths = [os.path.join(env.data_dir, rel) for rel in all_files[:10]]
-            clock.touch_many(modified_paths, seconds=1)
+            clock.touch_many(modified_paths, seconds=PITR_STEP_SECONDS)
 
         for rel in list(all_files[10:15]):
             remove_entry(rel)
@@ -979,7 +997,7 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         return actual
 
     def create_archive(backup_type: str, seq: int, base_archive: str = None):
-        archive_time = clock.tick(1)
+        archive_time = clock.tick(PITR_STEP_SECONDS)
         timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
         archive_base = os.path.join(env.backup_dir, f"example_{backup_type}_{timestamp}_{seq:02d}")
         cmd = [
@@ -1085,7 +1103,7 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         remove_entry(temp_path)
 
     dir_paths = [os.path.join(env.data_dir, top) for top in top_dirs]
-    clock.touch_many(dir_paths, seconds=1)
+    clock.touch_many(dir_paths, seconds=PITR_STEP_SECONDS)
 
     # --- DIFF backup ---
     env.logger.info("Running DIFFERENTIAL backup for rename/mtime torture test")
@@ -1110,7 +1128,7 @@ def test_pitr_integration_rename_mtime_torture(setup_environment, env):
         remove_entry(rel)
 
     modified_paths = [os.path.join(env.data_dir, rel) for rel in all_files[:5]]
-    clock.touch_many(modified_paths, seconds=1)
+    clock.touch_many(modified_paths, seconds=PITR_STEP_SECONDS)
 
     # --- INCR backup ---
     env.logger.info("Running INCREMENTAL backup for rename/mtime torture test")
@@ -1149,14 +1167,14 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
     # Version 1 + FULL
     with open(data_file, "w") as f:
         f.write("Version 1 content")
-    clock.touch(data_file, seconds=1)
+    clock.touch(data_file, seconds=PITR_STEP_SECONDS)
     run_backup_script("--full-backup", env)
-    restore_time_v1 = clock.tick(1)
+    restore_time_v1 = clock.tick(PITR_STEP_SECONDS)
 
     # Version 2 + DIFF
     with open(data_file, "w") as f:
         f.write("Version 2 content")
-    clock.touch(data_file, seconds=1)
+    clock.touch(data_file, seconds=PITR_STEP_SECONDS)
     run_backup_script("--differential-backup", env)
 
     # Delete the catalog DB to simulate loss
