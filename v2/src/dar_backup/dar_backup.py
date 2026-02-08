@@ -1468,7 +1468,7 @@ def main():
         msg = f"Config error: {exc}"
         print(msg, file=stderr)
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-        send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}")
+        send_discord_message(f"{ts} - dar-backup: FAILURE - config settings error)\n---- End of report ----", config_settings=config_settings)
         exit(127)
 
     if args.list_definitions:
@@ -1484,7 +1484,7 @@ def main():
         validate_required_directories(config_settings)
     except RuntimeError as exc:
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-        send_discord_message(f"{ts} - dar-backup: FAILURE - {exc}", config_settings=config_settings)
+        send_discord_message(f"{ts} - dar-backup: FAILURE - required directories not found\n---- End of report ----", config_settings=config_settings)
         print(str(exc), file=stderr)
         exit(127)
 
@@ -1492,7 +1492,7 @@ def main():
     ok = preflight_check(args, config_settings)
     if not ok:
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-        send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed", config_settings=config_settings)
+        send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed\n---- End of report ----", config_settings=config_settings)
         exit_code = 127 if args.backup_definition else 1
         exit(exit_code)
     if args.preflight_check:
@@ -1633,24 +1633,27 @@ def main():
             
             ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
             
-            if failures or warnings:
-                msg_lines = [f"{ts} - dar-backup Run Completed"]
-                msg_lines.append(f"Total: {total}, Success: {len(successes)}, Warning: {len(warnings)}, Failure: {len(failures)}")
-                
-                if failures:
-                    msg_lines.append("\nFailures:")
-                    for f in failures:
-                        msg_lines.append(f"- {f['definition']} ({f['type']})")
-                
-                if warnings:
-                    msg_lines.append("\nWarnings:")
-                    for w in warnings:
-                        msg_lines.append(f"- {w['definition']} ({w['type']})")
-                
-                send_discord_message("\n".join(msg_lines), config_settings=config_settings)
-            else:
-                # All successful
-                send_discord_message(f"{ts} - dar-backup: SUCCESS - All {total} backups completed successfully.", config_settings=config_settings)
+            msg_lines = [f"{ts} - dar-backup Run Completed"]
+            msg_lines.append(f"Total: {total}, Success: {len(successes)}, Warning: {len(warnings)}, Failure: {len(failures)}")
+            
+            if successes:
+                msg_lines.append("\nSuccesses:")
+                for f in successes:
+                    msg_lines.append(f"- {f['definition']} ({f['type']})")
+
+            if failures:
+                msg_lines.append("\nFailures:")
+                for f in failures:
+                    msg_lines.append(f"- {f['definition']} ({f['type']})")
+            
+            if warnings:
+                msg_lines.append("\nWarnings:")
+                for w in warnings:
+                    msg_lines.append(f"- {w['definition']} ({w['type']})")
+            
+            msg_lines.append("---- End Of Report ----")
+            
+            send_discord_message("\n".join(msg_lines), config_settings=config_settings)
 
         requirements('POSTREQ', config_settings)
 
@@ -1659,7 +1662,7 @@ def main():
         msg = f"Unexpected error: {e}"
         logger.error(msg, exc_info=True)
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-        send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}", config_settings=config_settings)
+        send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}\n---- End of report ----", config_settings=config_settings)
         results.append((repr(e), 1))
     finally:
         end_time=int(time())
