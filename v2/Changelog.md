@@ -1,6 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.1.1 - not released
+
+### Added
+
+### Changed
+
+- Discord reporting improved
+- Error "code 2" during backup documented with example
+
 ## v2-1.1.0 - 2026-02-05
 
 ### Added
