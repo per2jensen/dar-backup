@@ -10,7 +10,7 @@ Please complete the sections below to help us review your changes.
 <!-- List related issues or discussions. Use "Closes #123" or "Fixes #456" when applicable. -->
 
 ## Checklist
-- [ ] Tests pass locally (`pytest -v` for v2, `./runner.sh` for v1)
+- [ ] Tests pass locally (`cd v2 && ./scripts/pytest_report.sh full` for v2, `./runner.sh` for v1)
 - [ ] Added or updated test cases for new/changed code
 - [ ] Code is documented (docstrings, comments)
 - [ ] Documentation updated if needed (`README.md` or `doc/`)

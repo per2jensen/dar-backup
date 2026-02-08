@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           . venv*/bin/activate
-          export COVERAGE_PROCESS_START="$PWD/.coveragerc"
+          export COVERAGE_PROCESS_START="$PWD/pyproject.toml"
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
           mkdir -p doc/test-report

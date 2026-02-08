@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+: "${COVERAGE_PROCESS_START:=$PWD/pyproject.toml}"
+
 MODE="${1:-fast}"
 OUTDIR="${2:-doc/test-report}"
 
@@ -103,6 +109,19 @@ import configparser
 cfg = configparser.ConfigParser()
 cfg.read(".coveragerc")
 print(cfg.get("run", "data_file", fallback=".coverage"))
+PY
+    return
+  fi
+  if [[ -f "pyproject.toml" ]]; then
+    python - <<'PY'
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+tool = data.get("tool", {})
+coverage = tool.get("coverage", {})
+run = coverage.get("run", {})
+print(run.get("data_file", ".coverage"))
 PY
     return
   fi

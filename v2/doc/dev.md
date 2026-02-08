@@ -64,6 +64,23 @@ or for specific file with test cases
 PYTHONPATH=src pytest -c pytest-minimal.ini tests/test_verbose.py
 ````
 
+### Subprocess coverage (local == CI)
+
+By default, local `pytest` enables subprocess coverage to match the GitHub workflow.
+This is done via `COVERAGE_PROCESS_START=pyproject.toml` set in `tests/conftest.py`.
+
+Disable subprocess coverage for a single run:
+
+```` bash
+DAR_BACKUP_NO_SUBPROCESS_COVERAGE=1 pytest
+````
+
+Or run the full CI-equivalent report flow (same markers + coverage artifacts):
+
+```` bash
+./scripts/pytest_report.sh full
+````
+
 ## PyPI download stats
 
 The repo root includes `track_downloads.py` which fetches daily download counts

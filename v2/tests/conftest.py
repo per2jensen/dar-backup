@@ -5,9 +5,17 @@ import os
 import re
 import shutil
 import sys
+from pathlib import Path
 
 tests_dir = os.path.abspath(os.path.dirname(__file__))
 project_dir = os.path.abspath(os.path.join(tests_dir, ".."))
+
+# Ensure subprocess coverage matches CI by default.
+# Opt out with DAR_BACKUP_NO_SUBPROCESS_COVERAGE=1.
+_coverage_config = Path(project_dir) / "pyproject.toml"
+_disable_subprocess_coverage = os.environ.get("DAR_BACKUP_NO_SUBPROCESS_COVERAGE")
+if not _disable_subprocess_coverage and "COVERAGE_PROCESS_START" not in os.environ and _coverage_config.exists():
+    os.environ["COVERAGE_PROCESS_START"] = str(_coverage_config)
 
 # Ensure project and src are importable regardless of pytest import mode.
 sys.path.insert(0, os.path.join(project_dir, "src"))
