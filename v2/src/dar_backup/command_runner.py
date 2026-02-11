@@ -236,6 +236,11 @@ class CommandRunner:
                     cwd or os.getcwd(),
                 )
             except Exception as e:
+                self.logger.error(
+                    "Failed to start command: %s (error=%s)",
+                    " ".join(shlex.quote(arg) for arg in cmd),
+                    e,
+                )
                 stack = traceback.format_exc()
                 return CommandResult(
                     returncode=-1,
@@ -344,6 +349,13 @@ class CommandRunner:
                 process.returncode,
                 duration,
             )
+            if process.returncode != 0:
+                self.logger.error(
+                    "Command failed pid=%s returncode=%s: %s",
+                    pid if pid is not None else "unknown",
+                    process.returncode,
+                    " ".join(shlex.quote(arg) for arg in cmd),
+                )
 
             if self._text_mode:
                 stdout_combined = ''.join(stdout_lines)

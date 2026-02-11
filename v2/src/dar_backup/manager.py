@@ -1362,7 +1362,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
         return 0
     else:
         logger.error(process.stdout)
-        logger.error(process.sterr)
+        logger.error(process.stderr)
         return 1    
 
 

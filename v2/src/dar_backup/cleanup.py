@@ -43,7 +43,6 @@ from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import is_archive_name_allowed
-from dar_backup.util import is_safe_filename
 from dar_backup.util import safe_remove_file
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message
@@ -184,10 +183,14 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
             try:
                 if dry_run:
                     logger.info(f"Dry run: would delete archive slice: {file_path}")
+                    files_deleted = True
                 else:
-                    is_safe_filename(file_path) and os.remove(file_path)
-                    logger.info(f"Deleted archive slice: {file_path}")
-                files_deleted = True
+                    removed = safe_remove_file(file_path, base_dir=Path(backup_dir))
+                    if removed:
+                        logger.info(f"Deleted archive slice: {file_path}")
+                        files_deleted = True
+                    else:
+                        logger.warning(f"Skipped deleting unsafe archive slice: {file_path}")
             except Exception as e:
                 logger.error(f"Error deleting archive slice {file_path}: {e}")
     

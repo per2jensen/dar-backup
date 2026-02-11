@@ -433,7 +433,7 @@ def test_list_contents_subprocess_error(monkeypatch, tmp_path):
         lambda *a, **k: FakeProcess(b"", returncode=1),
     )
 
-    with pytest.raises(RuntimeError, match="Unexpected error listing contents"):
+    with pytest.raises(RuntimeError, match="Error listing contents of backup"):
         db.list_contents("archive", str(tmp_path))
 
     assert error_logger.error.called

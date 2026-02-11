@@ -606,6 +606,14 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
         logger.error(f"Timeout listing backed up files from DAR archive: '{backup_name}'")
         raise BackupError(f"Timeout listing backed up files from DAR archive: '{backup_name}'") from e
     except Exception as e:
+        log = logger or get_logger()
+        if log:
+            log.error(
+                "Unexpected error listing backed up files from DAR archive: '%s': %s",
+                backup_name,
+                e,
+                exc_info=True,
+            )
         if temp_path:
             try:
                 os.remove(temp_path)
@@ -733,7 +741,19 @@ def list_contents(backup_name, backup_dir, selection=None):
     except subprocess.CalledProcessError as e:
         (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
         raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e  
+    except RuntimeError:
+        raise
+    except BackupError:
+        raise
     except Exception as e:
+        log = logger or get_logger()
+        if log:
+            log.error(
+                "Unexpected error listing contents of backup: '%s': %s",
+                backup_name,
+                e,
+                exc_info=True,
+            )
         raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e  
 
 
@@ -1136,6 +1156,11 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
         verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
         verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
         if verify_process.returncode != 0:
+            logger.error(
+                "par2 verify failed for archive: %s (returncode=%s)",
+                archive_base,
+                verify_process.returncode,
+            )
             raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
     return
 

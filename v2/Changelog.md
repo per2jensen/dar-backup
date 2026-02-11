@@ -10,6 +10,10 @@
 - Discord reporting improved
 - Error "code 2" during backup documented with example
 - PITR integration tests now enforce a minimum time spacing between versions to avoid flaky restores on fast systems/CI.
+- [BUGFIX] Lacking notice in dar-backup.log about missing FULL or DIFF added.
+- Logging improvements for command failures: CommandRunner now logs start failures and non-zero exits with pid/returncode, `par2 verify` failures emit errors, and unexpected list-contents errors are logged.
+- Cleanup now uses safe deletion for archive slices and warns when unsafe deletions are skipped.
+- [BUGFIX] Manager stderr logging on remove-specific-archive failures now reports the correct stderr field.
 
 ## v2-1.1.0 - 2026-02-05
 

@@ -1459,7 +1459,7 @@ def test_remove_specific_archive_failure_returns_one(tmp_path):
     from dar_backup.manager import remove_specific_archive
 
     config = SimpleNamespace(backup_dir=tmp_path)
-    process = SimpleNamespace(returncode=1, stdout="bad", sterr="oops")
+    process = SimpleNamespace(returncode=1, stdout="bad", stderr="oops")
 
     with patch("dar_backup.manager.backup_def_from_archive", return_value="example"), \
          patch("dar_backup.manager.cat_no_for_name", return_value=1), \
