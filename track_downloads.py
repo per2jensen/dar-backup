@@ -9,6 +9,9 @@ N days to pick up PyPI Stats corrections.
 import argparse
 import json
 import math
+import random
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
@@ -20,6 +23,13 @@ JSON_FILE = Path("downloads.json")
 PYPI_STATS_BASE = "https://pypistats.org/api"
 MIRRORS = False  # False => exclude known mirrors
 DEFAULT_DAYS_BACK = 31
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 5
+BACKOFF_BASE_SECONDS = 2.0
+BACKOFF_CAP_SECONDS = 60.0
+PRE_REQUEST_DELAY_MIN = 10.0
+PRE_REQUEST_DELAY_MAX = 90.0
+NOTICE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def _read_json(path: Path) -> Optional[dict]:
@@ -35,11 +45,89 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=False))
 
 
+def _retry_after_seconds(err: urllib.error.HTTPError) -> Optional[float]:
+    try:
+        retry_after = err.headers.get("Retry-After")
+    except Exception:
+        retry_after = None
+    if not retry_after:
+        return None
+    try:
+        return float(retry_after)
+    except ValueError:
+        return None
+
+
+def _compute_backoff(attempt: int, retry_after: Optional[float] = None) -> float:
+    if retry_after is not None and retry_after > 0:
+        return min(BACKOFF_CAP_SECONDS, retry_after)
+    exp = BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+    jitter = random.uniform(0, 1)
+    return min(BACKOFF_CAP_SECONDS, exp + jitter)
+
+
+def _sleep_pre_request(label: str) -> None:
+    if PRE_REQUEST_DELAY_MAX <= 0 or PRE_REQUEST_DELAY_MAX < PRE_REQUEST_DELAY_MIN:
+        return
+    delay = random.uniform(PRE_REQUEST_DELAY_MIN, PRE_REQUEST_DELAY_MAX)
+    print(f"{label}: waiting {delay:.1f}s before request to reduce rate-limit risk")
+    time.sleep(delay)
+
+
+def _build_update_notice(status: str, message: Optional[str] = None) -> dict:
+    notice = {
+        "status": status,
+        "timestamp": datetime.now(UTC).strftime(NOTICE_TIMESTAMP_FORMAT),
+    }
+    if message:
+        notice["message"] = message
+    return notice
+
+
+def _write_update_notice(existing: dict, status: str, message: str) -> None:
+    payload = dict(existing) if existing else {}
+    payload["update_notice"] = _build_update_notice(status, message)
+    _write_json(JSON_FILE, payload)
+
+
 def _fetch_json(url: str) -> dict:
-    with urllib.request.urlopen(url) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"HTTP {resp.status} for {url}")
-        return json.loads(resp.read().decode("utf-8"))
+    headers = {"User-Agent": "dar-backup-download-tracker/1.0"}
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status} for {url}")
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            last_error = err
+            if err.code in (429, 500, 502, 503, 504) and attempt < MAX_RETRIES:
+                retry_after = _retry_after_seconds(err) if err.code == 429 else None
+                delay = _compute_backoff(attempt, retry_after=retry_after)
+                print(
+                    f"HTTP {err.code} for {url}; retrying in {delay:.1f}s "
+                    f"(attempt {attempt}/{MAX_RETRIES})"
+                )
+                time.sleep(delay)
+                continue
+            raise
+        except urllib.error.URLError as err:
+            last_error = err
+            if attempt < MAX_RETRIES:
+                delay = _compute_backoff(attempt)
+                print(
+                    f"Network error for {url}; retrying in {delay:.1f}s "
+                    f"(attempt {attempt}/{MAX_RETRIES})"
+                )
+                time.sleep(delay)
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"Failed to fetch {url}")
 
 
 def _fetch_overall_daily(package: str, mirrors: bool = False) -> Dict[str, int]:
@@ -112,6 +200,7 @@ def _build_output(
     mirrors: bool,
     annotations: Iterable[dict],
     rollups: dict,
+    update_notice: dict,
 ) -> dict:
     daily = _build_daily_list(daily_map)
     total_downloads = sum(daily_map.values())
@@ -119,6 +208,7 @@ def _build_output(
         "package": package,
         "source": f"{PYPI_STATS_BASE}/packages/{package}/overall?mirrors={'true' if mirrors else 'false'}",
         "updated": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "update_notice": update_notice,
         "recent": recent,
         "total_downloads": total_downloads,
         "rollups": rollups,
@@ -235,8 +325,44 @@ def main() -> int:
     if not isinstance(existing_annotations, list):
         existing_annotations = []
 
-    overall_daily = _fetch_overall_daily(args.package, mirrors=MIRRORS)
-    recent = _fetch_recent(args.package)
+    update_status = "ok"
+    update_messages: List[str] = []
+
+    _sleep_pre_request("Overall stats")
+    try:
+        overall_daily = _fetch_overall_daily(args.package, mirrors=MIRRORS)
+    except urllib.error.HTTPError as err:
+        if err.code == 429:
+            message = "Rate-limited by PyPI Stats API; skipping update for this run."
+            print(message)
+            _write_update_notice(existing_payload, "failed", message)
+            return 0
+        raise
+    except urllib.error.URLError:
+        message = "Network error while fetching PyPI stats; skipping update for this run."
+        print(message)
+        _write_update_notice(existing_payload, "failed", message)
+        return 0
+
+    _sleep_pre_request("Recent stats")
+    try:
+        recent = _fetch_recent(args.package)
+    except urllib.error.HTTPError as err:
+        if err.code == 429:
+            update_status = "partial"
+            update_messages.append("Rate-limited fetching recent stats; kept existing data.")
+            print(update_messages[-1])
+            recent = existing_payload.get("recent", {})
+        else:
+            raise
+    except urllib.error.URLError:
+        update_status = "partial"
+        update_messages.append("Network error fetching recent stats; kept existing data.")
+        print(update_messages[-1])
+        recent = existing_payload.get("recent", {})
+
+    if not isinstance(recent, dict):
+        recent = {}
 
     today = datetime.now(UTC).date()
     cutoff = today - timedelta(days=args.days_back)
@@ -254,6 +380,9 @@ def main() -> int:
         mirrors=MIRRORS,
         annotations=annotations,
         rollups=rollups,
+        update_notice=_build_update_notice(
+            update_status, "; ".join(update_messages) if update_messages else None
+        ),
     )
     if output["daily"]:
         summed = sum(item.get("count", 0) for item in output["daily"])

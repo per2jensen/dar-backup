@@ -50,7 +50,6 @@ Version **1.0.0** was reached on October 9, 2025.
   - [Quick Guide](#quick-guide)
   - [Status](#status)
     - [GPG Signing key](#gpg-signing-key)
-    - [Breaking change in version 0.6.0](#breaking-change-in-version-060)
   - [Homepage - Github](#homepage---github)
   - [Community](#community)
   - [Requirements](#requirements)
@@ -118,6 +117,9 @@ Version **1.0.0** was reached on October 9, 2025.
       - [Enable Zsh Completion](#enable-zsh-completion)
   - [Easy development setup](#easy-development-setup)
   - [Todo](#todo)
+    - [v2-1.2](#v2-12)
+    - [v2-1.3](#v2-13)
+    - [Other stuff](#other-stuff)
   - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
   - [Projects these scripts benefit from](#projects-these-scripts-benefit-from)
   - [Reference](#reference)
@@ -245,7 +247,7 @@ The package include a `demo`application, that can help you set up `dar-backup` q
 >
 > It is assumed they **do not exist** before running the demo.
 >
-> Python **>= 3.9** is required
+> Python **>= 3.11** is required
 
 <br>
 
@@ -558,12 +560,6 @@ gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
 </details>
 
 </details>
-
-<br>
-
-### Breaking change in version 0.6.0
-
-Version 0.6.0 and forwards requires the config variable *COMMAND_TIMEOUT_SECS* in the config file.
 
 ## Homepage - Github
 
@@ -1872,18 +1868,31 @@ pytest                   # run the test suite
 
 ## Todo
 
+### v2-1.2
+
+- Generate a working config from provided paths to archives and catalogs
+  - Useful for future restores, possibly in many years.
+
+- Support `dar` version 2.8.x
+
+### v2-1.3
+
+- Use `dar's` PKI encryption features
+  - Figure out how it works, the use cases, possible limitations to current work flows
+
+### Other stuff
+
 - Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars
   `dar-backup` could do so and feed the result to `dar`.
-- Look into a way to move the .par2 files away from the `dar` slices, to maximize chance of good redundancy.
 - Add option to dar-backup to use the `dar` option `--fsa-scope none`
 
 ## Known Limitations / Edge Cases
 
-Does not currently encrypt data (by design — relies on encrypted storage)
+- Does not currently encrypt data (by design — relies on encrypted storage)
+  - PKI contemplated for v2-1.3.0
 
-One backup definition per file
-
-.par2 files created for each slice (may be moved in future)
+- One backup definition per file in backups.d/
+  - this assumption is built deep into `dar-backup`
 
 ## Projects these scripts benefit from
 
@@ -1892,7 +1901,6 @@ One backup definition per file
  3. [shellcheck - a bash linter](https://github.com/koalaman/shellcheck)
  4. [Ubuntu of course :-)](https://ubuntu.com/)
  5. [PyPI](https://pypi.org/)
- 6. Tracking PyPI downloads with [pypi-total-downloads-tracker](https://github.com/per2jensen/pypi-total-downloads-tracker)
 
 ## Reference
 
