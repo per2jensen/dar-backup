@@ -923,7 +923,11 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                         key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
                     )
                     if not base_backups:
-                        msg = f"No {base_backup_type} backup found for {backup_definition}. Skipping {backup_type} backup."
+                        msg = (
+                            f"Required parent backup missing for {backup_definition}: "
+                            f"{base_backup_type} archive not found (needed for {backup_type})."
+                        )
+                        logger.error(msg)
                         results.append((msg, 1))
                         continue
                     latest_base_backup = os.path.join(config_settings.backup_dir, base_backups[-1].rsplit('.', 2)[0])

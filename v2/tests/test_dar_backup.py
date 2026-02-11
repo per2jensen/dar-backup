@@ -268,8 +268,40 @@ def test_perform_backup_skips_diff_when_no_base_backup(env):
         results = perform_backup(args, config, "DIFF", [])
 
     assert len(results) == 1
-    assert "No FULL backup found" in results[0][0]
+    assert "Required parent backup missing" in results[0][0]
+    assert "FULL" in results[0][0]
     assert results[0][1] == 1
+    mock_logger.error.assert_called_once()
+
+
+def test_perform_backup_skips_incr_when_no_diff_backup(env):
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    # Create a fake backup definition file
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    # Ensure backup_dir is empty (no .1.dar base backups)
+    os.makedirs(config.backup_dir, exist_ok=True)
+
+    with patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "INCR", [])
+
+    assert len(results) == 1
+    assert "Required parent backup missing" in results[0][0]
+    assert "DIFF" in results[0][0]
+    assert results[0][1] == 1
+    mock_logger.error.assert_called_once()
 
 
 
