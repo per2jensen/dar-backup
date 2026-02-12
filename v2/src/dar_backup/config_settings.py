@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import configparser
+import os
 import re
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
@@ -129,6 +130,9 @@ class ConfigSettings:
             self.min_size_verification_mb = int(self.config['MISC']['MIN_SIZE_VERIFICATION_MB'])
             self.no_files_verification = int(self.config['MISC']['NO_FILES_VERIFICATION'])
             self.command_timeout_secs = int(self.config['MISC']['COMMAND_TIMEOUT_SECS'])
+            env_timeout = os.getenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS")
+            if env_timeout is not None:
+                self.command_timeout_secs = self._parse_env_timeout(env_timeout)
             self.backup_dir = self.config['DIRECTORIES']['BACKUP_DIR']
             self.test_restore_dir = self.config['DIRECTORIES']['TEST_RESTORE_DIR']
             self.backup_d_dir = self.config['DIRECTORIES']['BACKUP.D_DIR']
@@ -226,6 +230,24 @@ class ConfigSettings:
         if val in ('false', '0', 'no'):
             return False
         raise ConfigSettingsError(f"Invalid boolean value for '{key}' in [{section}]: '{val}'")
+
+    def _parse_env_timeout(self, raw_value: str) -> int:
+        raw = raw_value.strip()
+        if not raw:
+            raise ConfigSettingsError(
+                "Invalid DAR_BACKUP_COMMAND_TIMEOUT_SECS environment value: must be -1 or > 0."
+            )
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ConfigSettingsError(
+                "Invalid DAR_BACKUP_COMMAND_TIMEOUT_SECS environment value: must be -1 or > 0."
+            ) from exc
+        if value == -1 or value > 0:
+            return value
+        raise ConfigSettingsError(
+            "Invalid DAR_BACKUP_COMMAND_TIMEOUT_SECS environment value: must be -1 or > 0."
+        )
 
     def _get_optional_csv_list(self, section: str, key: str, default: Optional[list[str]] = None) -> list[str]:
         if not self.config.has_option(section, key):

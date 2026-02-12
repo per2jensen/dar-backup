@@ -14,6 +14,7 @@
 - Logging improvements for command failures: CommandRunner now logs start failures and non-zero exits with pid/returncode, `par2 verify` failures emit errors, and unexpected list-contents errors are logged.
 - Cleanup now uses safe deletion for archive slices and warns when unsafe deletions are skipped.
 - [BUGFIX] Manager stderr logging on remove-specific-archive failures now reports the correct stderr field.
+- Set env var `DAR_BACKUP_COMMAND_TIMEOUT_SECS` to override the config var `COMMAND_TIMEOUT_SECS`
 
 ## v2-1.1.0 - 2026-02-05
 

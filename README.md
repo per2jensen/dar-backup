@@ -146,6 +146,7 @@ Version **1.0.0** was reached on October 9, 2025.
         - [Trace Logging](#trace-logging)
         - [Command output Capture](#command-output-capture)
       - [1.1.0](#110)
+      - [1.1.1](#111)
   
 ## My use case
 
@@ -2098,6 +2099,7 @@ Available options:
 | --- | --- | --- |
 | DAR_BACKUP_CONFIG_FILE | Full path to config file | Overrides built-in default, overridden by --config-file |
 | DAR_BACKUP_DISCORD_WEBHOOK_URL | https://discord.com/api/webhooks/\<userID\>/\<webhook UUID\> | The full url |
+| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
 
 ### Manager Options
 
@@ -2130,7 +2132,8 @@ Available options:
 
 | Env var | Value | Description |
 | --- | --- | --- |
-| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |```
+| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |
+| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
 
 ### Cleanup options
 
@@ -2159,6 +2162,7 @@ Supported options:
 | Env var | Value | Description |
 | --- | --- | --- |
 | DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |
+| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
 
 ### Clean-log options
 
@@ -2364,3 +2368,7 @@ COMMAND_CAPTURE_MAX_BYTES = 102400
 #### 1.1.0
 
 COMMAND_TIMEOUT_SECS=-1 now disables timeout for commands executed.
+
+#### 1.1.1
+
+Env var `DAR_BACKUP_COMMAND_TIMEOUT_SECS` now overrides config file var `COMMAND_TIMEOUT_SECS`.

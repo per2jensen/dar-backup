@@ -201,6 +201,44 @@ def test_config_settings_repr_omits_none_fields(tmp_path):
     assert "par2_dir" not in output
 
 
+def test_config_settings_env_timeout_overrides_config(tmp_path, monkeypatch):
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path, misc_overrides={"COMMAND_TIMEOUT_SECS": "30"})
+    monkeypatch.setenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS", "120")
+    settings = ConfigSettings(str(config_path))
+    assert settings.command_timeout_secs == 120
+
+
+@pytest.mark.parametrize(
+    "env_value,expected",
+    [
+        ("-1", -1),
+        ("300", 300),
+    ],
+)
+def test_config_settings_env_timeout_valid_values(tmp_path, monkeypatch, env_value, expected):
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path)
+    monkeypatch.setenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS", env_value)
+    settings = ConfigSettings(str(config_path))
+    assert settings.command_timeout_secs == expected
+
+
+@pytest.mark.parametrize(
+    "env_value",
+    [
+        "0",
+        "banana",
+        "",
+        "  ",
+    ],
+)
+def test_config_settings_env_timeout_invalid_values_raise(tmp_path, monkeypatch, env_value):
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path)
+    monkeypatch.setenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS", env_value)
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "dar_backup_command_timeout_secs" in str(exc_info.value).lower()
+
+
 @pytest.mark.parametrize(
     "section,key,value",
     [
