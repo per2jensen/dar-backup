@@ -202,6 +202,8 @@ def test_verify_success_path_with_verbose_logging(env):
 
 
 from dar_backup.dar_backup import perform_backup
+from dar_backup.dar_backup import _normalize_backup_definition_name
+from dar_backup.dar_backup import list_definitions
 
 def test_perform_backup_skips_definition_with_underscore_in_args(env):
     args = SimpleNamespace(backup_definition="bad_name_with_underscore.dcf")
@@ -214,7 +216,9 @@ def test_perform_backup_skips_definition_with_underscore_in_args(env):
     with patch("dar_backup.dar_backup.logger") as mock_logger:
         results = perform_backup(args, config, "FULL", [])
 
-    assert results == [("Skipping backup definition: 'bad_name_with_underscore.dcf' due to '_' in name", 1)]
+    assert len(results) == 1
+    assert "Skipping backup definition" in results[0][0]
+    assert results[0][1] == 1
     mock_logger.error.assert_called_once()
 
 
@@ -237,9 +241,50 @@ def test_perform_backup_skips_files_with_underscore_in_directory(env):
         results = perform_backup(args, config, "FULL", [])
 
     assert len(results) == 1
-    assert "due to '_' in: name" in results[0][0]
-    assert results[0][1] == 1
+    assert "Skipping backup definition" in results[0][0]
+    assert results[0][1] == 2
     mock_logger.error.assert_called_once()
+
+
+def test_normalize_backup_definition_name_accepts_alnum():
+    assert _normalize_backup_definition_name("Photos123.dcf") == "Photos123"
+    assert _normalize_backup_definition_name("Photos123") == "Photos123"
+    assert _normalize_backup_definition_name("Photos 123.dcf") == "Photos 123"
+    assert _normalize_backup_definition_name("new-monster") == "new-monster"
+    assert _normalize_backup_definition_name("bad_name.dcf", allow_unsafe=True) == "bad_name"
+
+
+def test_list_definitions_filters_invalid_names(tmp_path, monkeypatch):
+    import io
+    import dar_backup.dar_backup as dar_backup
+
+    backup_d_dir = tmp_path / "backup.d"
+    backup_d_dir.mkdir()
+
+    (backup_d_dir / "Photos123.dcf").write_text("-R /\n")
+    (backup_d_dir / "Good Name.dcf").write_text("-R /\n")
+    (backup_d_dir / "good-name.dcf").write_text("-R /\n")
+    (backup_d_dir / "bad_name.dcf").write_text("-R /\n")
+    (backup_d_dir / "bad@name.dcf").write_text("-R /\n")
+
+    err_buf = io.StringIO()
+    monkeypatch.setattr(dar_backup, "stderr", err_buf)
+
+    result = list_definitions(str(backup_d_dir))
+    assert result == ["Good Name.dcf", "Photos123.dcf", "good-name.dcf"]
+
+    assert "Warning: skipping invalid backup definition" in err_buf.getvalue()
+
+
+def test_list_definitions_allow_unsafe_includes_all(tmp_path):
+    backup_d_dir = tmp_path / "backup.d"
+    backup_d_dir.mkdir()
+
+    (backup_d_dir / "Good Name.dcf").write_text("-R /\n")
+    (backup_d_dir / "bad_name.dcf").write_text("-R /\n")
+
+    result = list_definitions(str(backup_d_dir), allow_unsafe=True)
+    assert result == ["Good Name.dcf", "bad_name.dcf"]
 
 
 

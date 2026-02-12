@@ -62,6 +62,26 @@ from dar_backup.command_runner import CommandRunner
 logger = None
 runner = None
 
+_BACKUP_DEFINITION_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 \\-]*[A-Za-z0-9])?$")
+_BACKUP_DEFINITION_RULES = (
+    "must contain only letters, numbers, spaces, or hyphens (no underscores)"
+)
+_BACKUP_DEFINITION_OPT_OUT = "--allow-unsafe-definition-names"
+
+
+def _normalize_backup_definition_name(raw_name: str, *, allow_unsafe: bool = False) -> Optional[str]:
+    if not raw_name:
+        return None
+    base = os.path.basename(str(raw_name))
+    stem = Path(base).stem
+    if not stem:
+        return None
+    if allow_unsafe:
+        return stem
+    if not _BACKUP_DEFINITION_RE.fullmatch(stem):
+        return None
+    return stem
+
 def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace) -> List[str]:
     """
     Performs a backup using the 'dar' command.
@@ -862,9 +882,20 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
 
     # Config sanity: backup definition exists if provided
     if args.backup_definition:
-        candidate = os.path.join(config_settings.backup_d_dir, args.backup_definition)
-        if not os.path.isfile(candidate):
-            errors.append(f"Backup definition not found: {candidate}")
+        allow_unsafe = getattr(args, "allow_unsafe_definition_names", False)
+        normalized_name = _normalize_backup_definition_name(
+            args.backup_definition,
+            allow_unsafe=allow_unsafe,
+        )
+        if not normalized_name:
+            errors.append(
+                f"Invalid backup definition name: '{args.backup_definition}' "
+                f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check."
+            )
+        else:
+            candidate = os.path.join(config_settings.backup_d_dir, args.backup_definition)
+            if not os.path.isfile(candidate):
+                errors.append(f"Backup definition not found: {candidate}")
 
     if errors:
         print("Preflight checks failed:")
@@ -896,21 +927,36 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
 
     # Gather backup definitions
     if args.backup_definition:
-        if '_' in args.backup_definition:
-            msg = f"Skipping backup definition: '{args.backup_definition}' due to '_' in name"
+        allow_unsafe = getattr(args, "allow_unsafe_definition_names", False)
+        normalized_name = _normalize_backup_definition_name(
+            args.backup_definition,
+            allow_unsafe=allow_unsafe,
+        )
+        if not normalized_name:
+            msg = (
+                f"Skipping backup definition: '{args.backup_definition}' "
+                f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check."
+            )
             logger.error(msg)
             results.append((msg, 1))
             return results
-        backup_definitions.append((os.path.basename(args.backup_definition).split('.')[0], os.path.join(config_settings.backup_d_dir, args.backup_definition)))
+        backup_definitions.append((normalized_name, os.path.join(config_settings.backup_d_dir, args.backup_definition)))
     else:
         for root, _, files in os.walk(config_settings.backup_d_dir):
             for file in files:
-                if '_' in file:
-                    msg = f"Skipping backup definition: '{file} due to '_' in: name"
+                normalized_name = _normalize_backup_definition_name(
+                    file,
+                    allow_unsafe=getattr(args, "allow_unsafe_definition_names", False),
+                )
+                if not normalized_name:
+                    msg = (
+                        f"Skipping backup definition: '{file}' "
+                        f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check."
+                    )
                     logger.error(msg)
-                    results.append((msg, 1))
+                    results.append((msg, 2))
                     continue
-                backup_definitions.append((file.split('.')[0], os.path.join(root, file)))
+                backup_definitions.append((normalized_name, os.path.join(root, file)))
 
     for backup_definition, backup_definition_path in backup_definitions:
         start_len = len(results)
@@ -1345,14 +1391,26 @@ def print_readme(path: str = None, pretty: bool = True):
     resolved_path = _resolve_doc_path(path, "README.md")
     print_markdown(str(resolved_path), pretty=pretty)
 
-def list_definitions(backup_d_dir: str) -> List[str]:
+def list_definitions(backup_d_dir: str, *, allow_unsafe: bool = False) -> List[str]:
     """
     Return backup definition filenames from BACKUP.D_DIR, sorted by name.
     """
     dir_path = Path(backup_d_dir)
     if not dir_path.is_dir():
         raise RuntimeError(f"BACKUP.D_DIR does not exist or is not a directory: {backup_d_dir}")
-    return sorted([entry.name for entry in dir_path.iterdir() if entry.is_file()])
+    valid: List[str] = []
+    for entry in dir_path.iterdir():
+        if not entry.is_file():
+            continue
+        if _normalize_backup_definition_name(entry.name, allow_unsafe=allow_unsafe):
+            valid.append(entry.name)
+        else:
+            print(
+                f"Warning: skipping invalid backup definition '{entry.name}' "
+                f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check.",
+                file=stderr,
+            )
+    return sorted(valid)
 
 
 def clean_restore_test_directory(config_settings: ConfigSettings):
@@ -1425,6 +1483,11 @@ def main():
     ).completer = list_archive_completer
     parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
     parser.add_argument('--list-definitions', action='store_true', help="List available backup definitions from BACKUP.D_DIR.")
+    parser.add_argument(
+        '--allow-unsafe-definition-names',
+        action='store_true',
+        help="Disable backup definition name validation (allows underscores or other characters).",
+    )
     parser.add_argument('--selection', type=str, help="Selection string to pass to 'dar', e.g. --selection=\"-I '*.NEF'\"")
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
@@ -1449,6 +1512,8 @@ def main():
         args.preflight_check = False
     if not hasattr(args, "list_definitions"):
         args.list_definitions = False
+    if not hasattr(args, "allow_unsafe_definition_names"):
+        args.allow_unsafe_definition_names = False
 
     if args.version:
         show_version()
@@ -1502,7 +1567,10 @@ def main():
 
     if args.list_definitions:
         try:
-            for name in list_definitions(config_settings.backup_d_dir):
+            for name in list_definitions(
+                config_settings.backup_d_dir,
+                allow_unsafe=args.allow_unsafe_definition_names,
+            ):
                 print(name)
         except RuntimeError as exc:
             print(str(exc), file=stderr)
@@ -1618,9 +1686,17 @@ def main():
         if args.backup_definition and not os.path.exists(os.path.join(config_settings.backup_d_dir, args.backup_definition)):
             logger.error(f"Backup definition: '{args.backup_definition}' does not exist, exiting")
             exit(127)
-        if args.backup_definition and '_' in args.backup_definition:
-            logger.error(f"Backup definition: '{args.backup_definition}' contains '_', exiting")
-            exit(1)
+        if args.backup_definition:
+            normalized_name = _normalize_backup_definition_name(
+                args.backup_definition,
+                allow_unsafe=args.allow_unsafe_definition_names,
+            )
+            if not normalized_name:
+                logger.error(
+                    f"Backup definition: '{args.backup_definition}' is invalid "
+                    f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check."
+                )
+                exit(1)
 
 
         requirements('PREREQ', config_settings)

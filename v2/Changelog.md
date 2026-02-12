@@ -7,6 +7,7 @@
 
 ### Changed
 
+- **Heads up:** Backup definition names are now validated. Allowed characters: letters, numbers, spaces, and hyphens. Underscores are rejected by default. Use `--allow-unsafe-definition-names` to skip this validation if you need legacy names.
 - Discord reporting improved
 - Error "code 2" during backup documented with example
 - PITR integration tests now enforce a minimum time spacing between versions to avoid flaky restores on fast systems/CI.

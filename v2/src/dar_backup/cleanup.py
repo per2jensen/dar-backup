@@ -132,21 +132,26 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                 date_str = filename.split(f"_{backup_type}_")[1].split('.')[0]
                 file_date = datetime.strptime(date_str, '%Y-%m-%d')
             except Exception as e:
-                logger.error(f"Error parsing date from filename {filename}: {e}")
-                raise
+                logger.warning(f"Skipping file with invalid date format: {filename} ({e})")
+                continue
 
             if file_date < cutoff_date:
                 file_path = entry.path
                 try:
                     if dry_run:
                         logger.info(f"Dry run: would delete {backup_type} backup: {file_path}")
+                        removed = True
                     else:
-                        safe_remove_file(file_path, base_dir=Path(backup_dir))
-                        logger.info(f"Deleted {backup_type} backup: {file_path}")
-                    archive_name = filename.split('.')[0]
-                    if archive_name not in archives_deleted:
-                        logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
-                    archives_deleted[archive_name] = True
+                        removed = safe_remove_file(file_path, base_dir=Path(backup_dir))
+                        if removed:
+                            logger.info(f"Deleted {backup_type} backup: {file_path}")
+                        else:
+                            logger.warning(f"Skipped deleting unsafe backup file: {file_path}")
+                    if removed:
+                        archive_name = filename.split('.')[0]
+                        if archive_name not in archives_deleted:
+                            logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
+                        archives_deleted[archive_name] = True
                 except Exception as e:
                     logger.error(f"Error deleting file {file_path}: {e}")
 
@@ -326,6 +331,7 @@ def main():
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
+        default_timeout=config_settings.command_timeout_secs,
         default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
     )
 

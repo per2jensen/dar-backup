@@ -283,6 +283,7 @@ def test_confirmation_no_stops_deleting_full(monkeypatch, capsys):
             self.backup_d_dir = "."
             self.logfile_max_bytes = 26214400  # int, not MagicMock!
             self.logfile_backup_count = 5
+            self.command_timeout_secs = 30
 
     monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01", "--test-mode"])
     monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
@@ -533,7 +534,7 @@ def test_show_version_flag_exits(monkeypatch):
         cleanup.main()
 
 
-def test_invalid_date_in_filename(monkeypatch, tmp_path, env):
+def test_invalid_date_in_filename(monkeypatch, tmp_path, env, caplog):
     backups = tmp_path / "backups"
     backups.mkdir()
     bad_file = backups / "example_DIFF_invalid-date.1.dar"
@@ -549,11 +550,16 @@ def test_invalid_date_in_filename(monkeypatch, tmp_path, env):
 
     from dar_backup.cleanup import delete_old_backups
 
-    with pytest.raises(Exception) as exc_info:
-        delete_old_backups(str(backups), config_settings.diff_age, "DIFF", args=MagicMock(), backup_definition="example")
+    caplog.set_level(logging.WARNING)
+    delete_old_backups(
+        str(backups),
+        config_settings.diff_age,
+        "DIFF",
+        args=MagicMock(),
+        backup_definition="example",
+    )
 
-    # ✅ Match the actual ValueError message raised by datetime.strptime()
-    assert "does not match format '%Y-%m-%d'" in str(exc_info.value)
+    assert "Skipping file with invalid date format" in caplog.text
 
 def test_delete_file_permission_error(monkeypatch, tmp_path):
     backups = tmp_path / "backups"
@@ -717,6 +723,7 @@ def test_cleanup_alternate_dir_missing_exits(monkeypatch, caplog, tmp_path):
         incr_age = 1
         config = {}
         command_capture_max_bytes = 1024
+        command_timeout_secs = 30
 
     test_logger = logging.getLogger("cleanup_test_missing_dir")
     test_logger.setLevel(logging.ERROR)
@@ -755,6 +762,7 @@ def test_cleanup_alternate_dir_not_directory_exits(monkeypatch, caplog, tmp_path
         incr_age = 1
         config = {}
         command_capture_max_bytes = 1024
+        command_timeout_secs = 30
 
     test_logger = logging.getLogger("cleanup_test_not_dir")
     test_logger.setLevel(logging.ERROR)
@@ -790,6 +798,7 @@ def test_cleanup_specific_archives_rejects_unsafe_name(monkeypatch, caplog):
         incr_age = 1
         config = {}
         command_capture_max_bytes = 1024
+        command_timeout_secs = 30
 
     test_logger = logging.getLogger("cleanup_test_unsafe_name")
     test_logger.setLevel(logging.ERROR)
@@ -846,6 +855,39 @@ def test_delete_old_backups_rejects_is_archive_name_allowed(monkeypatch, tmp_pat
             backup_definition=None,
             config_settings=None,
         )
+
+    assert delete_catalog.call_count == 0
+    assert delete_par2.call_count == 0
+    assert file_path.exists()
+
+
+def test_delete_old_backups_skips_catalog_when_remove_fails(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    archive_name = f"example_DIFF_{date_100_days_ago}"
+    file_path = backup_dir / f"{archive_name}.1.dar"
+    file_path.write_text("dummy")
+
+    args = SimpleNamespace(dry_run=False)
+
+    delete_catalog = MagicMock()
+    delete_par2 = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", logging.getLogger("cleanup_test_skip_catalog"))
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", delete_par2)
+    monkeypatch.setattr(cleanup, "safe_remove_file", lambda *_a, **_k: False)
+
+    cleanup.delete_old_backups(
+        str(backup_dir),
+        age=30,
+        backup_type="DIFF",
+        args=args,
+        backup_definition="example",
+        config_settings=None,
+    )
 
     assert delete_catalog.call_count == 0
     assert delete_par2.call_count == 0

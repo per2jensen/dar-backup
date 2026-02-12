@@ -976,6 +976,12 @@ compress-exclusion:
 This piece of configuration is a [backup definition](#backup-definition-example). It is placed in the BACKUP.D_DIR (see config file description).
 The name of the file is the name of the backup definition.
 
+Backup definition naming rules:
+- Must contain only letters, numbers, spaces, or hyphens (`-`).
+- No underscores (`_`).
+- Must start and end with a letter or number (no leading/trailing spaces or hyphens).
+If you need to keep legacy names, run `dar-backup` with `--allow-unsafe-definition-names` to disable the check.
+
 You can use as many backup definitions as you need.
 
 > Note 👉
@@ -2075,6 +2081,7 @@ Available options:
 --log-level <level>                  `debug` or `trace`, default is `info`.
 --log-stdout                         Also print log messages to stdout.
 --do-not-compare                     Do not compare restores to file system.
+--allow-unsafe-definition-names      Disable backup definition name validation (allows underscores or other characters).
 --preflight-check                    Run preflight checks and exit (runs automatically; this flag just exits after checks).
 --examples                           Show examples of using dar-backup.
 --readme                             Print README.md and exit
