@@ -11,6 +11,7 @@
 - Discord reporting improved
 - Error "code 2" during backup documented with example
 - PITR integration tests now enforce a minimum time spacing between versions to avoid flaky restores on fast systems/CI.
+- Restore-test directory cleanup now only runs when an operation will actually write there (backup verification or default restore); `--list-contents` no longer clears it.
 - [BUGFIX] Lacking notice in dar-backup.log about missing FULL or DIFF added.
 - Logging improvements for command failures: CommandRunner now logs start failures and non-zero exits with pid/returncode, `par2 verify` failures emit errors, and unexpected list-contents errors are logged.
 - Cleanup now uses safe deletion for archive slices and warns when unsafe deletions are skipped.

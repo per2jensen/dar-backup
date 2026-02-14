@@ -1132,6 +1132,8 @@ dar-backup --list-contents media-files_INCR_2025-05-10
 deactivate
 ```
 
+Note: `--list-contents` does not touch the restore directory. Cleanup only runs for operations that actually write to `TEST_RESTORE_DIR` (backup verification or a restore to the default location).
+
 gives something like
 
 ```text

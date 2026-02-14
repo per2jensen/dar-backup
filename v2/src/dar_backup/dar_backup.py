@@ -1283,7 +1283,13 @@ INCR backup (differences to the latest DIFF) of all backup definitions:
 
 INCR back of a single backup definition in backup.d
   'python3 dar-backup.py --incremental-backup -d <name of file in backup.d/>'
-  
+
+Point In Time Restore (PITR) of 2 directories into a target location:
+  'manager --backup-def homedir \
+  --restore-path "Documents/Taxes" "Documents/Receipts" \
+  --when "2026-01-15 08:00" \
+  --target /tmp/restore_docs'
+
 --alternate-reference-archive (useful if the calculated archive is broken)
     Use this to specify a different reference archive for DIFF or INCR backups.
     The specified archive can be any regardsless of type,  name does not include the slice number.
@@ -1293,7 +1299,10 @@ INCR back of a single backup definition in backup.d
     "trace" logs output from programs (typically dar and par2) run in a subprocess
     "debug" logs various statuses and notices to better understand how to script works
 
+--log-stdout
+     Print log messages to screen
 
+     
 --selection
 
     --selection takes dar file selection options inside a quoted string.
@@ -1454,6 +1463,24 @@ def clean_restore_test_directory(config_settings: ConfigSettings):
                 logger.warning(f"Failed to remove {item_path}: {e}")
     except Exception as e:
         logger.warning(f"Failed to clean restore directory {restore_dir}: {e}")
+
+def _normalize_restore_dir(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    return os.path.realpath(os.path.expanduser(os.path.expandvars(path)))
+
+
+def should_clean_restore_test_directory(args: argparse.Namespace, config_settings: ConfigSettings) -> bool:
+    if args.full_backup or args.differential_backup or args.incremental_backup:
+        return not getattr(args, "do_not_compare", False)
+
+    if args.restore:
+        restore_dir = args.restore_dir if getattr(args, "restore_dir", None) else config_settings.test_restore_dir
+        restore_dir_norm = _normalize_restore_dir(restore_dir)
+        test_restore_dir_norm = _normalize_restore_dir(config_settings.test_restore_dir)
+        return restore_dir_norm is not None and restore_dir_norm == test_restore_dir_norm
+
+    return False
 
 
 def main():
@@ -1618,7 +1645,8 @@ def main():
         default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
     )
 
-    clean_restore_test_directory(config_settings)
+    if should_clean_restore_test_directory(args, config_settings):
+        clean_restore_test_directory(config_settings)
 
 
     filtered_darrc_path = None

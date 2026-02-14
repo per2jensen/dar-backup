@@ -151,70 +151,91 @@ def test_clean_restore_test_directory_handles_errors(tmp_path):
         args, _ = mock_logger.warning.call_args
         assert "Access denied" in str(args[0])
 
-def test_main_calls_clean_restore_test_directory(monkeypatch, tmp_path):
+def test_main_cleans_restore_dir_for_default_restore(monkeypatch, tmp_path):
     """
-    Integration test ensuring main() actually calls clean_restore_test_directory.
+    Integration test ensuring main() cleans the restore test directory for default restores.
     """
     from dar_backup import dar_backup
 
-
-
-
-    
-    # Mock sys.argv
     config_file = tmp_path / "dar-backup.conf"
     config_file.touch()
-    monkeypatch.setattr("sys.argv", ["dar-backup", "--config-file", str(config_file)])
-    
-    # Mock dependencies to reach the call site in main()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["dar-backup", "--config-file", str(config_file), "--restore", "example_FULL_2024-01-01"],
+    )
+
     monkeypatch.setattr(dar_backup, "get_config_file", lambda args: str(config_file))
-    
-    # Mock ConfigSettings
+
     mock_settings = MagicMock()
     mock_settings.logfile_location = str(tmp_path / "dar-backup.log")
-    # Need these attributes for main() to proceed
     mock_settings.logfile_max_bytes = 1000
     mock_settings.logfile_backup_count = 1
     mock_settings.backup_d_dir = str(tmp_path / "backup.d")
+    mock_settings.backup_dir = str(tmp_path / "backups")
+    mock_settings.test_restore_dir = str(tmp_path / "restore")
     monkeypatch.setattr(dar_backup, "ConfigSettings", lambda cf: mock_settings)
-    
-    # Mock other checks
+
     monkeypatch.setattr(dar_backup, "validate_required_directories", lambda s: None)
     monkeypatch.setattr(dar_backup, "preflight_check", lambda a, s: True)
-    
-    # Mock logging and runner
     monkeypatch.setattr(dar_backup, "setup_logging", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(dar_backup, "get_logger", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(dar_backup, "CommandRunner", MagicMock())
-    
-    # IMPORTANT: Mock clean_restore_test_directory to verify it's called
+    monkeypatch.setattr(dar_backup, "requirements", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dar_backup, "restore_backup", lambda *args, **kwargs: [])
+
     mock_clean = MagicMock()
     monkeypatch.setattr(dar_backup, "clean_restore_test_directory", mock_clean)
-    
-    # We want to stop main() after the call we're testing, but before it tries to run backups
-    # We can do this by raising a SystemExit in the subsequent code or just mocking the rest.
-    # The call happens before argument processing for backups.
-    # Let's just let it run until it hits something we haven't mocked or finishes.
-    # Since we didn't provide any backup arguments, main() will likely just print settings and exit or do nothing.
-    # But main() accesses args.darrc which might fail if we don't handle it.
-    
-    # Mocking arguments parsing result if needed, but sys.argv mocking handles argparse mostly.
-    # However, main calls:
-    #   if not args.darrc: ...
-    # which implies successful parsing.
-    
-    # To cleanly exit main without running actual backup logic (which requires more mocks),
-    # we can mock 'requirements' or similar, OR just let it finish. 
-    # If no backup args (full/diff/incr) are present, main falls through to "stats" print and exit?
-    # Actually looking at main code, it seems to fall through if no action arguments are set.
-    
-    # Let's try running main and catching SystemExit (if any)
+
     try:
         dar_backup.main()
     except SystemExit:
         pass
     except Exception:
-        # If it crashes due to unmocked stuff later, that's fine as long as our target was called.
         pass
-        
+
     mock_clean.assert_called_once_with(mock_settings)
+
+
+def test_main_skips_clean_for_list_contents(monkeypatch, tmp_path):
+    """
+    Integration test ensuring main() does not clean restore dir for list-contents.
+    """
+    from dar_backup import dar_backup
+
+    config_file = tmp_path / "dar-backup.conf"
+    config_file.touch()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["dar-backup", "--config-file", str(config_file), "--list-contents", "example_FULL_2024-01-01"],
+    )
+
+    monkeypatch.setattr(dar_backup, "get_config_file", lambda args: str(config_file))
+
+    mock_settings = MagicMock()
+    mock_settings.logfile_location = str(tmp_path / "dar-backup.log")
+    mock_settings.logfile_max_bytes = 1000
+    mock_settings.logfile_backup_count = 1
+    mock_settings.backup_d_dir = str(tmp_path / "backup.d")
+    mock_settings.backup_dir = str(tmp_path / "backups")
+    mock_settings.test_restore_dir = str(tmp_path / "restore")
+    monkeypatch.setattr(dar_backup, "ConfigSettings", lambda cf: mock_settings)
+
+    monkeypatch.setattr(dar_backup, "validate_required_directories", lambda s: None)
+    monkeypatch.setattr(dar_backup, "preflight_check", lambda a, s: True)
+    monkeypatch.setattr(dar_backup, "setup_logging", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(dar_backup, "get_logger", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(dar_backup, "CommandRunner", MagicMock())
+    monkeypatch.setattr(dar_backup, "requirements", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dar_backup, "list_contents", lambda *args, **kwargs: None)
+
+    mock_clean = MagicMock()
+    monkeypatch.setattr(dar_backup, "clean_restore_test_directory", mock_clean)
+
+    try:
+        dar_backup.main()
+    except SystemExit:
+        pass
+    except Exception:
+        pass
+
+    mock_clean.assert_not_called()
