@@ -3,8 +3,9 @@
   "source": "https://pypistats.org/api/packages/dar-backup/overall?mirrors=false",
   "updated": "2026-02-26",
   "update_notice": {
-    "status": "ok",
-    "timestamp": "2026-02-26T05:41:26Z"
+    "status": "failed",
+    "timestamp": "2026-02-27T05:39:50Z",
+    "message": "Rate-limited by PyPI Stats API; skipping update for this run."
   },
   "recent": {
     "last_day": 1,
