@@ -1,15 +1,15 @@
 {
   "package": "dar-backup",
   "source": "https://pypistats.org/api/packages/dar-backup/overall?mirrors=false",
-  "updated": "2026-03-05",
+  "updated": "2026-03-06",
   "update_notice": {
     "status": "ok",
-    "timestamp": "2026-03-05T05:37:11Z"
+    "timestamp": "2026-03-06T05:36:05Z"
   },
   "recent": {
-    "last_day": 3,
-    "last_month": 490,
-    "last_week": 66
+    "last_day": 0,
+    "last_month": 486,
+    "last_week": 53
   },
   "total_downloads": 2488,
   "rollups": {
