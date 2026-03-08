@@ -1,7 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-1.1.1 - not released
+## v2-1.1.2 - not released
+
+### Added
+
+### Changed
+
+- Preflight now detects stale/unavailable backup storage with real write probes, logs startup failures earlier, and falls back to temporary/stderr logging instead of aborting when the configured logfile path is unusable.
+
+## v2-1.1.1 - 2026-02-14
 
 ### Added
 

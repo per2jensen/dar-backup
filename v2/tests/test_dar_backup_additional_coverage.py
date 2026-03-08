@@ -156,6 +156,73 @@ def test_preflight_reports_missing_paths_and_permissions(monkeypatch, tmp_path, 
     assert "Cannot write to TEST_RESTORE_DIR" in out
 
 
+def test_preflight_reports_backup_dir_write_probe_failure(monkeypatch, tmp_path, capsys):
+    backup_dir = tmp_path / "backups"
+    backup_d_dir = tmp_path / "backup.d"
+    test_restore_dir = tmp_path / "restore"
+    log_dir = tmp_path / "logs"
+    backup_dir.mkdir()
+    backup_d_dir.mkdir()
+    test_restore_dir.mkdir()
+    log_dir.mkdir()
+
+    config = SimpleNamespace(
+        backup_dir=str(backup_dir),
+        backup_d_dir=str(backup_d_dir),
+        test_restore_dir=str(test_restore_dir),
+        logfile_location=str(log_dir / "dar-backup.log"),
+        par2_enabled=False,
+    )
+    args = SimpleNamespace(backup_definition=None)
+
+    probe_file = backup_dir / ".dar-backup-preflight"
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if os.fspath(path) == os.fspath(probe_file):
+            raise OSError("stale NFS handle")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(db.shutil, "which", lambda cmd: f"/bin/{cmd}")
+    monkeypatch.setattr(db.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    ok = db.preflight_check(args, config)
+    assert ok is False
+
+    out = capsys.readouterr().out
+    assert "Cannot write to BACKUP_DIR" in out
+    assert "stale NFS handle" in out
+
+
+def test_preflight_warns_when_log_directory_is_unavailable(monkeypatch, tmp_path, capsys):
+    backup_dir = tmp_path / "backups"
+    backup_d_dir = tmp_path / "backup.d"
+    test_restore_dir = tmp_path / "restore"
+    backup_dir.mkdir()
+    backup_d_dir.mkdir()
+    test_restore_dir.mkdir()
+
+    config = SimpleNamespace(
+        backup_dir=str(backup_dir),
+        backup_d_dir=str(backup_d_dir),
+        test_restore_dir=str(test_restore_dir),
+        logfile_location=str(tmp_path / "missing-logs" / "dar-backup.log"),
+        par2_enabled=False,
+    )
+    args = SimpleNamespace(backup_definition=None)
+
+    monkeypatch.setattr(db.shutil, "which", lambda cmd: f"/bin/{cmd}")
+    monkeypatch.setattr(db.subprocess, "run", lambda *a, **k: None)
+
+    ok = db.preflight_check(args, config)
+    assert ok is True
+
+    out = capsys.readouterr().out
+    assert "Preflight warnings:" in out
+    assert "LOGFILE_LOCATION directory does not exist" in out
+
+
 def test_preflight_reports_missing_binaries(tmp_path, monkeypatch, capsys):
     backup_dir = tmp_path / "backups"
     backup_d_dir = tmp_path / "backup.d"

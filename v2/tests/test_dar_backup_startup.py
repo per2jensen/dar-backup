@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -12,6 +13,14 @@ pytestmark = pytest.mark.unit
 
 
 
+
+
+def _reset_logger(name):
+    logger = logging.getLogger(name)
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+    return logger
 
 
 def _write_min_config(path, *, logfile_location):
@@ -83,3 +92,84 @@ def test_dar_backup_warns_on_bad_logfile_location(monkeypatch, tmp_path, capsys)
 
     err = capsys.readouterr().err
     assert "does not end at 'dar-backup.log'" in err
+
+
+def test_dar_backup_logs_preflight_failures_to_main_log(monkeypatch, tmp_path):
+    config_path = tmp_path / "dar-backup.conf"
+    log_path = tmp_path / "dar-backup.log"
+    backup_dir = tmp_path / "backups"
+    backup_d_dir = tmp_path / "backup.d"
+    probe_file = backup_dir / ".dar-backup-preflight"
+
+    _write_min_config(config_path, logfile_location=str(log_path))
+    (backup_d_dir / "example.dcf").write_text("-R /tmp\n")
+
+    _reset_logger("main_logger")
+    _reset_logger("command_output_logger")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "dar-backup",
+            "--full-backup",
+            "--backup-definition",
+            "example.dcf",
+            "--config-file",
+            str(config_path),
+        ],
+    )
+    monkeypatch.setattr(dar_backup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(dar_backup, "stderr", sys.stderr)
+    monkeypatch.setattr(dar_backup, "send_discord_message", lambda *a, **k: None)
+    monkeypatch.setattr(dar_backup.shutil, "which", lambda cmd: f"/bin/{cmd}")
+    monkeypatch.setattr(dar_backup.subprocess, "run", lambda *a, **k: None)
+
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if os.fspath(path) == os.fspath(probe_file):
+            raise OSError("stale NFS handle")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    with pytest.raises(SystemExit) as exc:
+        dar_backup.main()
+
+    assert exc.value.code == 127
+
+    log_text = log_path.read_text()
+    assert "Preflight checks failed." in log_text
+    assert "Preflight check failed: Cannot write to BACKUP_DIR" in log_text
+    assert "stale NFS handle" in log_text
+
+
+def test_dar_backup_preflight_check_continues_with_fallback_logging(monkeypatch, tmp_path, capsys):
+    config_path = tmp_path / "dar-backup.conf"
+    log_path = tmp_path / "missing-logs" / "dar-backup.log"
+
+    _reset_logger("main_logger")
+    _reset_logger("command_output_logger")
+    _write_min_config(config_path, logfile_location=str(log_path))
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["dar-backup", "--preflight-check", "--config-file", str(config_path)],
+    )
+    monkeypatch.setattr(dar_backup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(dar_backup, "stderr", sys.stderr)
+    monkeypatch.setattr(dar_backup, "send_discord_message", lambda *a, **k: None)
+    monkeypatch.setattr(dar_backup.shutil, "which", lambda cmd: f"/bin/{cmd}")
+    monkeypatch.setattr(dar_backup.subprocess, "run", lambda *a, **k: None)
+
+    with pytest.raises(SystemExit) as exc:
+        dar_backup.main()
+
+    assert exc.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "Preflight warnings:" in captured.out
+    assert "LOGFILE_LOCATION directory does not exist" in captured.out
+    assert "continuing with fallback" in captured.err.lower()

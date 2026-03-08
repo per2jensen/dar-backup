@@ -45,18 +45,34 @@ def test_setup_logging_stdout_and_file(tmp_path):
     assert command_output_file.exists()
 
 
-def test_setup_logging_exits_on_handler_failure(tmp_path, monkeypatch):
+def _reset_logger(name):
+    logger = logging.getLogger(name)
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+    return logger
+
+
+def test_setup_logging_falls_back_on_handler_failure(tmp_path, monkeypatch, capsys):
     logfile = tmp_path / "boom.log"
     command_output_file = tmp_path / "command.log"
 
     def raise_handler(*_args, **_kwargs):
         raise OSError("handler boom")
 
+    _reset_logger("main_logger")
+    _reset_logger("command_output_logger")
     monkeypatch.setattr(util, "RotatingFileHandler", raise_handler)
     monkeypatch.setattr(util.traceback, "print_exc", lambda: None)
 
-    with pytest.raises(SystemExit):
-        util.setup_logging(logfile, command_output_file)
+    logger = util.setup_logging(logfile, command_output_file)
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.handlers
+    assert util.get_logger(command_output_logger=True) is not None
+
+    err = capsys.readouterr().err
+    assert "continuing with fallback" in err.lower()
 
 def list_backups(backup_dir: Path) -> list:
     if not backup_dir.exists() or not backup_dir.is_dir():

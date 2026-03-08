@@ -21,6 +21,7 @@ import subprocess
 import shlex
 import shutil
 import sys
+import tempfile
 import threading
 import traceback
 import urllib.error
@@ -43,6 +44,71 @@ from typing import Tuple
 
 logger=None
 secondary_logger=None   
+
+
+def _reset_logger_handlers(target_logger: logging.Logger) -> None:
+    for handler in list(target_logger.handlers):
+        target_logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
+
+
+def _setup_logging_fallback(exc: Exception) -> logging.Logger:
+    global logger, secondary_logger
+
+    logger = logging.getLogger("main_logger")
+    secondary_logger = logging.getLogger("command_output_logger")
+    _reset_logger_handlers(logger)
+    _reset_logger_handlers(secondary_logger)
+    logger.setLevel(logging.DEBUG)
+    secondary_logger.setLevel(logging.DEBUG)
+    logger.propagate = True
+    secondary_logger.propagate = True
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    try:
+        main_log = tempfile.NamedTemporaryFile(prefix="dar-backup-fallback-main-", suffix=".log", delete=False)
+        command_log = tempfile.NamedTemporaryFile(prefix="dar-backup-fallback-command-", suffix=".log", delete=False)
+        main_log.close()
+        command_log.close()
+
+        main_handler = logging.FileHandler(main_log.name, encoding="utf-8")
+        command_handler = logging.FileHandler(command_log.name, encoding="utf-8")
+        stderr_handler = logging.StreamHandler(sys.stderr)
+
+        main_handler.setFormatter(formatter)
+        command_handler.setFormatter(formatter)
+        stderr_handler.setFormatter(formatter)
+        stderr_handler.setLevel(logging.WARNING)
+
+        logger.addHandler(main_handler)
+        logger.addHandler(stderr_handler)
+        secondary_logger.addHandler(command_handler)
+
+        print(
+            "[WARN] Logging initialization failed; continuing with fallback log files:\n"
+            f"  Main log: {main_log.name}\n"
+            f"  Command log: {command_log.name}",
+            file=sys.stderr,
+        )
+    except Exception:
+        main_stderr_handler = logging.StreamHandler(sys.stderr)
+        command_stderr_handler = logging.StreamHandler(sys.stderr)
+        main_stderr_handler.setFormatter(formatter)
+        command_stderr_handler.setFormatter(formatter)
+        logger.addHandler(main_stderr_handler)
+        secondary_logger.addHandler(command_stderr_handler)
+        print(
+            "[WARN] Logging initialization failed; continuing with stderr-only fallback logging.",
+            file=sys.stderr,
+        )
+
+    logger.error("Logging initialization failed: %s", exc, exc_info=True)
+    secondary_logger.warning("Command output logger running in fallback mode.")
+    return logger
 
 class CleanFormatter(logging.Formatter):
     """
@@ -154,6 +220,7 @@ def setup_logging(
         logger = logging.getLogger("main_logger")
         # Ensure logger captures everything so trace_handler can see DEBUG messages even if main log_level is INFO
         logger.setLevel(logging.DEBUG) 
+        logger.propagate = True
         
         # Configure file_handler level based on user preference
         file_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
@@ -164,6 +231,7 @@ def setup_logging(
         # Setup secondary logger for command outputs
         secondary_logger = logging.getLogger("command_output_logger")
         secondary_logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
+        secondary_logger.propagate = True
         secondary_logger.addHandler(command_handler)
         secondary_logger.addHandler(trace_handler)
 
@@ -174,9 +242,9 @@ def setup_logging(
             logger.addHandler(stdout_handler)
 
         return logger
-    except Exception:
+    except Exception as exc:
         traceback.print_exc()
-        sys.exit(1)
+        return _setup_logging_fallback(exc)
 
 
 def derive_trace_log_path(log_file: str) -> str:

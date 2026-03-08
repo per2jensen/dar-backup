@@ -822,21 +822,79 @@ def validate_required_directories(config_settings: ConfigSettings) -> None:
         raise RuntimeError(f"Required directories missing or not accessible: {details}")
 
 
+def initialize_runtime_logging(args: argparse.Namespace, config_settings: ConfigSettings) -> str:
+    """
+    Configure runtime logging early so startup/preflight issues are captured.
+
+    If the configured log files are unavailable, setup_logging() will fall back
+    to temporary files or stderr so the run can continue.
+    """
+    global logger, runner
+    logger = None
+    runner = None
+
+    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
+    if command_output_log == config_settings.logfile_location:
+        print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
+
+    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
+
+    logger = setup_logging(
+        config_settings.logfile_location,
+        command_output_log,
+        args.log_level,
+        args.log_stdout,
+        logfile_max_bytes=config_settings.logfile_max_bytes,
+        logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_file=trace_log_file,
+        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
+        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
+    )
+    command_logger = get_logger(command_output_logger=True)
+    runner = CommandRunner(
+        logger=logger,
+        command_logger=command_logger,
+        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+    )
+
+    return trace_log_file
+
+
 def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -> bool:
     """
     Run preflight checks to validate environment before backup.
     """
     errors = []
+    warnings = []
+    report_logger = logger
 
-    def check_dir(name: str, path: str, require_write: bool = True):
+    def check_dir(name: str, path: str, require_write: bool = True, issues=None):
+        if issues is None:
+            issues = errors
         if not path:
-            errors.append(f"{name} is not set")
+            issues.append(f"{name} is not set")
             return
         if not os.path.isdir(path):
-            errors.append(f"{name} does not exist: {path}")
+            issues.append(f"{name} does not exist: {path}")
             return
         if require_write and not os.access(path, os.W_OK):
-            errors.append(f"{name} is not writable: {path}")
+            issues.append(f"{name} is not writable: {path}")
+
+    def probe_write(name: str, path: str):
+        if not path or not os.path.isdir(path):
+            return
+        probe_file = os.path.join(path, ".dar-backup-preflight")
+        try:
+            with open(probe_file, "w", encoding="utf-8") as f:
+                f.write("ok")
+        except Exception as exc:
+            errors.append(f"Cannot write to {name} ({path}): {exc}")
+        finally:
+            try:
+                if os.path.exists(probe_file):
+                    os.remove(probe_file)
+            except OSError:
+                pass
 
     # Directories and permissions
     check_dir("BACKUP_DIR", config_settings.backup_dir)
@@ -847,7 +905,13 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
 
     # Log directory write access
     log_dir = os.path.dirname(config_settings.logfile_location)
-    check_dir("LOGFILE_LOCATION directory", log_dir)
+    check_dir("LOGFILE_LOCATION directory", log_dir, issues=warnings)
+
+    # Write probes catch unavailable/stale mounts that may still pass os.access().
+    probe_write("BACKUP_DIR", config_settings.backup_dir)
+    probe_write("TEST_RESTORE_DIR", config_settings.test_restore_dir)
+    if getattr(config_settings, "manager_db_dir", None):
+        probe_write("MANAGER_DB_DIR", config_settings.manager_db_dir)
 
     # Binaries present
     for cmd in ("dar",):
@@ -870,16 +934,6 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
         except Exception:
             errors.append("Failed to run 'par2 --version'")
 
-    # Restore scratch: can create/clean temp file
-    scratch_test_file = os.path.join(config_settings.test_restore_dir, ".dar-backup-preflight")
-    try:
-        os.makedirs(config_settings.test_restore_dir, exist_ok=True)
-        with open(scratch_test_file, "w") as f:
-            f.write("ok")
-        os.remove(scratch_test_file)
-    except Exception as exc:
-        errors.append(f"Cannot write to TEST_RESTORE_DIR ({config_settings.test_restore_dir}): {exc}")
-
     # Config sanity: backup definition exists if provided
     if args.backup_definition:
         allow_unsafe = getattr(args, "allow_unsafe_definition_names", False)
@@ -899,12 +953,25 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
 
     if errors:
         print("Preflight checks failed:")
+        if report_logger:
+            report_logger.error("Preflight checks failed.")
         for err in errors:
             print(f" - {err}")
+            if report_logger:
+                report_logger.error("Preflight check failed: %s", err)
         return False
+
+    if warnings:
+        print("Preflight warnings:")
+        for warning in warnings:
+            print(f" - {warning}")
+            if report_logger:
+                report_logger.warning("Preflight warning: %s", warning)
 
     if os.environ.get("PYTEST_CURRENT_TEST"):
         print("Preflight checks passed.")
+    if report_logger:
+        report_logger.debug("Preflight checks passed.")
 
     return True
 
@@ -1604,9 +1671,13 @@ def main():
             exit(127)
         exit(0)
 
+    trace_log_file = initialize_runtime_logging(args, config_settings)
+
     try:
         validate_required_directories(config_settings)
     except RuntimeError as exc:
+        if logger:
+            logger.error(str(exc))
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - required directories not found\n---- End of report ----", config_settings=config_settings)
         print(str(exc), file=stderr)
@@ -1615,35 +1686,14 @@ def main():
     # Run preflight checks always; if --preflight-check is set, exit afterward.
     ok = preflight_check(args, config_settings)
     if not ok:
+        if logger:
+            logger.error("Aborting run because preflight checks failed.")
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed\n---- End of report ----", config_settings=config_settings)
         exit_code = 127 if args.backup_definition else 1
         exit(exit_code)
     if args.preflight_check:
         exit(0)
-
-    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    if command_output_log == config_settings.logfile_location:
-        print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
-
-    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
-    logger = setup_logging(
-        config_settings.logfile_location,
-        command_output_log,
-        args.log_level,
-        args.log_stdout,
-        logfile_max_bytes=config_settings.logfile_max_bytes,
-        logfile_backup_count=config_settings.logfile_backup_count,
-        trace_log_file=trace_log_file,
-        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
-        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
-    )
-    command_logger = get_logger(command_output_logger = True)
-    runner = CommandRunner(
-        logger=logger,
-        command_logger=command_logger,
-        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
-    )
 
     if should_clean_restore_test_directory(args, config_settings):
         clean_restore_test_directory(config_settings)
