@@ -12,7 +12,7 @@ from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
 from tests.envdata import EnvData
-from dar_backup.util import CommandResult
+from dar_backup.command_runner import CommandResult
 
 
 

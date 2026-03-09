@@ -39,7 +39,6 @@ from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import setup_logging
 from dar_backup.util import derive_trace_log_path
-from dar_backup.util import CommandResult
 from dar_backup.util import get_config_file
 from dar_backup.util import send_discord_message
 from dar_backup.util import get_logger

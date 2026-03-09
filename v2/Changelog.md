@@ -5,6 +5,14 @@
 
 ### Added
 
+- `test_command_runner_real_timeout_kills_process` added to `test_command_runner.py`: starts a real `sleep 60` subprocess with a 2 s timeout, asserts returncode=-1 and that the call returns in under 15 s — exercising the actual `process.kill()` path that the existing mock-based test could not reach.
+- `test_command_runner_completes_within_generous_timeout` confirms a fast command succeeds when the timeout is generous (positive counterpart to the above).
+- `test_backup_timeout.py` adds two integration tests: `test_backup_completes_within_generous_timeout` sets `DAR_BACKUP_COMMAND_TIMEOUT_SECS=120` and verifies a real backup succeeds, proving the env-var wiring is intact; `test_stalled_dar_is_killed_by_timeout` shadows `dar` with a stalling script, sets a 3 s timeout, and asserts dar-backup exits quickly with a non-zero code — exercising the full timeout path from env var → ConfigSettings → CommandRunner → process.kill().
+- `verify_restored_matches_source()` added to `testdata_verification.py`: does a byte-for-byte `filecmp.cmp()` between every original file in `data_dir` and its restored counterpart, catching silent truncation or content corruption that mere presence checks miss.
+- Integration tests `test_restore_content_matches_source` and `test_corrupt_restore_detected` confirm a clean restore passes the byte comparison and that a silently overwritten restored file is reliably detected.
+- When dar exits with a non-zero return code, dar-backup now scans for partial archive slices left on disk and logs a prominent `ERROR: PARTIAL BACKUP on disk` message listing the incomplete files, so operators know immediately not to rely on them for restore.
+- Integration test `test_disk_full.py` exercises the above: it caps the per-file write limit via `ulimit -f`, runs a full backup of incompressible data that exceeds the cap, and asserts both a non-zero exit code and the `PARTIAL BACKUP on disk` warning in the output.
+
 ### Changed
 
 - Preflight now detects stale/unavailable backup storage with real write probes, logs startup failures earlier, and falls back to temporary/stderr logging instead of aborting when the configured logfile path is unusable.
@@ -465,7 +473,7 @@ Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-a
 ### Added
 
 - FIX timeout error on run_command(). Set a long timeout on "heavy" operations. Default is 30 seconds.
-- Log the __str__ of CommandResult on return from run_command()
+- Log the **str** of CommandResult on return from run_command()
 
 ## v2-alpha-0.6.0 - 2025-01-05
 

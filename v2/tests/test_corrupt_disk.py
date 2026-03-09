@@ -16,7 +16,7 @@ import signal
 import tempfile
 
 from dar_backup.command_runner import CommandRunner
-from dar_backup.util import CommandResult
+from dar_backup.command_runner import CommandResult
 
 from tests.envdata import EnvData
 import hashlib

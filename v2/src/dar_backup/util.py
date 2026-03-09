@@ -38,7 +38,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
-from typing import NamedTuple, List
+from typing import List
 from typing import Tuple
 
 
@@ -585,21 +585,6 @@ class RestoreError(Exception):
     """Exception raised for errors in the restore process."""
     pass
 
-
-class CommandResult(NamedTuple):
-    """
-    The reult of the run_command() function.
-    """
-    process: subprocess.CompletedProcess
-    stdout: str
-    stderr: str
-    returncode: int
-    timeout: int
-    command: list[str]
-
-    def __str__(self):
-        #return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}', \nStdout:\n'{self.stdout}', \nStderr:\n'{self.stderr}', \nTimeout: '{self.timeout}']"
-        return f"CommandResult: [Return Code: '{self.returncode}', \nCommand: '{' '.join(map(shlex.quote, self.command))}']"
 
 
 def list_backups(backup_dir, backup_definition=None):

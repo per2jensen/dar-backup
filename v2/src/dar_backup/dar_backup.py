@@ -16,6 +16,7 @@ import argcomplete
 import argparse
 import filecmp
 
+import glob
 import os
 import random
 import re
@@ -124,6 +125,13 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         elif process.returncode == 5:
             logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
         else:
+            partial_slices = sorted(glob.glob(f"{backup_file}.*.dar"))
+            if partial_slices:
+                logger.error(
+                    "PARTIAL BACKUP on disk — dar failed but left %d slice(s) behind. "
+                    "These files are INCOMPLETE and must NOT be used for restore: %s",
+                    len(partial_slices), partial_slices
+                )
             raise Exception(str(process))
 
         if process.returncode == 0 or process.returncode == 5:

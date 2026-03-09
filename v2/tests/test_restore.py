@@ -15,7 +15,7 @@ import tempfile
 
 from tests.conftest import test_files
 from dar_backup.command_runner import CommandRunner
-from dar_backup.util import CommandResult
+from dar_backup.command_runner import CommandResult
 from testdata_verification import verify_restore_contents, run_backup_script 
 
 

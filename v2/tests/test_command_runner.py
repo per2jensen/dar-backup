@@ -3,6 +3,7 @@ import tempfile
 import os
 import re
 import subprocess
+import time
 
 from dar_backup.command_runner import CommandRunner, CommandResult
 from io import StringIO
@@ -794,3 +795,33 @@ def test_command_result_str_handles_binary():
     text = str(result)
 
     assert "<3 bytes of binary data>" in text
+
+
+def test_command_runner_real_timeout_kills_process(tmp_path):
+    """
+    A real subprocess that would run for 60 s is killed when a 2 s timeout
+    fires.  The call must return promptly (well under 60 s) with returncode=-1.
+
+    This exercises command_runner.py lines 318-327: the actual process.kill()
+    path, not just the mock-based TimeoutExpired path tested above.
+    """
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    start = time.monotonic()
+    result = runner.run(["sleep", "60"], timeout=2)
+    elapsed = time.monotonic() - start
+
+    assert result.returncode == -1
+    assert elapsed < 15, f"Expected timeout ~2 s, took {elapsed:.1f} s"
+
+
+def test_command_runner_completes_within_generous_timeout(tmp_path):
+    """A fast command completes successfully when the timeout is generous."""
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["echo", "hello"], timeout=30)
+
+    assert result.returncode == 0
+    assert "hello" in result.stdout

@@ -4,10 +4,11 @@ This module produces test data to be used in the tests.
 Verification functions used to verify expected files exist in the backup and when restore has been performed.
 """
 
+import filecmp
 import os
 import re
 import sys
-from typing import Dict
+from typing import Dict, List
 
 
 # Add src directory to path
@@ -104,3 +105,42 @@ def verify_restore_contents(expected_files: Dict[str, str], archive: str, env: E
                 raise RuntimeError(f"Expected content in file '{expected_file}' not found")
 
     env.logger.info(f"Restored files from archive '{archive}' contains expected content")
+
+
+def verify_restored_matches_source(filenames: List[str], env: EnvData, restore_dir: str = None) -> None:
+    """
+    Byte-for-byte compare each file in data_dir with its counterpart under restore_dir.
+
+    dar preserves the full absolute path when restoring, so a file that lived at
+    /a/b/data/foo.txt is restored to <restore_dir>/a/b/data/foo.txt.  This
+    function reconstructs that path using env.data_dir and compares every byte.
+
+    args:
+        filenames: list of filenames (relative to env.data_dir) to compare.
+        env:       EnvData instance providing data_dir and restore_dir.
+        restore_dir: optional override; defaults to env.restore_dir.
+
+    raises:
+        RuntimeError: if a file is missing from the restore tree or its content
+                      differs from the source.
+    """
+    if restore_dir is None:
+        restore_dir = env.restore_dir
+
+    for filename in filenames:
+        source_path = os.path.join(env.data_dir, filename)
+        restored_path = os.path.join(restore_dir, env.data_dir.lstrip("/"), filename)
+
+        if not os.path.exists(restored_path):
+            env.logger.error(f"Restored file missing: '{restored_path}'")
+            raise RuntimeError(f"Restored file missing: '{restored_path}'")
+
+        if not filecmp.cmp(source_path, restored_path, shallow=False):
+            env.logger.error(
+                f"Content mismatch after restore: source='{source_path}' restored='{restored_path}'"
+            )
+            raise RuntimeError(
+                f"Content mismatch after restore: '{filename}' differs from source"
+            )
+
+        env.logger.info(f"OK byte-for-byte match: '{filename}'")
