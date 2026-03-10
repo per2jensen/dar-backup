@@ -69,6 +69,8 @@ def test_generic_backup_success(
     result = generic_backup(backup_type, command, backup_file, backup_definition, darrc, mock_config, args)
 
     # Assert
-    assert isinstance(result, list)
+    assert isinstance(result.issues, list)
+    assert result.dar_exit_code == 0
+    assert result.catalog_updated is True
     assert mock_runner.run.call_count == 2
     mock_logger.info.assert_called()

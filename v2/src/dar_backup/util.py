@@ -14,6 +14,7 @@ import locale
 import inspect
 import logging
 import json
+import sqlite3
 
 import os
 import re
@@ -571,7 +572,9 @@ def requirements(type: str, config_setting: ConfigSettings):
 
 class BackupError(Exception):
     """Exception raised for errors in the backup process."""
-    pass
+    def __init__(self, msg="", dar_exit_code=None):
+        super().__init__(msg)
+        self.dar_exit_code = dar_exit_code
 
 class DifferentialBackupError(BackupError):
     """Exception raised for errors in the differential backup process."""
@@ -1140,6 +1143,93 @@ _ARCHIVE_NAME_RE = re.compile(
     r"(?P<kind>FULL|DIFF|INCR)_"
     r"(?P<date>\d{4}-\d{2}-\d{2})$"
 )
+
+_METRICS_DDL = """
+CREATE TABLE IF NOT EXISTS backup_runs (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    backup_definition     TEXT    NOT NULL,
+    backup_type           TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
+    archive_name          TEXT,
+    dar_backup_version    TEXT,
+    dar_version           TEXT,
+    run_started_at        TEXT    NOT NULL,
+    run_finished_at       TEXT,
+    duration_secs         REAL,
+    dar_duration_secs     REAL,
+    verify_duration_secs  REAL,
+    par2_duration_secs    REAL,
+    status                TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
+    dar_exit_code         INTEGER,
+    failed_phase          TEXT    CHECK (failed_phase IN ('DAR', 'VERIFY', 'PAR2', NULL)),
+    error_summary         TEXT,
+    catalog_updated       INTEGER,
+    verify_passed         INTEGER,
+    restore_test_passed   INTEGER,
+    par2_passed           INTEGER,
+    archive_size_bytes    INTEGER,
+    num_slices            INTEGER,
+    par2_size_bytes       INTEGER,
+    files_verified        INTEGER,
+    backup_dir_free_bytes INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_runs_definition
+    ON backup_runs (backup_definition, backup_type, run_started_at);
+CREATE INDEX IF NOT EXISTS idx_runs_status
+    ON backup_runs (status, run_started_at);
+CREATE INDEX IF NOT EXISTS idx_runs_dar_exit_code
+    ON backup_runs (dar_exit_code, run_started_at);
+"""
+
+
+def ensure_metrics_db(db_path: str) -> None:
+    """Create the metrics DB schema if it does not already exist."""
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(_METRICS_DDL)
+
+
+def write_metrics_row(metrics: dict, config_settings) -> None:
+    """Write one metrics row to the SQLite metrics DB.
+
+    Errors are caught and logged — metrics must never abort a backup run.
+    If config_settings.metrics_db_path is None or empty, this is a silent no-op.
+    """
+    db_path = getattr(config_settings, "metrics_db_path", None)
+    if not db_path:
+        return
+    try:
+        db_path = os.path.expanduser(os.path.expandvars(db_path))
+        ensure_metrics_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO backup_runs (
+                    backup_definition, backup_type, archive_name,
+                    dar_backup_version, dar_version,
+                    run_started_at, run_finished_at, duration_secs,
+                    dar_duration_secs, verify_duration_secs, par2_duration_secs,
+                    status, dar_exit_code, failed_phase, error_summary,
+                    catalog_updated, verify_passed, restore_test_passed, par2_passed,
+                    archive_size_bytes, num_slices, par2_size_bytes,
+                    files_verified, backup_dir_free_bytes
+                ) VALUES (
+                    :backup_definition, :backup_type, :archive_name,
+                    :dar_backup_version, :dar_version,
+                    :run_started_at, :run_finished_at, :duration_secs,
+                    :dar_duration_secs, :verify_duration_secs, :par2_duration_secs,
+                    :status, :dar_exit_code, :failed_phase, :error_summary,
+                    :catalog_updated, :verify_passed, :restore_test_passed, :par2_passed,
+                    :archive_size_bytes, :num_slices, :par2_size_bytes,
+                    :files_verified, :backup_dir_free_bytes
+                )
+                """,
+                metrics,
+            )
+            conn.commit()
+    except Exception as exc:
+        log = get_logger()
+        if log:
+            log.error("Failed to write metrics row: %s", exc)
+
 
 def is_archive_name_allowed(name: str) -> bool:
     """

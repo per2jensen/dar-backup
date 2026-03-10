@@ -57,6 +57,7 @@ class ConfigSettings:
     trace_log_max_bytes: int = field(init=False)
     trace_log_backup_count: int = field(init=False)
     dar_backup_discord_webhook_url: Optional[str] = field(init=False, default=None)
+    metrics_db_path: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
@@ -111,6 +112,13 @@ class ConfigSettings:
             "attr": "command_capture_max_bytes",
             "type": int,
             "default": 102400,
+        },
+        {
+            "section": "MISC",
+            "key": "METRICS_DB_PATH",
+            "attr": "metrics_db_path",
+            "type": str,
+            "default": None,
         },
         # Add more optional fields here
     ]

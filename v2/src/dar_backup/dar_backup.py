@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 import tempfile
 import threading
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sys import exit
 from sys import stderr
@@ -36,7 +36,8 @@ from sys import version_info
 from time import time
 from rich.console import Console
 from rich.text import Text
-from typing import Iterable, Iterator, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -55,6 +56,7 @@ from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message
+from dar_backup.util import write_metrics_row
 
 from dar_backup.command_runner import CommandRunner   
 
@@ -62,6 +64,22 @@ from dar_backup.command_runner import CommandRunner
 
 logger = None
 runner = None
+
+
+class BackupResult(NamedTuple):
+    issues: List[tuple]     # list of (<msg>, <exit_code>) tuples
+    dar_exit_code: int      # raw dar return code; -1 if dar never ran
+    catalog_updated: bool   # True if archive was added to dar_manager catalog
+
+@dataclass
+class VerifyResult:
+    passed: bool                         # overall result; False if restore-compare failed
+    restore_test_passed: Optional[bool]  # None = not attempted (do_not_compare or no eligible files)
+    files_verified: int                  # number of files selected for restore testing
+
+    def __bool__(self):
+        return self.passed
+
 
 _BACKUP_DEFINITION_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 \\-]*[A-Za-z0-9])?$")
 _BACKUP_DEFINITION_RULES = (
@@ -111,6 +129,8 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     """
 
     result: List[tuple] = []
+    dar_exit_code: int = -1
+    catalog_updated: bool = False
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
     try:
@@ -120,32 +140,52 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             print(f"[!] Backup failed: {e}")
             raise
 
+        dar_exit_code = process.returncode
+
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
+        elif process.returncode == 4:
+            logger.warning(
+                f"{type} backup: dar exited with code 4 — dar had a question but was run "
+                f"non-interactively and aborted. Check for interactive prompts (e.g. passphrase, "
+                f"slice confirmation) that need to be suppressed in the configuration. "
+                f"Archive may be incomplete."
+            )
         elif process.returncode == 5:
-            logger.warning("Backup completed with some files not backed up, this can happen if files are changed/deleted during the backup.")
+            logger.warning(
+                f"{type} backup: dar exited with code 5 — some files were not saved due to "
+                f"filesystem errors (e.g. files changed or became unreadable during backup). "
+                f"Archive is usable."
+            )
         else:
+            # Exit codes 1, 2, 3, 6, 7, 8, 9 are genuine failures
             partial_slices = sorted(glob.glob(f"{backup_file}.*.dar"))
             if partial_slices:
                 logger.error(
-                    "PARTIAL BACKUP on disk — dar failed but left %d slice(s) behind. "
+                    "PARTIAL BACKUP on disk — dar failed (exit code %d) but left %d slice(s) behind. "
                     "These files are INCOMPLETE and must NOT be used for restore: %s",
-                    len(partial_slices), partial_slices
+                    process.returncode, len(partial_slices), partial_slices
                 )
-            raise Exception(str(process))
+            raise BackupError(
+                f"dar exited with code {process.returncode}",
+                dar_exit_code=process.returncode,
+            )
 
-        if process.returncode == 0 or process.returncode == 5:
+        if process.returncode in (0, 4, 5):
             add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file]
             command_result = runner.run(add_catalog_command, timeout = config_settings.command_timeout_secs)
             if command_result.returncode == 0:
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
+                catalog_updated = True
             else:
                 msg = f"Catalog for archive '{backup_file}' not added."
                 logger.error(msg)
                 result.append((msg, 1))
 
-        return result
+        return BackupResult(issues=result, dar_exit_code=dar_exit_code, catalog_updated=catalog_updated)
 
+    except BackupError:
+        raise  # pass through without re-wrapping so dar_exit_code is preserved
     except subprocess.CalledProcessError as e:
         logger.error(f"Backup command failed: {e}")
         raise BackupError(f"Backup command failed: {e}") from e
@@ -415,7 +455,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         raise Exception(str(process))
 
     if args.do_not_compare:
-        return result
+        return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
     backed_up_files = get_backed_up_files(
         backup_file,
@@ -432,7 +472,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         logger.info(
             "No files eligible for verification after size and restore-test filters, skipping"
         )
-        return result
+        return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
     # find Root path in backup definition
     with open(backup_definition, 'r') as f:
@@ -499,7 +539,7 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
                 logger.warning(
                     f"Restore verification skipped for '{restored_file_path}': file not found: '{missing_path}'"
                 )
-    return result
+    return VerifyResult(passed=result, restore_test_passed=result, files_verified=len(random_files))
 
 
 
@@ -1036,9 +1076,45 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
     for backup_definition, backup_definition_path in backup_definitions:
         start_len = len(results)
         success = True
+        _current_phase = "DAR"
+
+        # --- Metrics initialisation for this definition ---
+        def_start = datetime.now(timezone.utc)
+        try:
+            _free_bytes = shutil.disk_usage(config_settings.backup_dir).free
+        except Exception:
+            _free_bytes = None
+        metrics = {
+            "backup_definition":     backup_definition,
+            "backup_type":           backup_type,
+            "archive_name":          None,
+            "dar_backup_version":    about.__version__,
+            "dar_version":           getattr(args, "dar_version", None),
+            "run_started_at":        def_start.isoformat(),
+            "backup_dir_free_bytes": _free_bytes,
+            "run_finished_at":       None,
+            "duration_secs":         None,
+            "dar_duration_secs":     None,
+            "verify_duration_secs":  None,
+            "par2_duration_secs":    None,
+            "status":                "FAILURE",
+            "dar_exit_code":         None,
+            "failed_phase":          None,
+            "error_summary":         None,
+            "catalog_updated":       None,
+            "verify_passed":         None,
+            "restore_test_passed":   None,
+            "par2_passed":           None,
+            "archive_size_bytes":    None,
+            "num_slices":            None,
+            "par2_size_bytes":       None,
+            "files_verified":        None,
+        }
+
         try:
             date = datetime.now().strftime('%Y-%m-%d')
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
+            metrics["archive_name"] = os.path.basename(backup_file)
 
             if os.path.exists(backup_file + '.1.dar'):
                 msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
@@ -1076,27 +1152,66 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             # Generate the backup command
             command = create_backup_command(backup_type, backup_file, args.darrc, backup_definition_path, latest_base_backup)
 
-            # Perform backup
+            # --- DAR phase ---
+            _t0 = datetime.now(timezone.utc)
             backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
+            metrics["dar_duration_secs"] = (datetime.now(timezone.utc) - _t0).total_seconds()
+            metrics["dar_exit_code"]     = backup_result.dar_exit_code
+            metrics["catalog_updated"]   = 1 if backup_result.catalog_updated else 0
+            if backup_result.dar_exit_code != 0 and metrics["failed_phase"] is None:
+                metrics["failed_phase"] = "DAR"
+            results.extend(backup_result.issues)
 
-            if not isinstance(backup_result, list) or not all(isinstance(i, tuple) and len(i) == 2 for i in backup_result):
-                logger.error("Unexpected return format from generic_backup")
-                backup_result = [("Unexpected return format from generic_backup", 1)]
+            # Archive slice count and total size
+            dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))
+            metrics["num_slices"]         = len(dar_slices)
+            metrics["archive_size_bytes"] = sum(
+                os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
+            )
 
-            results.extend(backup_result)
+            # --- VERIFY phase ---
+            _current_phase = "VERIFY"
             logger.info("Starting verification...")
+            _t1 = datetime.now(timezone.utc)
             verify_result = verify(args, backup_file, backup_definition_path, config_settings)
-            if verify_result:   
+            metrics["verify_duration_secs"] = (datetime.now(timezone.utc) - _t1).total_seconds()
+            metrics["verify_passed"] = 1  # archive integrity passed (no exception raised)
+            metrics["restore_test_passed"] = (
+                1 if verify_result.restore_test_passed is True
+                else 0 if verify_result.restore_test_passed is False
+                else None
+            )
+            metrics["files_verified"] = verify_result.files_verified if verify_result.files_verified > 0 else None
+            if verify_result:
                 logger.info("Verification completed successfully.")
             else:
                 msg = f"Verification of '{backup_file}' failed."
                 logger.error(msg)
                 results.append((msg, 2))
+                if metrics["failed_phase"] is None:
+                    metrics["failed_phase"] = "VERIFY"
+
+            # --- PAR2 phase ---
+            _current_phase = "PAR2"
             logger.info("Generate par2 redundancy files.")
+            _t2 = datetime.now(timezone.utc)
             generate_par2_files(backup_file, config_settings, args, backup_definition=backup_definition)
+            metrics["par2_duration_secs"] = (datetime.now(timezone.utc) - _t2).total_seconds()
+            metrics["par2_passed"] = 1
             logger.info("par2 files completed successfully.")
 
+            # par2 total size
+            par2_cfg = config_settings.get_par2_config(backup_definition) if hasattr(config_settings, "get_par2_config") else {}
+            par2_dir = par2_cfg.get("par2_dir") or config_settings.backup_dir
+            par2_files = glob.glob(os.path.join(par2_dir, f"{os.path.basename(backup_file)}*.par2"))
+            if par2_files:
+                metrics["par2_size_bytes"] = sum(os.path.getsize(p) for p in par2_files)
+
         except Exception as e:
+            if metrics["failed_phase"] is None:
+                metrics["failed_phase"] = _current_phase
+            if metrics["dar_exit_code"] is None:
+                metrics["dar_exit_code"] = getattr(e, "dar_exit_code", None)
             results.append((f"Exception: {e}", 1))
             logger.error(f"Error during {backup_type} backup process for {backup_definition}: {e}", exc_info=True)
             success = False
@@ -1108,9 +1223,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if has_error:
                 success = False
 
-            # Avoid spamming from example/demo backup definitions
+            # Avoid spamming from example/demo backup definitions — skip both stats and metrics
             if backup_definition.lower() == "example":
-                logger.debug("Skipping stats collection for example backup definition.")
+                logger.debug("Skipping stats/metrics collection for example backup definition.")
                 continue
 
             if has_error:
@@ -1119,7 +1234,21 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 status = "WARNING"
             else:
                 status = "SUCCESS"
-            
+
+            # Finalise and write metrics row
+            run_finished_at = datetime.now(timezone.utc)
+            metrics["run_finished_at"] = run_finished_at.isoformat()
+            metrics["duration_secs"]   = (run_finished_at - def_start).total_seconds()
+            metrics["status"]          = status
+            if metrics["error_summary"] is None:
+                first_error = next(((msg, code) for msg, code in new_results if code != 0), None)
+                if first_error:
+                    metrics["error_summary"] = first_error[0][:500]
+            try:
+                write_metrics_row(metrics, config_settings)
+            except Exception as metrics_exc:
+                logger.warning(f"Metrics write failed (backup unaffected): {metrics_exc}")
+
             # Aggregate stats instead of sending immediately
             stats_accumulator.append({
                 "definition": backup_definition,

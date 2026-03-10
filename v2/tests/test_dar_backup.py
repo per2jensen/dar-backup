@@ -2,7 +2,7 @@ import os
 from unittest.mock import patch
 from types import SimpleNamespace
 from dar_backup.util import BackupError
-from dar_backup.dar_backup import verify
+from dar_backup.dar_backup import verify, BackupResult, VerifyResult
 import dar_backup.dar_backup as db
 from unittest.mock import MagicMock, mock_open
 import subprocess
@@ -46,7 +46,9 @@ def test_verify_filecmp_mismatch_returns_false(env):
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
         
         result = verify(args, "mock-backup", env.config_file, config)
-        assert result is False
+        assert not result
+        assert result.restore_test_passed is False
+        assert result.files_verified == 1
 
 
 def test_verify_filecmp_permission_error_logged(env):
@@ -117,7 +119,7 @@ def test_verify_missing_source_file_logs_warning(env):
 
         result = verify(args, "mock-backup", env.config_file, config)
 
-        assert result is False
+        assert not result
         mock_logger.warning.assert_any_call(
             f"Restore verification skipped for '{restored_file}': source file missing: '{source_path}'"
         )
@@ -156,7 +158,9 @@ def test_verify_do_not_compare_skips_verification(env):
         
         result = verify(args, "mock-backup", env.config_file, config)
         
-        assert result is True
+        assert result
+        assert result.restore_test_passed is None
+        assert result.files_verified == 0
         mock_get_files.assert_not_called()
         mock_cmp.assert_not_called()
 
@@ -195,7 +199,9 @@ def test_verify_success_path_with_verbose_logging(env):
 
         result = verify(args, "mock-backup", env.config_file, config)
 
-        assert result is True
+        assert result
+        assert result.restore_test_passed is True
+        assert result.files_verified == 1
         mock_cmp.assert_called_once()
         mock_logger.info.assert_any_call(f"Success: file '{mock_file}' matches the original")
 
@@ -374,14 +380,74 @@ def test_perform_backup_handles_failed_verification(env):
     with open(backup_file_path, "w") as f:
         f.write("DAR FILE")
 
-    with patch("dar_backup.dar_backup.verify", return_value=False), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=[]), \
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=False, restore_test_passed=False, files_verified=3)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
         results = perform_backup(args, config, "FULL", [])
 
     assert any("Verification of" in r[0] for r in results)
+
+
+def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
+    """Backup must complete normally even if write_metrics_row raises an exception."""
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path="/unwritable/path/metrics.db",
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup.write_metrics_row", side_effect=Exception("simulated metrics failure")), \
+         patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    # Backup completed — no exception propagated, no error entries in results
+    assert all(code == 0 for _, code in results)
+
+
+def test_perform_backup_succeeds_when_metrics_db_path_is_none(env):
+    """Backup must complete normally when metrics_db_path is not configured (None)."""
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    assert all(code == 0 for _, code in results)
 
 
 def test_perform_backup_runs_par2_after_verify(env):
@@ -405,7 +471,7 @@ def test_perform_backup_runs_par2_after_verify(env):
 
     def fake_verify(*args, **kwargs):
         call_order.append("verify")
-        return True
+        return VerifyResult(passed=True, restore_test_passed=True, files_verified=1)
 
     def fake_par2(*args, **kwargs):
         call_order.append("par2")
@@ -413,7 +479,7 @@ def test_perform_backup_runs_par2_after_verify(env):
 
     with patch("dar_backup.dar_backup.verify", side_effect=fake_verify), \
          patch("dar_backup.dar_backup.generate_par2_files", side_effect=fake_par2), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=[]), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.send_discord_message", return_value=True), \
          patch("dar_backup.dar_backup.logger"):
@@ -657,7 +723,8 @@ def test_generic_backup_warns_on_returncode_5(env):
         
         result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
 
-        assert isinstance(result, list)
+        assert isinstance(result.issues, list)
+        assert result.dar_exit_code == 5
         mock_logger.warning.assert_called_once()
 
 
@@ -689,9 +756,11 @@ def test_catalog_add_failure_handled(env):
 
         result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
 
-        assert len(result) == 1
-        assert result[0][1] == 1
-        assert "not added" in result[0][0]
+        assert len(result.issues) == 1
+        assert result.issues[0][1] == 1
+        assert "not added" in result.issues[0][0]
+        assert result.dar_exit_code == 0
+        assert result.catalog_updated is False
         mock_logger.error.assert_called()
 
 
@@ -846,8 +915,8 @@ def test_main_defensive_check_invalid_result_format(env, setup_environment):
             # Check it exited with code 1
             assert exc_info.value.code == 1
 
-            # Verify that the logger caught the defensive error message
-            mock_logger.error.assert_any_call("Unexpected return format from generic_backup")
+            # Verify that an error was logged when generic_backup returned a bad type
+            mock_logger.error.assert_called()
 
 
 
@@ -975,7 +1044,7 @@ def test_restoretest_filters_and_verifies_all_good_files(env):
 
         result = verify(args, "mock-backup", env.config_file, config)
 
-    assert result is True
+    assert result
 
     restore_calls = [
         call for call in mock_runner.run.call_args_list
@@ -1333,7 +1402,7 @@ def test_verify_skips_when_no_eligible_files_logs_info(env):
 
         result = verify(args, "mock-backup", env.config_file, config)
 
-    assert result is True
+    assert result
     mock_cmp.assert_not_called()
     mock_logger.info.assert_any_call(
         "No files eligible for verification after size and restore-test filters, skipping"

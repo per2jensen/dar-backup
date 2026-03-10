@@ -5,6 +5,15 @@
 
 ### Added
 
+- **SQLite metrics database** (`dar-backup-metrics.db`): every backup run now writes a structured row to a SQLite database, capturing identity (definition name, backup type, archive name, version), timing (overall duration plus per-phase `dar_duration_secs`, `verify_duration_secs`, `par2_duration_secs`), outcome (`status`, `dar_exit_code`, `failed_phase`, `error_summary`), verification flags (`catalog_updated`, `verify_passed`, `restore_test_passed`, `par2_passed`), and storage health (`archive_size_bytes`, `num_slices`, `par2_size_bytes`, `files_verified`, `backup_dir_free_bytes`). Opt-in via `METRICS_DB_PATH` in `[MISC]`; silent no-op when absent.
+- `ensure_metrics_db()` in `util.py`: idempotent schema creation with three indexes on `backup_definition`, `status`, and `dar_exit_code`.
+- `write_metrics_row()` in `util.py`: writes one metrics row, never raises — errors are logged and swallowed so a metrics failure cannot abort a backup.
+- `BackupResult` NamedTuple returned by `generic_backup()`, surfacing `issues`, `dar_exit_code`, and `catalog_updated` to the caller as typed fields.
+- `BackupError` extended with a `dar_exit_code` attribute so the exit code survives exception propagation from `generic_backup()` to `perform_backup()`.
+- 14 unit tests in `test_metrics_db.py` covering schema creation, idempotency, happy-path writes, null optional fields, error resilience, and `ConfigSettings` parsing.
+- `VerifyResult` dataclass returned by `verify()`, surfacing `restore_test_passed` and `files_verified` so both are recorded in the metrics DB.
+- `perform_backup()` wraps `write_metrics_row()` in its own `try/except` as a belt-and-suspenders guard; two component tests confirm a backup completes successfully whether metrics writing raises or `metrics_db_path` is `None`.
+
 - `test_command_runner_real_timeout_kills_process` added to `test_command_runner.py`: starts a real `sleep 60` subprocess with a 2 s timeout, asserts returncode=-1 and that the call returns in under 15 s — exercising the actual `process.kill()` path that the existing mock-based test could not reach.
 - `test_command_runner_completes_within_generous_timeout` confirms a fast command succeeds when the timeout is generous (positive counterpart to the above).
 - `test_backup_timeout.py` adds two integration tests: `test_backup_completes_within_generous_timeout` sets `DAR_BACKUP_COMMAND_TIMEOUT_SECS=120` and verifies a real backup succeeds, proving the env-var wiring is intact; `test_stalled_dar_is_killed_by_timeout` shadows `dar` with a stalling script, sets a 3 s timeout, and asserts dar-backup exits quickly with a non-zero code — exercising the full timeout path from env var → ConfigSettings → CommandRunner → process.kill().
