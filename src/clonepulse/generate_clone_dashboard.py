@@ -15,11 +15,16 @@ If annotations are provided, they are displayed as vertical lines on the chart.
 Annotations with "bad" dates (in the future or invalid) are skipped with a warning.
 Annotations on the same date are stacked vertically to avoid overlap.
 
-The script `fetch_clones.py` imports GitHub statistics into a JSON file, which
-serves as input for this dashboard.
+Optionally, PyPI download data can be overlaid on a second Y-axis using
+--downloads-file. Downloads are aggregated into the same weekly buckets and
+plotted as a separate line with its own right-hand Y-axis scale.
 
-JSON Input Format:
-------------------
+The script `fetch_clones.py` imports GitHub statistics into a JSON file, which
+serves as input for this dashboard. The script `fetch_downloads.py` imports
+PyPI download statistics into a JSON file for the optional overlay.
+
+Clone JSON Input Format:
+------------------------
 {
   "total_clones": 845,
   "unique_clones": 418,
@@ -35,6 +40,18 @@ JSON Input Format:
     {
       "date": "YYYY-MM-DD",
       "label": "Your label here"
+    },
+    ...
+  ]
+}
+
+Downloads JSON Input Format:
+-----------------------------
+{
+  "daily": [
+    {
+      "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
+      "count": 12
     },
     ...
   ]
@@ -57,9 +74,10 @@ from clonepulse import __about__ as about
 from clonepulse.util import show_scriptname
 
 CLONES_FILE = "clonepulse/fetch_clones.json"
+DOWNLOADS_FILE = "downloads.json"
 OUTPUT_PNG = "clonepulse/weekly_clones.png"
 EMPTY_DASHBOARD_MESSAGE = "Not enough data to generate a dashboard.\nOne week's data needed."
-NUM_WEEKS = 16  # Default weeks to display on the chart
+NUM_WEEKS = 26  # Default weeks to display on the chart
 ENV_USER = "GITHUB_USER"
 ENV_REPO = "GITHUB_REPO"
 
@@ -170,6 +188,18 @@ def main(argv=None):
         help=f"Number of weeks to display when --start is used (default: {NUM_WEEKS}).",
     )
 
+    parser.add_argument(
+        "--downloads-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Optional path to a PyPI downloads JSON file. "
+            "When provided, weekly download totals are overlaid on a second Y-axis. "
+            f"Defaults to {DOWNLOADS_FILE!r} if that file exists."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     # Detect if --weeks was explicitly passed to warn when ignored
@@ -181,12 +211,55 @@ def main(argv=None):
         sys.exit(2)
     weeks_to_plot = int(args.weeks)
 
-    # Load JSON
+    # Load clone JSON
     try:
         with open(CLONES_FILE, "r") as f:
             clones_data = json.load(f)
     except Exception as e:
-        raise RuntimeError(f"Failed to load or parse JSON file: {e}")
+        raise RuntimeError(f"Failed to load or parse clone JSON file: {e}")
+
+    # Load optional downloads JSON
+    downloads_weekly = None
+    downloads_path = args.downloads_file
+    if downloads_path is None and os.path.exists(DOWNLOADS_FILE):
+        downloads_path = DOWNLOADS_FILE
+    if downloads_path:
+        try:
+            with open(downloads_path, "r") as f:
+                dl_data = json.load(f)
+            dl_rows = dl_data.get("daily", [])
+            if dl_rows and isinstance(dl_rows, list):
+                dl_validated = []
+                for i, row in enumerate(dl_rows):
+                    try:
+                        ts = pd.to_datetime(row["timestamp"], utc=True).tz_convert(None).normalize()
+                    except Exception:
+                        print(f"⚠️  Downloads row {i} has invalid timestamp — skipping.")
+                        continue
+                    count = row.get("count")
+                    if not isinstance(count, (int, float)) or count < 0:
+                        print(f"⚠️  Downloads row {i} has invalid count — skipping.")
+                        continue
+                    dl_validated.append({"timestamp": ts, "count": int(count)})
+                if dl_validated:
+                    dl_df = pd.DataFrame(dl_validated)
+                    dl_df["week_start"] = (
+                        dl_df["timestamp"]
+                        - pd.to_timedelta(dl_df["timestamp"].dt.weekday, unit="D")
+                    )
+                    dl_df["week_start"] = dl_df["week_start"].dt.normalize()
+                    dl_weekly = (
+                        dl_df.groupby("week_start")["count"].sum().reset_index()
+                    )
+                    dl_weekly["report_date"] = dl_weekly["week_start"] + pd.Timedelta(days=7)
+                    downloads_weekly = dl_weekly
+                    print(f"📦 Loaded {len(dl_validated)} download rows from {downloads_path!r}")
+                else:
+                    print(f"⚠️  No valid rows in downloads file {downloads_path!r} — overlay skipped.")
+            else:
+                print(f"⚠️  Downloads file {downloads_path!r} has no 'daily' list — overlay skipped.")
+        except Exception as e:
+            print(f"⚠️  Could not load downloads file {downloads_path!r}: {e} — overlay skipped.")
 
     # Validate 'daily'
     raw_rows = clones_data.get("daily", [])
@@ -362,10 +435,37 @@ def main(argv=None):
     # Plot
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    ax.plot(weekly_data["report_date"], weekly_data["count"], label="Total Clones", marker="o")
-    ax.plot(weekly_data["report_date"], weekly_data["count_avg"], label="Total Clones (3w Avg)", linestyle="--")
-    ax.plot(weekly_data["report_date"], weekly_data["uniques"], label="Unique Clones", marker="s")
-    ax.plot(weekly_data["report_date"], weekly_data["uniques_avg"], label="Unique Clones (3w Avg)", linestyle=":")
+    l1, = ax.plot(weekly_data["report_date"], weekly_data["count"], label="Total Clones", marker="o")
+    l2, = ax.plot(weekly_data["report_date"], weekly_data["count_avg"], label="Total Clones (3w Avg)", linestyle="--")
+    l3, = ax.plot(weekly_data["report_date"], weekly_data["uniques"], label="Unique Clones", marker="s")
+    l4, = ax.plot(weekly_data["report_date"], weekly_data["uniques_avg"], label="Unique Clones (3w Avg)", linestyle=":")
+
+    # Optional PyPI downloads overlay on second Y-axis
+    ax2 = None
+    dl_lines = []
+    if downloads_weekly is not None:
+        # Filter downloads to the same report_date window as clone data
+        dl_window = downloads_weekly[
+            (downloads_weekly["report_date"] >= plot_start) &
+            (downloads_weekly["report_date"] <= plot_end + pd.Timedelta(days=7))
+        ].copy()
+        if not dl_window.empty:
+            ax2 = ax.twinx()
+            dl_line, = ax2.plot(
+                dl_window["report_date"],
+                dl_window["count"],
+                label="PyPI Downloads",
+                marker="^",
+                color="#6a0dad",
+                linewidth=1.5,
+                alpha=0.85,
+            )
+            dl_lines = [dl_line]
+            ax2.set_ylabel("PyPI Downloads", color="#6a0dad")
+            ax2.tick_params(axis="y", labelcolor="#6a0dad")
+            ax2.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+        else:
+            print("ℹ️  Downloads data has no overlap with the clone window — overlay skipped.")
 
     # Annotation rendering parameters
     fig_height_px = fig.get_size_inches()[1] * fig.dpi
@@ -425,6 +525,7 @@ def main(argv=None):
     ax.set_title(title)
     ax.set_xlabel("Reporting Date (Monday after week ends)")
     ax.set_ylabel("Clones")
+    ax.set_ylim(bottom=0)
     ax.grid(True)
     ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
@@ -433,7 +534,10 @@ def main(argv=None):
     ax.set_xticks(tick_dates.to_list())
     ax.set_xticklabels(tick_labels.to_list(), rotation=45)
 
-    ax.legend(loc="lower left", fontsize=9)
+    # Merge legends from both axes so everything appears in one box
+    all_lines = [l1, l2, l3, l4] + dl_lines
+    all_labels = [l.get_label() for l in all_lines]
+    ax.legend(all_lines, all_labels, loc="lower left", fontsize=9)
     plt.tight_layout()
 
     # Reserve bottom margin for footer, then render footer inside the figure box
