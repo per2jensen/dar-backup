@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # `dar-backup`
 
-**Reliable DAR backups, automated in clean Python**
+**Long-term archival backups for Linux — with integrity you can prove and repair**
 
 [![Codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup)
 [![Snyk Vuln findings](https://snyk.io/test/github/per2jensen/dar-backup/badge.svg)](https://security.snyk.io/vuln/?search=dar-backup)
@@ -11,41 +11,133 @@
 [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png)
 [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png)  <sub>🎯 Stats powered by [ClonePulse](https://github.com/per2jensen/clonepulse)</sub>
 
-The wonderful 'dar' [Disk Archiver](https://github.com/Edrusb/DAR) is used for
-the heavy lifting, together with the [parchive](https://github.com/Parchive/par2cmdline) suite in these scripts.
 
-This is the `Python` based [**version 2**](v2) of `dar-backup`.
+`dar-backup` is for Linux users who want **serious, long-term backups** — not just file copies.
+It automates FULL / DIFF / INCR archive cycles built on two exceptional open-source tools:
 
-You can see the [v2 Changelog](v2/Changelog.md) for details on features and progress.
+- **[dar](https://github.com/Edrusb/DAR)** (Disk ARchiver) — a powerful, actively maintained
+  archiver by Denis Corbin that handles differential and incremental archives, built-in
+  verification, catalogue databases, and precise file selection. `dar` is the engine that makes
+  long-term archival practical. It deserves to be far better known than it is.
+- **[par2cmdline](https://github.com/Parchive/par2cmdline)** — the Parchive suite's
+  implementation of PAR2, a Reed-Solomon based redundancy format that can detect and repair
+  corruption in any file, years after the fact, with no connection to the original source.
+  A quiet but remarkable piece of technology.
+
+`dar-backup` wires these two tools together into a fully automated backup system, with every
+archive verified and restore-tested before the job completes.
+
+**Is this for you?**
+
+✅ You back up irreplaceable data — photos, documents, home-made video — and want to be
+   certain you can restore any file to any point in time, years from now  
+✅ You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems
+   (Nextcloud, rclone, sshfs) work correctly  
+✅ You want **bitrot repair** to travel with your archives — onto USB disks, offsite copies,
+   and cloud storage — without depending on the original system  
+✅ You want unattended, scheduled backups with **Discord notifications** on success or failure  
+✅ You want a transparent, no-lock-in tool built on proven Unix components  
+
+✗ You need a GUI, Windows support, or just a quick incremental sync — `rsync` or `restic`
+   may suit you better
+
+---
 
 ## TL;DR
 
-`dar-backup` is a Python-powered CLI for creating and validating full, differential, and incremental backups using `dar` and `par2`. Designed for long-term restore integrity, even on user-space filesystems like FUSE.
+```bash
+sudo apt install dar par2 python3 python3-venv
+pip install dar-backup
+demo --install && manager --create-db
+dar-backup --full-backup
+```
 
-Version **1.0.0** was reached on October 9, 2025.
+`dar-backup` runs FULL, DIFF, and INCR backup cycles across as many backup definitions as you
+need (e.g. `photos`, `documents`, `homevideos`). After each archive it:
 
-**High-level flow**
+1. **Verifies** the archive with `dar -t`
+2. **Restore-tests** a random sample of files and compares them byte-for-byte against the source
+3. **Creates PAR2 redundancy files** so the archive can be repaired if bitrot occurs later
+4. **Notifies** your Discord channel on completion or failure
+
+Schedules are managed by systemd timers (generated for you). Catalogs of every archive are
+maintained by `dar_manager`, enabling single-file Point-in-Time Recovery without a database
+server.
+
+Version **1.1.2** · reached **1.0.0** on October 9, 2025 · [Changelog](v2/Changelog.md)
+
+---
+
+## Why not just use restic / BorgBackup / rsync?
+
+Those are excellent tools. `dar-backup` fills a different niche:
+
+| Concern | dar-backup |
+|---|---|
+| Run as non-root on FUSE mounts | ✅ designed for this |
+| Bitrot repair without re-downloading | ✅ PAR2 travels with the archive |
+| Restore a single file to a specific date | ✅ PITR via dar_manager catalogs |
+| No dependency on original system to restore | ✅ one static `dar` binary is enough |
+| Archive integrity testable anywhere | ✅ `par2verify` + `dar -t` work offline |
+| Transparent, auditable backup content | ✅ `dar` archives are well-documented |
+
+If your threat model is *"I need to recover a file I deleted three months ago, on a machine I
+no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for exactly that.
+
+---
+
+## Features
+
+- **FULL / DIFF / INCR backup cycles** — per backup definition, independently scheduled
+- **Automatic archive verification** — `dar -t` after every backup run
+- **Automatic restore test** — random files extracted and compared to source after each backup;
+  configurable excludes for cache dirs, temp files, locks
+- **PAR2 redundancy** — configurable coverage per backup type (FULL/DIFF/INCR);
+  optionally stored in a separate directory (different device or offsite mount)
+- **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file
+  to any date across your full archive history
+- **Runs as a normal user** — no root needed; works correctly on FUSE-mounted filesystems
+- **systemd integration** — timer units generated for you with sensible default schedules
+- **Discord notifications** — webhook alerts on backup success or failure, from all CLI tools
+- **Shell autocompletion** — bash and zsh, context-aware (archive names filtered by definition)
+- **Clean logging** — three log files (main, command output, trace/debug), all rotating and
+  size-capped; `clean-log` strips verbose `dar` output when not needed
+- **No lock-in** — standard `dar` archives, standard PAR2 files; restore with just the `dar`
+  binary, no `dar-backup` installation required on the restore machine
+- **600+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
+  restore chains, PITR verification, and edge cases; CI on every commit
+
+✅ The author has used `dar-backup` for over 4 years and has been saved by it multiple times.
+
+> `dar-backup` stands on the shoulders of two projects that do the real work.
+> Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.
+> If you find `dar-backup` useful, consider giving those projects a star too.
+
+## High-level architecture
 
 [![dar-backup overview](v2/doc/dar-backup-overview-small.png)](#dar-backup-principles)
 
-**Quick links**
+## Quick links
 
 - [Quick Guide](#quick-guide)
-- [Redundancy to fix bitrot](#par2)
+- [PAR2 redundancy to fix bitrot](#par2)
 - [Point In Time Recovery](#point-in-time-recovery-pitr)
-- [550+ unit tests & integration tests](#test-coverage)
-  - par2 bitrot repair proof, full/diff/incr with restore, PITR verifications, ...  
+- [Test coverage 600+ unit tests & integration tests](#test-coverage)
 
 ## Table of Contents
 
 - [`dar-backup`](#dar-backup)
   - [TL;DR](#tldr)
+  - [Why not just use restic / BorgBackup / rsync?](#why-not-just-use-restic--borgbackup--rsync)
+  - [Features](#features)
+  - [High-level architecture](#high-level-architecture)
+  - [Quick links](#quick-links)
   - [Table of Contents](#table-of-contents)
   - [My use case](#my-use-case)
   - [My setup](#my-setup)
     - [Why PAR2 is especially good for portable / offsite copies](#why-par2-is-especially-good-for-portable--offsite-copies)
     - [Design choices](#design-choices)
-  - [Features](#features)
+  - [Features](#features-1)
   - [License](#license)
   - [Quick Guide](#quick-guide)
   - [Status](#status)
