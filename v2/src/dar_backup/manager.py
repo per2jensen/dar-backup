@@ -121,20 +121,35 @@ def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) 
     logger.debug(f"DB directory: {db_dir}")
 
     if os.path.exists(database_path):
-        logger.info(f'"{database_path}" already exists, skipping creation')
-        return 0
-    else:
-        logger.info(f'Create catalog database: "{database_path}"')
-        command = ['dar_manager', '--create', database_path]
-        process = runner.run(command)
-        logger.debug(f"return code from 'db created': {process.returncode}")
-        if process.returncode == 0:
-            logger.info(f'Database created: "{database_path}"')
+        db_size = os.path.getsize(database_path)
+        if db_size == 0:
+            # Empty file — freshly created placeholder, skip without checking
+            logger.info(f'"{database_path}" already exists (empty), skipping creation')
+            return 0
+        # Non-empty db — verify integrity before deciding to skip
+        check_command = ['dar_manager', '--base', database_path, '--check']
+        check_process = runner.run(check_command)
+        if check_process.returncode == 0:
+            logger.info(f'"{database_path}" already exists and is healthy, skipping creation')
+            return 0
         else:
-            logger.error(f'Something went wrong creating the database: "{database_path}"')
-            stdout, stderr = process.stdout, process.stderr
-            logger.error(f"stderr: {stderr}")
-            logger.error(f"stdout: {stdout}")
+            logger.warning(f'"{database_path}" exists but is corrupted (size={db_size}, returncode={check_process.returncode}), recreating')
+            backup_path = f"{database_path}.corrupted.{int(time())}"
+            os.rename(database_path, backup_path)
+            logger.info(f'Corrupted database backed up to: "{backup_path}"')
+            # fall through to create a fresh db below
+
+    logger.info(f'Create catalog database: "{database_path}"')
+    command = ['dar_manager', '--create', database_path]
+    process = runner.run(command)
+    logger.debug(f"return code from 'db created': {process.returncode}")
+    if process.returncode == 0:
+        logger.info(f'Database created: "{database_path}"')
+    else:
+        logger.error(f'Something went wrong creating the database: "{database_path}"')
+        stdout, stderr = process.stdout, process.stderr
+        logger.error(f"stderr: {stderr}")
+        logger.error(f"stdout: {stdout}")
 
     return process.returncode
 
@@ -1264,6 +1279,10 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     dar_archives = []
     type_order = {"FULL": 0, "DIFF": 1, "INCR": 2}
 
+    backup_def_filter = getattr(args, 'backup_def', None)
+    if backup_def_filter:
+        logger.debug(f"Filtering archives by backup definition: '{backup_def_filter}'")
+
     for filename in os.listdir(args.add_dir):
         logger.debug(f"check if '{filename}' is a dar archive slice #1?")
         match = dar_pattern.match(filename)
@@ -1271,6 +1290,10 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
             base_name = match.group(1)
             archive_type = match.group(2)
             date_str = match.group(3)
+            # Skip archives that don't belong to the requested backup definition
+            if backup_def_filter and not base_name.startswith(f"{backup_def_filter}_"):
+                logger.debug(f" -> skipping '{base_name}': does not match backup definition '{backup_def_filter}'")
+                continue
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
             dar_archives.append((date_obj, type_order.get(archive_type, 99), base_name, archive_type))
             logger.debug(f" -> yes: base name: {base_name}, type: {archive_type}, date: {date_str}")

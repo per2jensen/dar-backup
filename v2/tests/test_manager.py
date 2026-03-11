@@ -1733,3 +1733,120 @@ def test_manager_skips_existing_catalogs(env, setup_environment, tmp_path):
     post_mtime = pre_existing_db.stat().st_mtime
     assert pre_mtime == post_mtime, "Pre-existing DB should not be overwritten"
     env.logger.info(f"✅ Pre-existing DB '{pre_existing_db}' was preserved as expected")
+
+
+def test_manager_recreates_corrupted_db(env, setup_environment, tmp_path):
+    """
+    Test that --create-db detects a corrupted (non-empty but invalid) database,
+    backs it up with a .corrupted.<timestamp> suffix, and recreates it cleanly.
+
+    Positive test: corrupted db is replaced and a healthy db is created.
+    """
+    valid_db_dir = tmp_path / "valid_db_dir"
+    valid_db_dir.mkdir(parents=True, exist_ok=True)
+
+    # Inject MANAGER_DB_DIR into config
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {valid_db_dir}\n")
+            break
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+    Path(config_settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+
+    # Create a single backup definition
+    backup_def = "alpha"
+    (Path(config_settings.backup_d_dir) / backup_def).touch()
+
+    # Write a non-empty but corrupt db file (garbage bytes)
+    corrupt_db = valid_db_dir / f"{backup_def}.db"
+    corrupt_db.write_bytes(b"\x00\xFF\xDE\xAD\xBE\xEF" * 100)
+    corrupt_size = corrupt_db.stat().st_size
+    env.logger.info(f"Created corrupt db: {corrupt_db} ({corrupt_size} bytes)")
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '-d', backup_def, '--config-file', env.config_file]
+    process = runner.run(command)
+
+    assert process.returncode == 0, f"Expected successful recreation, got returncode={process.returncode}"
+    env.logger.info("✅ --create-db returned 0 despite corrupted db")
+
+    # The original corrupt db must be backed up with .corrupted. suffix
+    corrupted_backups = list(valid_db_dir.glob(f"{backup_def}.db.corrupted.*"))
+    assert len(corrupted_backups) == 1, (
+        f"Expected exactly one .corrupted backup, found: {corrupted_backups}"
+    )
+    env.logger.info(f"✅ Corrupted db backed up to: {corrupted_backups[0]}")
+
+    # A new healthy db must exist in place of the corrupted one
+    assert corrupt_db.exists(), "Expected recreated db to exist"
+    new_size = corrupt_db.stat().st_size
+    assert new_size != corrupt_size, "Expected new db to differ in size from corrupt original"
+    env.logger.info(f"✅ New db created: {corrupt_db} ({new_size} bytes)")
+
+
+def test_manager_does_not_overwrite_healthy_db(env, setup_environment, tmp_path):
+    """
+    Test that --create-db does NOT overwrite a healthy, non-empty database.
+
+    Negative test: a valid db must be left completely untouched.
+    """
+    valid_db_dir = tmp_path / "valid_db_dir"
+    valid_db_dir.mkdir(parents=True, exist_ok=True)
+
+    # Inject MANAGER_DB_DIR into config
+    with open(env.config_file, "r") as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "[DIRECTORIES]":
+            insert_at = i + 1
+            while insert_at < len(lines) and not lines[insert_at].startswith("["):
+                insert_at += 1
+            lines.insert(insert_at, f"MANAGER_DB_DIR = {valid_db_dir}\n")
+            break
+    with open(env.config_file, "w") as f:
+        f.writelines(lines)
+
+    config_settings = ConfigSettings(env.config_file)
+    Path(config_settings.backup_d_dir).mkdir(parents=True, exist_ok=True)
+
+    # Create a single backup definition
+    backup_def = "alpha"
+    (Path(config_settings.backup_d_dir) / backup_def).touch()
+
+    # Create a real healthy db using dar_manager directly
+    healthy_db = valid_db_dir / f"{backup_def}.db"
+    result = subprocess.run(
+        ['dar_manager', '--create', str(healthy_db)],
+        capture_output=True
+    )
+    assert result.returncode == 0, "Failed to create healthy db for test setup"
+    pre_mtime = healthy_db.stat().st_mtime
+    pre_size = healthy_db.stat().st_size
+    env.logger.info(f"Created healthy db: {healthy_db} ({pre_size} bytes, mtime={pre_mtime})")
+
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['manager', '--create-db', '-d', backup_def, '--config-file', env.config_file]
+    process = runner.run(command)
+
+    assert process.returncode == 0, f"Expected returncode=0, got {process.returncode}"
+
+    # db must be completely untouched
+    post_mtime = healthy_db.stat().st_mtime
+    post_size = healthy_db.stat().st_size
+    assert pre_mtime == post_mtime, "Healthy db mtime changed — it was overwritten!"
+    assert pre_size == post_size, "Healthy db size changed — it was overwritten!"
+
+    # No .corrupted backup should exist
+    corrupted_backups = list(valid_db_dir.glob(f"{backup_def}.db.corrupted.*"))
+    assert len(corrupted_backups) == 0, (
+        f"Healthy db should not have been backed up as corrupted: {corrupted_backups}"
+    )
+    env.logger.info(f"✅ Healthy db '{healthy_db}' was left untouched as expected")

@@ -22,6 +22,12 @@
 - When dar exits with a non-zero return code, dar-backup now scans for partial archive slices left on disk and logs a prominent `ERROR: PARTIAL BACKUP on disk` message listing the incomplete files, so operators know immediately not to rely on them for restore.
 - Integration test `test_disk_full.py` exercises the above: it caps the per-file write limit via `ulimit -f`, runs a full backup of incompressible data that exceeds the cap, and asserts both a non-zero exit code and the `PARTIAL BACKUP on disk` warning in the output.
 
+### Fixed
+
+- `manager --add-dir` ignored `-d <backup-def>`, processing all definitions instead of the specified one.
+- `manager --create-db` silently skipped corrupted databases; it now runs `dar_manager --check`, backs up the corrupt file as `<name>.db.corrupted.<timestamp>`, and recreates it.
+- Fall-through bug in `create_db()`: after renaming a corrupt db, `process` was unset causing an `UnboundLocalError`.
+
 ### Changed
 
 - Preflight now detects stale/unavailable backup storage with real write probes, logs startup failures earlier, and falls back to temporary/stderr logging instead of aborting when the configured logfile path is unusable.
