@@ -46,7 +46,12 @@ archive verified and restore-tested before the job completes.
 ## TL;DR
 
 ```bash
-sudo apt install dar par2 python3 python3-venv
+# prep
+sudo apt -y install dar par2 python3 python3-venv
+INSTALL_DIR=/tmp/dar-backup; mkdir "$INSTALL_DIR" && cd "$INSTALL_DIR"
+python3 -m venv venv    # create a virtual environment 
+. venv/bin/activate     # activate the virtual environment
+# install and run dar-backup
 pip install dar-backup
 demo --install && manager --create-db
 dar-backup --full-backup
