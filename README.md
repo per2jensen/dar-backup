@@ -244,6 +244,7 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
         - [Command output Capture](#command-output-capture)
       - [1.1.0](#110)
       - [1.1.1](#111)
+      - [1.1.2](#112)
   
 ## My use case
 
@@ -2478,3 +2479,30 @@ COMMAND_TIMEOUT_SECS=-1 now disables timeout for commands executed.
 #### 1.1.1
 
 Env var `DAR_BACKUP_COMMAND_TIMEOUT_SECS` now overrides config file var `COMMAND_TIMEOUT_SECS`.
+
+#### 1.1.2
+
+##### METRICS_DB_PATH
+
+Optional. When set, dar-backup records a row of operational metrics into a SQLite database after each backup run.
+
+```ini
+[MISC]
+METRICS_DB_PATH = /var/lib/dar-backup/metrics.db
+```
+
+Tilde and environment variable expansion are supported:
+
+```ini
+METRICS_DB_PATH = ~/dar-backup/metrics.db
+METRICS_DB_PATH = $XDG_DATA_HOME/dar-backup/metrics.db
+```
+
+If `METRICS_DB_PATH` is absent or empty, metrics collection is silently disabled — no database is created and backups are unaffected.
+
+The database is created automatically on first use. If an older database exists (created before this version), the new columns are added automatically; no data is lost.
+
+Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / FAILURE).
+
+A metrics write failure never aborts or affects the backup — errors are logged at WARNING level and swallowed.
+
