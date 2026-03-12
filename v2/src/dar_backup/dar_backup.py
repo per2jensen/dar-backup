@@ -18,6 +18,7 @@ import filecmp
 
 import glob
 import os
+import platform
 import random
 import re
 import shlex
@@ -57,6 +58,7 @@ from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message
 from dar_backup.util import write_metrics_row
+from dar_backup.util import parse_dar_stats
 
 from dar_backup.command_runner import CommandRunner   
 
@@ -70,6 +72,7 @@ class BackupResult(NamedTuple):
     issues: List[tuple]     # list of (<msg>, <exit_code>) tuples
     dar_exit_code: int      # raw dar return code; -1 if dar never ran
     catalog_updated: bool   # True if archive was added to dar_manager catalog
+    dar_stats: dict         # parsed inode counters from dar summary; values are int | None
 
 @dataclass
 class VerifyResult:
@@ -131,6 +134,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     result: List[tuple] = []
     dar_exit_code: int = -1
     catalog_updated: bool = False
+    dar_stats: dict = {}
 
     logger.info(f"===> Starting {type} backup for {backup_definition}")
     try:
@@ -141,6 +145,9 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             raise
 
         dar_exit_code = process.returncode
+        # Parse inode summary regardless of exit code; missing fields → None.
+        # dar may write the summary to stdout or stderr depending on version/mode.
+        dar_stats = parse_dar_stats((process.stdout or "") + (process.stderr or ""))
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
@@ -182,7 +189,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
                 logger.error(msg)
                 result.append((msg, 1))
 
-        return BackupResult(issues=result, dar_exit_code=dar_exit_code, catalog_updated=catalog_updated)
+        return BackupResult(issues=result, dar_exit_code=dar_exit_code, catalog_updated=catalog_updated, dar_stats=dar_stats)
 
     except BackupError:
         raise  # pass through without re-wrapping so dar_exit_code is preserved
@@ -1085,30 +1092,43 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         except Exception:
             _free_bytes = None
         metrics = {
-            "backup_definition":     backup_definition,
-            "backup_type":           backup_type,
-            "archive_name":          None,
-            "dar_backup_version":    about.__version__,
-            "dar_version":           getattr(args, "dar_version", None),
-            "run_started_at":        def_start.isoformat(),
-            "backup_dir_free_bytes": _free_bytes,
-            "run_finished_at":       None,
-            "duration_secs":         None,
-            "dar_duration_secs":     None,
-            "verify_duration_secs":  None,
-            "par2_duration_secs":    None,
-            "status":                "FAILURE",
-            "dar_exit_code":         None,
-            "failed_phase":          None,
-            "error_summary":         None,
-            "catalog_updated":       None,
-            "verify_passed":         None,
-            "restore_test_passed":   None,
-            "par2_passed":           None,
-            "archive_size_bytes":    None,
-            "num_slices":            None,
-            "par2_size_bytes":       None,
-            "files_verified":        None,
+            "backup_definition":             backup_definition,
+            "backup_type":                   backup_type,
+            "archive_name":                  None,
+            "dar_backup_version":            about.__version__,
+            "dar_version":                   getattr(args, "dar_version", None),
+            "run_started_at":                def_start.isoformat(),
+            "backup_dir_free_bytes":         _free_bytes,
+            "run_finished_at":               None,
+            "duration_secs":                 None,
+            "dar_duration_secs":             None,
+            "verify_duration_secs":          None,
+            "par2_duration_secs":            None,
+            "status":                        "FAILURE",
+            "dar_exit_code":                 None,
+            "failed_phase":                  None,
+            "error_summary":                 None,
+            "catalog_updated":               None,
+            "verify_passed":                 None,
+            "restore_test_passed":           None,
+            "par2_passed":                   None,
+            "archive_size_bytes":            None,
+            "num_slices":                    None,
+            "par2_size_bytes":               None,
+            "files_verified":                None,
+            "hostname":                      platform.node() or None,
+            "inodes_saved":                  None,
+            "hard_links_treated":            None,
+            "inodes_changed_during_backup":  None,
+            "bytes_wasted":                  None,
+            "inodes_metadata_only":          None,
+            "inodes_not_saved":              None,
+            "inodes_failed":                 None,
+            "inodes_excluded":               None,
+            "inodes_deleted":                None,
+            "inodes_total":                  None,
+            "ea_saved":                      None,
+            "fsa_saved":                     None,
         }
 
         try:
@@ -1161,6 +1181,8 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if backup_result.dar_exit_code != 0 and metrics["failed_phase"] is None:
                 metrics["failed_phase"] = "DAR"
             results.extend(backup_result.issues)
+            # Inode stats parsed from dar's summary output; any unparsed field stays None
+            metrics.update(backup_result.dar_stats)
 
             # Archive slice count and total size
             dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))

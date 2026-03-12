@@ -1146,31 +1146,44 @@ _ARCHIVE_NAME_RE = re.compile(
 
 _METRICS_DDL = """
 CREATE TABLE IF NOT EXISTS backup_runs (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    backup_definition     TEXT    NOT NULL,
-    backup_type           TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
-    archive_name          TEXT,
-    dar_backup_version    TEXT,
-    dar_version           TEXT,
-    run_started_at        TEXT    NOT NULL,
-    run_finished_at       TEXT,
-    duration_secs         REAL,
-    dar_duration_secs     REAL,
-    verify_duration_secs  REAL,
-    par2_duration_secs    REAL,
-    status                TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
-    dar_exit_code         INTEGER,
-    failed_phase          TEXT    CHECK (failed_phase IN ('DAR', 'VERIFY', 'PAR2', NULL)),
-    error_summary         TEXT,
-    catalog_updated       INTEGER,
-    verify_passed         INTEGER,
-    restore_test_passed   INTEGER,
-    par2_passed           INTEGER,
-    archive_size_bytes    INTEGER,
-    num_slices            INTEGER,
-    par2_size_bytes       INTEGER,
-    files_verified        INTEGER,
-    backup_dir_free_bytes INTEGER
+    id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+    backup_definition             TEXT    NOT NULL,
+    backup_type                   TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
+    archive_name                  TEXT,
+    dar_backup_version            TEXT,
+    dar_version                   TEXT,
+    run_started_at                TEXT    NOT NULL,
+    run_finished_at               TEXT,
+    duration_secs                 REAL,
+    dar_duration_secs             REAL,
+    verify_duration_secs          REAL,
+    par2_duration_secs            REAL,
+    status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
+    dar_exit_code                 INTEGER,
+    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('DAR', 'VERIFY', 'PAR2')),
+    error_summary                 TEXT,
+    catalog_updated               INTEGER,
+    verify_passed                 INTEGER,
+    restore_test_passed           INTEGER,
+    par2_passed                   INTEGER,
+    archive_size_bytes            INTEGER,
+    num_slices                    INTEGER,
+    par2_size_bytes               INTEGER,
+    files_verified                INTEGER,
+    backup_dir_free_bytes         INTEGER,
+    hostname                      TEXT,
+    inodes_saved                  INTEGER,
+    hard_links_treated            INTEGER,
+    inodes_changed_during_backup  INTEGER,
+    bytes_wasted                  INTEGER,
+    inodes_metadata_only          INTEGER,
+    inodes_not_saved              INTEGER,
+    inodes_failed                 INTEGER,
+    inodes_excluded               INTEGER,
+    inodes_deleted                INTEGER,
+    inodes_total                  INTEGER,
+    ea_saved                      INTEGER,
+    fsa_saved                     INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_runs_definition
     ON backup_runs (backup_definition, backup_type, run_started_at);
@@ -1181,10 +1194,95 @@ CREATE INDEX IF NOT EXISTS idx_runs_dar_exit_code
 """
 
 
+# Each entry: (metric_key, compiled_regex).  The regex must have exactly one
+# capture group that matches the integer value.  If dar changes its output
+# format the pattern simply won't match and the value is stored as NULL —
+# the backup run is never affected.
+_DAR_STAT_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("inodes_saved",                 re.compile(r'(\d+)\s+inode\(s\)\s+saved')),
+    ("hard_links_treated",           re.compile(r'including\s+(\d+)\s+hard\s+link\(s\)\s+treated')),
+    ("inodes_changed_during_backup", re.compile(r'(\d+)\s+inode\(s\)\s+changed\s+at\s+the\s+moment\s+of\s+the\s+backup')),
+    ("bytes_wasted",                 re.compile(r'(\d+)\s+byte\(s\)\s+have\s+been\s+wasted')),
+    ("inodes_metadata_only",         re.compile(r'(\d+)\s+inode\(s\)\s+with\s+only\s+metadata\s+changed')),
+    ("inodes_not_saved",             re.compile(r'(\d+)\s+inode\(s\)\s+not\s+saved\s+\(no\s+inode/file\s+change\)')),
+    ("inodes_failed",                re.compile(r'(\d+)\s+inode\(s\)\s+failed\s+to\s+be\s+saved')),
+    ("inodes_excluded",              re.compile(r'(\d+)\s+inode\(s\)\s+ignored\s+\(excluded\s+by\s+filters\)')),
+    ("inodes_deleted",               re.compile(r'(\d+)\s+inode\(s\)\s+recorded\s+as\s+deleted')),
+    ("inodes_total",                 re.compile(r'Total\s+number\s+of\s+inode\(s\)\s+considered:\s*(\d+)')),
+    ("ea_saved",                     re.compile(r'EA\s+saved\s+for\s+(\d+)\s+inode\(s\)')),
+    ("fsa_saved",                    re.compile(r'FSA\s+saved\s+for\s+(\d+)\s+inode\(s\)')),
+]
+
+
+def parse_dar_stats(output: str) -> dict[str, typing.Optional[int]]:
+    """
+    Parse dar's inode summary block from captured command output.
+
+    Each metric is extracted via a dedicated regex.  If a pattern does not
+    match (e.g. because dar changed its output format, or the run failed
+    before the summary was printed) the corresponding value is ``None`` so
+    that a NULL is stored in the metrics DB rather than crashing.
+
+    Args:
+        output: The full stdout string captured from a dar invocation.
+
+    Returns:
+        A dict mapping each inode stat key to an ``int`` or ``None``.
+    """
+    if not output:
+        return {key: None for key, _ in _DAR_STAT_PATTERNS}
+
+    result: dict[str, typing.Optional[int]] = {}
+    for key, pattern in _DAR_STAT_PATTERNS:
+        m = pattern.search(output)
+        if m:
+            try:
+                result[key] = int(m.group(1))
+            except (ValueError, IndexError):
+                result[key] = None
+        else:
+            result[key] = None
+    return result
+
+
+# Columns added after the initial schema release, in order of introduction.
+# Each entry: (column_name, SQLite type declaration).
+# ensure_metrics_db() issues ALTER TABLE ADD COLUMN IF NOT EXISTS for each,
+# so existing databases are migrated automatically and silently.
+_METRICS_MIGRATIONS: list[tuple[str, str]] = [
+    ("hostname",                      "TEXT"),
+    ("inodes_saved",                  "INTEGER"),
+    ("hard_links_treated",            "INTEGER"),
+    ("inodes_changed_during_backup",  "INTEGER"),
+    ("bytes_wasted",                  "INTEGER"),
+    ("inodes_metadata_only",          "INTEGER"),
+    ("inodes_not_saved",              "INTEGER"),
+    ("inodes_failed",                 "INTEGER"),
+    ("inodes_excluded",               "INTEGER"),
+    ("inodes_deleted",                "INTEGER"),
+    ("inodes_total",                  "INTEGER"),
+    ("ea_saved",                      "INTEGER"),
+    ("fsa_saved",                     "INTEGER"),
+]
+
+
 def ensure_metrics_db(db_path: str) -> None:
-    """Create the metrics DB schema if it does not already exist."""
+    """Create the metrics DB schema if it does not already exist, and migrate older DBs.
+
+    Safe to call on every backup run:
+      - New DB: full schema is created by _METRICS_DDL.
+      - Existing DB: ALTER TABLE ADD COLUMN IF NOT EXISTS is issued for every
+        column listed in _METRICS_MIGRATIONS, so columns added after the
+        initial release are silently appended without touching existing data.
+    """
     with sqlite3.connect(db_path) as conn:
         conn.executescript(_METRICS_DDL)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
+        for col_name, col_type in _METRICS_MIGRATIONS:
+            if col_name not in existing:
+                conn.execute(
+                    f"ALTER TABLE backup_runs ADD COLUMN {col_name} {col_type}"
+                )
 
 
 def write_metrics_row(metrics: dict, config_settings) -> None:
@@ -1210,7 +1308,12 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
                     status, dar_exit_code, failed_phase, error_summary,
                     catalog_updated, verify_passed, restore_test_passed, par2_passed,
                     archive_size_bytes, num_slices, par2_size_bytes,
-                    files_verified, backup_dir_free_bytes
+                    files_verified, backup_dir_free_bytes,
+                    hostname,
+                    inodes_saved, hard_links_treated, inodes_changed_during_backup,
+                    bytes_wasted, inodes_metadata_only, inodes_not_saved,
+                    inodes_failed, inodes_excluded, inodes_deleted,
+                    inodes_total, ea_saved, fsa_saved
                 ) VALUES (
                     :backup_definition, :backup_type, :archive_name,
                     :dar_backup_version, :dar_version,
@@ -1219,7 +1322,12 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
                     :status, :dar_exit_code, :failed_phase, :error_summary,
                     :catalog_updated, :verify_passed, :restore_test_passed, :par2_passed,
                     :archive_size_bytes, :num_slices, :par2_size_bytes,
-                    :files_verified, :backup_dir_free_bytes
+                    :files_verified, :backup_dir_free_bytes,
+                    :hostname,
+                    :inodes_saved, :hard_links_treated, :inodes_changed_during_backup,
+                    :bytes_wasted, :inodes_metadata_only, :inodes_not_saved,
+                    :inodes_failed, :inodes_excluded, :inodes_deleted,
+                    :inodes_total, :ea_saved, :fsa_saved
                 )
                 """,
                 metrics,
@@ -1228,7 +1336,7 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
     except Exception as exc:
         log = get_logger()
         if log:
-            log.error("Failed to write metrics row: %s", exc)
+            log.warning("Failed to write metrics row: %s", exc)
 
 
 def is_archive_name_allowed(name: str) -> bool:

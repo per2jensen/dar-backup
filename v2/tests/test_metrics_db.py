@@ -8,13 +8,15 @@ Covers:
   - ConfigSettings — METRICS_DB_PATH parsed / absent
 """
 
+import os
 import sqlite3
 from configparser import ConfigParser
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dar_backup.util import ensure_metrics_db, write_metrics_row
+from dar_backup.util import ensure_metrics_db, write_metrics_row, _METRICS_MIGRATIONS
 from dar_backup.config_settings import ConfigSettings
 
 pytestmark = pytest.mark.unit
@@ -49,6 +51,19 @@ _FULL_METRICS = {
     "par2_size_bytes":    104857,
     "files_verified":     5,
     "backup_dir_free_bytes": 10737418240,
+    "hostname":                      "testhost",
+    "inodes_saved":                  6581,
+    "hard_links_treated":            0,
+    "inodes_changed_during_backup":  0,
+    "bytes_wasted":                  0,
+    "inodes_metadata_only":          0,
+    "inodes_not_saved":              24695,
+    "inodes_failed":                 13,
+    "inodes_excluded":               9,
+    "inodes_deleted":                0,
+    "inodes_total":                  31298,
+    "ea_saved":                      0,
+    "fsa_saved":                     0,
 }
 
 _SPARSE_METRICS = {
@@ -76,6 +91,19 @@ _SPARSE_METRICS = {
     "par2_size_bytes":    None,
     "files_verified":     None,
     "backup_dir_free_bytes": None,
+    "hostname":                      None,
+    "inodes_saved":                  None,
+    "hard_links_treated":            None,
+    "inodes_changed_during_backup":  None,
+    "bytes_wasted":                  None,
+    "inodes_metadata_only":          None,
+    "inodes_not_saved":              None,
+    "inodes_failed":                 None,
+    "inodes_excluded":               None,
+    "inodes_deleted":                None,
+    "inodes_total":                  None,
+    "ea_saved":                      None,
+    "fsa_saved":                     None,
 }
 
 
@@ -105,6 +133,54 @@ def _write_config(path, base_dir, *, misc_overrides=None):
     with open(path, "w") as fh:
         config.write(fh)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Helpers — old-schema DB (simulates a DB created before the migration columns)
+# ---------------------------------------------------------------------------
+
+_OLD_SCHEMA_DDL = """
+CREATE TABLE IF NOT EXISTS backup_runs (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    backup_definition     TEXT    NOT NULL,
+    backup_type           TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
+    archive_name          TEXT,
+    dar_backup_version    TEXT,
+    dar_version           TEXT,
+    run_started_at        TEXT    NOT NULL,
+    run_finished_at       TEXT,
+    duration_secs         REAL,
+    dar_duration_secs     REAL,
+    verify_duration_secs  REAL,
+    par2_duration_secs    REAL,
+    status                TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
+    dar_exit_code         INTEGER,
+    failed_phase          TEXT,
+    error_summary         TEXT,
+    catalog_updated       INTEGER,
+    verify_passed         INTEGER,
+    restore_test_passed   INTEGER,
+    par2_passed           INTEGER,
+    archive_size_bytes    INTEGER,
+    num_slices            INTEGER,
+    par2_size_bytes       INTEGER,
+    files_verified        INTEGER,
+    backup_dir_free_bytes INTEGER
+);
+"""
+
+
+def _make_old_db(db_path: str) -> None:
+    """Create a DB with the pre-migration schema and one existing data row."""
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(_OLD_SCHEMA_DDL)
+        conn.execute(
+            """
+            INSERT INTO backup_runs (
+                backup_definition, backup_type, run_started_at, status
+            ) VALUES ('legacy-def', 'FULL', '2025-01-01T00:00:00Z', 'SUCCESS')
+            """
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +217,53 @@ def test_ensure_metrics_db_is_idempotent(tmp_path):
     with sqlite3.connect(db) as conn:
         count = conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# ensure_metrics_db — migration of existing (old-schema) databases
+# ---------------------------------------------------------------------------
+
+def test_ensure_metrics_db_migrates_old_db_adds_new_columns(tmp_path):
+    """Running ensure_metrics_db on a pre-migration DB must add all new columns."""
+    db = str(tmp_path / "metrics.db")
+    _make_old_db(db)
+    ensure_metrics_db(db)   # must migrate, not raise
+    with sqlite3.connect(db) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
+    for col_name, _ in _METRICS_MIGRATIONS:
+        assert col_name in cols, f"Migration column missing: {col_name}"
+
+
+def test_ensure_metrics_db_migration_preserves_existing_rows(tmp_path):
+    """Migration must not touch existing data rows."""
+    db = str(tmp_path / "metrics.db")
+    _make_old_db(db)
+    ensure_metrics_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM backup_runs").fetchone()
+    assert row["backup_definition"] == "legacy-def"
+    assert row["status"]            == "SUCCESS"
+
+
+def test_ensure_metrics_db_migration_new_columns_are_null_for_old_rows(tmp_path):
+    """New columns on pre-existing rows must be NULL (no default supplied)."""
+    db = str(tmp_path / "metrics.db")
+    _make_old_db(db)
+    ensure_metrics_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM backup_runs").fetchone()
+    for col_name, _ in _METRICS_MIGRATIONS:
+        assert row[col_name] is None, f"{col_name} should be NULL on legacy row"
+
+
+def test_ensure_metrics_db_migration_is_idempotent(tmp_path):
+    """Running ensure_metrics_db twice on a migrated DB must not raise."""
+    db = str(tmp_path / "metrics.db")
+    _make_old_db(db)
+    ensure_metrics_db(db)
+    ensure_metrics_db(db)   # second call — IF NOT EXISTS makes this safe
 
 
 # ---------------------------------------------------------------------------
@@ -260,3 +383,169 @@ def test_config_settings_metrics_db_path_absent_is_none(tmp_path):
     conf = _write_config(tmp_path / "dar-backup.conf", tmp_path)
     settings = ConfigSettings(str(conf))
     assert settings.metrics_db_path is None
+
+
+# ---------------------------------------------------------------------------
+# Gap 1 — CHECK constraint violations are swallowed and logged as warnings
+# ---------------------------------------------------------------------------
+
+def _row_count(db: str) -> int:
+    """Return number of rows in backup_runs for the given DB file."""
+    with sqlite3.connect(db) as conn:
+        return conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
+
+
+def _mock_logger():
+    """Return a patched get_logger that yields a MagicMock logger."""
+    return patch("dar_backup.util.get_logger", return_value=MagicMock())
+
+
+def test_write_metrics_row_invalid_backup_type_swallowed_and_logged(tmp_path):
+    """backup_type not in ('FULL','DIFF','INCR') must be swallowed, logged, and insert 0 rows."""
+    db = str(tmp_path / "metrics.db")
+    bad = {**_FULL_METRICS, "backup_type": "INVALID"}
+    with _mock_logger() as mock_get:
+        write_metrics_row(bad, _cfg(db))
+        mock_get.return_value.warning.assert_called_once()
+    assert _row_count(db) == 0
+
+
+def test_write_metrics_row_invalid_status_swallowed_and_logged(tmp_path):
+    """status not in ('SUCCESS','WARNING','FAILURE') must be swallowed, logged, and insert 0 rows."""
+    db = str(tmp_path / "metrics.db")
+    bad = {**_FULL_METRICS, "status": "UNKNOWN"}
+    with _mock_logger() as mock_get:
+        write_metrics_row(bad, _cfg(db))
+        mock_get.return_value.warning.assert_called_once()
+    assert _row_count(db) == 0
+
+
+def test_write_metrics_row_invalid_failed_phase_swallowed_and_logged(tmp_path):
+    """failed_phase not in ('DAR','VERIFY','PAR2',NULL) must be swallowed, logged, and insert 0 rows."""
+    db = str(tmp_path / "metrics.db")
+    bad = {**_FULL_METRICS, "failed_phase": "CATALOG"}
+    with _mock_logger() as mock_get:
+        write_metrics_row(bad, _cfg(db))
+        mock_get.return_value.warning.assert_called_once()
+    assert _row_count(db) == 0
+
+
+# ---------------------------------------------------------------------------
+# Gap 2 — 'WARNING' status round-trip
+# ---------------------------------------------------------------------------
+
+def test_write_metrics_row_warning_status_round_trip(tmp_path):
+    """status='WARNING' must insert and read back correctly."""
+    db = str(tmp_path / "metrics.db")
+    write_metrics_row({**_FULL_METRICS, "status": "WARNING"}, _cfg(db))
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT status FROM backup_runs").fetchone()
+    assert row["status"] == "WARNING"
+
+
+# ---------------------------------------------------------------------------
+# Gap 3 — valid non-NULL failed_phase values round-trip
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("phase", ["DAR", "VERIFY", "PAR2"])
+def test_write_metrics_row_failed_phase_round_trip(tmp_path, phase):
+    """Each valid failed_phase value must insert and read back correctly."""
+    db = str(tmp_path / "metrics.db")
+    row_data = {**_FULL_METRICS, "status": "FAILURE", "failed_phase": phase}
+    write_metrics_row(row_data, _cfg(db))
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT failed_phase FROM backup_runs").fetchone()
+    assert row["failed_phase"] == phase
+
+
+# ---------------------------------------------------------------------------
+# Gap 4 — config_settings object has no metrics_db_path attribute at all
+# ---------------------------------------------------------------------------
+
+def test_write_metrics_row_noop_when_config_missing_attribute():
+    """config_settings with no metrics_db_path attribute must be a silent no-op."""
+    write_metrics_row(_FULL_METRICS, SimpleNamespace())   # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Gap 5 — tilde / env-var expansion in db_path
+# ---------------------------------------------------------------------------
+
+def test_write_metrics_row_expands_tilde_in_path(tmp_path, monkeypatch):
+    """A db_path starting with ~ must expand to the real home directory."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    tilde_path = "~/metrics.db"
+    write_metrics_row(_FULL_METRICS, _cfg(tilde_path))
+    expected = tmp_path / "metrics.db"
+    assert expected.exists()
+    assert _row_count(str(expected)) == 1
+
+
+def test_write_metrics_row_expands_env_var_in_path(tmp_path, monkeypatch):
+    """A db_path containing $VAR must expand the environment variable."""
+    monkeypatch.setenv("METRICS_DIR", str(tmp_path))
+    var_path = "$METRICS_DIR/metrics.db"
+    write_metrics_row(_FULL_METRICS, _cfg(var_path))
+    expected = tmp_path / "metrics.db"
+    assert expected.exists()
+    assert _row_count(str(expected)) == 1
+
+
+def test_write_metrics_row_undefined_env_var_swallowed_and_logged(monkeypatch):
+    """An undefined $VAR leaves the literal string as path; sqlite fails to create it,
+    the error is swallowed, and a warning is logged — no exception propagates."""
+    # Ensure the variable is definitely not set in this process
+    monkeypatch.delenv("METRICS_UNDEFINED_VAR_XYZ", raising=False)
+    bad_path = "$METRICS_UNDEFINED_VAR_XYZ/metrics.db"
+    with _mock_logger() as mock_get:
+        write_metrics_row(_FULL_METRICS, _cfg(bad_path))
+        mock_get.return_value.warning.assert_called_once()
+    # The literal path must not have been created on the filesystem
+    assert not os.path.exists(bad_path)
+
+
+# ---------------------------------------------------------------------------
+# Gap 6 — column schema regression: verify all expected columns are present
+# ---------------------------------------------------------------------------
+
+_EXPECTED_COLUMNS = {
+    "id", "backup_definition", "backup_type", "archive_name",
+    "dar_backup_version", "dar_version",
+    "run_started_at", "run_finished_at", "duration_secs",
+    "dar_duration_secs", "verify_duration_secs", "par2_duration_secs",
+    "status", "dar_exit_code", "failed_phase", "error_summary",
+    "catalog_updated", "verify_passed", "restore_test_passed", "par2_passed",
+    "archive_size_bytes", "num_slices", "par2_size_bytes",
+    "files_verified", "backup_dir_free_bytes",
+    "hostname",
+    "inodes_saved", "hard_links_treated", "inodes_changed_during_backup",
+    "bytes_wasted", "inodes_metadata_only", "inodes_not_saved",
+    "inodes_failed", "inodes_excluded", "inodes_deleted",
+    "inodes_total", "ea_saved", "fsa_saved",
+}
+
+
+def test_ensure_metrics_db_all_columns_present(tmp_path):
+    """Schema must contain every expected column — catches renames or removals."""
+    from dar_backup.util import ensure_metrics_db
+    db = str(tmp_path / "metrics.db")
+    ensure_metrics_db(db)
+    with sqlite3.connect(db) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
+    assert _EXPECTED_COLUMNS == cols
+
+
+def test_ensure_metrics_db_not_null_constraints(tmp_path):
+    """backup_definition, backup_type, run_started_at and status must be NOT NULL."""
+    from dar_backup.util import ensure_metrics_db
+    db = str(tmp_path / "metrics.db")
+    ensure_metrics_db(db)
+    with sqlite3.connect(db) as conn:
+        not_null_cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(backup_runs)")
+            if row[3] == 1   # notnull flag
+        }
+    assert {"backup_definition", "backup_type", "run_started_at", "status"} <= not_null_cols
