@@ -14,12 +14,165 @@ import time
 import shutil
 import signal
 import tempfile
+from unittest.mock import patch, MagicMock
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
+from dar_backup.dar_backup import generic_backup
+from dar_backup.util import BackupError
+from dar_backup.config_settings import ConfigSettings
 
 from tests.envdata import EnvData
 import hashlib
+
+
+# ===========================================================================
+# Component-level tests — no guestmount, no root required.
+# These mock the CommandRunner to inject specific dar exit codes and verify
+# that dar-backup reacts correctly to source corruption and write failures.
+# ===========================================================================
+
+@pytest.fixture
+def _mock_config():
+    """Minimal ConfigSettings stand-in used by generic_backup."""
+    config = MagicMock(spec=ConfigSettings)
+    config.backup_root_dir = "/mock/backups"
+    config.command_timeout_secs = 60
+    config.logfile_location = "/mock/logs/backup.log"
+    return config
+
+
+@pytest.mark.component
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists", return_value=False)
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_dar_exit_5_source_unreadable_completes(
+    mock_runner, mock_exists, mock_logger, mock_popen, mock_which, mock_get_logger,
+    _mock_config,
+):
+    """
+    dar exit code 5 means some source files were unreadable during the backup
+    (filesystem error or file changed).  This is NOT a hard failure — the
+    archive is usable and the catalog must still be updated.
+    """
+    mock_runner.run.side_effect = [
+        MagicMock(returncode=5, stdout="", stderr="some files not saved"),
+        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+    ]
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    # Must NOT raise
+    result = generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", _mock_config, args)
+
+    assert result.dar_exit_code == 5
+    assert result.catalog_updated is True, "Catalog must be updated even when dar exits 5"
+    assert result.issues == [], "Exit code 5 is a warning, not an issue tuple"
+
+
+@pytest.mark.component
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists", return_value=False)
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_dar_exit_5_logs_warning_not_error(
+    mock_runner, mock_exists, mock_logger, mock_popen, mock_which, mock_get_logger,
+    _mock_config,
+):
+    """
+    dar exit code 5 must produce a WARNING log entry so operators can see
+    that some files were skipped.  It must never be silently swallowed.
+    """
+    mock_runner.run.side_effect = [
+        MagicMock(returncode=5, stdout="", stderr=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+    ]
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", _mock_config, args)
+
+    mock_logger.warning.assert_called()
+    warning_text = " ".join(str(c) for c in mock_logger.warning.call_args_list).lower()
+    assert "5" in warning_text or "filesystem" in warning_text, (
+        "WARNING message must reference exit code 5 or filesystem errors"
+    )
+
+
+@pytest.mark.component
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists", return_value=False)
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_dar_write_failure_raises_backup_error(
+    mock_runner, mock_exists, mock_logger, mock_popen, mock_which, mock_get_logger,
+    _mock_config,
+):
+    """
+    A hard write failure (dar exit code 1, e.g. ENOSPC on the backup target)
+    must raise BackupError so the calling code can mark the run as failed.
+    The catalog must NOT be updated for a failed archive.
+    """
+    mock_runner.run.side_effect = [
+        MagicMock(returncode=1, stdout="", stderr="No space left on device"),
+    ]
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    with pytest.raises(BackupError):
+        generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", _mock_config, args)
+
+    # Catalog add must never be attempted after a hard failure
+    assert mock_runner.run.call_count == 1, (
+        "runner.run must be called exactly once (dar only); catalog add must be skipped"
+    )
+
+
+@pytest.mark.component
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists", return_value=False)
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_dar_exit_1_logs_partial_backup_error(
+    mock_runner, mock_exists, mock_logger, mock_popen, mock_which, mock_get_logger,
+    _mock_config,
+):
+    """
+    When dar exits non-zero and partial slice files exist on disk, an ERROR
+    must be logged warning operators that incomplete slices must not be used
+    for restore.  This is the 'disk-full mid-archive' scenario.
+    """
+    import glob as _glob
+
+    mock_runner.run.side_effect = [
+        MagicMock(returncode=1, stdout="", stderr="write error"),
+    ]
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    # Simulate two partial slice files left on disk after the failed run
+    with patch("dar_backup.dar_backup.glob.glob", return_value=["backup_test.1.dar", "backup_test.2.dar"]):
+        with pytest.raises(BackupError):
+            generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", _mock_config, args)
+
+    mock_logger.error.assert_called()
+    error_text = " ".join(str(c) for c in mock_logger.error.call_args_list).lower()
+    assert "partial" in error_text, (
+        "ERROR log must contain 'PARTIAL' to warn operators about incomplete slices"
+    )
 
 
 

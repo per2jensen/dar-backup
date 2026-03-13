@@ -566,3 +566,101 @@ def test_requirements_uses_popen_path_failure(monkeypatch):
 
     with pytest.raises(RuntimeError):
         util.requirements("PREREQ", config_setting)
+
+
+# ---------------------------------------------------------------------------
+# extract_version
+# ---------------------------------------------------------------------------
+
+def test_extract_version_parses_full_semver():
+    """
+    A three-part semantic version embedded in dar --version output is extracted.
+    """
+    assert util.extract_version("dar 2.7.5, Copyright 2002-2024") == "2.7.5"
+
+
+def test_extract_version_parses_two_part_version():
+    """
+    A two-part version (major.minor) without a patch segment is extracted.
+    """
+    assert util.extract_version("par2 version 0.9") == "0.9"
+
+
+def test_extract_version_returns_unknown_when_no_digits():
+    """
+    Output that contains no digit sequence matching N.N returns 'unknown'.
+    """
+    assert util.extract_version("no version string here") == "unknown"
+
+
+def test_extract_version_returns_unknown_for_empty_string():
+    """
+    Empty input returns 'unknown' without raising an exception.
+    """
+    assert util.extract_version("") == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# sort_key
+# ---------------------------------------------------------------------------
+
+def test_sort_key_standard_archive_returns_correct_tuple():
+    """
+    A well-formed archive name is decomposed into (definition, date).
+    """
+    from datetime import datetime
+    def_name, date = util.sort_key("mydef_FULL_2024-01-15.1.dar")
+    assert def_name == "mydef"
+    assert date == datetime(2024, 1, 15)
+
+
+def test_sort_key_definition_name_with_underscore():
+    """
+    Definition names that themselves contain underscores are reconstructed intact.
+    E.g. 'my_def_DIFF_2024-06-01.1.dar' → def_name='my_def', date=2024-06-01.
+    """
+    from datetime import datetime
+    def_name, date = util.sort_key("my_def_DIFF_2024-06-01.1.dar")
+    assert def_name == "my_def"
+    assert date == datetime(2024, 6, 1)
+
+
+def test_sort_key_sorts_archives_by_definition_then_date():
+    """
+    Sorting a mixed list of archives with sort_key orders by definition first,
+    then chronologically within each definition.
+    """
+    from datetime import datetime
+    archives = [
+        "mydef_FULL_2024-03-01.1.dar",
+        "mydef_FULL_2024-01-01.1.dar",
+        "alpha_FULL_2024-06-01.1.dar",
+    ]
+    result = sorted(archives, key=util.sort_key)
+    assert result[0].startswith("alpha")
+    assert result[1] == "mydef_FULL_2024-01-01.1.dar"
+    assert result[2] == "mydef_FULL_2024-03-01.1.dar"
+
+
+def test_sort_key_fewer_than_three_underscore_parts_returns_fallback():
+    """
+    An archive name that has fewer than three underscore-separated parts (no
+    TYPE and DATE) falls back to (archive_name, datetime.min) without raising.
+    """
+    from datetime import datetime
+    name = "nodots_only.1.dar"
+    def_name, date = util.sort_key(name)
+    assert def_name == name
+    assert date == datetime.min
+
+
+def test_sort_key_invalid_date_string_returns_fallback():
+    """
+    An archive whose date segment cannot be parsed as YYYY-MM-DD falls back
+    to (archive_name, datetime.min) without raising.
+    """
+    from datetime import datetime
+    name = "mydef_FULL_not-a-date.1.dar"
+    def_name, date = util.sort_key(name)
+    assert def_name == name
+    assert date == datetime.min

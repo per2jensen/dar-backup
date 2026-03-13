@@ -67,6 +67,7 @@ import os
 import sys
 import json
 import argparse
+import pathlib
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -80,6 +81,72 @@ EMPTY_DASHBOARD_MESSAGE = "Not enough data to generate a dashboard.\nOne week's 
 NUM_WEEKS = 26  # Default weeks to display on the chart
 ENV_USER = "GITHUB_USER"
 ENV_REPO = "GITHUB_REPO"
+
+
+class _BlockedPathError(ValueError):
+    """Raised when a resolved path falls inside a blocked system directory."""
+
+
+# Directories that must never be read from, even when the caller has OS
+# permission to do so.  Checked against the *resolved* (canonical) path so
+# that symlink tricks like  data -> /etc  are caught as well.
+_BLOCKED_PATH_PREFIXES: tuple[pathlib.Path, ...] = tuple(
+    pathlib.Path(p) for p in (
+        "/etc",
+        "/root",
+        "/proc",
+        "/sys",
+        "/dev",
+        "/boot",
+        "/run",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+    )
+)
+
+
+def _resolve_safe_path(raw: str, label: str) -> str:
+    """
+    Resolve *raw* to a canonical absolute path and verify it is safe to open.
+
+    Prevents path traversal attacks (e.g. ``../../etc/passwd``) by:
+
+    1. Resolving all symlinks and ``..`` components to a canonical path.
+    2. Verifying the result is a regular file (not a device, pipe, or dir).
+    3. Rejecting paths that fall inside OS system directories.
+
+    Args:
+        raw: Raw path string from user input.
+        label: Human-readable label used in error messages.
+
+    Returns:
+        The resolved, canonical absolute path as a string.
+
+    Raises:
+        ValueError: If the path is not a regular file or is in a blocked directory.
+    """
+    resolved = pathlib.Path(raw).resolve()
+    if not resolved.is_file():
+        raise ValueError(
+            f"{label} path {raw!r} does not resolve to a regular file (resolved: {resolved})"
+        )
+    for blocked in _BLOCKED_PATH_PREFIXES:
+        # is_relative_to() requires Python 3.9+; use parts comparison for 3.8 compat
+        try:
+            resolved.relative_to(blocked)
+            # relative_to() succeeded → path is inside the blocked directory
+            raise _BlockedPathError(
+                f"{label} path {raw!r} resolves into a blocked system directory ({blocked})"
+            )
+        except _BlockedPathError:
+            raise
+        except ValueError:
+            # relative_to() raised because resolved is NOT under blocked — continue
+            pass
+    return str(resolved)
 
 
 def render_empty_dashboard(message: str):
@@ -223,6 +290,12 @@ def main(argv=None):
     downloads_path = args.downloads_file
     if downloads_path is None and os.path.exists(DOWNLOADS_FILE):
         downloads_path = DOWNLOADS_FILE
+    if downloads_path:
+        try:
+            downloads_path = _resolve_safe_path(downloads_path, "--downloads-file")
+        except ValueError as e:
+            print(f"⚠️  {e} — overlay skipped.", file=sys.stderr)
+            downloads_path = None
     if downloads_path:
         try:
             with open(downloads_path, "r") as f:

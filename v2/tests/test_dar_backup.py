@@ -381,7 +381,7 @@ def test_perform_backup_handles_failed_verification(env):
         f.write("DAR FILE")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=False, restore_test_passed=False, files_verified=3)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
@@ -410,7 +410,7 @@ def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
         f.write("-R /\n")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup.write_metrics_row", side_effect=Exception("simulated metrics failure")), \
@@ -441,7 +441,7 @@ def test_perform_backup_succeeds_when_metrics_db_path_is_none(env):
         f.write("-R /\n")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup.logger"):
@@ -479,7 +479,7 @@ def test_perform_backup_runs_par2_after_verify(env):
 
     with patch("dar_backup.dar_backup.verify", side_effect=fake_verify), \
          patch("dar_backup.dar_backup.generate_par2_files", side_effect=fake_par2), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.send_discord_message", return_value=True), \
          patch("dar_backup.dar_backup.logger"):
