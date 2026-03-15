@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import sys
+from collections import deque
 try:
     import termios
 except ImportError:
@@ -54,13 +55,20 @@ class CommandResult:
         stdout: Union[str, bytes],
         stderr: Union[str, bytes],
         stack: Optional[str] = None,
-        note: Optional[str] = None
+        note: Optional[str] = None,
+        stdout_tail: str = "",
+        stderr_tail: str = "",
     ):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
         self.stack = stack
         self.note = note
+        # Rolling tail of the last N lines, always populated even when stdout/stderr
+        # is truncated by capture_output_limit_bytes.  Used to parse end-of-output
+        # summaries (e.g. dar inode statistics) that would otherwise be lost.
+        self.stdout_tail = stdout_tail
+        self.stderr_tail = stderr_tail
 
 
 
@@ -209,6 +217,11 @@ class CommandRunner:
             stderr_lines = []
             truncated_stdout = {"value": False}
             truncated_stderr = {"value": False}
+            # Rolling tail buffers: always keep the last 500 lines regardless of
+            # whether the main capture limit has been reached.
+            _TAIL_LINES = 500
+            stdout_tail_deque: deque = deque(maxlen=_TAIL_LINES)
+            stderr_tail_deque: deque = deque(maxlen=_TAIL_LINES)
 
             try:
                 start_time = time.monotonic()
@@ -248,7 +261,12 @@ class CommandRunner:
                     stack=stack
                 )
 
-            def stream_output(stream, lines, level, truncated_flag):
+            def stream_output(stream, lines, level, truncated_flag, tail_deque):
+                """Read *stream* in 1 KiB chunks, log each chunk, append to *lines*
+                up to *capture_output_limit_bytes*, and unconditionally append every
+                decoded line to *tail_deque* (capped at maxlen=500).  The tail is
+                used to recover end-of-output summaries (e.g. dar inode stats) that
+                would otherwise be lost when the main capture limit is exceeded."""
                 captured_bytes = 0
                 try:
                     while True:
@@ -259,6 +277,9 @@ class CommandRunner:
                             decoded = chunk.decode('utf-8', errors='replace')
                             if log_output:
                                 self.command_logger.log(level, decoded.strip())
+                            # Always feed the tail buffer regardless of capture limit.
+                            for line in decoded.splitlines():
+                                tail_deque.append(line)
                             if capture_output:
                                 if capture_output_limit_bytes is None:
                                     lines.append(decoded)
@@ -301,14 +322,14 @@ class CommandRunner:
             if (capture_output or log_output) and process.stdout:
                 t_out = threading.Thread(
                     target=stream_output,
-                    args=(process.stdout, stdout_lines, logging.INFO, truncated_stdout)
+                    args=(process.stdout, stdout_lines, logging.INFO, truncated_stdout, stdout_tail_deque)
                 )
                 t_out.start()
                 threads.append(t_out)
             if (capture_output or log_output) and process.stderr:
                 t_err = threading.Thread(
                     target=stream_output,
-                    args=(process.stderr, stderr_lines, logging.ERROR, truncated_stderr)
+                    args=(process.stderr, stderr_lines, logging.ERROR, truncated_stderr, stderr_tail_deque)
                 )
                 t_err.start()
                 threads.append(t_err)
@@ -372,20 +393,27 @@ class CommandRunner:
                     parts.append("stderr truncated")
                 note = ", ".join(parts)
 
+            stdout_tail = "\n".join(stdout_tail_deque)
+            stderr_tail = "\n".join(stderr_tail_deque)
+
             if check and process.returncode != 0:
                 self.logger.error(f"Command failed with exit code {process.returncode}")
                 return CommandResult(
                     process.returncode,
                     stdout_combined,
                     stderr_combined,
-                    stack=traceback.format_stack()
+                    stack=traceback.format_stack(),
+                    stdout_tail=stdout_tail,
+                    stderr_tail=stderr_tail,
                 )
 
             return CommandResult(
                 process.returncode,
                 stdout_combined,
                 stderr_combined,
-                note=note
+                note=note,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
             )
         finally:
             if termios is not None and saved_tty_attrs is not None and tty_fd is not None:

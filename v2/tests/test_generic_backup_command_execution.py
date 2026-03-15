@@ -73,9 +73,9 @@ def test_generic_backup_success(
     # Setup mocked runner behavior
     mock_runner.run.side_effect = [
         # First call simulates successful `dar` run
-        MagicMock(returncode=0, stdout="stdout", stderr=""),
+        MagicMock(returncode=0, stdout="stdout", stderr="", stdout_tail="", stderr_tail=""),
         # Second call simulates successful catalog update
-        MagicMock(returncode=0, stdout="catalog added", stderr="")
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail="")
     ]
 
     args = MagicMock()
@@ -119,18 +119,15 @@ def test_generic_backup_dar_stats_captured_from_stderr(
     mock_config,
 ):
     """
-    When dar writes its inode summary to stderr only (stdout is empty), the
-    combined-stream parse must still populate dar_stats correctly.
-
-    This is the critical regression guard for the stdout+stderr fix:
-      dar_stats = parse_dar_stats((process.stdout or "") + (process.stderr or ""))
+    When dar writes its inode summary to stderr only, the rolling tail buffer
+    for stderr must still populate dar_stats correctly.
     """
     mock_exists.return_value = False
     mock_runner.run.side_effect = [
-        # dar run: summary in stderr, nothing in stdout
-        MagicMock(returncode=0, stdout="", stderr=_DAR_SUMMARY),
+        # dar run: summary in stderr tail (as captured by rolling tail buffer)
+        MagicMock(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail=_DAR_SUMMARY),
         # catalog update
-        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
     ]
 
     args = MagicMock()
@@ -169,8 +166,9 @@ def test_generic_backup_dar_stats_captured_from_stdout(
     """
     mock_exists.return_value = False
     mock_runner.run.side_effect = [
-        MagicMock(returncode=0, stdout=_DAR_SUMMARY, stderr=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+        # dar run: summary in stdout tail (as captured by rolling tail buffer)
+        MagicMock(returncode=0, stdout="", stderr="", stdout_tail=_DAR_SUMMARY, stderr_tail=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
     ]
 
     args = MagicMock()
@@ -205,8 +203,8 @@ def test_generic_backup_dar_stats_all_none_when_no_output(
     """
     mock_exists.return_value = False
     mock_runner.run.side_effect = [
-        MagicMock(returncode=0, stdout="", stderr=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+        MagicMock(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
     ]
 
     args = MagicMock()

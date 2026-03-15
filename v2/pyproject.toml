@@ -11,7 +11,8 @@ include = [
   "verify-signature.sh",
   "doc/**",
   "src/dar_backup/README.md",
-  "src/dar_backup/Changelog.md"
+  "src/dar_backup/Changelog.md",
+  "src/dar_backup/data/dashboard.html"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -39,6 +40,7 @@ manager = "dar_backup.manager:main"
 demo = "dar_backup.demo:main"
 installer = "dar_backup.installer:main"
 dar-backup-systemd = "dar_backup.dar_backup_systemd:main"
+dar-backup-dashboard = "dar_backup.dashboard:main"
 
 
 [project]
@@ -75,6 +77,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dashboard = [
+  "datasette>=0.64.0",
+]
+
 dev = [
   "pytest>=8.4.0",
   "pytest-cov>=6.1.1",

@@ -59,8 +59,8 @@ def test_generic_backup_dar_exit_5_source_unreadable_completes(
     archive is usable and the catalog must still be updated.
     """
     mock_runner.run.side_effect = [
-        MagicMock(returncode=5, stdout="", stderr="some files not saved"),
-        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+        MagicMock(returncode=5, stdout="", stderr="some files not saved", stdout_tail="", stderr_tail=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
     ]
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -90,8 +90,8 @@ def test_generic_backup_dar_exit_5_logs_warning_not_error(
     that some files were skipped.  It must never be silently swallowed.
     """
     mock_runner.run.side_effect = [
-        MagicMock(returncode=5, stdout="", stderr=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr=""),
+        MagicMock(returncode=5, stdout="", stderr="", stdout_tail="", stderr_tail=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
     ]
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -123,7 +123,7 @@ def test_generic_backup_dar_write_failure_raises_backup_error(
     The catalog must NOT be updated for a failed archive.
     """
     mock_runner.run.side_effect = [
-        MagicMock(returncode=1, stdout="", stderr="No space left on device"),
+        MagicMock(returncode=1, stdout="", stderr="No space left on device", stdout_tail="", stderr_tail=""),
     ]
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -157,7 +157,7 @@ def test_generic_backup_dar_exit_1_logs_partial_backup_error(
     import glob as _glob
 
     mock_runner.run.side_effect = [
-        MagicMock(returncode=1, stdout="", stderr="write error"),
+        MagicMock(returncode=1, stdout="", stderr="write error", stdout_tail="", stderr_tail=""),
     ]
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"

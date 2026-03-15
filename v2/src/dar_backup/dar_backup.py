@@ -145,9 +145,11 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
             raise
 
         dar_exit_code = process.returncode
-        # Parse inode summary regardless of exit code; missing fields → None.
-        # dar may write the summary to stdout or stderr depending on version/mode.
-        dar_stats = parse_dar_stats((process.stdout or "") + (process.stderr or ""))
+        # Parse inode summary from the tail buffers, which always hold the last
+        # 500 lines regardless of the main capture limit.  The summary appears at
+        # the very end of dar's output, so the tail is reliable even for large
+        # backups where process.stdout may have been truncated.
+        dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")

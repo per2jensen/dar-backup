@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dar-backup metrics</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:        #0f1117;
+    --bg2:       #181c27;
+    --bg3:       #1e2333;
+    --border:    #2a3045;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --faint:     #334155;
+    --success:   #22c55e;
+    --warning:   #f59e0b;
+    --failure:   #ef4444;
+    --info:      #38bdf8;
+    --accent:    #6366f1;
+    --font:      'IBM Plex Sans', sans-serif;
+    --mono:      'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 1.5rem 2rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+  }
+
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    font-family: var(--mono);
+  }
+
+  header h1 span { color: var(--accent); }
+
+  #last-updated {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+
+  #config-bar {
+    padding: 0.6rem 2rem;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  #config-bar label { font-size: 12px; color: var(--muted); }
+
+  #config-bar input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 320px;
+  }
+
+  #config-bar input:focus { outline: 1px solid var(--accent); }
+
+  #refresh-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--font);
+    font-weight: 500;
+  }
+
+  #refresh-btn:hover { opacity: 0.85; }
+
+  main { padding: 1.5rem 2rem; max-width: 1400px; }
+
+  /* Summary cards */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .summary-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+  }
+
+  .summary-card .label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  .summary-card .value {
+    font-size: 26px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+
+  .summary-card .value.ok   { color: var(--success); }
+  .summary-card .value.warn { color: var(--warning); }
+  .summary-card .value.fail { color: var(--failure); }
+  .summary-card .value.neutral { color: var(--text); }
+  .summary-card .value.accent { color: var(--accent); }
+
+  .summary-card .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: var(--mono);
+  }
+
+  /* Definition sections */
+  .def-section {
+    margin-bottom: 2rem;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .def-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .def-name {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--info);
+  }
+
+  .def-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+    font-family: var(--mono);
+  }
+
+  .type-badge {
+    font-size: 10px;
+    font-family: var(--mono);
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+
+  .type-FULL { background: #1e3a5f; color: #7dd3fc; }
+  .type-DIFF { background: #14532d; color: #86efac; }
+  .type-INCR { background: #451a03; color: #fcd34d; }
+
+  /* Run table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--faint);
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .ts {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .duration {
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .size {
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Status pill */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--mono);
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .status-pill.SUCCESS { background: #14532d; color: #86efac; }
+  .status-pill.WARNING { background: #451a03; color: #fcd34d; }
+  .status-pill.FAILURE { background: #450a0a; color: #fca5a5; }
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot.SUCCESS { background: var(--success); }
+  .dot.WARNING { background: var(--warning); }
+  .dot.FAILURE { background: var(--failure); }
+
+  /* Inode cell */
+  .inode-cell { white-space: nowrap; }
+
+  .inode-saved {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .inode-failed {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .inode-failed.none   { color: var(--muted); }
+  .inode-failed.some   { color: var(--warning); }
+  .inode-failed.many   { color: var(--failure); }
+
+  .inode-sep { color: var(--faint); margin: 0 3px; }
+
+  /* Check icons */
+  .chk { font-size: 13px; }
+  .chk.pass  { color: var(--success); }
+  .chk.fail  { color: var(--failure); }
+  .chk.skip  { color: var(--faint); }
+
+  /* Error summary */
+  .error-summary {
+    font-size: 11px;
+    color: var(--failure);
+    font-family: var(--mono);
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Phase indicators */
+  .phases {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .phase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Loading / error states */
+  #loading, #error-msg {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  #error-msg { color: var(--failure); }
+
+  .spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 10px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Tooltips */
+  [title] { cursor: help; }
+
+  /* Failed inode highlight row */
+  tr.has-failures td { border-left: 2px solid var(--warning); }
+  tr.has-failures td:first-child { padding-left: 10px; }
+
+  /* Archive name */
+  .archive-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>dar-backup</span> / metrics dashboard</h1>
+  <span id="last-updated"></span>
+</header>
+
+<div id="config-bar">
+  <label for="ds-url">Datasette URL</label>
+  <input id="ds-url" type="text" value="http://localhost:8001" placeholder="http://localhost:8001" />
+  <input id="ds-db" type="text" value="dar-backup-metrics" placeholder="database name" style="width:180px" />
+  <button id="refresh-btn" onclick="loadAll()">&#8635; Refresh</button>
+</div>
+
+<main>
+  <div id="loading" style="display:none">
+    <div class="spinner"></div><br>Loading metrics…
+  </div>
+  <div id="error-msg" style="display:none"></div>
+  <div id="content" style="display:none">
+    <div class="summary-grid" id="summary-cards"></div>
+    <div id="definitions"></div>
+  </div>
+</main>
+
+<script>
+function dsUrl() {
+  const base = document.getElementById('ds-url').value.replace(/\/$/, '');
+  const db   = document.getElementById('ds-db').value.trim();
+  return { base, db };
+}
+
+async function query(sql) {
+  const { base, db } = dsUrl();
+  const url = `${base}/${encodeURIComponent(db)}.json?sql=${encodeURIComponent(sql)}&_shape=objects`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status} from Datasette`);
+  const j = await r.json();
+  return j.rows || j;
+}
+
+function fmtBytes(b) {
+  if (b == null) return '—';
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+  if (b >= 1e3) return (b / 1e3).toFixed(0) + ' KB';
+  return b + ' B';
+}
+
+function fmtDuration(secs) {
+  if (secs == null) return '—';
+  secs = Math.round(secs);
+  if (secs < 60) return secs + 's';
+  const m = Math.floor(secs / 60), s = secs % 60;
+  if (m < 60) return `${m}m ${s.toString().padStart(2,'0')}s`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return `${h}h ${rm}m`;
+}
+
+function fmtTs(ts) {
+  if (!ts) return '—';
+  return ts.replace('T', ' ').substring(0, 16);
+}
+
+function chk(val, naVal) {
+  if (val == null) return `<span class="chk skip" title="n/a">${naVal || '—'}</span>`;
+  return val
+    ? `<span class="chk pass" title="passed">✓</span>`
+    : `<span class="chk fail" title="failed">✗</span>`;
+}
+
+function inodeCell(saved, failed) {
+  const s = saved ?? '—';
+  const f = failed ?? 0;
+  const cls = f === 0 ? 'none' : f <= 5 ? 'some' : 'many';
+  const failStr = f === 0
+    ? `<span class="inode-failed none">0 failed</span>`
+    : `<span class="inode-failed ${cls}" title="${f} inode(s) failed to be saved">${f} failed</span>`;
+  return `<div class="inode-cell">
+    <span class="inode-saved">${s.toLocaleString()} saved</span>
+    <span class="inode-sep">/</span>
+    ${failStr}
+  </div>`;
+}
+
+function statusPill(status) {
+  return `<span class="status-pill ${status}"><span class="dot ${status}"></span>${status}</span>`;
+}
+
+function typeBadge(type) {
+  return `<span class="type-badge type-${type}">${type}</span>`;
+}
+
+function buildSummaryCards(rows) {
+  const total = rows.length;
+  const successCount = rows.filter(r => r.status === 'SUCCESS').length;
+  const warnCount    = rows.filter(r => r.status === 'WARNING').length;
+  const failCount    = rows.filter(r => r.status === 'FAILURE').length;
+  const rate = total > 0 ? Math.round(successCount * 100 / total) : 0;
+  const rateClass = rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'fail';
+  const totalFailed = rows.reduce((acc, r) => acc + (r.inodes_failed || 0), 0);
+  const failedClass = totalFailed === 0 ? 'ok' : totalFailed <= 20 ? 'warn' : 'fail';
+
+  const defs = [...new Set(rows.map(r => r.backup_definition))].length;
+
+  const last = rows[0];
+  const lastStatus = last ? last.status : '—';
+  const lastClass = lastStatus === 'SUCCESS' ? 'ok' : lastStatus === 'WARNING' ? 'warn' : 'fail';
+
+  return `
+    <div class="summary-card">
+      <div class="label">Total runs</div>
+      <div class="value neutral">${total}</div>
+      <div class="sub">${successCount} success · ${warnCount} warn · ${failCount} fail</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Success rate (all)</div>
+      <div class="value ${rateClass}">${rate}%</div>
+      <div class="sub">last ${total} runs</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Backup definitions</div>
+      <div class="value accent">${defs}</div>
+      <div class="sub">&nbsp;</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Total failed inodes</div>
+      <div class="value ${failedClass}">${totalFailed.toLocaleString()}</div>
+      <div class="sub">across all runs shown</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Last run status</div>
+      <div class="value ${lastClass}">${lastStatus}</div>
+      <div class="sub">${last ? fmtTs(last.run_started_at) : '—'}</div>
+    </div>
+  `;
+}
+
+function buildRunRow(r) {
+  const hasFail = r.inodes_failed > 0;
+  const rowClass = hasFail ? 'has-failures' : '';
+  const errorCell = r.error_summary
+    ? `<div class="error-summary" title="${r.error_summary}">${r.error_summary}</div>`
+    : `<span style="color:var(--faint);font-size:11px;font-family:var(--mono)">—</span>`;
+
+  return `<tr class="${rowClass}">
+    <td class="ts">${fmtTs(r.run_started_at)}</td>
+    <td>${typeBadge(r.backup_type)}</td>
+    <td>${statusPill(r.status)}</td>
+    <td class="duration" title="dar: ${fmtDuration(r.dar_duration_secs)} · verify: ${fmtDuration(r.verify_duration_secs)} · par2: ${fmtDuration(r.par2_duration_secs)}">${fmtDuration(r.duration_secs)}</td>
+    <td class="size">${fmtBytes(r.archive_size_bytes)}</td>
+    <td>${inodeCell(r.inodes_saved, r.inodes_failed)}</td>
+    <td title="inodes not saved (unchanged)"style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_not_saved != null ? r.inodes_not_saved.toLocaleString() : '—'}</td>
+    <td title="inodes excluded by filters" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_excluded != null ? r.inodes_excluded.toLocaleString() : '—'}</td>
+    <td class="phases">
+      <div class="phase">${chk(r.verify_passed)}<span>verify</span></div>
+      <div class="phase">${chk(r.restore_test_passed)}<span>restore</span></div>
+      <div class="phase">${chk(r.par2_passed)}<span>par2</span></div>
+    </td>
+    <td>${errorCell}</td>
+  </tr>`;
+}
+
+function buildDefSection(defName, runs) {
+  const lastRun = runs[0];
+  const anyFailed = runs.some(r => r.inodes_failed > 0);
+  const totalFailedInDef = runs.reduce((a, r) => a + (r.inodes_failed || 0), 0);
+
+  const failedBadge = anyFailed
+    ? `<span style="font-size:11px;color:var(--warning);font-family:var(--mono);margin-left:4px" title="failed inodes in last ${runs.length} runs">⚠ ${totalFailedInDef} failed inodes</span>`
+    : '';
+
+  const rows = runs.map(buildRunRow).join('');
+
+  return `
+    <div class="def-section">
+      <div class="def-header">
+        <span class="def-name">${defName}</span>
+        ${lastRun ? typeBadge(lastRun.backup_type) : ''}
+        ${failedBadge}
+        <span class="def-meta">last ${runs.length} run${runs.length !== 1 ? 's' : ''}</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Started</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th title="Total · hover for breakdown">Duration</th>
+          <th>Archive size</th>
+          <th>Inodes saved / failed</th>
+          <th title="Files unchanged since last backup">Not saved</th>
+          <th title="Excluded by filters">Excluded</th>
+          <th>Phases</th>
+          <th>Error</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function loadAll() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('content').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+
+  try {
+    const sql = `
+      SELECT b.*
+      FROM backup_runs b
+      WHERE (
+        SELECT COUNT(*) FROM backup_runs b2
+        WHERE b2.backup_definition = b.backup_definition
+          AND b2.run_started_at > b.run_started_at
+      ) < 3
+      ORDER BY b.backup_definition, b.run_started_at DESC
+    `;
+
+    const rows = await query(sql);
+
+    const grouped = {};
+    for (const r of rows) {
+      if (!grouped[r.backup_definition]) grouped[r.backup_definition] = [];
+      grouped[r.backup_definition].push(r);
+    }
+
+    document.getElementById('summary-cards').innerHTML = buildSummaryCards(rows);
+
+    const defHtml = Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, runs]) => buildDefSection(name, runs))
+      .join('');
+
+    document.getElementById('definitions').innerHTML = defHtml;
+
+    document.getElementById('last-updated').textContent =
+      'updated ' + new Date().toLocaleTimeString();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+  } catch (err) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+    document.getElementById('error-msg').innerHTML =
+      `<strong>Could not load data</strong><br>${err.message}<br><br>` +
+      `Make sure Datasette is running and CORS is enabled:<br>` +
+      `<code>datasette dar-backup-metrics.db --cors</code>`;
+  }
+}
+
+// Auto-populate Datasette base URL from query param if launched by dar-backup-dashboard
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const ds = params.get('datasette');
+  if (ds) document.getElementById('ds-url').value = ds;
+})();
+
+loadAll();
+</script>
+</body>
+</html>

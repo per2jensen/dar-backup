@@ -1,11 +1,15 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
-## v2-1.1.2 - not released
+## v2-1.1.2 - 2026-03-15
 
 ### Added
 
 - **SQLite metrics database** (`dar-backup-metrics.db`): every backup run now writes a structured row to a SQLite database, capturing identity (definition name, backup type, archive name, version) and capturing `dar's` status messages after a backup.
+- Metrics documented, `datasette` suggested as an easy to use metrics db browser.
+- **Dashboard** command (`dar-backup-dashboard`) added that fires up `datasette` and then opens a html file in the standard browser
+  - [Example dashboard](https://github.com/per2jensen/dar-backup/blob/main/v2/doc/dar-backup-dashboard.png)
+  - [Documentation](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#dashboard)
 
 ### Fixed
 

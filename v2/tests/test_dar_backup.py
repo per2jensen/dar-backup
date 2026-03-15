@@ -568,7 +568,7 @@ def test_list_contents_with_selection_parses_and_extends_command(env, capsys):
     backup_dir = env.backup_dir
     selection = "--selections somefile.txt"
 
-    mock_process = SimpleNamespace(stdout="[Saved] somefile.txt", stderr="", returncode=0)
+    mock_process = SimpleNamespace(stdout="[Saved] somefile.txt", stderr="", returncode=0, stdout_tail="", stderr_tail="")
 
     mock_runner = MagicMock()
     mock_runner.run.return_value = mock_process
@@ -584,7 +584,7 @@ def test_list_contents_handles_nonzero_returncode(env):
     backup_name = "fail_backup"
     backup_dir = env.backup_dir
 
-    mock_process = SimpleNamespace(stdout="", stderr="err", returncode=1)
+    mock_process = SimpleNamespace(stdout="", stderr="err", returncode=1, stdout_tail="", stderr_tail="")
     mock_runner = MagicMock()
     mock_runner.run.return_value = mock_process
 
@@ -715,7 +715,7 @@ def test_generic_backup_warns_on_returncode_5(env):
     )
 
     mock_runner = MagicMock()
-    mock_runner.run.return_value = SimpleNamespace(returncode=5, stdout="partial backup", stderr="")
+    mock_runner.run.return_value = SimpleNamespace(returncode=5, stdout="partial backup", stderr="", stdout_tail="", stderr_tail="")
     
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.get_logger"), \
@@ -746,8 +746,8 @@ def test_catalog_add_failure_handled(env):
     # simulate backup succeeded (0) but catalog failed (1)
     mock_runner = MagicMock()
     mock_runner.run.side_effect = [
-        SimpleNamespace(returncode=0, stdout="ok", stderr=""),
-        SimpleNamespace(returncode=1, stdout="", stderr="manager failed")
+        SimpleNamespace(returncode=0, stdout="ok", stderr="", stdout_tail="", stderr_tail=""),
+        SimpleNamespace(returncode=1, stdout="", stderr="manager failed", stdout_tail="", stderr_tail="")
     ]
 
     with patch("dar_backup.dar_backup.runner", mock_runner), \
@@ -1151,7 +1151,7 @@ def test_restore_backup_selection_and_darrc(tmp_path, selection, expect_tokens):
 
     with patch.object(db, "runner") as mock_runner, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail="")
         db.restore_backup(backup_name, config, str(restore_dir), darrc, selection)
 
         called_cmd = mock_runner.run.call_args[0][0]
@@ -1224,7 +1224,7 @@ def test_get_backed_up_files_success_parses_xml(tmp_path):
 
     with patch.object(db, "runner") as mock_runner, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout=xml, stderr="")
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout=xml, stderr="", stdout_tail="", stderr_tail="")
         files = db.get_backed_up_files(backup_name, backup_dir)
 
     # Expect normalized paths with sizes as strings
@@ -1252,7 +1252,7 @@ def test_generate_par2_files_success_invokes_par2(tmp_path):
 
     with patch.object(db, "runner") as mock_runner, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail="")
 
         db.generate_par2_files(backup_file, cfg, args)
 
