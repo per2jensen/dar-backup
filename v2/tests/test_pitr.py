@@ -445,6 +445,7 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("os.path.exists", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None):
@@ -489,20 +490,18 @@ def test_restore_with_dar_directory_logs_chain_details(mock_config, mock_runner,
         "1 /tmp/backups example_FULL_2026-01-29\n"
         "2 /tmp/backups example_DIFF_2026-01-29\n"
     )
-    file_output = "1 Thu Jan 29 15:00:34 2026  saved\n"
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, file_output, "", note=None),
-        CommandResult(0, "ok", "", note=None),
-        CommandResult(0, "ok", "", note=None),
+        CommandResult(0, "ok", "", note=None),           # dar -x FULL
+        CommandResult(0, "ok", "", note=None),           # dar -x DIFF
     ]
     mock_config.command_timeout_secs = 30
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("os.path.exists", return_value=True):
 
         when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
@@ -526,7 +525,9 @@ def test_pitr_report_directory_missing_slice_fails(mock_config, mock_runner, moc
         "1 /tmp/backups example_FULL_2026-01-29\n"
         "2 /tmp/backups example_DIFF_2026-01-29\n"
     )
-    mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),   # --list
+    ]
 
     def _exists(path):
         if path.endswith("example_DIFF_2026-01-29.1.dar"):
@@ -536,7 +537,7 @@ def test_pitr_report_directory_missing_slice_fails(mock_config, mock_runner, moc
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("os.path.exists", side_effect=_exists):
 
         ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-29 16:00:00", mock_config)
@@ -596,6 +597,7 @@ def test_pitr_report_file_missing_archive_map_entry(mock_config, mock_runner, mo
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)):
 
         ret = _pitr_chain_report("def", ["tmp/file.txt"], "2026-01-29 16:00:00", mock_config)
@@ -628,6 +630,7 @@ def test_pitr_report_file_missing_slice(mock_config, mock_runner, mock_logger):
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)), \
          patch("os.path.exists", side_effect=_exists):
 
@@ -646,12 +649,14 @@ def test_pitr_report_directory_no_full_archive(mock_config, mock_runner, mock_lo
         "------------+--------------+---------------\n"
         "2 /tmp/backups example_DIFF_2026-01-29\n"
     )
-    mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),   # --list
+    ]
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)):
 
         ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-29 16:00:00", mock_config)
@@ -668,12 +673,14 @@ def test_pitr_report_directory_missing_archive_map_entry(mock_config, mock_runne
         "------------+--------------+---------------\n"
         "1 /tmp/backups example_FULL_2026-01-29\n"
     )
-    mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),   # --list
+    ]
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dar_backup.manager._select_archive_chain", return_value=[2]), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)):
 
@@ -685,26 +692,32 @@ def test_pitr_report_directory_missing_archive_map_entry(mock_config, mock_runne
             "catalog #2 missing from archive map",
         )
 
-def test_pitr_report_directory_heuristic_triggers_chain(mock_config, mock_runner, mock_logger):
+def test_pitr_report_directory_catalog_based_chain(mock_config, mock_runner, mock_logger):
+    """When _detect_directory returns True, _pitr_chain_report uses chain restore."""
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
         "1 /tmp/backups example_FULL_2026-01-29\n"
     )
-    mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),   # --list
+    ]
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=False), \
-         patch("dar_backup.manager._select_archive_chain", return_value=[1]) as mock_chain, \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)), \
          patch("os.path.exists", return_value=True):
 
         ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-29 16:00:00", mock_config)
 
         assert ret == 0
-        mock_chain.assert_called_once()
+        info_calls = mock_logger.info.call_args_list
+        assert any(
+            "PITR chain report for" in str(c) and "tmp/dir" in str(c)
+            for c in info_calls
+        )
 
 
 def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner, mock_logger):
@@ -714,10 +727,8 @@ def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner
         "1 /tmp/backups example_FULL_2026-01-29\n"
         "2 /tmp/backups example_DIFF_2026-01-29\n"
     )
-    file_output = "1 Thu Jan 29 15:00:34 2026  saved\n"
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, file_output, "", note=None),
     ]
     mock_config.command_timeout_secs = 30
 
@@ -729,8 +740,8 @@ def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dar_backup.manager.send_discord_message"), \
          patch("os.path.exists", side_effect=_exists):
 
@@ -753,15 +764,14 @@ def test_restore_with_dar_directory_no_full_archive(mock_config, mock_runner, mo
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
     ]
     mock_config.command_timeout_secs = 30
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dar_backup.manager.send_discord_message"):
 
         ret = _restore_with_dar("def", ["tmp/dir"], datetime.datetime(2026, 1, 29, 16, 0, 0), "/tmp/restore", mock_config)
@@ -780,15 +790,14 @@ def test_restore_with_dar_directory_missing_archive_map_entry(mock_config, mock_
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
     ]
     mock_config.command_timeout_secs = 30
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=True), \
          patch("dar_backup.manager._select_archive_chain", return_value=[2]), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
          patch("os.path.exists", return_value=True):
@@ -802,7 +811,8 @@ def test_restore_with_dar_directory_missing_archive_map_entry(mock_config, mock_
             "catalog #2 missing from archive map",
         )
 
-def test_restore_with_dar_directory_heuristic_triggers_chain(mock_config, mock_runner, mock_logger):
+def test_restore_with_dar_directory_detected_by_catalog(mock_config, mock_runner, mock_logger):
+    """When _detect_directory returns True, path is treated as directory."""
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
@@ -810,28 +820,32 @@ def test_restore_with_dar_directory_heuristic_triggers_chain(mock_config, mock_r
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
-        CommandResult(0, "ok", "", note=None),
+        CommandResult(0, "ok", "", note=None),           # dar -x FULL
     ]
     mock_config.command_timeout_secs = 30
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=False), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
-         patch("dar_backup.manager._select_archive_chain", return_value=[1]) as mock_chain, \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("os.path.exists", return_value=True):
 
         ret = _restore_with_dar("def", ["tmp/dir"], datetime.datetime(2026, 1, 29, 16, 0, 0), "/tmp/restore", mock_config)
 
         assert ret == 0
-        mock_chain.assert_called_once()
+        info_calls = mock_logger.info.call_args_list
+        assert any(
+            "PITR restore directory" in str(c) and "tmp/dir" in str(c)
+            for c in info_calls
+        )
 
 
-def test_restore_with_dar_directory_no_extension_nonexistent_local_path_uses_chain(
+def test_restore_with_dar_directory_no_file_versions_uses_chain(
     mock_config, mock_runner, mock_logger
 ):
+    """A path like 'Automatic Upload/Per - iPhone/2026/01' with no file versions
+    in the catalog is correctly treated as a directory and restored via chain."""
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
@@ -841,24 +855,18 @@ def test_restore_with_dar_directory_no_extension_nonexistent_local_path_uses_cha
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
-        CommandResult(0, "1 Thu Jan 29 15:00:34 2026  saved\n", "", note=None),
-        CommandResult(0, "ok", "", note=None),
-        CommandResult(0, "ok", "", note=None),
-        CommandResult(0, "ok", "", note=None),
+        CommandResult(0, "ok", "", note=None),           # dar -x FULL
+        CommandResult(0, "ok", "", note=None),           # dar -x DIFF
+        CommandResult(0, "ok", "", note=None),           # dar -x INCR
     ]
     mock_config.command_timeout_secs = 30
     restore_path = "Automatic Upload/Per - iPhone/2026/01"
 
-    def _file_versions_called(*_args, **_kwargs):
-        raise AssertionError("File-version parsing should not be used for directory paths.")
-
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
-         patch("dar_backup.manager._is_directory_path", return_value=False), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
-         patch("dar_backup.manager._select_archive_chain", return_value=[1, 2, 3]) as mock_chain, \
-         patch("dar_backup.manager._parse_file_versions", side_effect=_file_versions_called), \
+         patch("dar_backup.manager._detect_directory", return_value=True), \
          patch("dar_backup.manager.send_discord_message"), \
          patch("os.path.exists", return_value=True):
 
@@ -871,7 +879,11 @@ def test_restore_with_dar_directory_no_extension_nonexistent_local_path_uses_cha
         )
 
         assert ret == 0
-        mock_chain.assert_called_once()
+        info_calls = mock_logger.info.call_args_list
+        assert any(
+            "PITR restore directory" in str(c) and restore_path in str(c)
+            for c in info_calls
+        )
 
 
 def test_restore_at_rejects_protected_target(mock_config, mock_runner, mock_logger):
@@ -1136,6 +1148,7 @@ def test_restore_with_dar_file_missing_archive_map_entry(mock_config, mock_runne
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
          patch("os.path.exists", return_value=True):
@@ -1170,6 +1183,7 @@ def test_restore_with_dar_file_missing_slice(mock_config, mock_runner, mock_logg
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
          patch("os.path.exists", side_effect=_exists):
@@ -1200,6 +1214,7 @@ def test_restore_with_dar_file_restore_failure(mock_config, mock_runner, mock_lo
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("os.path.exists", return_value=True), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None):

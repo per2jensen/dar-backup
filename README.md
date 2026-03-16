@@ -109,10 +109,10 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
   size-capped; `clean-log` strips verbose `dar` output when not needed
 - **No lock-in** — standard `dar` archives, standard PAR2 files; restore with just the `dar`
   binary, no `dar-backup` installation required on the restore machine
-- **600+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
+- **750+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
   restore chains, PITR verification, and edge cases; CI on every commit
 
-✅ The author has used `dar-backup` for over 4 years and has been saved by it multiple times.
+✅ The author has used `dar-backup` ~5 years and has been saved by it multiple times.
 
 > `dar-backup` stands on the shoulders of two projects that do the real work.
 > Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.

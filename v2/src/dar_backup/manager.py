@@ -827,29 +827,98 @@ def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt
 
 
 def _is_directory_path(path: str) -> bool:
+    """
+    Check if path refers to an existing directory on the filesystem.
+
+    Args:
+        path: Relative path (rooted at /).
+
+    Returns:
+        True if the path exists as a directory on the filesystem.
+    """
     return os.path.isdir(os.path.join(os.sep, path))
 
 
-def _looks_like_directory(path: str) -> bool:
-    if not path:
+def _is_directory_in_archive(
+    path: str,
+    archive_path: str,
+    runner: "CommandRunner",
+    timeout: int,
+) -> bool:
+    """
+    Check if path is a directory by inspecting dar -l output for the archive.
+
+    dar -l output includes permission strings like ``drwxr-xr-x`` for
+    directories or ``-rw-r--r--`` for regular files.  The leading ``d``
+    distinguishes directories.
+
+    Args:
+        path: The relative path to check.
+        archive_path: Full path to the dar archive (without slice suffix).
+        runner: CommandRunner instance.
+        timeout: Command timeout in seconds.
+
+    Returns:
+        True if the path appears as a directory in the archive.
+    """
+    result = runner.run(
+        ['dar', '-l', archive_path, '-g', path, '--noconf', '-Q'],
+        timeout=timeout,
+    )
+    if result.returncode != 0:
         return False
-    normalized = path.rstrip(os.sep)
-    if not normalized:
-        return True
-    if path.endswith(os.sep):
-        return True
-    base = os.path.basename(normalized)
-    _, ext = os.path.splitext(base)
-    return ext == ""
+    # Look for permission string starting with 'd' on a line ending with the path.
+    # dar -l format example:
+    #   [Saved][-] [---][ 0%][ ] drwxr-xr-x user group 4 kio ... path/name
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.search(r'\bd[rwxXsStT-]{9}\b', stripped) and stripped.rstrip().endswith(path):
+            return True
+    return False
 
 
-def _treat_as_directory(path: str) -> bool:
+def _detect_directory(
+    path: str,
+    archive_map: Dict[int, str],
+    archive_info: List[Tuple[int, datetime, str]],
+    runner: "CommandRunner",
+    timeout: int,
+) -> bool:
+    """
+    Determine whether *path* is a directory using filesystem check first,
+    then falling back to dar catalog inspection.
+
+    Args:
+        path: Relative path to check.
+        archive_map: Mapping of catalog numbers to archive paths.
+        archive_info: Parsed archive info (catalog_no, datetime, type).
+        runner: CommandRunner instance.
+        timeout: Command timeout in seconds.
+
+    Returns:
+        True if the path is a directory.
+    """
+    # Fast path: check filesystem
     if _is_directory_path(path):
         return True
-    if _looks_like_directory(path):
-        logger.debug("Treating restore path '%s' as directory (heuristic).", path)
-        return True
-    return False
+
+    # Fallback: inspect the FULL archive via dar -l
+    full_archives = [
+        (no, dt) for no, dt, atype in archive_info if atype == "FULL"
+    ]
+    if not full_archives:
+        return False
+    # Use the most recent FULL archive
+    full_archives.sort(key=lambda item: item[1], reverse=True)
+    full_no = full_archives[0][0]
+    full_path = archive_map.get(full_no)
+    if not full_path:
+        return False
+    return _is_directory_in_archive(path, full_path, runner, timeout)
+
+
 
 def _format_chain_item(
     catalog_no: int,
@@ -926,7 +995,9 @@ def _pitr_chain_report(
     successes = 0
 
     for path in paths:
-        if _treat_as_directory(path):
+        is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
+        if is_directory:
+            logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
             chain = _select_archive_chain(archive_info, parsed_date)
             if not chain:
                 logger.error(f"No FULL archive found at or before {parsed_date} for '{path}'")
@@ -1044,8 +1115,9 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     missing_archives = set()
 
     for path in paths:
-        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-        if _treat_as_directory(path):
+        is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
+        if is_directory:
+            logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
             chain = _select_archive_chain(archive_info, when_dt)
             if not chain:
                 logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
@@ -1097,6 +1169,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 failures += 1
             continue
 
+        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
         versions = _parse_file_versions(file_result.stdout)
         candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
         candidates.sort(key=lambda item: item[1], reverse=True)

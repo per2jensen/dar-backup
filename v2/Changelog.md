@@ -1,6 +1,13 @@
 <!-- markdownlint-disable MD024 -->
 # dar-backup Changelog
 
+## v2-1.1.3 - not released
+
+### Changed
+
+- Checks for edge cases in PITR expanded
+  - Logic determining if an inode is file or dir much more robust
+
 ## v2-1.1.2 - 2026-03-15
 
 ### Added
