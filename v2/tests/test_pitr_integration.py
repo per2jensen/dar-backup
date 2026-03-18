@@ -1214,3 +1214,197 @@ def test_pitr_rebuild_catalog_after_loss(setup_environment, env):
     restored_file = os.path.join(restore_dir, data_file.lstrip("/"))
     with open(restored_file, "r") as f:
         assert f.read() == "Version 1 content"
+
+
+def test_pitr_full_diff_incr_add_delete_mutate(setup_environment, env):
+    """
+    Prove dar_manager -r -w correctly handles FULL + DIFF + 3 INCRs
+    with file additions, deletions, and mutations at each stage.
+
+    Uses dar directly (with timestamp-based archive names) to avoid
+    same-day naming collisions from dar-backup's date-only naming.
+
+    Timeline:
+        T0: Create 5 files (f1..f5) -> FULL backup
+        T1: Mutate f1, delete f2, add f6 -> DIFF backup (ref: FULL)
+        T2: Mutate f3, delete f4, add f7 -> INCR_1 backup (ref: DIFF)
+        T3: Mutate f5, add f8 -> INCR_2 backup (ref: DIFF)
+        T4: Delete f6, mutate f7, add f9 -> INCR_3 backup (ref: DIFF)
+
+    Then restore at each timestamp and verify exact file contents.
+    This proves dar_manager handles the full INCR chain correctly.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    # Clean default test data
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    seq = [0]
+
+    def create_archive(backup_type: str, base_archive: str = None) -> str:
+        """Create a dar archive and register it in the catalog database."""
+        seq[0] += 1
+        archive_time = clock.tick(PITR_STEP_SECONDS)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
+        archive_base = os.path.join(
+            env.backup_dir, f"example_{backup_type}_{timestamp}_{seq[0]:02d}"
+        )
+        cmd = [
+            "dar", "-c", archive_base,
+            "-N",
+            "-B", env.dar_rc,
+            "-B", backup_def_path,
+            "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        result = runner.run(cmd, timeout=300)
+        if result.returncode != 0:
+            raise RuntimeError(f"dar backup failed: {result.stderr}")
+        add_cmd = [
+            "manager",
+            "--add-specific-archive", archive_base,
+            "--config-file", env.config_file,
+            "--log-stdout",
+        ]
+        add_result = runner.run(add_cmd, timeout=300)
+        if add_result.returncode != 0:
+            raise RuntimeError(f"manager add-specific-archive failed: {add_result.stderr}")
+        return archive_base
+
+    # Helper: write file and touch with clock
+    def write_file(name: str, content: str) -> str:
+        """Write a file and return its path."""
+        fpath = os.path.join(env.data_dir, name)
+        with open(fpath, "w") as f:
+            f.write(content)
+        clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+        return fpath
+
+    def delete_file(name: str) -> None:
+        """Delete a file from the data directory."""
+        fpath = os.path.join(env.data_dir, name)
+        os.remove(fpath)
+
+    def snapshot_files() -> dict:
+        """Capture current file state as {name: content}."""
+        result = {}
+        for name in sorted(os.listdir(env.data_dir)):
+            fpath = os.path.join(env.data_dir, name)
+            if os.path.isfile(fpath):
+                with open(fpath, "r") as f:
+                    result[name] = f.read()
+        return result
+
+    def restore_and_verify(restore_time: datetime, label: str, expected: dict) -> None:
+        """Restore at the given time and verify file contents match expected."""
+        restore_dir = os.path.join(env.test_dir, f"restore_{label}")
+        os.makedirs(restore_dir, exist_ok=True)
+
+        restore_path = env.data_dir.lstrip("/")
+        cmd = [
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", restore_path,
+            "--when", restore_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", restore_dir,
+            "--log-stdout",
+        ]
+        result = runner.run(cmd, timeout=300)
+        assert result.returncode == 0, f"Restore '{label}' failed (rc={result.returncode}): {result.stderr}"
+
+        restored_data_dir = os.path.join(restore_dir, env.data_dir.lstrip("/"))
+        actual = {}
+        if os.path.isdir(restored_data_dir):
+            for name in sorted(os.listdir(restored_data_dir)):
+                fpath = os.path.join(restored_data_dir, name)
+                if os.path.isfile(fpath):
+                    with open(fpath, "r") as f:
+                        actual[name] = f.read()
+
+        assert actual == expected, (
+            f"Restore '{label}' mismatch.\n"
+            f"  Expected files: {sorted(expected.keys())}\n"
+            f"  Actual files:   {sorted(actual.keys())}\n"
+            f"  Missing: {set(expected) - set(actual)}\n"
+            f"  Extra:   {set(actual) - set(expected)}\n"
+            f"  Content diffs: {[(k, expected.get(k), actual.get(k)) for k in expected if expected.get(k) != actual.get(k)]}"
+        )
+        env.logger.info(f"Restore '{label}' verified: {len(actual)} files match expected state.")
+
+    # ========== T0: Initial state -> FULL ==========
+    write_file("f1.txt", "f1 original")
+    write_file("f2.txt", "f2 original")
+    write_file("f3.txt", "f3 original")
+    write_file("f4.txt", "f4 original")
+    write_file("f5.txt", "f5 original")
+
+    env.logger.info("Running FULL backup")
+    full_archive = create_archive("FULL")
+    t0 = clock.tick(PITR_STEP_SECONDS)
+    expected_t0 = snapshot_files()
+    assert len(expected_t0) == 5
+
+    # ========== T1: Mutate f1, delete f2, add f6 -> DIFF ==========
+    write_file("f1.txt", "f1 mutated at T1")
+    delete_file("f2.txt")
+    write_file("f6.txt", "f6 added at T1")
+
+    env.logger.info("Running DIFF backup (ref: FULL)")
+    diff_archive = create_archive("DIFF", base_archive=full_archive)
+    t1 = clock.tick(PITR_STEP_SECONDS)
+    expected_t1 = snapshot_files()
+    assert "f2.txt" not in expected_t1
+    assert expected_t1["f1.txt"] == "f1 mutated at T1"
+    assert expected_t1["f6.txt"] == "f6 added at T1"
+
+    # ========== T2: Mutate f3, delete f4, add f7 -> INCR_1 ==========
+    write_file("f3.txt", "f3 mutated at T2")
+    delete_file("f4.txt")
+    write_file("f7.txt", "f7 added at T2")
+
+    env.logger.info("Running INCR_1 backup (ref: DIFF)")
+    incr1_archive = create_archive("INCR", base_archive=diff_archive)
+    t2 = clock.tick(PITR_STEP_SECONDS)
+    expected_t2 = snapshot_files()
+    assert "f4.txt" not in expected_t2
+    assert expected_t2["f3.txt"] == "f3 mutated at T2"
+
+    # ========== T3: Mutate f5, add f8 -> INCR_2 ==========
+    write_file("f5.txt", "f5 mutated at T3")
+    write_file("f8.txt", "f8 added at T3")
+
+    env.logger.info("Running INCR_2 backup (ref: DIFF)")
+    incr2_archive = create_archive("INCR", base_archive=diff_archive)
+    t3 = clock.tick(PITR_STEP_SECONDS)
+    expected_t3 = snapshot_files()
+    assert expected_t3["f5.txt"] == "f5 mutated at T3"
+
+    # ========== T4: Delete f6, mutate f7, add f9 -> INCR_3 ==========
+    delete_file("f6.txt")
+    write_file("f7.txt", "f7 mutated at T4")
+    write_file("f9.txt", "f9 added at T4")
+
+    env.logger.info("Running INCR_3 backup (ref: DIFF)")
+    create_archive("INCR", base_archive=diff_archive)
+    t4 = clock.tick(PITR_STEP_SECONDS)
+    expected_t4 = snapshot_files()
+    assert "f6.txt" not in expected_t4
+    assert expected_t4["f7.txt"] == "f7 mutated at T4"
+
+    # ========== Verify restores at each time point ==========
+    restore_and_verify(t0, "T0_after_FULL", expected_t0)
+    restore_and_verify(t1, "T1_after_DIFF", expected_t1)
+    restore_and_verify(t2, "T2_after_INCR1", expected_t2)
+    restore_and_verify(t3, "T3_after_INCR2", expected_t3)
+    restore_and_verify(t4, "T4_after_INCR3", expected_t4)
+
+    env.logger.info("All 5 PITR restore points verified successfully.")

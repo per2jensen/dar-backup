@@ -133,7 +133,7 @@ class TestSelectArchiveChain:
         assert chain == [1, 2, 3]
 
     def test_multiple_incrs_picks_latest_only(self) -> None:
-        """Only the latest INCR is selected (INCRs are diffs against DIFF, not cumulative)."""
+        """Only the latest INCR is needed — each INCR is cumulative relative to DIFF."""
         info = [
             (1, datetime.datetime(2026, 1, 1), "FULL"),
             (2, datetime.datetime(2026, 1, 10), "DIFF"),
