@@ -29,16 +29,17 @@ archive verified and restore-tested before the job completes.
 **Is this for you?**
 
 ✅ You back up irreplaceable data — photos, documents, home-made video — and want to be
-   certain you can restore any file to any point in time, years from now  
-✅ You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems
-   (Nextcloud, rclone, sshfs) work correctly  
-✅ You want **bitrot repair** to travel with your archives — onto USB disks, offsite copies,
-   and cloud storage — without depending on the original system  
-✅ You want unattended, scheduled backups with **Discord notifications** on success or failure  
-✅ You want a transparent, no-lock-in tool built on proven Unix components  
+   certain you can restore any file to any point in time, years from now
 
-✗ You need a GUI, Windows support, or just a quick incremental sync — `rsync` or `restic`
-   may suit you better
+✅ You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems (Nextcloud, rclone, sshfs) work correctly
+
+✅ You want **bitrot repair** to travel with your archives — onto USB disks, offsite copies, and cloud storage — without depending on the original system
+
+✅ You want unattended, scheduled backups with **Discord notifications** on success or failure
+
+✅ You want a transparent, no-lock-in tool built on proven Unix components
+
+✗ You need a GUI, Windows support, or just a quick incremental sync — `rsync` or `restic` may suit you better
 
 ---
 
@@ -48,7 +49,7 @@ archive verified and restore-tested before the job completes.
 # prep
 sudo apt -y install dar par2 python3 python3-venv
 INSTALL_DIR=/tmp/dar-backup; mkdir "$INSTALL_DIR" && cd "$INSTALL_DIR"
-python3 -m venv venv    # create a virtual environment 
+python3 -m venv venv    # create a virtual environment
 . venv/bin/activate     # activate the virtual environment
 # install and run dar-backup
 pip install dar-backup
@@ -68,7 +69,7 @@ Schedules are managed by systemd timers (generated for you). Catalogs of every a
 maintained by `dar_manager`, enabling single-file Point-in-Time Recovery without a database
 server.
 
-Version **1.1.2** · reached **1.0.0** on October 9, 2025 · [Changelog](https://github.com/per2jensen/dar-backup/blob/main/v2/Changelog.md)
+Version **1.1.2** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
 
 ---
 
@@ -100,7 +101,7 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
   optionally stored in a separate directory (different device or offsite mount)
 - **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file
   to any date across your full archive history
-- **Metrics and dashboard** - optional [detailed metrics](#metrics-database) and [dashboard](#dashboard)
+- **Metrics and dashboard** - optional [detailed metrics](v2/doc/dashboard-and-metrics.md#metrics-database) and [dashboard](v2/doc/dashboard-and-metrics.md#dashboard)
 - **Runs as a normal user** — no root needed; works correctly on FUSE-mounted filesystems
 - **systemd integration** — timer units generated for you with sensible default schedules
 - **Discord notifications** — webhook alerts on backup success or failure, from all CLI tools
@@ -118,157 +119,34 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
 > Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.
 > If you find `dar-backup` useful, consider giving those projects a star too.
 
+---
+
 ## High-level architecture
 
-[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](#dar-backup-principles)
+[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
 
-## Quick links
+---
 
-- [Quick Guide](#quick-guide)
-- [PAR2 redundancy to fix bitrot](#par2)
-- [Point In Time Recovery](#point-in-time-recovery-pitr)
-- [Test coverage 600+ unit tests & integration tests](#test-coverage)
+## Documentation
 
-## Table of Contents
+| Document | Description |
+|---|---|
+| [Quick Guide](#quick-guide) | Get started in minutes |
+| [Configuration Reference](v2/doc/config-reference.md) | Config file, .darrc, backup definitions, config history |
+| [Restoring](v2/doc/restoring.md) | Point-in-Time Recovery (PITR), restore examples |
+| [PAR2 Redundancy](v2/doc/par2.md) | Verify, repair, and create PAR2 files |
+| [systemd Setup](v2/doc/systemd-setup.md) | Generate and install systemd timers/services |
+| [Shell Autocompletion](v2/doc/shell-completion.md) | Bash and zsh tab-completion setup |
+| [Dashboard & Metrics](v2/doc/dashboard-and-metrics.md) | Metrics database, Datasette, dashboard |
+| [dar Tips](v2/doc/dar-tips.md) | File selection, merging archives, logging tips |
+| [CLI Reference](v2/doc/cli-reference.md) | All command options, exit codes, env vars |
+| [Troubleshooting](v2/doc/troubleshooting.md) | Error codes, FUSE issues, special characters |
+| [Development](v2/doc/dev.md) | Dev setup, testing, PyPI, building dar |
+| [Changelog](CHANGELOG.md) | High-level release history |
+| [Detailed Changelog](v2/Changelog.md) | Per-release details |
 
-- [`dar-backup`](#dar-backup)
-  - [TL;DR](#tldr)
-  - [Why not just use restic / BorgBackup / rsync?](#why-not-just-use-restic--borgbackup--rsync)
-  - [Features](#features)
-  - [High-level architecture](#high-level-architecture)
-  - [Quick links](#quick-links)
-  - [Table of Contents](#table-of-contents)
-  - [My use case](#my-use-case)
-  - [My setup](#my-setup)
-    - [Why PAR2 is especially good for portable / offsite copies](#why-par2-is-especially-good-for-portable--offsite-copies)
-    - [Design choices](#design-choices)
-  - [Features](#features-1)
-  - [License](#license)
-  - [Quick Guide](#quick-guide)
-  - [Status](#status)
-    - [GPG Signing key](#gpg-signing-key)
-  - [Homepage - Github](#homepage---github)
-  - [Community](#community)
-  - [Requirements](#requirements)
-  - [dar-backup principles](#dar-backup-principles)
-    - [dar-backup overview](#dar-backup-overview)
-    - [dar-backup](#dar-backup-1)
-    - [cleanup](#cleanup)
-    - [manager](#manager)
-  - [How to run](#how-to-run)
-    - [1 - installation](#1---installation)
-    - [2 - configuration](#2---configuration)
-    - [3 - generate catalog databases](#3---generate-catalog-databases)
-    - [4 - give dar-backup a spin](#4---give-dar-backup-a-spin)
-    - [5 - deactivate venv](#5---deactivate-venv)
-  - [Config](#config)
-    - [Config file](#config-file)
-    - [.darrc](#darrc)
-    - [Backup definition example](#backup-definition-example)
-  - [Generate systemd files](#generate-systemd-files)
-  - [Systemctl examples](#systemctl-examples)
-  - [Service: dar-backup --incremental-backup](#service-dar-backup---incremental-backup)
-  - [Timer: dar-backup --incremental-backup](#timer-dar-backup---incremental-backup)
-  - [systemd timer note](#systemd-timer-note)
-  - [list contents of an archive](#list-contents-of-an-archive)
-  - [dar file selection examples](#dar-file-selection-examples)
-    - [select a directory](#select-a-directory)
-    - [select files with "Z50" in the file name and exclude .xmp files](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
-  - [Restoring](#restoring)
-    - [Point-in-Time Recovery (PITR)](#point-in-time-recovery-pitr)
-    - [default location for restores](#default-location-for-restores)
-    - [--restore-dir option](#--restore-dir-option)
-    - [a single file](#a-single-file)
-    - [a directory](#a-directory)
-    - [.NEF from a specific date](#nef-from-a-specific-date)
-    - [restore test fails with exit code 4](#restore-test-fails-with-exit-code-4)
-    - [restore test fails with exit code 5](#restore-test-fails-with-exit-code-5)
-  - [Par2](#par2)
-    - [Par2 to verify/repair](#par2-to-verifyrepair)
-      - [Par2 files kept with archives](#par2-files-kept-with-archives)
-      - [Par2 files in separate directory](#par2-files-in-separate-directory)
-    - [Par2 create redundancy files](#par2-create-redundancy-files)
-  - [Points of interest](#points-of-interest)
-    - [Limitations on File Names with Special Characters](#limitations-on-file-names-with-special-characters)
-      - [Why this matters](#why-this-matters)
-      - [Workarounds](#workarounds)
-        - [Restoring Files with Forbidden Characters in Their Names](#restoring-files-with-forbidden-characters-in-their-names)
-        - [Backups: Safe and Fully Functional](#backups-safe-and-fully-functional)
-        - [Restores via CLI: Limited by Sanitizer](#restores-via-cli-limited-by-sanitizer)
-        - [Workaround: Use `dar` Directly](#workaround-use-dar-directly)
-        - [Example: Manual Restore Using `dar`](#example-manual-restore-using-dar)
-        - [🧪 How to Locate Files with Forbidden Characters](#-how-to-locate-files-with-forbidden-characters)
-      - [Summary](#summary)
-    - [Backup fails with error code 2](#backup-fails-with-error-code-2)
-    - [Backup warning about error code 5](#backup-warning-about-error-code-5)
-      - [FUSE-mounted filesystems (pCloud, rclone, sshfs, etc.)](#fuse-mounted-filesystems-pcloud-rclone-sshfs-etc)
-    - [Dashboard](#dashboard)
-      - [What the dashboard shows](#what-the-dashboard-shows)
-      - [Installation](#installation)
-      - [Starting the dashboard](#starting-the-dashboard)
-      - [Dashboard command-line options](#dashboard-command-line-options)
-      - [Examples](#examples)
-      - [How it works](#how-it-works)
-    - [Metrics database](#metrics-database)
-      - [Sqlite schema documentation](#sqlite-schema-documentation)
-        - [Run identification](#run-identification)
-        - [Timing](#timing)
-        - [Outcome](#outcome)
-        - [Archive size](#archive-size)
-        - [dar inode statistics](#dar-inode-statistics)
-      - [Datasette](#datasette)
-      - [Dashboard](#dashboard-1)
-        - [Installation](#installation-1)
-        - [Starting the viewer](#starting-the-viewer)
-        - [Useful queries](#useful-queries)
-        - [Persistent configuration with metadata.yml](#persistent-configuration-with-metadatayml)
-    - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
-    - [dar manager databases](#dar-manager-databases)
-    - [Performance tip due to par2](#performance-tip-due-to-par2)
-    - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
-    - [Separate log file for command output](#separate-log-file-for-command-output)
-    - [Trace Logging (Debug details)](#trace-logging-debug-details)
-    - [Skipping cache directories](#skipping-cache-directories)
-    - [Shell autocompletion](#shell-autocompletion)
-      - [Use it](#use-it)
-      - [Archive name completion (smart, context-aware)](#archive-name-completion-smart-context-aware)
-      - [Enabling Bash completion](#enabling-bash-completion)
-      - [Enable Zsh Completion](#enable-zsh-completion)
-  - [Easy development setup](#easy-development-setup)
-  - [Todo](#todo)
-    - [v2-1.2](#v2-12)
-    - [v2-1.3](#v2-13)
-    - [Other stuff](#other-stuff)
-  - [Known Limitations / Edge Cases](#known-limitations--edge-cases)
-  - [Projects these scripts benefit from](#projects-these-scripts-benefit-from)
-  - [Reference](#reference)
-    - [CLI Tools Overview](#cli-tools-overview)
-    - [Test coverage](#test-coverage)
-      - [Test selection with markers](#test-selection-with-markers)
-      - [Common runs](#common-runs)
-      - [Run all tests](#run-all-tests)
-    - [Dar-backup options](#dar-backup-options)
-      - [Dar-backup exit codes](#dar-backup-exit-codes)
-      - [Dar-backup env vars](#dar-backup-env-vars)
-    - [Manager Options](#manager-options)
-      - [Cleanup env vars](#cleanup-env-vars)
-    - [Clean-log options](#clean-log-options)
-    - [Dar-backup-systemd options](#dar-backup-systemd-options)
-    - [Installer options](#installer-options)
-    - [Demo options](#demo-options)
-    - [Config changes](#config-changes)
-      - [1.0.1](#101)
-        - [DISCORD WEBHOOK](#discord-webhook)
-        - [Restore test config](#restore-test-config)
-        - [Par2](#par2-1)
-      - [1.0.2](#102)
-        - [Trace Logging](#trace-logging)
-        - [Command output Capture](#command-output-capture)
-      - [1.1.0](#110)
-      - [1.1.1](#111)
-      - [1.1.2](#112)
-        - [METRICS\_DB\_PATH](#metrics_db_path)
-  
+---
+
 ## My use case
 
 I needed the following:
@@ -276,7 +154,6 @@ I needed the following:
 - Backup my workstation to a remote server
 - Backup primarily photos, home made video and different types of documents
 - I have cloud storage mounted on a directory within my home dir. The filesystem is [FUSE based](https://www.kernel.org/doc/html/latest/filesystems/fuse.html), which gives it a few special features
-
   - Backup my cloud storage (cloud is convenient, but I want control over my backups)
   - A non-privileged user can perform a mount
   - A privileged user cannot look into the filesystem --> a backup script running as root is not suitable
@@ -294,7 +171,7 @@ I needed the following:
 
 2. Secondary copies to multiple USB disks / cloud
 
-3. Archive integrity verification anywhere using [Par2](#par2) and `dar -t`.
+3. Archive integrity verification anywhere using [Par2](v2/doc/par2.md) and `dar -t`.
 
 4. Archive repair anywhere if needed. By default `dar-backup` creates par2 redundancy files with 5% coverage. Enough to fix localized bitrot.
 
@@ -330,29 +207,7 @@ My design choices are boring, proven and pragmatic:
 >
 >No hidden magic, no lock-in
 
-## Features
-
-- The battle tested [dar](https://github.com/Edrusb/DAR) Disk Archiver is used for the actual backups - it comes highly recommended.
-- Backup with test of backup and (configurable) restore tests of files with comparison to source
-- [Redundancy files](#par2) created for patching bitrot of the archives (size configurable)
-- Simple [backup definitions](#backup-definition-example) defining what to backup (as many as you need)
-- [Backup catalogs](#dar-manager-databases) in databases, optionally on a disk different from the backups
-- Flexible and precise logging
-- Bash and zsh shell autocompletion for a nice CLI experience, [available completions](#shell-autocompletion):
-  
-  - Options for `dar-backup`, `cleanup`, `manager`
-  - Backup definitions
-  - Archives - filtered to backup definition if given
-  - Catalogs - filtered to backup definition if given
-
-- `dar-backup` is easy to install and configure.
-
-- ✅ The author has used dar-backup since > 4 years, and has been saved multiple times.
-
-## License
-
-  These scripts are licensed under the GPLv3 license.
-  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](LICENSE) file in this repository.
+---
 
 ## Quick Guide
 
@@ -382,7 +237,7 @@ sudo apt -y install dar par2 python3 python3-venv
 INSTALL_DIR=/tmp/dar-backup
 mkdir "$INSTALL_DIR"
 cd "$INSTALL_DIR"
-python3 -m venv venv    # create the virtual environment 
+python3 -m venv venv    # create the virtual environment
 . venv/bin/activate     # activate the virtual environment
 pip install dar-backup  # run pip to install `dar-backup` into the virtual environment
 ```
@@ -395,7 +250,7 @@ pip install dar-backup  # run pip to install `dar-backup` into the virtual envir
 (venv) $ INSTALL_DIR=/tmp/dar-backup
 mkdir "$INSTALL_DIR"
 cd "$INSTALL_DIR"
-python3 -m venv venv    # create the virtual environment 
+python3 -m venv venv    # create the virtual environment
 . venv/bin/activate     # activate the virtual environment
 pip install dar-backup  # run pip to install `dar-backup`
 Collecting dar-backup
@@ -439,7 +294,7 @@ demo --install
 manager --create-db
 
 # FULL backup as defined in backup definition `demo`
-dar-backup --full-backup  
+dar-backup --full-backup
 
 # List the contents of the backup
 dar-backup --list-contents demo_FULL_$(date '+%F')
@@ -461,7 +316,7 @@ File generated at '/home/user/.config/dar-backup/dar-backup.conf'
 
 
 
-(venv) $ manager --create-db 
+(venv) $ manager --create-db
 ========== Startup Settings ==========
 manager.py:     0.7.1
 Config file:    /home/user/.config/dar-backup/dar-backup.conf
@@ -570,13 +425,199 @@ PAR2 enabled:     True
 >
 > See log file: `cat "$HOME/dar-backup/dar-backup.log"`
 >
-> Checkout [systemd timers and services](#generate-systemd-files)
+> Checkout [systemd timers and services](v2/doc/systemd-setup.md)
 >
-> Checkout [shell autocompletion (very nice !)](#shell-autocompletion)
+> Checkout [shell autocompletion (very nice !)](v2/doc/shell-completion.md)
 >
-> Checkout the [reference section](#reference)
+> Checkout the [CLI reference](v2/doc/cli-reference.md)
+
+---
+
+## dar-backup principles
+
+### dar-backup overview
+
+[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
+
+### dar-backup
+
+`dar-backup` is built in a way that emphasizes getting backups. It loops over the backup definitions, and in the event of a failure while backing up a backup definition, dar-backup shall log an error and start working on the next backup definition.
+
+There are 3 levels of backups, FULL, DIFF and INCR.
+
+- The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s) (assuming `-d` was not given).
+- The author makes a DIFF once a month. The DIFF backs up new and changed files **compared** to the **FULL** backup.
+
+  - No DIFF backups are taken until a FULL backup has been taken for a particular backup definition.
+
+- The author takes an INCR backup every 3 days. An INCR backup includes new and changed files **compared** to the **DIFF** backup.
+
+  - So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
+
+  - No INCR backups are taken until a DIFF backup has been taken for a particular backup definition.
+
+After each backup of a backup definition, `dar-backup` tests the archive and then performs a few restore operations of random files from the archive (see [config file](v2/doc/config-reference.md#config-file)). The restored files are compared to the originals to check if the restore went well.
+
+`dar-backup` skips doing a backup of a backup definition if an archive is already in place. So, if you for some reason need to take a new backup on the same date, the first archive must be deleted (I recommend using [cleanup](v2/doc/cli-reference.md#cleanup-options)).
+
+### cleanup
+
+The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
+
+`cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used. It requires the user to confirm deletion of FULL archives.
+
+Use `--dry-run` to preview which archives, PAR2 files, and catalogs would be removed without deleting anything.
+
+Examples:
+
+```bash
+cleanup --dry-run -d media-files --log-stdout
+cleanup --dry-run --cleanup-specific-archives -d media-files media-files_INCR_2025-12-22
+```
+
+### manager
+
+`dar`has the concept of catalogs which can be exported and optionally be added to a catalog database. That database makes it much easier to restore the correct version of a backed up file if for example a target date has been set.
+
+`dar-backup` adds archive catalogs to their databases (using the `manager` script). Should the operation fail, `dar-backup` logs an error and continue with testing and restore validation tests.
+
+---
+
+## How to run
+
+📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG.
+
+See more [here](#gpg-signing-key).
+
+### 1 - installation
+
+Installation is currently in a [virtual environment](https://csguide.cs.princeton.edu/software/virtualenv) (commonly called a `venv`). These commands are installed in the venv:
+
+- dar-back
+- cleanup
+- manager
+- clean-log
+- dar-backup-systemd
+- installer
+- demo
+
+Note:
+
+The modules `inputimeout`, `rich`and `argcomplete` are installed into the venv and used by `dar-backup`
+
+To install `dar-backup`, create a venv and run pip:
+
+```bash
+mkdir $HOME/tmp
+cd $HOME/tmp
+python3 -m venv venv    # create the virtual environment
+. venv/bin/activate     # activate the virtual environment
+pip install dar-backup  # run pip to install `dar-backup`
+```
+
+I have an alias in ~/.bashrc pointing to my venv:
+
+```bash
+alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
+```
+
+drop the alias into ~/.bashrc like this:
+
+```bash
+grep -qxF 'alias db="' ~/.bashrc \
+  || echo 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' >> ~/.bashrc
+
+source ~/.bashrc
+```
+
+Typing `db` at the command line gives something like this:
+
+```bash
+(venv) user@machine:~$ db
+dar-backup 0.6.12
+dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
+Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.
+```
+
+### 2 - configuration
+
+The dar-backup [installer](v2/doc/cli-reference.md#installer-options) application can be used to setup the needed directories for `dar-backup` to work.
+It creates necessary directories as prescribed in the config file and optionally creates manager databases.
+
+`installer` can also add configuration of shell auto completion.
+
+Step 1:
+
+Create a config file   - [see details on config file](v2/doc/config-reference.md#config-file)
+
+Step 2:
+
+Create one or more backup definitions - [see details on backup definitions](v2/doc/config-reference.md#backup-definition-example)
+
+Step 3:
+
+Run the installer:
+
+```bash
+installer --config <path to dar-backup.conf> --install-autocompletion
+```
+
+### 3 - generate catalog databases
+
+Generate the archive catalog database(s).
+
+`dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
+
+```bash
+manager --create-db
+```
+
+### 4 - give dar-backup a spin
+
+You are now ready to do backups as configured in your backup definition(s).
+
+Give `dar-backup`a spin:
+
+```bash
+dar-backup --full-backup --verbose
+
+# list backups
+dar-backup --list
+
+# list contents of a dar backup
+dar-backup --list-contents <TAB>... <choose a backup>
+
+# see some examples on usage
+dar-backup --examples
+
+# see the log file
+cat "$HOME/dar-backup/dar-backup.log"
+```
+
+If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option.
+
+If you want more log messages, use the `--verbose` or `--log-level debug` for even more.
+
+If you want to take a backup using a single backup definition, use the `-d <backup definition>` option. The backup definition's name is the filename of the definition in the BACKUP.D_DIR (see [config file](v2/doc/config-reference.md#config-file)).
+
+```bash
+dar-backup --full-backup -d <your backup definition>
+```
+
+### 5 - deactivate venv
+
+Deactivate the virtual environment (venv).
+
+```bash
+deactivate
+```
+
+---
 
 ## Status
+
 **1.0.0 milestone reached**
 
 October 9, 2025, I have promoted version 0.8.4 --> **1.0.0** after having added more test cases and seen no issues with 0.8.4.
@@ -584,7 +625,6 @@ October 9, 2025, I have promoted version 0.8.4 --> **1.0.0** after having added 
 As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
 
 As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
-
 
 ### GPG Signing key
 
@@ -603,7 +643,7 @@ Primary key: 4592 D739 6DBA EFFD 0845  02B8 5CCE C7E1 6814 A36E
 Signing key: B54F 5682 F28D BA36 22D7  8E04 58DB FADB BBAC 1BB1
 Created:     2025-03-29
 Expires:     2030-03-28
-Key type:    ed25519 (primary, SC)  
+Key type:    ed25519 (primary, SC)
 Subkeys:     ed25519 (S), ed25519 (A), cv25519 (E)
 ```
 
@@ -683,15 +723,12 @@ gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
 
 </details>
 
-## Homepage - Github
+---
 
-'dar-backup' package lives here: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
+## License
 
-This python version is v2 of dar-backup, v1 is made in bash.
-
-## Community
-
-Please review the [Code of Conduct](CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
+  These scripts are licensed under the GPLv3 license.
+  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](LICENSE) file in this repository.
 
 ## Requirements
 
@@ -707,1711 +744,13 @@ On Ubuntu, install the requirements this way:
     sudo apt install dar par2 python3 python3-venv
 ```
 
-## dar-backup principles
+## Homepage - Github
 
-### dar-backup overview
+'dar-backup' package lives here: [Github - dar-backup](https://github.com/per2jensen/dar-backup/tree/main/v2)
 
-[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
+## Community
 
-### dar-backup
-
-`dar-backup` is built in a way that emphasizes getting backups. It loops over the [backup definitions](#backup-definition-example), and in the event of a failure while backing up a backup definition, dar-backup shall log an error and start working on the next backup definition.
-
-There are 3 levels of backups, FULL, DIFF and INCR.
-
-- The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s) (assuming `-d` was not given).
-- The author makes a DIFF once a month. The DIFF backs up new and changed files **compared** to the **FULL** backup.
-
-  - No DIFF backups are taken until a FULL backup has been taken for a particular backup definition.
-
-- The author takes an INCR backup every 3 days. An INCR backup includes new and changed files **compared** to the **DIFF** backup.
-  
-  - So, a set of INCR's will contain duplicates (this might change as I become more used to use the catalog databases)
-  
-  - No INCR backups are taken until a DIFF backup has been taken for a particular backup definition.
-
-After each backup of a backup definition, `dar-backup` tests the archive and then performs a few restore operations of random files from the archive (see [dar-backup.conf](#config-file)). The restored files are compared to the originals to check if the restore went well.
-
-`dar-backup` skips doing a backup of a backup definition if an archive is already in place. So, if you for some reason need to take a new backup on the same date, the first archive must be deleted (I recommend using [cleanup](#cleanup-1)).
-
-### cleanup
-
-The `cleanup` application deletes DIFF and INCR if the archives are older than the thresholds set up in the configuration file.
-
-`cleanup` will only remove FULL archives if the option  `--cleanup-specific-archives` is used. It requires the user to confirm deletion of FULL archives.
-
-Use `--dry-run` to preview which archives, PAR2 files, and catalogs would be removed without deleting anything.
-
-Examples:
-
-```bash
-cleanup --dry-run -d media-files --log-stdout
-cleanup --dry-run --cleanup-specific-archives -d media-files media-files_INCR_2025-12-22
-```
-
-### manager
-
-`dar`has the concept of catalogs which can be exported and optionally be added to a catalog database. That database makes it much easier to restore the correct version of a backed up file if for example a target date has been set.
-
-`dar-backup` adds archive catalogs to their databases (using the `manager` script). Should the operation fail, `dar-backup` logs an error and continue with testing and restore validation tests.
-
-## How to run
-
-📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG.
-
-See more [here](#gpg-signing-key).
-
-### 1 - installation
-
-Installation is currently in a [virtual environment](https://csguide.cs.princeton.edu/software/virtualenv) (commonly called a `venv`). These commands are installed in the venv:
-
-- dar-back
-- cleanup
-- manager
-- clean-log
-- dar-backup-systemd
-- installer
-- demo
-
-Note:
-
-The modules `inputimeout`, `rich`and `argcomplete` are installed into the venv and used by `dar-backup`
-
-To install `dar-backup`, create a venv and run pip:
-
-```bash
-mkdir $HOME/tmp
-cd $HOME/tmp
-python3 -m venv venv    # create the virtual environment 
-. venv/bin/activate     # activate the virtual environment
-pip install dar-backup  # run pip to install `dar-backup`
-```
-
-I have an alias in ~/.bashrc pointing to my venv:
-
-```bash
-alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
-```
-
-drop the alias into ~/.bashrc like this:
-
-```bash
-grep -qxF 'alias db="' ~/.bashrc \
-  || echo 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' >> ~/.bashrc
-
-source ~/.bashrc
-```
-
-Typing `db` at the command line gives something like this:
-
-```bash
-(venv) user@machine:~$ db
-dar-backup 0.6.12
-dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
-Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.
-```
-
-### 2 - configuration
-
-The dar-backup [installer](#installer-options) application can be used to setup the needed directories for `dar-backup` to work.
-It creates necessary directories as prescribed in the config file and optionally creates manager databases.
-
-`installer` can also add configuration of shell auto completion.
-
-Step 1:
-
-Create a config file   - [see details on config file](#config-file))
-
-Step 2:
-
-Create one or more backup definitions - [see details on backup definitions](#backup-definition-example)
-
-Step 3:
-
-Run the installer:
-
-```bash
-installer --config <path to dar-backup.conf> --install-autocompletion
-```
-
-### 3 - generate catalog databases
-
-Generate the archive catalog database(s).
-
-`dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
-
-```bash
-manager --create-db
-```
-
-### 4 - give dar-backup a spin
-
-You are now ready to do backups as configured in your backup definition(s).
-
-Give `dar-backup`a spin:
-
-```bash
-dar-backup --full-backup --verbose
-
-# list backups
-dar-backup --list
-
-# list contents of a dar backup
-dar-backup --list-contents <TAB>... <choose a backup>
-
-# see some examples on usage
-dar-backup --examples
-
-# see the log file
-cat "$HOME/dar-backup/dar-backup.log"
-```
-
-If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option.
-
-If you want more log messages, use the `--verbose` or `--log-level debug` for even more.
-
-If you want to take a backup using a single backup definition, use the `-d <backup definition>` option. The backup definition's name is the filename of the definition in the BACKUP.D_DIR (see [config file](#config-file)).
-
-```bash
-dar-backup --full-backup -d <your backup definition>
-```
-
-### 5 - deactivate venv
-
-Deactivate the virtual environment (venv).
-
-```bash
-deactivate
-```
-
-## Config
-
-### Config file
-
-The configuration file's default location is: ~/.config/dar-backup/dar-backup.conf
-
-If you have your config file somewhere else, use the `--config-file` option to point to it.
-
-Tilde `~` and environment variables can be used in the paths for various file locations.
-
-```text
-[MISC]
-LOGFILE_LOCATION=~/.dar-backup.log
-# optional parameters
-# LOGFILE_MAX_BYTES = 26214400  # 25 MB max file size is default, change as neeeded
-# LOGFILE_BACKUP_COUNT = 5      # 5 backup log files is default, change as needed
-MAX_SIZE_VERIFICATION_MB = 20
-MIN_SIZE_VERIFICATION_MB = 1
-NO_FILES_VERIFICATION = 5
-# timeout in seconds for backup, test, restore and par2 operations
-# The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
-# If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
-# Use -1 to disable timeouts.
-COMMAND_TIMEOUT_SECS = 86400
-
-[DIRECTORIES]
-BACKUP_DIR = /some/where/dar-backup/backups/
-BACKUP.D_DIR = /some/where/dar-backup/backup.d
-TEST_RESTORE_DIR = /tmp/dar-backup/restore/
-# Optional parameter
-# If you want to store the catalog databases away from the BACKUP_DIR, use the MANAGER_DB_DIR variable.
-#MANAGER_DB_DIR = /some/where/else/
-
-[AGE]
-# age settings are in days
-# `cleanup` script removes archives and their .par redundancy files if older than configured.
-# `cleanup` does not remove FULL archives, unless specifically told to and a "y" is answered to "are you sure?".
-DIFF_AGE = 100
-INCR_AGE = 40
-
-[PAR2]
-ERROR_CORRECTION_PERCENT = 5
-ENABLED = True
-# Optional PAR2 configuration
-# PAR2_DIR = /path/to/par2-store
-# PAR2_RATIO_FULL = 10
-# PAR2_RATIO_DIFF = 5
-# PAR2_RATIO_INCR = 5
-# PAR2_RUN_VERIFY = false
-
-# Optional per-backup overrides (section name = backup definition)
-[media-files]
-PAR2_DIR = /mnt/par2/media-files
-PAR2_RATIO_FULL = 10
-
-# scripts to run before the backup to setup the environment
-[PREREQ]
-SCRIPT_1 = ls -l /tmp
-#SCRIPT_2 = another_script.sh
-
-[POSTREQ]
-SCRIPT_1 = df -h
-#SCRIPT_2 = another_script.sh
-```
-
-PAR2 notes:
-
-- If `PAR2_DIR` is unset, par2 files are created next to the archive slices (legacy behavior) and no manifest is written
-- When `PAR2_DIR` is set, dar-backup writes a manifest next to the par2 set:
-  `archive_base.par2.manifest.ini`
-- When generating a par2 set, par2 reads all archive slices before writing any output files; for large backups, this initial read can take hours
-- Verify or repair using:
-  `par2 verify -B <archive_dir> <par2_set.par2>`
-  `par2 repair -B <archive_dir> <par2_set.par2>`
-
-### .darrc
-
-The package includes a default `darrc` file which configures `dar`.
-
-You can override the default `.darrc` using the `--darrc` option.
-
-The default `.darrc` contents are as follows:
-
-```text
-#  .darrc configuration file for `dar` as used by the `dar-backup` script.
-#  `dar-backup` lives here: https://github.com/per2jensen/dar-backup
-
-
-##############################################################
-
-#  target: verbose
-
-#  remove comments belov for dar being more verbose
-
-verbose:
-
-# shows files teated due to filtering inclusion or no filtering at all
-
-# -vt
-
-# shows skipped files du to exclusion
-
-# -vs
-
-# shows diretory currently being processed
-# dar-backup logs `dar` stdout in real time, so directories being processed are now shown in the log file.
-# this is quite useful in long running jobs
- -vd 
-
-# shows detailed messages, not related to files and directories
-# -vm
-
-# shows summary of each treated directory, including average compression
-# dar-backup logs `dar` stdout in real time, so directories being processed are now shown in the log file.
-# this is quite useful in long running jobs
- -vf
-
-# equivalent to "-vm -vs -vt"
-# -va
-
-
-restore-options:
-# don't restore File Specific Attributes
-#--fsa-scope none
-
-# ignore owner, useful when used by a non-privileged user
---comparison-field=ignore-owner
-
-
-# Exclude specific file types from compression
-compress-exclusion:
-
-# First setting case insensitive mode on:
--an
--ag
-
--Z    "*.gz"
--Z    "*.bz2"
--Z    "*.xz"
--Z    "*.zip"
--Z    "*.rar"
--Z    "*.7z"
--Z    "*.tar"
--Z    "*.tgz"
--Z    "*.tbz2"
--Z    "*.txz"
-# Exclude common image file types from compression
--Z    "*.jpg"
--Z    "*.jpeg"
--Z    "*.png"
--Z    "*.gif"
--Z    "*.bmp"
--Z    "*.tiff"
--Z    "*.svg"
--Z    "*.ico"
--Z    "*.webp"
-# The author uses Nikon compressed NEFs raw files
--Z    "*.NEF"
-# Exclude common movie file types from compression
--Z    "*.mp4"
--Z    "*.avi"
--Z    "*.mkv"
--Z    "*.mov"
--Z    "*.wmv"
--Z    "*.flv"
--Z    "*.mpeg"
--Z    "*.mpg"
-
-# These are zip files. Not all are compressed, but considering that they can
-# get quite large it is probably more prudent to leave this uncommented.
--Z    "*.pk3"
--Z    "*.zip"
-
--Z    "*.lz4"
--Z    "*.zoo"
-
--Z    "*.Po"
--Z    "*.aar"
--Z    "*.bx"
--Z    "*.chm"
--Z    "*.doc"
--Z    "*.epub"
--Z    "*.f3d"
--Z    "*.gpg"
--Z    "*.htmlz"
--Z    "*.iix"
--Z    "*.iso"
--Z    "*.jin"
--Z    "*.ods"
--Z    "*.odt"
--Z    "*.ser"
--Z    "*.svgz"
--Z    "*.swx"
--Z    "*.sxi"
--Z    "*.whl"
--Z    "*.wings"
-
-
-# Dar archives (may be compressed).
--Z    "*.dar"
-
-# Now we swap back to case sensitive mode for masks which is the default
-#mode:
--acase
-```
-
-### Backup definition example
-
-This piece of configuration is a [backup definition](#backup-definition-example). It is placed in the BACKUP.D_DIR (see config file description).
-The name of the file is the name of the backup definition.
-
-Backup definition naming rules:
-- Must contain only letters, numbers, spaces, or hyphens (`-`).
-- No underscores (`_`).
-- Must start and end with a letter or number (no leading/trailing spaces or hyphens).
-If you need to keep legacy names, run `dar-backup` with `--allow-unsafe-definition-names` to disable the check.
-
-You can use as many backup definitions as you need.
-
-> Note 👉
->
-> Environment variables and tilde (~) not allowed here. `dar` does not expand them.
->
-> See [TODO](#todo)
-
-```text
- # Switch to ordered selection mode, which means that the following
- # options will be considered top to bottom
- -am
-
-# Backup Root Dir
-# This is the top directory, where the backups start.
-#Directories mentioned below, are relative to the Root Dir.
- -R /home/user/
-
-# Directories to backup below the Root dir
-# uncomment the next line to backup only the Documents directory
-# -g Documents
-
-# Directories to exclude below the Root dir
- -P mnt
- -P tmp
- -P .cache
- -P .config/Code/CachedData
- 
-# compression level
- -z5
-
-# no overwrite, if you rerun a backup, 'dar' halts and asks what to do
-# due to the -Q option given to `dar`, the program will terminate and give en error.
- -n
- 
-# size of each slice in the archive
- --slice 7G
-
-# bypass directores marked as cache directories
-# http://dar.linux.free.fr/doc/Features.html
-# https://bford.info/cachedir/
---cache-directory-tagging
-```
-
-## Generate systemd files
-
-The command `dar-backup-systemd` can generate and optionally install systemd units and timers.
-
-The timers are set as the author uses them, modify to your taste and needs.
-
-Example run:
-
-```bash
-dar-backup-systemd --venv /home/user/tmp/venv --dar-path /home/user/.local/dar/bin
-Generated dar-full-backup.service and dar-full-backup.timer
-  → Fires on: *-12-30 10:03:00
-Generated dar-diff-backup.service and dar-diff-backup.timer
-  → Fires on: *-*-01 19:03:00
-Generated dar-incr-backup.service and dar-incr-backup.timer
-  → Fires on: *-*-04/3 19:03:00
-Generated dar-clean.service and dar-clean.timer
-  → Fires on: *-*-* 21:07:00
-```
-
-## Systemctl examples
-
-I have dar-backup scheduled to run via systemd --user settings.
-
-The files are located in: ~/.config/systemd/user
-
-Once the .service and .timer files are in place, timers must be enabled and started.
-
-```` bash
-systemctl --user enable dar-inc-backup.timer
-systemctl --user start  dar-inc-backup.timer
-systemctl --user daemon-reload
-````
-
-Verify your timers are set up as you want:
-
-```bash
-systemctl --user list-timers
-```
-
-## Service: dar-backup --incremental-backup
-
-This is an example of a systemd user service unit.
-
-File:  dar-incr-backup.service
-
-```bash
-/tmp/test$ dar-backup-systemd --venv '$HOME/programmer/dar-backup.py/venv'  --dar-path '$HOME/.local/dar/bin'
-
-Generated dar-full-backup.service and dar-full-backup.timer
-  → Fires on: *-12-30 10:03:00
-Generated dar-diff-backup.service and dar-diff-backup.timer
-  → Fires on: *-*-01 19:03:00
-Generated dar-incr-backup.service and dar-incr-backup.timer
-  → Fires on: *-*-04/3 19:03:00
-Generated dar-cleanup.service and dar-cleanup.timer
-  → Fires on: *-*-* 21:07:00
-/tmp/test$ 
-(venv) /tmp/test$ 
-(venv) /tmp/test$ cat dar-incr-backup.service 
-[Unit]
-Description=dar-backup INCR
-StartLimitIntervalSec=120
-StartLimitBurst=1
-
-[Service]
-Type=oneshot
-TimeoutSec=infinity
-RemainAfterExit=no
-
-
-ExecStart=/bin/bash -c 'PATH=$HOME/.local/dar/bin:$PATH && . $HOME/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose --log-stdout'
-```
-
-## Timer: dar-backup --incremental-backup
-
-This is an example of a systemd user timer
-
-File:  dar-incr-backup.timer
-
-```text
-[Unit]
-Description=dar-backup INCR timer
-
-[Timer]
-OnCalendar=*-*-04/3 19:03:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-## systemd timer note
-
-📅 OnCalendar syntax is flexible — you can tweak backup schedules easily. Run systemd-analyze calendar to preview timers.
-
-## list contents of an archive
-
-```bash
-# Activate your virtual environment
-source <the virtual evn>/bin/activate
-dar-backup --list-contents media-files_INCR_2025-05-10
-# Deactivate when done
-deactivate
-```
-
-Note: `--list-contents` does not touch the restore directory. Cleanup only runs for operations that actually write to `TEST_RESTORE_DIR` (backup verification or a restore to the default location).
-
-gives something like
-
-```text
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user  2 Gio   Sat May 10 14:15:07 2025  home/user
-[Saved][ ]       [-L-][  93%][ ]  -rw-rw-r--   user user  29 kio  Fri May  9 16:45:38 2025  home/user/data/2023/2023-02-11-Udstilling-Fredericia/DSC_0568.NEF.xmp
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user  2 Gio   Fri May  9 12:49:04 2025  home/user/data/2025
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user  193 Mio Thu May  8 15:59:17 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  15 Mio  Thu May  8 15:52:27 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  10 Mio  Thu May  8 15:52:27 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0563.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  9 Mio   Thu May  8 15:51:53 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0559.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  16 Mio  Thu May  8 15:51:45 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  12 Mio  Thu May  8 15:51:45 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  16 Mio  Thu May  8 15:51:24 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user  12 Mio  Thu May  8 15:51:23 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG
-[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   user user  22 kio  Thu May  8 15:59:58 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.JPG.xmp
-[Saved][ ]       [-L-][  92%][ ]  -rw-rw-r--   user user  30 kio  Thu May  8 16:00:36 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0557.NEF.xmp
-[Saved][ ]       [-L-][  91%][ ]  -rw-rw-r--   user user  22 kio  Thu May  8 16:00:29 2025  home/user/data/2025/2025-05-09-Viltrox-25mm-AIR/DSC_0558.JPG.xmp
-```
-
-## dar file selection examples
-
-> ⚠️ **Quoting matters**
->
-> Always pass `--selection` as `--selection="-I '*.NEF'"` to ensure it’s treated as a single argument.
->
-> Avoid splitting `--selection` and the string into separate tokens.
-
-**Why does --selection give “expected one argument” error?**
-
-This happens when the shell splits the quoted string or interprets globs before `dar-backup` sees them.  
-✅ Use:   `--selection="-I '*.NEF'"`  
-❌ Avoid: `--selection "-I '*.NEF'"`  
-
-> 💡 **Tip:** See [dar's documentation](http://dar.linux.free.fr/doc/man/dar.html#COMMANDS%20AND%20OPTIONS)
-
->
-> 💡💡 **Tip:** To filter all the empty directories away that `dar` emits when listing  contents, append this grep:
->
-> ```bash
-> |grep -vE '\s+d[rwx-]{9}\s'
->```
->
->Example using the grep to discard directory noise from `dar's` output:
->
-> ```bash
-> dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -X '*.xmp'" | grep -vE '\s+d[rwx-]{9}\s'
->[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
->[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
->[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 11:09:04 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
->[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
->[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
->...
->```
-
-### select a directory
-
-Select files and sub directories in `home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling`
-
-```bash
-dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-g 'home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling'"
-```
-
-gives
-
-```text
-...
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 10:33:42 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0572.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 10:33:12 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0571.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 25  Mio Fri May  9 10:33:08 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0570.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 27  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0569.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 27  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0568.NEF
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user 833 Mio Fri May  9 12:49:57 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 11  Mio Fri May  9 10:32:45 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0568.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 11  Mio Fri May  9 10:32:46 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0569.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 9   Mio Fri May  9 10:33:08 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0570.JPG
-[Saved][ ]       [-L-][   1%][X]  -rw-rw-r--   user user 13  Mio Fri May  9 10:33:12 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/jpeg/Z50_0571.JPG
-...
-```
-
-### select files with "Z50" in the file name and exclude .xmp files
-
-```bash
-dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -X '*.xmp'"
-```
-
-gives something like
-
-```text
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Sat May 10 14:15:07 2025 home/user
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Fri May  9 12:49:04 2025 home/user/data/2025
-[Saved][-]       [-L-][   1%][ ]  drwxrwxr-x   user user 193 Mio Thu May  8 15:59:17 2025 home/user/data/2025/2025-05-09-Viltrox-25mm-AIR
-[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user user 2   Gio Fri May  9 16:47:37 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0633.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 26  Mio Fri May  9 11:26:16 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0632.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 28  Mio Fri May  9 11:09:04 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0631.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0630.NEF
-[Saved][ ]       [-L-][   0%][X]  -rw-rw-r--   user user 29  Mio Fri May  9 11:09:03 2025 home/user/data/2025/2025-05-09-Roskilde-Nordisk-udstilling/Z50_0629.NEF
-...
-```
-
-## Restoring
-
-### Point-in-Time Recovery (PITR)
-
-Use the `manager` CLI to restore files as they existed at a specific time:
-
-```bash
-. <the virtual env>/bin/activate
-manager --config-file <dar-backup.conf> \
-  --backup-def <definition> \
-  --restore-path tmp/path/to/file.txt \
-  --when "2026-01-29 15:00:39" \
-  --target /tmp/restore_pitr \
-  --log-stdout --verbose
-deactivate
-```
-
-Restore a directory (same idea, but the path is a directory):
-
-```bash
-. <the virtual env>/bin/activate
-manager --config-file <dar-backup.conf> \
-  --backup-def <definition> \
-  --restore-path tmp/path/to/directory/ \
-  --when "2026-01-29 15:00:39" \
-  --target /tmp/restore_pitr \
-  --log-stdout --verbose
-deactivate
-```
-
-Dry-run the archive chain selection before restoring:
-
-```bash
-. <the virtual env>/bin/activate
-manager --config-file <dar-backup.conf> \
-  --backup-def <definition> \
-  --restore-path tmp/path/to/directory \
-  --when "2026-01-29 15:00:39" \
-  --pitr-report \
-  --log-stdout --verbose
-deactivate
-```
-
-**Notes**:
-- `--restore-path` must be a relative path as stored in the catalog (no leading slash).
-- If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
-  - Example (directory name has no extension):
-    - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - iPhone/2026/01/" --when "now" --target /tmp/restore_pitr`
-- `--target` is required to avoid accidental restores into the current working directory.
-- Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
-- `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
-- `--pitr-report-first` runs the same chain report before a restore and aborts if any archive is missing (useful as a safety preflight).
-- `--when` accepts natural-language date expressions via `dateparser`. Examples:
-  - `"now"`
-  - `"2 weeks ago"`
-  - `"2025-10-05 14:30"`
-  - `yesterday 23:00`
-- PITR restores use the catalog to select the correct archive chain (FULL → DIFF → INCR) and then restore **directly with `dar`** in that order.
-  - This avoids interactive `dar_manager` prompts (e.g., non‑monotonic mtimes often seen on pCloud/FUSE).
-  - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look “too new”.
-- Missing archives:
-  - PITR uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
-  - If any archive slice in that chain is missing on disk, PITR restore **fails** and logs which archive slices are missing.
-  - A short Discord notice is sent (if configured) so missing archives are visible immediately.
-- Relocating archive paths in the catalog:
-  - The catalog stores **absolute archive paths**. If archives move (or a mountpoint changes), the catalog will still point to the old path.
-  - This can happen when manager DBs are moved to another disk and the archives are re-added from a different mountpoint.
-  - Use the built-in relocate command to rewrite a path prefix in-place:
-    - Dry run:
-      - `manager --relocate-archive-path /old/path /new/path --relocate-archive-path-dry-run --backup-def <definition>`
-    - Apply:
-      - `manager --relocate-archive-path /old/path /new/path --backup-def <definition>`
-  - Example (move `/home/pj/mnt/dar` to `/mnt/dar`):
-    - `manager --relocate-archive-path /home/pj/mnt/dar /mnt/dar --backup-def pCloudDrive`
-  - Alternative quick fix: create a symlink from the old path to the new path.
-- Rebuilding a catalog after archive loss:
-  - If PITR fails due to missing archives, the catalog may no longer match what is actually on disk.
-  - You can rebuild the catalog from the remaining archives and then retry PITR (with the understanding that older restore points may no longer be possible).
-  - Example:
-    - `manager --create-db --config-file <dar-backup.conf>`
-    - `manager --add-dir <backup_dir> --backup-def <definition> --config-file <dar-backup.conf>`
-  - Or add individual archives:
-    - `manager --add-specific-archive <path/to/archive> --config-file <dar-backup.conf>`
-
-Example of the issue:
-1) FULL backup at 10:00 with `/data/photos/`  
-2) You add files at 11:00 (directory mtime updates)  
-3) DIFF backup at 11:05  
-4) You request PITR restore of `/data/photos/` at 10:30  
-
-`dar_manager -w` may say “directory did not exist before that time” because the directory mtime is now 11:00+.  
-The fallback still restores the correct tree as of 10:30 by applying the archive chain.
-
-### default location for restores
-
-dar-backup will use the TEST_RESTORE_DIR location as the Root for restores, if the --restore-dir option has not been supplied.
-
-See example below to see where files are restored to.
-
-### --restore-dir option
-
-When the --restore-dir option is used for restoring, a directory must be supplied.
-
-The directory supplied functions as the Root of the restore operation.
-
-**Example**:
-
-A backup has been taken using this backup definition:
-
-```text
--R /
--g home/user/Documents
-```
-
-When restoring and using `/tmp` for --restore-dir, the restored files can be found in `/tmp/home/user/Documents`
-
-### a single file
-
-```bash
-. <the virtual env>/bin/activate
-dar-backup --restore <archive_name> --selection="-g path/to/file"
-deactivate
-```
-
-### a directory
-
-```bash
-. <the virtual env>/bin/activate
-dar-backup --restore <archive_name> --selection="-g path/to/directory"
-deactivate
-```
-
-### .NEF from a specific date
-
-The backed up directory contains \*.NEF and \*.xmp files.
-
-Filtering:
-
-- Include files with "2024-06-16" in file name
-- Exclude files with file names ending in ".xmp"
-- Files must be in directory "home/user/tmp/LUT-play", compared to the file root (`-R`option) in the backup.
-
-```bash
-. <the virtual env>/bin/activate
-dar-backup --restore <archive_name>  --selection="-I '*2024-06-16*' -X '*.xmp' -g home/user/tmp/LUT-play"
-deactivate
-```
-
-### restore test fails with exit code 4
-
-`dar` in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
-
-Thus the dar option `--comparison-field=ignore-owner` has been placed in the supplied [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed).
-
-This causes dar to restore without an error.
-
-It is a good option when using dar as a non-privileged user.
-
-### restore test fails with exit code 5
-
-If exit code 5 is emitted on the restore test, FSA (File System specific Attributes) could be the cause.
-
-That (might) occur if you backup a file stored on one type of filesystem, and restore it on another type.
-My home directory is on a btrfs filesystem, while /tmp (for the restore test) is on zfs.
-
-The restore test can result in an exit code 5, due to the different filesystems used. In order to avoid the errors, the option `--fsa-scope none` can be used. That will restult in FSA's not being restored.
-
-If you need to use this option, un-comment it in the [.darrc](#darrc) file (located in the virtual environment where dar-backup is installed)
-
-## Par2
-
-Why keep PAR2 on a different storage device:
-
-- Reduces single-disk failure impact: bitrot on the archive disk does not affect the parity.
-- Easier offsite rotation: you can sync only the PAR2 sets to a different failure domain.
-
-Redundancy guidance:
-
-- FULL backups: 10% is a practical default for larger data sets and longer retention.
-- DIFF/INCR: 5% is often enough because the delta is smaller and easier to re-create.
-- Increase the ratio if the storage is flaky or the backup is hard to re-run.
-
-Rule of thumb table:
-
-| Backup type | Suggested PAR2 ratio | Notes |
-|-------------|----------------------|-------|
-| FULL        | 10%                  | Longer retention, larger data set |
-| DIFF        | 5%                   | Smaller delta |
-| INCR        | 5%                   | Smaller delta |
-
->
->For large, contiguous archives on reliable local storage, 7–8% has proven sufficient in practice; 10% remains a conservative default.
->
-
-Cloud sync / air-gap note:
-
-- Syncing PAR2 sets to a different device or remote store protects against bitrot and small corruption, but it cannot recover a completely lost archive.
-- An air-gapped PAR2 store is useful when the archive disk is exposed to ransomware or accidental deletion.
-
-### Par2 to verify/repair
-
-#### Par2 files kept with archives
-
-If PAR2 files are stored next to the archives (legacy per-slice behavior), you can verify like this:
-
-```bash
-for file in <archive>*.dar.par2; do
-  par2 verify "$file"
-done
-```
-
-if there are problems with a slice, try to repair it like this:
-
-```bash
-  par2 repair <archive>.<slice number>.dar.par2
-```
-
-#### Par2 files in separate directory
-
-See [docs on disk layout matters](v2/doc/portable-par2-layout.md)
-
->Test case proving this flow:
->
->[tests/test_par2_manifest.py](v2/tests/test_par2_manifest.py)
-
-### Par2 create redundancy files
-
-If you have merged archives, you will need to create the .par2 redundency files manually.
-Here is an example
-
-```bash
-for file in <some-archive>_FULL_yyyy-mm-dd.*; do
-  par2 c -r5 -n1 "$file"
-done
-```
-
-where "c" is create, -r5 is 5% redundency and -n1 is 1 redundency file
-
-If you want to create a single parity set for all slices in an archive:
-
-```bash
-par2 create -B <archive_dir> -r5 <par2_dir>/<archive_base>.par2 <archive_dir>/<archive_base>.*.dar
-```
-
-**OBSERVE** [docs on disk layout matters](v2/doc/portable-par2-layout.md)
-
-
-## Points of interest
-
-### Limitations on File Names with Special Characters
-
-`dar-backup` strictly validates all command-line arguments passed to its internal execution engine to protect against command injection and shell-based attacks. As part of this security measure, certain characters are disallowed in user-provided inputs — particularly those that carry special meaning in shell environments:
-
-Disallowed characters include:
-
-```text
-\$ & ; | > < ` \n
-```
-
-#### Why this matters
-
-When restoring specific files using the --selection argument or similar mechanisms, filenames that contain one or more of these characters (e.g., file_with_currency$.txt) cannot be safely passed as command-line arguments. As a result, attempting to restore such a file by name using the CLI will result in a validation error.
-
-✅ Backups and Restores Still Work
-
-  ✅ These files are still backed up and restored automatically as part of normal FULL, DIFF, or INCR operations.
-
-  ❌ They cannot be explicitly specified for restore using CLI options like --selection="-g path/to/file_with_currency$.txt".
-
-#### Workarounds
-
-If you need to restore such a file:
-
-  Perform a restore of the entire directory using a more general selection (e.g., --selection="-g path/to/parent-directory").
-
-  Manually retrieve the restored file afterward.
-
-##### Restoring Files with Forbidden Characters in Their Names
-
-The DAR Backup system enforces a strict command-line argument sanitizer to improve security and prevent shell injection attacks. As a result, certain characters are **not allowed** in filenames or arguments passed to the CLI, especially during restore operations. This includes characters like:
-
-| Character | Reason Blocked                  |
-|----------:|---------------------------------|
-| `;`       | Shell command separator         |
-| `&`       | Background execution operator   |
-| `\|`      | Pipe operator                   |
-| `<` / `>` | Redirection operators           |
-| `#`       | Shell comment                   |
-| `` ` ``   | Command substitution            |
-| `"` / `'` | Quoting that may be unbalanced  |
-
-However, **backups of files with such names still work** — they are preserved correctly within the archive. The limitation only applies to **invoking restore commands via the CLI**, where such filenames cannot be safely passed as arguments.
-
-##### Backups: Safe and Fully Functional
-
-Files with special characters in their names **are backed up without issue**. The only issue you might encounter is restoring a file and giving the file name on the command line (with forbidden characters.)
-
-##### Restores via CLI: Limited by Sanitizer
-
-Attempting to restore such files via:
-
-```bash
-    dar-backup restore --file "weird#name.txt"
-```
-
-...will fail with an error like:
-
-```bash
-    Unsafe argument detected: weird#name.txt
-```
-
----
-
-##### Workaround: Use `dar` Directly
-
-You can always restore the file manually using the `dar` command-line utility itself, bypassing any CLI restrictions imposed by the backup tool.
-
-##### Example: Manual Restore Using `dar`
-
-```bash
-    dar -x /path/to/backup/example -g "weird#name.txt"
-```
-
-Where:
-
-- `/path/to/backup/example` is the base name of the archive (without `.dar`, `.1.dar`, etc.).
-- `"weird#name.txt"` is the exact filename with the special character(s).
-
-You may need to quote the argument or escape characters depending on your shell.
-
----
-
-##### 🧪 How to Locate Files with Forbidden Characters
-
-To search for such files inside the archive:
-
-```bash
-    dar -l /path/to/backup/example | grep '[#;<>|&]'
-```
-
-This will help you identify files that require manual restoration.
-
----
-
-#### Summary
-
-- 🚫 Forbidden characters are blocked **only** in CLI arguments to maintain safety.
-- ✅ Files containing these characters are **still archived and restorable**.
-- 🛠 Use `dar` directly for full manual control when restoring such files.
-
-### Backup fails with error code 2
-
-If you see something like this in the log file
-
-````bash
-2026-02-07 20:03:45,763 - INFO - ===> Starting INCR backup for /opt/dar-backup/backup.d/user-homedir
-2026-02-07 20:03:45,878 - ERROR - Unexpected error during backup
-2026-02-07 20:03:45,880 - ERROR - Error during INCR backup process for user-homedir: Unexpected error during backup: CommandResult:
-  Return code: 2
-  Note: <none>
-  STDOUT: Error met while opening the last slice: Data corruption met at end of slice, unknown flag found. Trying to open the archive using the first slice.
-````
-
-it could be the DIFF file the INCR job is inspecting that has an error.
-
-In this instance it was due to me doing a hard reboot during the DIFF backup due to a nfs issue, and did not clean up afterwards.
-
-I looked at the trace log file to get more information and found this
-
-````bash
-2026-02-07 20:03:45,763 - DEBUG - Executing command: dar -c /mnt/dar/user-homedir_INCR_2026-02-07 -N -B /opt/dar-backup/venv/lib/python3.12/site-packages/dar_backup/.darrc -B /opt/dar-backup/backup.d/user-homedir -Q compress-exclusion verbose -A /mnt/dar/user-homedir_DIFF_2026-02-01 (timeout=86400s)
-2026-02-07 20:03:45,764 - DEBUG - Process started pid=93372 cwd=/root
-2026-02-07 20:03:45,840 - ERROR - FATAL error, aborting operation: Data corruption met at end of slice, unknown flag found
-````
-
-Running a test of the DIFF archive showed the error
-
-````bash
-dar -t /mnt/dar/user-homedir_DIFF_2026-02-01
-````
-
-which showed the archive is not healthy, so instead of making an INCR, I did a DIFF
-
-````bash
-dar-backup -D -d user-homedir --log-stdout
-````
-
-Now all is well again :-)
-
-### Backup warning about error code 5
-
-`dar-backup` treats this as a warning because a usable dar backup (usually) is the result.
-
-It is good practice to check up on such warnings, to get a sense of the amount of errors and
-make sure the backup is useful to you.
-
-During a backup, `dar` may report exit code 5 alongside a summary like:
-
-```txt
-13 inode(s) failed to be saved (filesystem error)
-```
-
-without making it immediately obvious which files were affected. To find the
-failing files, search the `dar-backup` command output log for I/O errors:
-
-```bash
-grep -i "error\|failed\|cannot\|permission" ~/dar-backup/dar-backup-commands.log
-```
-
-You will see lines like:
-
-```txt
-Error while saving /path/to/file.pdf: Error while reading from file: Input/output error
-```
-
-#### FUSE-mounted filesystems (pCloud, rclone, sshfs, etc.)
-
-A common cause of exit code 5 is a stale or corrupt local cache in a
-FUSE-mounted filesystem. This is a known issue with the pCloud Linux client's
-Crypto Folder in particular: the FUSE driver reports a file as present (and
-`file` or `ls` will show it), but reading its  contents fails mid-stream
-with an I/O error. The file itself is healthy on the server — the fault lies
-in the local cache.
-
-**Diagnosis:**
-
-```bash
-# ls shows the file with correct size
-ls -lh "/path/to/pCloudDrive/Crypto Folder/somefile.pdf"
-
-# but reading it fails
-cat "/path/to/pCloudDrive/Crypto Folder/somefile.pdf" > /dev/null
-# cat: ...: Input/output error
-```
-
-If the file downloads correctly via the cloud provider's web interface, the
-cache is the culprit.
-
-**Fix — clear the pCloud cache before backup:**
-
-Kill the pCloud client, clear its cache, and restart it before running
-`dar-backup`. The pre-backup hook is the right place for this. A script is
-provided in `scripts/pre-backup-pcloud-cache-clear.sh`.
-
-The script:
-
-1. Sends SIGTERM to pCloud and waits for it to exit cleanly, releasing all
-   file handles before the cache is touched
-2. Falls back to SIGKILL if pCloud does not stop within a few seconds
-3. Clears the cache directory
-4. Restarts pCloud and waits until the Crypto Folder is accessible, with a
-   configurable timeout — exiting with code 1 if the folder is not ready
-   (e.g. because the Crypto Folder has not been unlocked), which will abort
-   the backup cleanly rather than proceeding against an inaccessible mount
-
-See [`scripts/pre-backup-pcloud-cache-clear.sh`](scripts/pre-backup-pcloud-cache-clear.sh)
-for the full script and configuration notes.
-
-### Dashboard
-
-`dar-backup` ships a purpose-built metrics dashboard — a single HTML file that
-queries the metrics database through Datasette and renders a summary of your
-most recent backup runs directly in the browser.  No extra services, no
-framework, no build step.
-
-![dar-backup dashboard](v2/doc/dar-backup-dashboard.png)
-
-#### What the dashboard shows
-
-At the top, four summary metric cards give an instant health overview:
-
-- Total runs recorded
-- Success rate across all runs shown
-- Number of distinct backup definitions
-- Total failed inodes across all runs shown — the key indicator for FUSE-mounted
-  storage issues such as the pCloud Crypto Folder (see [Backup warning about error code 5](#backup-warning-about-error-code-5))
-- Status and timestamp of the most recent run
-
-Below the summary, each backup definition gets its own section showing the last
-three runs in a table with the following columns:
-
-| Column | Description |
-|--------|-------------|
-| Started | Timestamp of the run |
-| Type | `FULL`, `DIFF`, or `INCR` |
-| Status | `SUCCESS`, `WARNING`, or `FAILURE` pill — colour coded |
-| Duration | Total wall-clock time; hover for the dar / verify / par2 breakdown |
-| Archive size | Total size of all `.dar` slices |
-| Inodes saved / failed | Files saved and files that could not be saved — failed inodes are highlighted in amber or red |
-| Not saved | Files unchanged since the last backup (expected for DIFF/INCR) |
-| Excluded | Files skipped by filters |
-| Phases | ✓ / ✗ for verify, restore test, and par2 |
-| Error | First error message from the run, if any |
-
-Rows with failed inodes are highlighted with a left amber border so they stand
-out at a glance without needing to read every cell.
-
-#### Installation
-
-```bash
-. venv/bin/activate  # activate the virtual environment dar-backup in installed in
-pip install dar-backup[dashboard]
-```
-
-This installs `datasette` as an optional dependency alongside `dar-backup`.
-The dashboard HTML is bundled inside the package — no separate download needed.
-
-#### Starting the dashboard
-
-```bash
-# if venv is not activated
-. venv/bin/activate  # activate the virtual environment dar-backup in installed in
-dar-backup-dashboard
-```
-
-That is all.  The command:
-
-1. Reads `METRICS_DB_PATH` from your dar-backup config file (same config
-   resolution as `dar-backup` itself: `--config-file` → `DAR_BACKUP_CONFIG_FILE`
-   env var → `~/.config/dar-backup/dar-backup.conf`)
-2. Starts Datasette on port 8001 (or the next free port if 8001 is taken)
-3. Waits for Datasette to be ready, printing a dot per second so you know
-   something is happening
-4. Opens the dashboard in your default browser
-
-#### Dashboard command-line options
-
-```text
---db PATH          Path to the metrics database.
-                   Overrides METRICS_DB_PATH from the config file.
--c / --config-file PATH
-                   Path to dar-backup.conf.
-                   Default: $DAR_BACKUP_CONFIG_FILE or
-                   ~/.config/dar-backup/dar-backup.conf
---port PORT        Preferred Datasette port (default: 8001).
-                   A nearby free port is used automatically if taken.
---no-browser       Start Datasette but do not open a browser window.
-                   Prints the dashboard URL to stdout instead.
-```
-
-#### Examples
-
-```bash
-# Use config file from a non-default location
-dar-backup-dashboard -c /etc/dar-backup/dar-backup.conf
-
-# Point directly at a specific database
-dar-backup-dashboard --db ~/dar-backup/dar-backup-metrics.db
-
-# Start on a different port
-dar-backup-dashboard --port 8010
-
-# Headless — print URL only, useful in scripts
-dar-backup-dashboard --no-browser
-```
-
-#### How it works
-
-The dashboard is a single self-contained HTML file bundled in
-`dar_backup/data/dashboard.html`.  When `dar-backup-dashboard` starts, it
-launches Datasette with `--static dashboard:<html_dir>` so the file is served
-at `http://127.0.0.1:<port>/dashboard/dashboard.html`.  The Datasette base URL
-is appended as a `?datasette=` query parameter, so the dashboard connects to
-the right instance automatically — no manual configuration in the browser UI
-is needed.
-
-The dashboard queries the metrics database directly via Datasette's JSON API
-(`/<db>.json?sql=...`).  The Datasette URL field at the top of the page can be
-edited and the Refresh button clicked if you want to point the dashboard at a
-different Datasette instance.
-
-Press `Ctrl+C` in the terminal to shut down Datasette when you are done.
-
-### Metrics database
-
-#### Sqlite schema documentation
-
-Every backup run appends one row to the `backup_runs` table in the SQLite
-metrics database.  The database is created automatically on first use and
-existing databases are migrated silently — columns added in later releases
-are appended with `ALTER TABLE ADD COLUMN` so no data is lost.
-
-Errors writing metrics are logged as `WARNING` and never abort a backup.
-
-##### Run identification
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `id` | INTEGER | Auto-incrementing primary key. |
-| `backup_definition` | TEXT | Name of the backup definition file. |
-| `backup_type` | TEXT | `FULL`, `DIFF`, or `INCR`. |
-| `archive_name` | TEXT | Base name of the dar archive, e.g. `homedir_FULL_2025-11-22`. |
-| `hostname` | TEXT | Hostname of the machine that ran the backup (`socket.gethostname()`). |
-| `dar_backup_version` | TEXT | dar-backup version string. |
-| `dar_version` | TEXT | dar version string. |
-
-##### Timing
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `run_started_at` | TEXT | ISO-8601 timestamp when the backup started. |
-| `run_finished_at` | TEXT | ISO-8601 timestamp when the full run finished (including verify and par2). |
-| `duration_secs` | REAL | Total wall-clock seconds for the entire run. |
-| `dar_duration_secs` | REAL | Seconds spent in the dar backup phase only. |
-| `verify_duration_secs` | REAL | Seconds spent in the verify phase. |
-| `par2_duration_secs` | REAL | Seconds spent generating par2 redundancy files. |
-
-##### Outcome
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `status` | TEXT | `SUCCESS`, `WARNING`, or `FAILURE`. |
-| `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.). |
-| `failed_phase` | TEXT | `DAR`, `VERIFY`, or `PAR2` — set when a phase fails; NULL on success. |
-| `error_summary` | TEXT | Short human-readable description of the first error encountered, or NULL. |
-| `catalog_updated` | INTEGER | `1` if the dar manager catalog was updated successfully, `0` otherwise. |
-| `verify_passed` | INTEGER | `1` if the archive integrity test passed. |
-| `restore_test_passed` | INTEGER | `1` if the restore test passed. |
-| `par2_passed` | INTEGER | `1` if par2 file generation succeeded. |
-
-##### Archive size
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `archive_size_bytes` | INTEGER | Total size of all `.dar` slice files in bytes. |
-| `num_slices` | INTEGER | Number of dar archive slices. |
-| `par2_size_bytes` | INTEGER | Total size of all `.par2` files in bytes. |
-| `files_verified` | INTEGER | Number of files verified during the verify phase. |
-| `backup_dir_free_bytes` | INTEGER | Free space on the backup destination at run end. |
-
-##### dar inode statistics
-
-These columns are parsed from the summary block `dar` prints at the end of every
-run (visible in the `*-commands.log`).  If dar changes its output format or the
-run aborts before the summary is printed, the value is stored as `NULL` — the
-backup is never affected.
-
-```text
- --------------------------------------------
- 6603 inode(s) saved
-   including 0 hard link(s) treated
- 0 inode(s) changed at the moment of the backup and could not be saved properly
- 0 byte(s) have been wasted in the archive to resave changing files
- 0 inode(s) with only metadata changed
- 24695 inode(s) not saved (no inode/file change)
- 5 inode(s) failed to be saved (filesystem error)
- 9 inode(s) ignored (excluded by filters)
- 0 inode(s) recorded as deleted from reference backup
- --------------------------------------------
- Total number of inode(s) considered: 31312
- --------------------------------------------
- EA saved for 0 inode(s)
- FSA saved for 0 inode(s)
-```
-
-| Column | Type | dar output line |
-| --- | --- | --- |
-| `inodes_saved` | INTEGER | `N inode(s) saved` |
-| `hard_links_treated` | INTEGER | `including N hard link(s) treated` |
-| `inodes_changed_during_backup` | INTEGER | `N inode(s) changed at the moment of the backup…` |
-| `bytes_wasted` | INTEGER | `N byte(s) have been wasted in the archive…` |
-| `inodes_metadata_only` | INTEGER | `N inode(s) with only metadata changed` |
-| `inodes_not_saved` | INTEGER | `N inode(s) not saved (no inode/file change)` |
-| `inodes_failed` | INTEGER | `N inode(s) failed to be saved (filesystem error)` — non-zero triggers dar exit code 5 |
-| `inodes_excluded` | INTEGER | `N inode(s) ignored (excluded by filters)` |
-| `inodes_deleted` | INTEGER | `N inode(s) recorded as deleted from reference backup` |
-| `inodes_total` | INTEGER | `Total number of inode(s) considered: N` |
-| `ea_saved` | INTEGER | `EA saved for N inode(s)` |
-| `fsa_saved` | INTEGER | `FSA saved for N inode(s)` |
-
-#### Datasette
-
-[Datasette](https://datasette.io) is a lightweight, zero-configuration tool for
-exploring SQLite databases through a web browser.  It requires no server setup —
-just point it at the metrics database and it renders tables, runs SQL queries,
-and produces charts instantly.
-
-#### Dashboard
-
-
-
-##### Installation
-
-```bash
-pip install datasette
-```
-
-##### Starting the viewer
-
-```bash
-datasette ~/dar-backup/dar-backup-metrics.db
-```
-
-Open `http://127.0.0.1:8001` in a browser.  Datasette auto-detects all tables
-and indexes.
-
-##### Useful queries
-
-Browse all runs for a specific backup definition, newest first:
-
-```sql
-SELECT archive_name, backup_type, status, dar_exit_code,
-       duration_secs, inodes_saved, inodes_failed, inodes_total
-FROM   backup_runs
-WHERE  backup_definition = 'homedir'
-ORDER  BY run_started_at DESC;
-```
-
-Find all runs where files were skipped due to filesystem errors (dar exit code 5):
-
-```sql
-SELECT run_started_at, backup_definition, backup_type,
-       inodes_failed, inodes_total, error_summary
-FROM   backup_runs
-WHERE  inodes_failed > 0
-ORDER  BY run_started_at DESC;
-```
-
-Track backup size growth over time:
-
-```sql
-SELECT run_started_at, backup_type, archive_size_bytes,
-       backup_dir_free_bytes
-FROM   backup_runs
-WHERE  backup_definition = 'homedir'
-ORDER  BY run_started_at;
-```
-
-Show average backup duration per definition and type:
-
-```sql
-SELECT backup_definition, backup_type,
-       ROUND(AVG(dar_duration_secs), 1)    AS avg_dar_secs,
-       ROUND(AVG(verify_duration_secs), 1) AS avg_verify_secs,
-       COUNT(*)                            AS runs
-FROM   backup_runs
-GROUP  BY backup_definition, backup_type
-ORDER  BY backup_definition, backup_type;
-```
-
-##### Persistent configuration with metadata.yml
-
-Datasette supports a `metadata.yml` file that adds titles, descriptions, and
-canned queries so the same useful views are always one click away:
-
-```yaml
-title: dar-backup metrics
-description: Backup run history
-databases:
-  metrics:
-    tables:
-      backup_runs:
-        description: One row per backup run
-    queries:
-      failed_files:
-        title: Runs with filesystem errors
-        sql: >
-          SELECT run_started_at, backup_definition, backup_type,
-                 inodes_failed, inodes_total, dar_exit_code
-          FROM   backup_runs
-          WHERE  inodes_failed > 0
-          ORDER  BY run_started_at DESC
-      recent_runs:
-        title: Last 20 runs
-        sql: >
-          SELECT run_started_at, backup_definition, backup_type,
-                 status, duration_secs, inodes_saved, inodes_total
-          FROM   backup_runs
-          ORDER  BY run_started_at DESC
-          LIMIT  20
-```
-
-Start datasette with the configuration file:
-
-```bash
-datasette ~/dar-backup/dar-backup-metrics.db --metadata metadata.yml
-```
-
-### Merge FULL with DIFF, creating new FULL
-
-Over time, the DIFF archives become larger and larger. At some point one wishes to create a new FULL archive to do DIFF's on.
-One way to do that, is to let dar create a FULL archive from scratch, another is to merge a FULL archive with a DIFF, and from there do DIFF's until they once again gets too large for your taste.
-
-I do backups of my homedir. Here it is shown how a FULL archive is merged with a DIFF, creating a new FULL archive.
-
-```bash
-dar --merge user-homedir_FULL_2021-09-12  -A user-homedir_FULL_2021-06-06  -@user-homedir_DIFF_2021-08-29 -s 12G
-
-# test the new FULL archive
-dar -t user-homedir_FULL_2021-09-12
-
-# create Par2 redundancy files
-for file in user-homedir_FULL_yyyy-mm-dd.*.dar; do
-  par2 c -r5 -n1 "$file"
-done
-```
-
-### dar manager databases
-
-`dar-backup` now saves archive catalogs in dar catalog databases.
-
-This makes it easier to restore to a given date when having many FULL, DIFF and INCR archives.
-
-If the manager does not add an archive to it's catalog database, `dar-backup` will log an error and continue. The important part is verify the archive is usable and continue to other backup definitions.
-
-### Performance tip due to par2
-
-This [dar benchmark page](https://dar.sourceforge.io/doc/benchmark.html) has an interesting note on the slice size.
-
-Slice size should be smaller than available RAM, apparently a large performance hit can be avoided keeping the par2 data in memory.
-
-### .darrc sets -vd -vf (since v0.6.4)
-
-These [.darrc](#darrc) settings make `dar` print the current directory being processed (-vd) and some stats after (-vf)
-
-This is very useful in very long running jobs to get an indication that the backup is proceeding normally.
-
-The `dar` output is streamed to the `dar-backup-commands.log` file.
-
-### Separate log file for command output
-
-Dar-backup's log file is called `dar-backup.log`.
-
-In order to not clutter that log file with the output of commands being run, a new secondary log file has been introduced `dar-backup-commands.log`.
-
-The secondary log file can get quite cluttered, if you want to remove the clutter, run the `clean-log`script with the `--file` option, or simply delete it.
-
-### Trace Logging (Debug details)
-
-To keep the main log file clean while preserving essential debugging information, `dar-backup` creates a separate trace log file (e.g., `dar-backup.trace.log`) alongside the main log.
-
-- **Main Log (`dar-backup.log`)**: Contains clean, human-readable INFO/ERROR messages. Stack traces are suppressed here.
-- **Trace Log (`dar-backup.trace.log`)**: Captures ALL messages at `DEBUG` level, including full exception stack traces. Use this file for debugging crashes or unexpected behavior.
-
-You can configure the rotation of this file in `[MISC]`:
-
-```ini
-[MISC]
-# ... other settings ...
-TRACE_LOG_MAX_BYTES = 10485760  # 10 MB default
-TRACE_LOG_BACKUP_COUNT = 1      # Keep 1 old trace file (default)
-```
-
-### Skipping cache directories
-
-The author uses the `--cache-directory-tagging` option in his [backup definitions](#backup-definition-example).
-
-The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cachedir/) file are not backed up. Those directories contain content fetched from the net, which is of an ephemeral nature and probably not what you want to back up.
-
-If the option is not in the backup definition, the cache directories are backed up as any other.
-
-### Shell autocompletion
-
-The `dar-backup`, `manager`, and `cleanup` scripts now support dynamic Bash tab-completion, making them easier and faster to use.
-
-✅ Features
-
-- Autocomplete for all long options (--config-file, --restore, etc.)
-
-- Dynamic suggestions based on your config:
-
-- --backup-definition shows available definitions from backup.d/
-
-- show relevant archives when a backup definition has been chosen:
-
-  dar-backup: --restore, --list-contents, and --alternate-reference-archive
-
-  cleanup: --cleanup-specific-archives
-
-  manager:  --list-archive-contents, --add-specific-archive (autocomplete those **not* in the catalog database), --remove-specific-archive
-  
-- Supports paths like ~ and $HOME correctly
-
-#### Use it
-
-Try typing:
-
-```bash
-dar-backup --<TAB>
-```
-
-You should see all available flags like --full-backup, --restore, etc.
-
-Try completion of backup definition and then list contents:
-
-```bash
-    dar-backup --backup-definition <TAB>
-    dar-backup -d <the chosen backup-definition> --list-contents <TAB>
-```
-
-#### Archive name completion (smart, context-aware)
-
-When using `manager--list-archive-contents`, the tab-completer suggests valid archive names.
-
-The behavior is smart and context-aware:
-
-- If a --backup-definition (-d) is provided, archive suggestions are restricted to that .db catalog.
-
-- If no backup definition is given, the completer will:
-
-  - Scan all .db files in the backup_dir
-
-  - Aggregate archive names across all catalogs
-
-  - Sort results by:
-
-    - Backup name (e.g. pCloudDrive, media-files)
-
-    - Date inside the archive name (e.g. 2025-04-19)
-
-It’s blazing fast and designed for large backup sets.
-
-```bash
-# With a backup definition
-manager -d pCloudDrive --list-archive-contents <TAB>
-# ⤷ Suggests: pCloudDrive_FULL_2025-03-04, pCloudDrive_INCR_2025-04-19, ...
-
-# Without a backup definition
-manager --list-archive-contents <TAB>
-# ⤷ Suggests: all archives across all known backup definitions
-# ⤷ Example: media-files_FULL_2025-01-04, pCloudDrive_INCR_2025-04-19, ...
-
-# Filter by prefix
-manager --list-archive-contents media-<TAB>
-# ⤷ Suggests: media-files_FULL_2025-01-04, media-files_INCR_2025-02-20, ...
-```
-
-#### Enabling Bash completion
-
-Try auto completion in your session:
-
-```bash
-eval "$(register-python-argcomplete dar-backup)"
-eval "$(register-python-argcomplete cleanup)"
-eval "$(register-python-argcomplete manager)"
-#complete -o nosort -C 'python -m argcomplete cleanup' cleanup
-#complete -o nosort -C 'python -m argcomplete manager' manager
-```
-
-To make it persistent across sessions, add this to your ~/.bashrc:
-
-```bash
-# Enable autocompletion for dar-backup
-eval "$(register-python-argcomplete dar-backup)"
-eval "$(register-python-argcomplete cleanup)"
-eval "$(register-python-argcomplete manager)"
-# This disables bash sorting, so sorting is by <backup definition> and <date>
-#complete -o nosort -C 'python -m argcomplete cleanup' cleanup
-#complete -o nosort -C 'python -m argcomplete manager' manager
-```
-
-If you're using a virtual environment and register-python-argcomplete isn't in your global PATH, use:
-
-```bash
-# Enable autocompletion for dar-backup
-eval "$($(which register-python-argcomplete) dar-backup)"
-eval "$($(which register-python-argcomplete) cleanup)"
-eval "$($(which register-python-argcomplete) manager)"
-
-# If it's not working, try reactivating your virtualenv and restarting your terminal.
-```
-
-Then reload your shell:
-
-```bash
-source ~/.bashrc
-```
-
-#### Enable Zsh Completion
-
-If you're using Zsh, add this to your .zshrc:
-
-```zsh
-autoload -U bashcompinit
-bashcompinit
-eval "$(register-python-argcomplete dar-backup)"
-eval "$(register-python-argcomplete cleanup)"
-eval "$(register-python-argcomplete manager)"
-```
-
-Then reload Zsh:
-
-```zsh
-source ~/.zshrc
-```
-
-## Easy development setup
-
-It is very easy to have your own development environment.
-
-```bash
-git clone https://github.com/per2jensen/dar-backup.git
-cd dar-backup/v2
-./build.py
-```
-
-This script:
-
-- Creates a Python virtual environment called `venv`
-- pip install `hatch`
-- pip install the development environment as setup in pyproject.toml
-
-  --
-  
-  ```text
-  dev = [
-  "pytest",
-  "wheel>=0.45.1",
-  "requests>=2.32.2",
-  "coverage>=7.8.2",
-  "pytest>=8.4.0",
-  "pytest-cov>=6.1.1",
-  "psutil>=7.0.0",
-  "pytest-timeout>=2.4.0",
-  "httpcore>=0.17.3",
-  "h11>=0.16.0",
-  "zipp>=3.19.1",
-  "anyio>=4.4.0",
-  "black>=25.1.0"]
-  ```
-
-✅ Your environment is now ready to activate and test!
-
-Activate and run the test suite:
-
-```bash
-source venv/bin/activate # activate the virtual env
-pytest                   # run the test suite
-```
-
-## Todo
-
-### v2-1.2
-
-- Generate a working config from provided paths to archives and catalogs
-  - Useful for future restores, possibly in many years.
-
-- Support `dar` version 2.8.x
-
-### v2-1.3
-
-- Use `dar's` PKI encryption features
-  - Figure out how it works, the use cases, possible limitations to current work flows
-
-### Other stuff
-
-- Perhaps look into pre-processing backup definitions. As `dar` does not expand env vars
-  `dar-backup` could do so and feed the result to `dar`.
-- Add option to dar-backup to use the `dar` option `--fsa-scope none`
-
-## Known Limitations / Edge Cases
-
-- Does not currently encrypt data (by design — relies on encrypted storage)
-  - PKI contemplated for v2-1.3.0
-
-- One backup definition per file in backups.d/
-  - this assumption is built deep into `dar-backup`
+Please review the [Code of Conduct](CODE_OF_CONDUCT.md) to help keep this project welcoming and focused.
 
 ## Projects these scripts benefit from
 
@@ -2421,521 +760,4 @@ pytest                   # run the test suite
  4. [Ubuntu of course :-)](https://ubuntu.com/)
  5. [PyPI](https://pypi.org/)
 
-## Reference
-
-### CLI Tools Overview
-
-| Command | Description |
-| --- | --- |
-| [dar-backup](#dar-backup-options) | Perform full, differential, or incremental backups with verification and restore testing |
-| [manager](#manager-options) | Maintain and query catalog databases for archives |
-| [cleanup](#cleanup-options) | Remove outdated DIFF/INCR archives (and optionally FULLs) |
-| [clean-log](#clean-log-options) | Clean up excessive log output from dar command logs |
-| [dar-backup-systemd](#dar-backup-systemd-options) | Generate (and optionally install) systemd timers and services for automated backups |
-| [installer](#installer-options) | Set up directories and optionally create catalog databases according to a config file |
-| [demo](#demo-options) | Set up required directories and config files for a demo|
-| [Dashboard command-line options](#dashboard-command-line-options) | Start Datasette and open the metrics dashboard in the browser |
-
-### Test coverage
-
-#### Test selection with markers
-
-The test suite is annotated with these markers:
-
-- `unit` (fast, pure logic)
-- `component` (subprocess boundary with mocks/lightweight commands)
-- `integration` (end-to-end workflows; external tools)
-- `slow` (long-running/heavier integration)
-- `live_discord` (sends real webhook messages; opt-in only)
-
-#### Common runs
-
-```bash
-# Fast local loop (unit + component)
-pytest -m "unit or component"
-
-# Integration (exclude slow + live webhook)
-pytest -m "integration and not slow and not live_discord"
-
-# Slow-only
-pytest -m slow
-
-# Full suite (default pytest.ini already excludes live_discord)
-pytest -m "not live_discord"
-
-# Live webhook (requires DAR_BACKUP_DISCORD_WEBHOOK_URL)
-pytest -m live_discord
-```
-
-#### Run all tests
-
-```bash
-pytest
-```
-
-Results for version 1.1.2 (pre-release, Mar 13, 2026) in this report:
-
-```text
-$ pytest
-================================ test session starts =================================
-platform linux -- Python 3.12.3, pytest-8.4.0, pluggy-1.6.0
-rootdir: /home/pj/git/dar-backup/v2
-configfile: pytest.ini
-testpaths: tests
-plugins: anyio-4.9.0, timeout-2.4.0, cov-6.1.1, mock-3.15.1, metadata-3.1.1, json-report-1.5.0
-timeout: 1800.0s
-timeout method: signal
-timeout func_only: False
-collected 654 items / 1 deselected / 653 selected                                    
-
-tests/test_add_old_archive_confirmation.py ....                                [  0%]
-tests/test_alternate_reference_archive.py ...                                  [  1%]
-tests/test_autocompletion_install.py ...                                       [  1%]
-tests/test_backup_timeout.py ..                                                [  1%]
-tests/test_binary_info.py ......                                               [  2%]
-tests/test_bitrot.py ..                                                        [  3%]
-tests/test_clean_log.py ....................                                   [  6%]
-tests/test_cleanup.py ................................                         [ 11%]
-tests/test_command_runner.py ...........................................       [ 17%]
-tests/test_config_comments.py .                                                [ 17%]
-tests/test_config_settings.py .....................                            [ 20%]
-tests/test_corrupt_disk.py ....                                                [ 21%]
-tests/test_create_backup_command.py ...                                        [ 22%]
-tests/test_create_full_diff_incr_backup.py ..........                          [ 23%]
-tests/test_dar_backup.py ..................................................... [ 31%]
-........                                                                       [ 32%]
-tests/test_dar_backup_additional_coverage.py .........................         [ 36%]
-tests/test_dar_backup_startup.py ....                                          [ 37%]
-tests/test_darrc.py ..                                                         [ 37%]
-tests/test_demo.py .............                                               [ 39%]
-tests/test_discord_webhook.py ..                                               [ 39%]
-tests/test_disk_full.py .                                                      [ 40%]
-tests/test_doctype_handler.py .                                                [ 40%]
-tests/test_filter_darrc_file.py .                                              [ 40%]
-tests/test_generic_backup_command_execution.py ....                            [ 41%]
-tests/test_get_config_file.py .......                                          [ 42%]
-tests/test_gpt_file_compression.py .                                           [ 42%]
-tests/test_gpt_tests.py .......                                                [ 43%]
-tests/test_installer.py ..................                                     [ 46%]
-tests/test_iterparse_gen.py .                                                  [ 46%]
-tests/test_links.py .                                                          [ 46%]
-tests/test_list_definitions.py .                                               [ 46%]
-tests/test_listing.py ...                                                      [ 47%]
-tests/test_logging_trace.py ..                                                 [ 47%]
-tests/test_manager.py ........................................................ [ 55%]
-...........                                                                    [ 57%]
-tests/test_manager_coverage.py ..................................              [ 62%]
-tests/test_metrics_db.py ...............................                       [ 67%]
-tests/test_metrics_inode_counts.py ......                                      [ 68%]
-tests/test_par2.py .                                                           [ 68%]
-tests/test_par2_manifest.py .                                                  [ 68%]
-tests/test_par2_multi_definitions.py .                                         [ 68%]
-tests/test_par2_overrides.py .                                                 [ 69%]
-tests/test_parse_dar_stats.py .........                                        [ 70%]
-tests/test_pitr.py ...............................................             [ 77%]
-tests/test_pitr_integration.py .....                                           [ 78%]
-tests/test_postreq.py .                                                        [ 78%]
-tests/test_preflight.py ...                                                    [ 79%]
-tests/test_prereq.py .                                                         [ 79%]
-tests/test_readme_changelog.py ..........                                      [ 80%]
-tests/test_restore.py ....                                                     [ 81%]
-tests/test_restore_content_verification.py ..                                  [ 81%]
-tests/test_run_command.py ......s                                              [ 82%]
-tests/test_sanity_checks.py .................                                  [ 85%]
-tests/test_space_definition.py .                                               [ 85%]
-tests/test_startup_cleanup.py ........                                         [ 86%]
-tests/test_status_indicators.py .......                                        [ 87%]
-tests/test_stress.py .                                                         [ 87%]
-tests/test_systemd_unit_generation.py ..........                               [ 89%]
-tests/test_trace_logging.py ..                                                 [ 89%]
-tests/test_util.py ...................................................         [ 97%]
-tests/test_util_completers.py ..........                                       [ 99%]
-tests/test_verbose.py ...                                                      [ 99%]
-tests/test_verify_cleanup.py .                                                 [ 99%]
-tests/test_xxe.py ..                                                           [100%]
-
-=================================== tests coverage ===================================
-__________________ coverage: platform linux, python 3.12.3-final-0 ___________________
-
-Name                                                                     Stmts   Miss  Cover
--------------------------------------------------------------------------------------------------------------
-pytest-0/test_changelog_missing___chang0/src/dar_backup/__init__.py         0      0   100%
-pytest-0/test_changelog_missing___chang0/src/dar_backup/dar_backup.py      11      1    91%
-pytest-0/test_changelog_missing___chang1/src/dar_backup/__init__.py         0      0   100%
-pytest-0/test_changelog_missing___chang1/src/dar_backup/dar_backup.py      11      1    91%
-pytest-0/test_readme_missing___readme_0/src/dar_backup/__init__.py          0      0   100%
-pytest-0/test_readme_missing___readme_0/src/dar_backup/dar_backup.py       11      1    91%
-pytest-0/test_readme_missing___readme_p0/src/dar_backup/__init__.py         0      0   100%
-pytest-0/test_readme_missing___readme_p0/src/dar_backup/dar_backup.py      11      1    91%
-src/dar_backup/__about__.py                                                 3      0   100%
-src/dar_backup/__init__.py                                                  0      0   100%
-src/dar_backup/clean_log.py                                               114     10    91%
-src/dar_backup/cleanup.py                                                 300     43    86%
-src/dar_backup/command_runner.py                                          233     20    91%
-src/dar_backup/config_settings.py                                         178      9    95%
-src/dar_backup/dar_backup.py                                             1213     64    95%
-src/dar_backup/dar_backup_systemd.py                                       56      1    98%
-src/dar_backup/demo.py                                                    100      1    99%
-src/dar_backup/exceptions.py                                                2      0   100%
-src/dar_backup/installer.py                                               120      4    97%
-src/dar_backup/manager.py                                                1136     94    92%
-src/dar_backup/rich_progress.py                                            70      2    97%
-src/dar_backup/util.py                                                    599     53    91%
--------------------------------------------------------------------------------------------
-TOTAL                                                                    4168    305    93%
-Coverage XML written to file doc/test-report/coverage.xml
-=================== 652 passed, 1 skipped, 1 deselected in 514.32s (0:08:34) ==============
-```
-
-### Dar-backup options
-
-This script does backups including par2 redundancy, validation and restoring.
-
-Available options:
-
-```bash
--F, --full-backup                    Perform a full backup.
--D, --differential-backup            Perform a differential backup.
--I, --incremental-backup             Perform an incremental backup.
--d, --backup-definition <name>       Specify the backup definition file.
---alternate-reference-archive <file> Use a different archive for DIFF/INCR backups.
--c, --config-file <path>             Specify the path to the configuration file.
---darrc <path>                       Specify an optional path to .darrc.
---examples                           Show examples of using dar-backup.py.
--l, --list                           List available backups.
---list-contents <archive>            List the contents of a specified archive.
---list-definitions                   List backup definitions from BACKUP.D_DIR.
---selection <params>                 Define file selection for listing/restoring.
---restore <archive>                  Restore a specified archive.
--r, --restore <archive>              Restore archive.
---restore-dir                        Directory on which to restore
---verbose                            Enable verbose output.
---suppress-dar-msg                   Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
---log-level <level>                  `debug` or `trace`, default is `info`.
---log-stdout                         Also print log messages to stdout.
---do-not-compare                     Do not compare restores to file system.
---allow-unsafe-definition-names      Disable backup definition name validation (allows underscores or other characters).
---preflight-check                    Run preflight checks and exit (runs automatically; this flag just exits after checks).
---examples                           Show examples of using dar-backup.
---readme                             Print README.md and exit
---readme-pretty                      Print README.md with Markdown styling and exit
---changelog                          Print Changelog and exit
---changelog-pretty                   Print Changelog with Markdown styling and exit
--v, --version                         Show version and license information.
-```
-
-#### Dar-backup exit codes
-
-- 0: Success.
-- 1: Error (backup/restore/preflight failure).
-- 2: Warning (restore test failed or backup already exists and is skipped).
-- 127: Typically an error during startup, file or config value missing
-  - if the `dar -t` test fails, exit code 1 is emitted
-  - restore tests could fail if the source file has changed after the backup
-
-#### Dar-backup env vars
-
-| Env var | Value | Description |
-| --- | --- | --- |
-| DAR_BACKUP_CONFIG_FILE | Full path to config file | Overrides built-in default, overridden by --config-file |
-| DAR_BACKUP_DISCORD_WEBHOOK_URL | https://discord.com/api/webhooks/\<userID\>/\<webhook UUID\> | The full url |
-| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
-
-### Manager Options
-
-This script manages `dar` databases and catalogs.
-
-Available options:
-
-```bash
--c, --config-file <path>             Path to dar-backup.conf.
---create-db                          Create missing databases for all backup definitions.
---alternate-archive-dir <path>       Use this directory instead of BACKUP_DIR in the config file.
---add-dir <path>                     Add all archive catalogs in this directory to databases.
--d, --backup-def <name>              Restrict operations to this backup definition.
---add-specific-archive <archive>     Add a specific archive to the catalog database.
---remove-specific-archive <archive>  Remove a specific archive from the catalog database.
--l, --list-catalogs                  List catalogs in databases for all backup definitions.
---list-archive-contents <archive>    List the contents of an archive’s catalog by archive name.
---find-file <file>                   Search catalogs for a specific file.
---restore-path <path> [<path> ...]   Restore specific path(s) (Point-in-Time Recovery).
---when <timestamp>                   Date/time for restoration (used with --restore-path).
---target <path>                      Target directory for restoration (default: current dir).
---pitr-report                        Report PITR archive chain for --restore-path/--when without restoring.
---pitr-report-first                  Run PITR chain report before restore and abort if missing archives.
---relocate-archive-path <old> <new>  Rewrite archive path prefix in the catalog DB (requires --backup-def).
---relocate-archive-path-dry-run      Show archive path changes without applying them (use with --relocate-archive-path).
---verbose                            Enable verbose output.
---log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
-
-#### Manager env vars
-
-| Env var | Value | Description |
-| --- | --- | --- |
-| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |
-| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
-
-### Cleanup options
-
-This script removes old backups and par2 files according to `[AGE]` settings in config file.
-
-Catalogs in catalog databases are also removed.
-
-Supported options:
-
-```bash
--d, --backup-definition                           Backup definition to cleanup.
--c, --config-file                                 Path to 'dar-backup.conf'
--v, --version                                     Show version & license information.
---alternate-archive-dir                           Clean up in this directory instead of the default one.
---cleanup-specific-archives "<archive>, <>, ..."  Comma separated list of archives to cleanup.
--l, --list                                       List available archives (filter using the -d option).
---dry-run                                        Show what would be deleted without removing files.
---verbose                                         Print various status messages to screen.
---log-level <level>                               `debug` or `trace`, default is `info`", default="info".
---log-stdout                                      Print log messages to stdout.
---test-mode                                       This is used when running pytest test cases
-```
-
-#### Cleanup env vars
-
-| Env var | Value | Description |
-| --- | --- | --- |
-| DAR_BACKUP_CONFIG_FILE | path to the config file | Default is $HOME/.config/dar-backup/dar-backup.conf |
-| DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
-
-### Clean-log options
-
-This script removes excessive logging output from `dar` logs, improving readability and efficiency. Available options:
-
-```bash
--f, --file <path>          Specify the log file(s) to be cleaned.
--c, --config-file <path>   Path to dar-backup.conf.
---dry-run                  Show which lines would be removed without modifying the file.
--v, --version              Display version and licensing information.
--h, --help                 Displays usage info
-```
-
-### Dar-backup-systemd options
-
-Generates and optionally install systemd user service units and timers.
-
-```bash
--h, --help           Show this help message and exit
---venv VENV          Path to the Python venv with dar-backup
---dar-path DAR_PATH  Optional path to dar binary's directory
---install            Install the units to ~/.config/systemd/user
-```
-
-### Installer options
-
-Sets up `dar-backup` according to provided config file.
-
-The installer creates the necessary backup catalog databases if `--create-db` is given.
-
-```bash
---config                 Path to a config file. The configured directories will be created.
---create-db              Create backup catalog databases. Use this option with `--config`.
---install-autocompletion Add bash or zsh auto completion - idempotent.
---remove-autocompletion  Remove the auto completion from bash or zsh.
--v, --version            Display version and licensing information.
--h, --help               Displays usage info.
-```
-
-### Demo options
-
-Sets up `dar-backup` in a demo configuration.
-
-It is non-destructive and stops if directories are already in place.
-
-Create directories:
-
-- ~/.config/dar-backup/
-  - ~/.config/dar-backup/backup.d/
-- ~/dar-backup/
-  - ~/dar-backup/backups/
-  - ~/dar-backup/restore/
-
-Sets up demo config files:
-
-- ~/.config/dar-backup/dar-backup.conf
-- ~/.config/dar-backup/backup.d/demo
-
-```bash
--i, --install       Sets up `dar-backup`.
---root-dir          Specify the root directory for the backup.
---dir-to-backup     Directory to backup, relative to the root directory.
---backup-dir        Directory where backups and redundancy files are put.
---override          By default, the script will not overwrite existing files or directories.
-                    Use this option to override this behavior.
---generate          Generate config files and put them in /tmp/ for inspection
-                    without writing to $HOME.
--v, --version       Display version and licensing information.
--h, --help          Displays usage info
-```
-
-### Config changes
-
-#### 1.0.1
-
-##### DISCORD WEBHOOK
-
-For Discord notifications use the `DAR_BACKUP_DISCORD_WEBHOOK_URL` environment variable. It should not be placed in the config file.
-
-DAR_BACKUP_DISCORD_WEBHOOK_URL is the entire endpoint like this:
-
-```bash
-export DAR_BACKUP_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/\<userId\>/\<uuid\>
-```
-
-##### Restore test config
-
-Restore tests choose random files from the archive and compare them with the live filesystem.
-To avoid noisy paths (caches, temp files, logs), you can exclude candidates before the random
-selection happens. All matching is case-insensitive.
-
-Config keys (in [MISC]):
-
-- RESTORETEST_EXCLUDE_PREFIXES: comma-separated path prefixes to skip. Matches from the start of
-  the path (after trimming a leading "/"). Use trailing "/" for directories.
-- RESTORETEST_EXCLUDE_SUFFIXES: comma-separated filename suffixes to skip.
-- RESTORETEST_EXCLUDE_REGEX: optional regex to skip anything matching the path.
-
-Example:
-
-```ini
-[MISC]
-RESTORETEST_EXCLUDE_PREFIXES = .cache/, .local/share/Trash/, .mozilla/, snap/firefox/common/.mozilla/
-RESTORETEST_EXCLUDE_SUFFIXES = .sqlite-wal, .sqlite-shm, .log, .tmp, .lock, .journal
-RESTORETEST_EXCLUDE_REGEX = (^|/)(Cache|cache|Logs|log)/
-```
-
-Regex tips (case-insensitive):
-
-- Match common cache/log directories anywhere:
-  `(^|/)(cache|logs)/`
-- Skip thumbnails and temp dirs:
-  `(^|/)(thumbnails|tmp|temp)/`
-- Exclude browser profile noise while keeping other files:
-  `(^|/)\.mozilla/|/snap/firefox/common/\.mozilla/`
-
-##### Par2
-
-New optional PAR2 settings were added to the config file. If none of these keys are added, dar-backup behaves exactly as before (PAR2 files next to archives, per-slice parity).
-
-| Name | Description | When it is in effect | Suggested value |
-|------|-------------|----------------------|-----------------|
-| PAR2_DIR | Directory to store .par2 and .vol*.par2 files | When set | A different device or mount from BACKUP_DIR |
-| PAR2_RATIO_FULL | Redundancy percent for FULL | When set | 10 (%) |
-| PAR2_RATIO_DIFF | Redundancy percent for DIFF | When set | 5  (%)|
-| PAR2_RATIO_INCR | Redundancy percent for INCR | When set | 5  (%)|
-| PAR2_RUN_VERIFY | Verify after create | When set | false |
-
-Notes:
-
-- PAR2_RATIO_*, and PAR2_RUN_VERIFY apply even if PAR2_DIR is not set (i.e. par2 output stays next to the archives).
-
-Per-backup overrides use a section named after the backup definition with the same PAR2_* keys:
-
-```text
-
-######################################################################
-# Per-backup configuration example overrides
-######################################################################
-
-# --------------------------------------------------------------------
-# Per-backup overrides (section name must match backup.d filename stem)
-# Example: backup.d/home.conf  ->  [home]
-# --------------------------------------------------------------------
-
-#[home]
-# Disable PAR2 entirely for this backup definition
-PAR2_ENABLED = false
-#
-#[media]
-# Store PAR2 files in a separate location for this backup definition
-#PAR2_DIR = /samba/par2/media
-# Raise redundancy only for FULL
-#
-[documents]
-# Run verify par2 sets after creation
-PAR2_RUN_VERIFY = true
-#
-#[etc]
-# Keep global PAR2 settings but tweak ratios for this backup definition
-# RATIO is given in percent (%)
-#PAR2_RATIO_FULL = 15  
-#PAR2_RATIO_DIFF = 8
-#PAR2_RATIO_INCR = 8
-```
-
-[Per-backup override test case: `tests/test_par2_overrides.py`](v2/tests/test_par2_overrides.py)
-
-#### 1.0.2
-
-##### Trace Logging
-
-To support debugging without cluttering the main log file, a secondary trace log is now created (e.g., `dar-backup.trace.log`).
-This file captures all `DEBUG` level messages and full exception stack traces.
-
-You can configure its rotation in the `[MISC]` section:
-
-- `TRACE_LOG_MAX_BYTES`: Max size of the trace log file in bytes. Default is `10485760` (10 MB).
-- `TRACE_LOG_BACKUP_COUNT`: Number of rotated trace log files to keep. Default is `1`.
-
-Example:
-
-```ini
-[MISC]
-TRACE_LOG_MAX_BYTES = 10485760
-TRACE_LOG_BACKUP_COUNT = 1
-```
-
-##### Command output Capture
-
-- New optional `[MISC]` setting: `COMMAND_CAPTURE_MAX_BYTES` (default 102400).
-  - Limits how much stdout/stderr is kept in memory per command while still logging full output.
-  - Set to `0` to disable buffering entirely. Command output is still streamed to dar-backup-commands.log
-  - If set to `0`, the calling function cannot rely on output from the executed command. The exit value is the only result provided.
-
-Example:
-
-```ini
-[MISC]
-COMMAND_CAPTURE_MAX_BYTES = 102400
-```
-
-#### 1.1.0
-
-COMMAND_TIMEOUT_SECS=-1 now disables timeout for commands executed.
-
-#### 1.1.1
-
-Env var `DAR_BACKUP_COMMAND_TIMEOUT_SECS` now overrides config file var `COMMAND_TIMEOUT_SECS`.
-
-#### 1.1.2
-
-##### METRICS_DB_PATH
-
-Optional. When set, dar-backup records a row of operational metrics into a SQLite database after each backup run.
-
-```ini
-[MISC]
-METRICS_DB_PATH = /var/lib/dar-backup/metrics.db
-```
-
-Tilde and environment variable expansion are supported:
-
-```ini
-METRICS_DB_PATH = ~/dar-backup/metrics.db
-METRICS_DB_PATH = $XDG_DATA_HOME/dar-backup/metrics.db
-```
-
-If `METRICS_DB_PATH` is absent or empty, metrics collection is silently disabled — no database is created and backups are unaffected.
-
-The database is created automatically on first use. If an older database exists (created before this version), the new columns are added automatically; no data is lost.
-
-Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / FAILURE).
-
-A metrics write failure never aborts or affects the backup — errors are logged at WARNING level and swallowed.
-
+<!-- markdownlint-enable MD024 -->

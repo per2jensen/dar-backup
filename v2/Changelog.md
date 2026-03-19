@@ -1,5 +1,7 @@
 <!-- markdownlint-disable MD024 -->
-# dar-backup Changelog
+# dar-backup Detailed Changelog
+
+For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.3 - not released
 
@@ -31,8 +33,6 @@
 
 ## v2-1.1.1 - 2026-02-14
 
-### Added
-
 ### Changed
 
 - **Heads up:** Backup definition names are now validated. Allowed characters: letters, numbers, spaces, and hyphens. Underscores are rejected by default. Use `--allow-unsafe-definition-names` to skip this validation if you need legacy names.
@@ -50,7 +50,7 @@
 
 ### Added
 
-- Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can’t resolve a dated restore.
+- Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can't resolve a dated restore.
 - PITR integration torture tests for rename/mtime traps and catalog rebuild after DB loss.
 - PITR dry-run chain report (`manager --pitr-report`) to preview archive selection and detect missing archives.
 - PITR fallback now reports missing archive slices and can notify via Discord when configured.
@@ -81,12 +81,8 @@
 - Configurable command output capture cap (`COMMAND_CAPTURE_MAX_BYTES`, default 100 KB) to limit in-memory stdout/stderr while still logging full output.
 - Streaming list output for `dar-backup --list-contents` and `manager --list-archive-contents` to avoid large in-memory buffers.
 - Test coverage additions for config parsing, util helpers, restore-test sampling edge cases, par2 slice helpers, and get_backed_up_files error paths.
-- Tests for missing source files during restore verification and for par2 generation order after verification.
-- CommandRunner test coverage for sanitize failure notes, text/binary output handling, timeouts, Popen failures, and TTY restore logic.
-- Tests for COMMAND_CAPTURE_MAX_BYTES defaults (0 and 1k) and binary stdout/stderr capture with truncation and log_output disabled.
-- Manager test coverage for create-db guardrails and catalog listing parsing/sorting across runner/subprocess paths.
 - Cleanup now reports PREREQ/POSTREQ failures cleanly and sends Discord failure notifications when configured.
-- New trace logger that always logs at DEBUG and captures stacktraces if they happens. Default max size is 10MB + 1 rollover file.
+- New trace logger that always logs at DEBUG and captures stacktraces if they happen. Default max size is 10 MB + 1 rollover file.
 
 ### Changed
 
@@ -98,8 +94,7 @@
 - CommandRunner supports per-command capture cap overrides (disable cap with `capture_output_limit_bytes=-1`).
 - Cleanup now rejects unsafe archive names when `--cleanup-specific-archives` is used to prevent accidental deletions.
 - Removed deprecated PAR2 layout/mode settings and simplified PAR2 cleanup to delete all matching .par2 artifacts.
-- Config templates/docs updated to drop PAR2_LAYOUT/PAR2_MODE references.
-- [Snyk] Python 3.11 required in pyproject.toml. Snyk has flagged a vulnerabilly in an xml parser that requires the bump to 3.11.
+- [Snyk] Python 3.11 required in pyproject.toml.
 - Config parsing errors now emit concise messages (no stack trace) and trigger Discord failure notifications in CLI tools.
 
 ## v2-1.0.1 - 2026-01-09
@@ -109,394 +104,189 @@
 - Cleanup `--dry-run` to preview archive, PAR2, and catalog deletions.
 - Completion: `cleanup` supports comma-separated archive lists with whitespace normalization.
 - Completion: `cleanup` now offers archive-only suggestions after `--cleanup-specific-archives`.
-- Tests for completion list parsing and cleanup dry-run.
-- Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DAR_BACKUP_DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging (HTTP body).
+- Optional Discord webhook notifications: `send_discord_message` helper with config-over-env precedence (`DAR_BACKUP_DISCORD_WEBHOOK_URL`), JSON payload, timeout, and detailed error logging.
 - Backup runs now emit a per-backup-definition status message (`YYYY-MM-DD_HH:MM - dar-backup, <backup definition>: SUCCESS|FAILURE`).
 - dar-backup `--list-definitions` option to list backup definitions from `BACKUP.D_DIR`.
-- Test coverage: webhook unit tests plus optional live Discord test (guarded by `live_discord` marker).
 - Automatic preflight checks now run before every invocation (or standalone via `--preflight-check`) to verify required directories, write access, and availability of `dar`/`par2` binaries.
 - PAR2 enhancements: optional PAR2_DIR storage, per-archive parity mode, per-backup overrides, and parity manifests to support verify/repair against archives in a different directory.
-- New tests for PAR2_DIR + per-archive verify/repair flow, per-backup overrides.
-- Documentation: new config options and per-backup overrides are documented in the README “Config changes” section.
-- Restore test filters: optional case-insensitive prefix/suffix/regex exclusions for restore-test file sampling, plus a dedicated unit test.
+- Restore test filters: optional case-insensitive prefix/suffix/regex exclusions for restore-test file sampling.
 - Env var `DAR_BACKUP_CONFIG_FILE` now supported.
 
 ### Changed
 
 - Completion: `dar-backup -l -d <def>` and `cleanup --cleanup-specific-archives -d <def>` now narrow archive suggestions by definition and prefix.
-- Pytest defaults exclude live Discord tests; enable with `-m live_discord` when a webhook is available.
 - Skip Discord notifications for the demo/example backup definition to avoid spam during sample runs.
 - Discord backup status now includes WARNING when a backup is skipped because it already exists.
-- Completer logging now uses a per-user logfile and falls back safely if the completer logger setup fails.
 - Verification failures and existing-backup skips now emit exit code 2 (warning), while errors continue to emit exit code 1.
 - Cleanup deletion hardening (Snyk): validate archive names and enforce safe, base-dir-bound file deletions.
-- Snyk badge links to [Snyk dar-backup page](https://security.snyk.io/vuln/?search=dar-backup)
 - Removed the rich progress bar wrapper from backup/verify runs to simplify core execution.
-- PAR2 tests now align with per-archive parity flow (single create command, repair via `.par2` set).
-- Slice-order test reads slice numbers from the logged `par2 create` command output.
 - CommandRunner now restores terminal attributes after subprocesses and runs with stdin set to `/dev/null` by default to avoid terminal echo issues.
 
 ## v2-1.0.0 - 2025-10-09
 
-Github link: [v2-1.0.0](https://github.com/per2jensen/dar-backup/tree/v2-1.0.0/v2)
+[v2-1.0.0 on Github](https://github.com/per2jensen/dar-backup/tree/v2-1.0.0/v2)
 
-### Added
+- Version 2 **1.0.0** declared stable.
+- Expanded test suite and Codecov integration.
 
-- Version 2 **1.0.0** declared
-- A bunch of test cases
-- Codecov config changes
+---
 
-## v2-beta-0.8.4 - 2025-08-23
+## Pre-1.0 Development History
 
-Github link: [v2-beta-0.8.4](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.4/v2)
+### v2-beta-0.8.4 - 2025-08-23
 
-### Added
+- Option `-D` only added when restoring FULL backups to avoid incorrectly deleting files during DIFF restores.
 
-- Option '-D' only added when restoring FULL backups.
-  - A test case on [my dar-backup-image repo](https://github.com/per2jensen/dar-backup-image) does not delete a lone file in a directory if -D is used restoring from a DIFF.
+### v2-beta-0.8.3 - 2025-08-23
 
-## v2-beta-0.8.3 - 2025-08-23
+- Restore now deletes files marked as "removed" in DIFF and INCR catalogs, ensuring FULL + DIFF + INCR restore matches source directories.
+- Options `-wa` and `-/ Oo` added to the restore command.
 
-Github link: [v2-beta-0.8.3](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.3/v2)
+### v2-beta-0.8.2 - 2025-07-17
 
-### Added
+- **Security hardening:** CommandRunner performs strict command-line sanitization — disallows dangerous characters (`;`, `&`, `|`) in arguments to prevent injection.
+- Documentation on filename restrictions and safe workarounds added.
 
-- Dar-backup now deletes files if noted as "removed" in the archive catalog for DIFF and INCR backups.
-  - This ensures a restore of a FULL + DIFF + INCR matches the files in the source directories.
-  - Options '-wa' & '-/ Oo'  added to the restore command.
+### v2-beta-0.8.1 - 2025-07-16
 
-## v2-beta-0.8.2 - 2025-07-17
+- FIX: CommandRunner now logs errors and fills more data into the returned CommandResult.
 
-Github link: [v2-beta-0.8.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.2/v2)
+### v2-beta-0.8.0 - 2025-06-13
 
-### Added
+- Clone dashboard generator produces a cleaner, more robust dashboard.
+- Directory traversal fix: `clean_log.py` now only accepts files in the configured log directory.
 
-- Security hardening: CommandRunner now performs strict command-line sanitization
-  - Disallows potentially dangerous characters (e.g. ;, &, |) in command arguments
-  - Prevents injection-style misuse when restoring specific files or invoking custom commands
+### v2-beta-0.7.2 - 2025-06-07
 
-- Documentation:
-  - New [README section](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#limitations-on-file-names-with-special-characters) explains filename restrictions and safe workarounds (e.g. restoring directly with dar, if needed)
-  - Includes a Markdown table listing all disallowed characters
+- Build system refactored — all dependencies now in `pyproject.toml`, separated into dev, packaging, and delivery phases.
+- `build.sh` used for both Github CI and local dev environment setup.
+- Two new optional params to control log file rotation.
+- Enrolled in [Snyk code checker](https://snyk.io/code-checker/) — identified vulnerable package versions and started input sanitation.
 
-- Test suite:
-  - Existing test cases updated to comply with the new sanitization rules
-  - Additional tests ensure CommandRunner handles large binary output and edge cases cleanly
-
-## v2-beta-0.8.1 - 2025-07-16
-
-Github link: [v2-beta-0.8.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.1/v2)
-
-### Added
-
-- FIX: runner now logs an error and fills more data into the returned CommandResult.
-
-## v2-beta-0.8.0 - 2025-06-13
-
-Github link: [v2-beta-0.8.0](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.8.0/v2)
-
-### Added
-
-- Modified clone dashboard generator to produce easier to read dashboard and be more robust.
-- Dir_traversal sanitation: clean_log.py now only accepts files in configured log directory to `--file` option.
-
-## v2-beta-0.7.2 - 2025-06-07
-
-Github link: [v2-beta-0.7.2](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.2/v2)
-
-### Added
-
-- Refactored build system, so all dependencies are kept in `pyproject.toml`. The dependencies are separated  into dev, packaging and delivery phases.
-- Use `build.sh` to setup pytest environment in Github workflow.
-
-  - Do the same to get a development environment going.
-
-- Added 2 new optional params to control log file roll.
-- Enrolling into [Snyk code checker](https://snyk.io/code-checker/) and learning how to work with it.
-  
-  - Snyk helped pointing out vulnerable versions of some packages used.
-  - Input sanitation started, there is room for improvement.
-
-## v2-beta-0.7.1 - 2025-05-22
-
-Github link: [v2-beta-0.7.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.7.1/v2)
-
-### Added
+### v2-beta-0.7.1 - 2025-05-22
 
 - Quick Guide with reworked `demo` program.
-- util.get_invocation_command_line() used to print command line.
-- Installer to setup directories and catalog databases as prescribed in config file.
-- Documentation on dar-backup --selection option improved.
-- README.md clean up, signing section now with multiple collabsible sections.
-- Install instructions fixed after trial in fresh utuntu VM.
-- Small license display refac.
-- .deb package for Ubuntu can now be built (draft quality)
+- Installer to setup directories and catalog databases from config file.
+- `.deb` package for Ubuntu (draft quality — testing only).
+- SPDX license headers added.
+- Clone stats capture action with dashboard PNG generation and milestone badges.
+- Shell autocompletion improvements.
+- `--verbose` now controls startup banner display.
 
-  -- DO NOT use unless for testing on an empty VM
-  -- no real checking if this package aligns with Ubuntu's package requirements
-  -- package `inputimeout` is installed via pip as Ubuntu does not have a .deb
+### v2-beta-0.6.20.1 - 2025-05-04
 
-- SPDX license header added to many files
-- Action + program to capture cloning stats and store them in v2/doc directory. Includes a badge.
+- FIX: bash/zsh completers now support `MANAGER_DB_DIR` config.
+- `cleanup` and `manager` completers sort archives by definition and date.
 
-  -- annotate new daily max number of clones
-  -- Celebration badge when certain clones numbers are hit (just for fun)
+### v2-beta-0.6.20 - 2025-05-03
 
-- Action + program to generate 12 weeks cloning dashboard (a PNG) with annotation
-- Tweaked the auto completion setup in .bashrc, it stopped working for me unknown reasons (needs some looking into)
-- --verbose now affects the startup banner. Now it is printed only if --verbose is given
+- `show_version()` moved to util with tests for all three commands.
+- Improved ConfigSettings class to handle optional configuration keys.
+- Optional config parameter `MANAGER_DB_DIR` for storing catalog databases on a separate disk.
 
-## v2-beta-0.6.20.1 - 2025-05-04
+### v2-beta-0.6.19 - 2025-04-21
 
-Github link: [v2-beta-0.6.20.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20.1/v2)
+- Bash and zsh autocompletion for CLI.
+- `manager --add-specific-archive` warns if adding a catalog breaks chronology, with timeout-guarded user prompt.
+- More robust decoding in `command_runner.run()`.
 
-### Added
+### v2-beta-0.6.18 - 2025-04-05
 
-- FIX: bash/zsh completers fixed to support MANAGER_DB_DIR config if set
-- `cleanup` and `manager` completer now sorts archives by \<backup-definition> and \<archive date> (so not using \<type>)
+- Package signing setup using key `dar-backup@pm.me` (OpenPGP.org key server, PyPI signing subkey).
+- README.md and Changelog.md included in wheel package.
+- New options: `--readme`, `--readme-pretty`, `--changelog`, `--changelog-pretty`.
+- Systemd user unit generation and optional installation.
+- Progress bar via `rich` showing current directory being backed up.
+- Pytest coverage computed and displayed on Github.
 
-## v2-beta-0.6.20 - 2025-05-03
+### v2-beta-0.6.17 - 2025-03-29
 
-Github link: [v2-beta-0.6.20](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.20/v2)
+- Prereq/postreq logging moved to debug level; many `.info()` calls changed to `debug()` for cleaner logs.
+- Code reorganization: `util.run_command()` replaced with `CommandRunner` class.
+- FIX: config_setting init error found by test case.
 
-### Added
+### v2-beta-0.6.16 - 2025-03-22
 
-- show_version() moved to util and tests for dar-backup, manager and cleanup
-- startup informational messages now works the same across the scripts
-- Improved ConfigSettings class to handle optional configuration keys
+- Filtered `.darrc` file from `--suppress-dar-msg` now removed at exit.
+- `cleanup` requires confirmation to delete a FULL archive via `--cleanup-specific-archives`.
+- Module `inputimeout` introduced for timed user prompts.
+- Cleaner default log output; use `--verbose` or `--log-level debug` for more detail.
 
-  -- test cases added
+### v2-beta-0.6.15 - 2025-03-16
 
-- Optional config parameter: MANAGER_DB_DIR, ideally to point to another disk for safe keeping backup catalogs
+- Restore test details logged only with `--verbose`.
+- `--log-stdout` no longer shows subprocess output.
+- Error exit code 1 if manager fails to add an archive to its database.
 
-  -- test cases added
+### v2-beta-0.6.14 - 2025-03-02
 
-## v2-beta-0.6.19 - 2025-04-21
+- DAR XML catalog parsing fixed (recursive → iterative). Test case added.
+- Error handling improved; `--verbose` prints terse error list on exit.
+- Manager no longer passes `-ai` when adding catalogs.
 
-Github link: [v2-beta-0.6.19](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.19/v2)
+### v2-beta-0.6.13 - 2025-02-25
 
-### Added
+- `--suppress-dar-msg` option added.
+- Separate log file for command outputs to keep `dar-backup.log` readable.
+- FIX: leftover `print()` removed from `run_command()`.
 
-- removed a BackupError in the verify() to reduce noise in logs and let the rest of "compares" run.
-- Added bash and zsh auto completion for a nicer CLI experience.
-  
-  -- See [README for details](https://github.com/per2jensen/dar-backup?tab=readme-ov-file#shell-autocompletion)  
+### v2-beta-0.6.12 - 2025-02-23
 
-- Improvement to command_runner.run(), more robust decoding
+- Environment variable support in paths (command line and config files).
+- Proper handling of missing config file (exit code 127).
+- Demo installer for config and backup definition setup.
 
-- Manager --add-specific-archive now gives a prompt with a warning if user attempts to add a catalog that breaks chronology. The user is allowed to go forward and ignore the warning or can choose to abort. The program times out after a little while and discards the operation.
+### v2-beta-0.6.11 - 2025-02-23
 
-## v2-beta-0.6.18 - 2025-04-05
+- `run_command()` handles missing commands gracefully.
+- XML parsing refactored from recursive to iterative.
+- Input verification for config file existence.
 
-Github link: [v2-beta-0.6.18](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.18/v2)
+### v2-beta-0.6.10 - 2025-02-22
 
-### Added
+- Unit test verifying compressed file formats are not double-compressed.
 
-- setup of package signing using key: `dar-backup@pm.me` added.
-  -- key created
-  -- docs updated
-  -- release script created
-  -- key added top OpenPGP.org key server
-  -- pypi setup modified and set to use the new Signing subkey
-- README.md and Changelog.md now included in the wheel and installed on `pip install dar-backup`
-- new options to make it easy to find docs (--readme, --readme-pretty, --changelog, --changelog-pretty)
-- Generate systemd user units, and optionally install them
-- Progress bar and status line showing current directory being backed up (thanks to `rich`)
-- Pytest coverage now computed and displayed on Github
-- 2 code improvements and multiple cleanup tests added
-- Many test cases added, manager now in good pytest shape
+### v2-beta-0.6.9 - 2025-02-21
 
-## v2-beta-0.6.17 - 2025-03-29
+- `clean-log` script added to strip verbose `dar` output from log files.
+- Initial pytest test cases.
 
-Github link: [v2-beta-0.6.17](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.17/v2)
+### v2-beta-0.6.8 - 2025-02-13
 
-### Added
+- Transitioned from alpha to beta status.
+- `manager --list-archive-contents` added.
 
-- prereq and postreq logging now using debug level.
-- documentation: updates, links and fixes. Test coverage result included.
-- multiple .info() modified to debug() to keep the log file easily readable.
-- FIX: test case found an error in config_setting init
-- more testcases to expand coverage
-- code reorganization. util.run_command() replaced with CommandRunner class.
+### v2-alpha-0.6.7 - 2025-02-11
 
-## v2-beta-0.6.16- 2025-03-22
+- Cleanups now remove catalogs from catalog databases.
 
-Github link: [v2-beta-0.6.16](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.16/v2)
+### v2-alpha-0.6.6 - 2025-02-02
 
-### Added
+- Archive catalogs added to databases after backup.
 
-- The generated filtered darrc file from `-suppress-dar-msg` now removed at program exit. Test case modified to check for removal
-- README.md updated to reflect recent changes
-- `cleanup` now requires a confirmation to delete a _FULL_ archive (using the option: --cleanup-specific-archives)
-- Module `inputimeout` used and installed into the venv, when `dar-backup` is installed
-- Much more clean log file in default config, use `--verbose` for more information, `--log-level debug` for even more
-- Added option  --test-mode to `cleanup` to run tests verifying that FULL archives are deleted only if the user answers "yes"
+### v2-alpha-0.6.5 - 2025-01-24
 
-## v2-beta-0.6.15- 2025-03-16
+- Changelog.md added. LICENSE included in wheel. PyPI changelog link.
 
-Github link: [v2-beta-0.6.15](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.15/v2)
+### v2-alpha-0.6.4 - 2025-01-23
 
-### Added
+- Stdout/stderr from subprocesses streamed to logfile in real time.
+- `.darrc`: `-vd` and `-vf` options enabled for directory-level `dar` output.
+- Manager commands added: `--remove-specific-archive`, `--list-catalog`, `--add-dir`.
+- PAR2 slices processed by increasing slice number.
 
-- Restore test details now logged only if args.verbose is set (less clutter in log file)
-- `--log-stdout` now does not show run_command() output from program being run
-- Report error and exit code `1` if manager did not add an archive to it's database
+### v2-alpha-0.6.2 - 2025-01-12
 
-## v2-beta-0.6.14 - 2025-03-02
+- Backup functions refactored. PAR2 slice ordering. `--verbose` option for par2 info.
 
-Github link: [v2-beta-0.6.14](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.14/v2)
+### v2-alpha-0.6.1 - 2025-01-05
 
-### Added
+- FIX: timeout on `run_command()` — long timeout for heavy operations, default 30 seconds.
 
-- `dar` catalog in xml now parsed correctly, test case added
-- error handling improved, --verbose print terse list of errors on exit, test case added
-- test cases simulating disk corruption being worked on, not yet in test suite
-- postreq test case improved
-- manager is not given "-ai" when adding catalogs (might give an issue on cloud backups, investigate....)
+### v2-alpha-0.6.0 - 2025-01-05
 
-## v2-beta-0.6.13.1 - 2025-02-25
-
-Github link: [v2-beta-0.6.13.1](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.13.1/v2)
-
-### FIX
-
-- remove a leftover print() in run_command()
-
-## v2-beta-0.6.13 - 2025-02-25
-
-Github link: [v2-beta-0.6.13](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.13/v2)
-
-### Added
-
-- README.md now good MarkDown, fixed reference section
-- Changelog.md now good MarkDown
-- --suppress-dar-msg option added (one way to cancel the verbosity options in .darrc)
-- separate log file for command outputs. This keeps the core dar-backup.log more readable
-
-## v2-beta-0.6.12 - 2025-02-23
-
-Github link: [v2-beta-0.6.12](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.12/v2)
-
-### Added
-
-- support environment variables in paths, both on command line and in config files
-- test case for env vars in dar-backup.conf added
-- test case for ~ in dar-backup.conf added
-- dar-backup.py does not import sys, use from/import of specific functions
-- fix handling of missing config file
-- if config file, .darrc or backup definition not found, return 127
-- installer added to demo dar-back, installs demo config and backup definition
-
-## v2-beta-0.6.11 - 2025-02-23
-
-Github link: [v2-beta-0.6.11](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.11/v2)
-
-### Added
-
-- run_command() fixed to handle missing command. Test case added.
-- refactoring xml parsing of dar list output. From recursive to iterating the xml document.
-- a bit more input verification to ensure the given config file actually exists.
-- README.md updated with useful information from v1 + some tweaks
-
-## v2-beta-0.6.10 - 2025-02-22
-
-Github link: [v2-beta-0.6.10](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.10/v2)
-
-### Added
-
-- unit test verifying no compression of many compressed file formats
-- README.md lint fixes + a TOC
-
-## v2-beta-0.6.9 - 2025-02-21
-
-Github link: [v2-beta-0.6.9](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.9/v2)
-
-### Added
-
-- clean-log script added (can remove much of `dar's` output that might be put in the dar-backup log file)
-- ChatGPT generated pytest cases
-
-## v2-beta-0.6.8 - 2025-02-13
-
-Github link: [v2-beta-0.6.8](https://github.com/per2jensen/dar-backup/tree/v2-beta-0.6.8/v2)
-
-### Added
-
-- switching from alpha --> beta status
-- manager --list-archive-contents added
-
-## v2-alpha-0.6.7 - 2025-02-11
-
-Github link: [v2-alpha-0.6.7](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.7/v2)
-
-### Added
-
-- Cleanups now remove catalogs from the catalog databases
-
-## v2-alpha-0.6.6 - 2025-02-02
-
-Github link: [v2-alpha-0.6.6](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.6/v2)
-
-### Added
-
-- Archive catalogs now added to database(s) after a backup has been performed
-
-## v2-alpha-0.6.5 - 2025-01-24
-
-Github link: [v2-alpha-0.6.5](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.5/v2)
-
-### Added
-
-- Changelog.md added
-- LICENSE added to the dar-backup wheel package
-- Link to Changelog added to PyPi page
-
-## v2-alpha-0.6.4 - 2025-01-23
-
-Github link: [v2-alpha-0.6.4](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.4/v2)
-
-### Added
-
-- Stdout & stderr from called programs are streamed to logfile in real time. This makes it easier to see if a very long running process is still active.
-- .darrc: -vd & -vf options enabled, so `dar` emits information when entering a directory and print some stats when leaving it
-- manager --remove-specific-archive option added
-- manager --list-catalog option added
-- improved tests for manager
-- manager --add-dir option added
-- verify slices are par2 processed by increasing slice number
-- reorg unit test,
-- added test for --restore-dir
-
-## v2-alpha-0.6.2 - 2025-01-12
-
-Github link: [v2-alpha-0.6.2](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.2/v2)
-
-### Added
-
-- refactor backup functions
-- minor doc fixes
-- par2: process slices by increasing #
-- dar-backup --verbose option: print info on par2 generation
-
-## v2-alpha-0.6.1 - 2025-01-05
-
-Github link: [v2-alpha-0.6.1](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.1/v2)
-
-### Added
-
-- FIX timeout error on run_command(). Set a long timeout on "heavy" operations. Default is 30 seconds.
-- Log the **str** of CommandResult on return from run_command()
-
-## v2-alpha-0.6.0 - 2025-01-05
-
-Github link: [v2-alpha-0.6.0](https://github.com/per2jensen/dar-backup/tree/v2-alpha-0.6.0/v2)
-
-### Added
-
-- pytest session logger now used
-- if a prereq fails, dar-backup must fail
-- document 0.6.0 breaking change
-- FIX: ensure run_command() works correctly when a command writes a lot of data to stdout
-- updated README with details on --restore-dir option
+- Pytest session logger. Prereq failure now causes `dar-backup` to fail.
+- FIX: `run_command()` handles large stdout correctly.
+- `--restore-dir` documented.
 
 <!-- markdownlint-enable MD024 -->
