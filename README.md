@@ -121,6 +121,18 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
 
 ---
 
+## Dashboard
+
+Every backup run writes structured metrics to a SQLite database. The built-in
+`dar-backup-dashboard` command fires up [datasette](https://datasette.io/) and
+opens the dashboard in your browser:
+
+[![dar-backup metrics dashboard](v2/doc/dar-backup-dashboard.png)](v2/doc/dar-backup-dashboard-full.png)
+
+→ [Dashboard & metrics documentation](v2/doc/dashboard-and-metrics.md)
+
+---
+
 ## High-level architecture
 
 [![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)

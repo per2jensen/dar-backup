@@ -9,7 +9,12 @@ queries the metrics database through Datasette and renders a summary of your
 most recent backup runs directly in the browser.  No extra services, no
 framework, no build step.
 
-![dar-backup dashboard](dar-backup-dashboard.png)
+[![dar-backup dashboard](dar-backup-dashboard.png)](dar-backup-dashboard-full.png)
+
+The full dashboard shows multiple backup definitions side by side, including how
+a failed run is surfaced — highlighted in amber so it stands out immediately:
+
+[![dar-backup full dashboard](dar-backup-dashboard-full.png)](dar-backup-dashboard-full.png)
 
 ### What the dashboard shows
 
