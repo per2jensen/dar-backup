@@ -24,13 +24,9 @@ This document outlines the basic rules and workflow for contributions.
 **2. Run tests locally**  
 
 ```bash
-   # Version 2
-   cd v2; pytest -v
-```
-
-```bash
-   # Version 1
-   cd v1/test; ./runner.sh
+   cd v2
+   . venv/bin/activate
+    pytest -v
 ```
 
 **3. Ensure no regressions**
@@ -77,7 +73,7 @@ Checking the license box in the PR template is **not sufficient** on its own.
 
 All pull requests are automatically validated by GitHub Actions.
 
-- The CI workflow runs tests for both v1 and v2.
+- The CI workflow runs tests without errors.
 
 - Code style checks (Black, isort, flake8) must pass.
 
