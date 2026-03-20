@@ -91,6 +91,27 @@ no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for e
 
 ---
 
+## Why not just use tar?
+
+`tar` is the tool almost every Linux user reaches for first — and for good reason. It is simple, universal, and ships on every system. `dar` was written as a deliberate improvement on `tar` for long-term archival, and the differences matter:
+
+| Capability | tar | dar-backup |
+|---|---|---|
+| FULL / DIFF / INCR backup cycles | ❌ workarounds only | ✅ native, first-class |
+| Archive integrity test | ❌ no built-in verify | ✅ `dar -t` after every backup |
+| Restore-test a random sample | ❌ manual | ✅ automatic after each run |
+| Repair a corrupt archive | ❌ not possible | ✅ PAR2 files travel with the archive |
+| Restore a single file to a specific date | ❌ no catalogue | ✅ PITR via `dar_manager` catalogs |
+| Sliced archives (fits onto fixed-size media) | ❌ | ✅ configurable slice size |
+| Extended attributes and ACLs | ⚠️ flag-dependent | ✅ handled correctly by default |
+| No dependency on original system to restore | ✅ | ✅ one static `dar` binary is enough |
+
+In short: `tar` is excellent for one-off archiving and moving files around.
+`dar-backup` is for people who want to know their data is intact and recoverable — years from now,
+on hardware they don't own yet.
+
+---
+
 ## Features
 
 - **FULL / DIFF / INCR backup cycles** — per backup definition, independently scheduled
@@ -143,7 +164,8 @@ opens the dashboard in your browser:
 
 | Document | Description |
 |---|---|
-| [Quick Guide](#quick-guide) | Get started in minutes |
+| [Quick Guide](v2/doc/quick-guide.md) | Get started in minutes using the demo app |
+| [Getting Started](v2/doc/getting-started.md) | Manual setup for a real installation |
 | [Configuration Reference](v2/doc/config-reference.md) | Config file, .darrc, backup definitions, config history |
 | [Restoring](v2/doc/restoring.md) | Point-in-Time Recovery (PITR), restore examples |
 | [PAR2 Redundancy](v2/doc/par2.md) | Verify, repair, and create PAR2 files |
@@ -208,248 +230,24 @@ PAR2 parity is:
 ### Design choices
 
 My design choices are boring, proven and pragmatic:
->
->mdadm handles disks
->
->PAR2 handles data integrity
->
->You control when and how verification happens
->
->Errors have a fair chance of being diagnosed and fixed, due to well known tooling.
->
->No hidden magic, no lock-in
+
+- mdadm handles disks
+- PAR2 handles data integrity
+- You control when and how verification happens
+- Errors have a fair chance of being diagnosed and fixed, due to well known tooling.
+- No hidden magic, no lock-in
 
 ---
 
 ## Quick Guide
 
-This purpose of this quick guide is to show how `dar-backup` works in a few simple steps.
+Step-by-step walkthrough using the built-in `demo` application — install, backup, list, restore.
 
-The package include a `demo`application, that can help you set up `dar-backup` quickly.
-
-> ⚠️ **Assumption**
->
-> The demo program uses these directories in your home directory:
->
-> - $HOME/dar-backup
-> - $HOME/.config/dar-backup
->
-> It is assumed they **do not exist** before running the demo.
->
-> Python **>= 3.11** is required
-
-<br>
-
-**Let's roll** with installation, backup, list backup content, restore & restore check
-
-The demo is known to work on an Ubuntu 24.04 clean VM as delivered from `Multipass`
-
-```bash
-sudo apt -y install dar par2 python3 python3-venv
-INSTALL_DIR=/tmp/dar-backup
-mkdir "$INSTALL_DIR"
-cd "$INSTALL_DIR"
-python3 -m venv venv    # create the virtual environment
-. venv/bin/activate     # activate the virtual environment
-pip install dar-backup  # run pip to install `dar-backup` into the virtual environment
-```
-
-<details>
-
-<summary>🎯 Install details</summary>
-
-```bash
-(venv) $ INSTALL_DIR=/tmp/dar-backup
-mkdir "$INSTALL_DIR"
-cd "$INSTALL_DIR"
-python3 -m venv venv    # create the virtual environment
-. venv/bin/activate     # activate the virtual environment
-pip install dar-backup  # run pip to install `dar-backup`
-Collecting dar-backup
-  Downloading dar_backup-0.6.21-py3-none-any.whl.metadata (88 kB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 88.5/88.5 kB 3.7 MB/s eta 0:00:00
-Collecting argcomplete>=3.6.2 (from dar-backup)
-  Using cached argcomplete-3.6.2-py3-none-any.whl.metadata (16 kB)
-Collecting inputimeout>=1.0.4 (from dar-backup)
-  Using cached inputimeout-1.0.4-py3-none-any.whl.metadata (2.2 kB)
-Collecting rich>=13.0.0 (from dar-backup)
-  Using cached rich-14.0.0-py3-none-any.whl.metadata (18 kB)
-Collecting markdown-it-py>=2.2.0 (from rich>=13.0.0->dar-backup)
-  Using cached markdown_it_py-3.0.0-py3-none-any.whl.metadata (6.9 kB)
-Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.0.0->dar-backup)
-  Using cached pygments-2.19.1-py3-none-any.whl.metadata (2.5 kB)
-Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.0.0->dar-backup)
-  Using cached mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
-Downloading dar_backup-0.6.21-py3-none-any.whl (101 kB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 101.9/101.9 kB 16.2 MB/s eta 0:00:00
-Using cached argcomplete-3.6.2-py3-none-any.whl (43 kB)
-Using cached inputimeout-1.0.4-py3-none-any.whl (4.6 kB)
-Using cached rich-14.0.0-py3-none-any.whl (243 kB)
-Using cached markdown_it_py-3.0.0-py3-none-any.whl (87 kB)
-Using cached pygments-2.19.1-py3-none-any.whl (1.2 MB)
-Using cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)
-Installing collected packages: pygments, mdurl, inputimeout, argcomplete, markdown-it-py, rich, dar-backup
-Successfully installed argcomplete-3.6.2 dar-backup-0.6.21 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
-```
-
-</details>
-
-Setup the demo configurations and show a few operations
-
-<br>
-
-```bash
-# See reference section for options tweaking the install
-demo --install
-
-# create catalog database
-manager --create-db
-
-# FULL backup as defined in backup definition `demo`
-dar-backup --full-backup
-
-# List the contents of the backup
-dar-backup --list-contents demo_FULL_$(date '+%F')
-```
-
-<details>
-
-<summary>🎯 --list details</summary>
-
-```bash
-(venv) $ demo --install
-Directories created.
-File generated at '/home/user/.config/dar-backup/backup.d/demo'
-File generated at '/home/user/.config/dar-backup/dar-backup.conf'
-1. Now run `manager --create-db` to create the catalog database.
-2. Then you can run `dar-backup --full-backup` to create a backup.
-3. List backups with `dar-backup --list`
-4. List contents of a backup with `dar-backup --list-contents <backup-name>`
-
-
-
-(venv) $ manager --create-db
-========== Startup Settings ==========
-manager.py:     0.7.1
-Config file:    /home/user/.config/dar-backup/dar-backup.conf
-Logfile:        /home/user/dar-backup/dar-backup.log
-dar_manager:    /home/user/.local/dar/bin/dar_manager
-dar_manager v.: 1.9.0
-======================================
-
-
-
-(venv) $ dar-backup --full-backup
-========== Startup Settings ==========
-dar-backup.py:    0.7.1
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.17
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-======================================
-
-
-
-(venv) $ dar-backup --list-contents demo_FULL_$(date '+%F')
-========== Startup Settings ==========
-dar-backup.py:    0.7.1
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.17
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-======================================
-[Saved][-]       [-L-][  49%][ ]  drwx------   user user  8 kio Sat May 17 13:13:59 2025  .config
-[Saved][-]       [-L-][  49%][ ]  drwxrwxr-x   user user  8 kio Tue May  6 20:55:40 2025  .config/dar-backup
-[Saved][-]       [-L-][  48%][ ]  drwxrwxr-x   user user  6 kio Sat May 17 13:26:21 2025  .config/dar-backup/backup.d
-[Saved][ ]       [-L-][  40%][ ]  -rw-rw-r--   user user  764 o Sun Feb 23 21:23:01 2025  .config/dar-backup/backup.d/media-files
-[Saved][ ]       [-L-][  41%][ ]  -rw-rw-r--   user user  933 o Sun Feb 23 21:23:15 2025  .config/dar-backup/backup.d/pCloudDrive
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sun Mar 16 10:40:29 2025  .config/dar-backup/backup.d/test
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  824 o Tue May 13 17:00:52 2025  .config/dar-backup/backup.d/default
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sat May  3 10:40:33 2025  .config/dar-backup/backup.d/user-homedir
-[Saved][ ]       [-L-][  54%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/backup.d/demo
-[Saved][ ]       [-L-][  55%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/dar-backup.conf
-```
-
-</details>
-
-<br>
-
-Perform a restore and show the restored files
-
-```bash
-# Restore all files in the backup
-dar-backup --restore demo_FULL_$(date '+%F') --verbose
-
-# Prove the files have been restored to directory as configured
-find $HOME/dar-backup/restore
-```
-
-<details>
-
-<summary>🎯 --restore details</summary>
-
-```bash
-(venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
-========== Startup Settings ==========
-dar-backup.py:    0.7.1
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.17
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-Backup.d dir:     /home/user/.config/dar-backup/backup.d
-Backup dir:       /home/user/dar-backup/backups
-Restore dir:      /home/user/dar-backup/restore
-Logfile location: /home/user/dar-backup/dar-backup.log
-PAR2 enabled:     True
---do-not-compare: False
-======================================
-
-
-
-(venv) $ find ~/dar-backup/restore/
-/home/user/dar-backup/restore/
-/home/user/dar-backup/restore/.config
-/home/user/dar-backup/restore/.config/dar-backup
-/home/user/dar-backup/restore/.config/dar-backup/backup.d
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/media-files
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/pCloudDrive
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/test
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/default
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/user-homedir
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/demo
-/home/user/dar-backup/restore/.config/dar-backup/dar-backup.conf
-```
-
-</details>
-
-<br>
-
-> ✅ **Next steps**
->
-> Play with `demo's` options:
->
-> - --root-dir      (perhaps $HOME)
-> - --dir-to-backup (perhaps Pictures)
-> - --backup-dir    (perhaps /media/user/big-disk)
->
-> See log file: `cat "$HOME/dar-backup/dar-backup.log"`
->
-> Checkout [systemd timers and services](v2/doc/systemd-setup.md)
->
-> Checkout [shell autocompletion (very nice !)](v2/doc/shell-completion.md)
->
-> Checkout the [CLI reference](v2/doc/cli-reference.md)
+→ [Quick Guide](v2/doc/quick-guide.md)
 
 ---
 
 ## dar-backup principles
-
-### dar-backup overview
-
-[![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
 
 ### dar-backup
 
@@ -497,134 +295,9 @@ cleanup --dry-run --cleanup-specific-archives -d media-files media-files_INCR_20
 
 ## How to run
 
-📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG.
+Manual setup for a real installation — configuration, catalog databases, first backup.
 
-See more [here](#gpg-signing-key).
-
-### 1 - installation
-
-Installation is currently in a [virtual environment](https://csguide.cs.princeton.edu/software/virtualenv) (commonly called a `venv`). These commands are installed in the venv:
-
-- dar-back
-- cleanup
-- manager
-- clean-log
-- dar-backup-systemd
-- installer
-- demo
-
-Note:
-
-The modules `inputimeout`, `rich`and `argcomplete` are installed into the venv and used by `dar-backup`
-
-To install `dar-backup`, create a venv and run pip:
-
-```bash
-mkdir $HOME/tmp
-cd $HOME/tmp
-python3 -m venv venv    # create the virtual environment
-. venv/bin/activate     # activate the virtual environment
-pip install dar-backup  # run pip to install `dar-backup`
-```
-
-I have an alias in ~/.bashrc pointing to my venv:
-
-```bash
-alias db=". ~/tmp/venv/bin/activate; dar-backup -v"
-```
-
-drop the alias into ~/.bashrc like this:
-
-```bash
-grep -qxF 'alias db="' ~/.bashrc \
-  || echo 'alias db=". ~/tmp/venv/bin/activate; dar-backup -v"' >> ~/.bashrc
-
-source ~/.bashrc
-```
-
-Typing `db` at the command line gives something like this:
-
-```bash
-(venv) user@machine:~$ db
-dar-backup 0.6.12
-dar-backup.py source code is here: https://github.com/per2jensen/dar-backup
-Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See section 15 and section 16 in the supplied "LICENSE" file.
-```
-
-### 2 - configuration
-
-The dar-backup [installer](v2/doc/cli-reference.md#installer-options) application can be used to setup the needed directories for `dar-backup` to work.
-It creates necessary directories as prescribed in the config file and optionally creates manager databases.
-
-`installer` can also add configuration of shell auto completion.
-
-Step 1:
-
-Create a config file   - [see details on config file](v2/doc/config-reference.md#config-file)
-
-Step 2:
-
-Create one or more backup definitions - [see details on backup definitions](v2/doc/config-reference.md#backup-definition-example)
-
-Step 3:
-
-Run the installer:
-
-```bash
-installer --config <path to dar-backup.conf> --install-autocompletion
-```
-
-### 3 - generate catalog databases
-
-Generate the archive catalog database(s).
-
-`dar-backup` expects the catalog databases to be in place, it does not automatically create them (by design)
-
-```bash
-manager --create-db
-```
-
-### 4 - give dar-backup a spin
-
-You are now ready to do backups as configured in your backup definition(s).
-
-Give `dar-backup`a spin:
-
-```bash
-dar-backup --full-backup --verbose
-
-# list backups
-dar-backup --list
-
-# list contents of a dar backup
-dar-backup --list-contents <TAB>... <choose a backup>
-
-# see some examples on usage
-dar-backup --examples
-
-# see the log file
-cat "$HOME/dar-backup/dar-backup.log"
-```
-
-If you want to see dar-backup's log entries in the terminal, use the `--log-stdout` option.
-
-If you want more log messages, use the `--verbose` or `--log-level debug` for even more.
-
-If you want to take a backup using a single backup definition, use the `-d <backup definition>` option. The backup definition's name is the filename of the definition in the BACKUP.D_DIR (see [config file](v2/doc/config-reference.md#config-file)).
-
-```bash
-dar-backup --full-backup -d <your backup definition>
-```
-
-### 5 - deactivate venv
-
-Deactivate the virtual environment (venv).
-
-```bash
-deactivate
-```
+→ [Getting Started](v2/doc/getting-started.md)
 
 ---
 
@@ -632,11 +305,7 @@ deactivate
 
 **1.0.0 milestone reached**
 
-October 9, 2025, I have promoted version 0.8.4 --> **1.0.0** after having added more test cases and seen no issues with 0.8.4.
-
-As of February 13, 2025, I have changed the status from alpha --> beta, as the featureset is in place and the alphas have worked well for a very long time.
-
-As of August 8, 2024 I am using the alpha versions of `dar-backup` (alpha-0.5.9 onwards) in my automated backup routine.
+October 9, 2025, version **1.0.0** was released after extensive testing. The current release is **1.1.2**.
 
 ### GPG Signing key
 
