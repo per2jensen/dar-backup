@@ -4,6 +4,26 @@ Back to [README](../../README.md)
 
 ## Point-in-Time Recovery (PITR)
 
+### What PITR promises
+
+dar-backup selects archives by **archive creation date**, not by file mtime.
+
+> **PITR contract:** restore the state of the filesystem as it was captured by the
+> most recent backup on or before the requested date.
+
+This means `--when "2026-03-01 12:00"` restores from the newest archive whose
+*backup run* completed at or before that timestamp — regardless of when individual
+files inside it were last modified.
+
+This is intentionally different from tools that filter by file mtime. A file that
+was renamed (not modified) keeps its old mtime, so a mtime-based filter would
+incorrectly include the renamed file in a restore to a point before the rename
+happened. dar-backup avoids this by anchoring selection to the archive creation
+date. See [pitr-archive-date-vs-file-mtime.md](pitr-archive-date-vs-file-mtime.md)
+for the full analysis.
+
+---
+
 Use the `manager` CLI to restore files as they existed at a specific time:
 
 ```bash
@@ -44,6 +64,7 @@ deactivate
 ```
 
 **Notes**:
+
 - `--restore-path` must be a relative path as stored in the catalog (no leading slash).
 - If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
   - Example (directory name has no extension):
@@ -85,6 +106,7 @@ deactivate
     - `manager --add-specific-archive <path/to/archive> --config-file <dar-backup.conf>`
 
 Example of the issue:
+
 1) FULL backup at 10:00 with `/data/photos/`
 2) You add files at 11:00 (directory mtime updates)
 3) DIFF backup at 11:05
@@ -92,6 +114,79 @@ Example of the issue:
 
 `dar_manager -w` may say "directory did not exist before that time" because the directory mtime is now 11:00+.
 The fallback still restores the correct tree as of 10:30 by applying the archive chain.
+
+## Restore a file by its mtime (file-version restore)
+
+This is different from PITR. Instead of asking *"what did the backup look like at time T?"*,
+you ask *"give me the version of this file whose last-modified time was at or before T"*.
+
+dar's native `dar_manager -w` does exactly this. It selects the archive that recorded the
+file with the most recent **mtime ≤ the given date**.
+
+**When to use this instead of PITR:**
+
+| You want... | Use |
+| --- | --- |
+| The filesystem state captured by the backup closest to a point in time | PITR (`manager --when`) |
+| A specific version of a file by when it was last modified | `dar_manager -w` (this section) |
+
+**Requirement:** dar ≥ 2.7.21 — earlier versions had a DST bug in date parsing that caused
+`-w` to silently miss files during standard-time months. See
+[dar_manager_w_dst_bug_report.md](dar_manager_w_dst_bug_report.md) for details.
+
+### Step 1 — find the database file
+
+dar-backup stores one catalog database per backup definition. By default these live in the
+directory configured as `MANAGER_DB_DIR` in your `dar-backup.conf`. The filename is
+`<definition>.db`, e.g. `homedir.db`.
+
+### Step 2 — look up which archives contain the file
+
+```bash
+dar_manager -B /path/to/homedir.db -f relative/path/to/file.txt
+```
+
+Output lists each archive number that holds the file together with the recorded mtime:
+
+```text
+1  Fri Mar 21 06:56:21 2026  saved
+2  Fri Mar 21 06:56:31 2026  saved
+```
+
+### Step 3 — restore using the mtime filter
+
+```bash
+dar_manager -B /path/to/homedir.db \
+  -w "2026/03/21-07:00:00" \
+  -r relative/path/to/file.txt \
+  -e "-R /tmp/mtime-restore -wa -Q"
+```
+
+- `-w` date format is `YYYY/MM/DD-HH:MM:SS` in local time.
+- `-r` is the relative path as stored in the catalog (no leading slash).
+- `-e` passes extra options to `dar` for the actual extraction; `-wa` overwrites
+  existing files, `-Q` suppresses interactive prompts.
+- The restored file appears under `/tmp/mtime-restore/relative/path/to/file.txt`.
+
+### Caveats
+
+- `dar_manager -r` **does** work across a FULL → DIFF → INCR chain — finding the right
+  archive for each file across the full backup history is its core purpose. For each
+  requested file it picks the archive that holds the most recent version with mtime ≤ the
+  given date.
+- **Deletions are not handled.** dar_manager restores the most recent saved version of
+  every file it knows about, but it has no mechanism to *remove* files from the target
+  that were deleted before the restore point. Denis's own man page notes: *"It is not
+  really adapted/efficient to restore the state a full system had at a given time, in
+  particular when some files have to be removed. For that you would better use dar
+  directly."* Use PITR (`manager --when`) when you need deletion-aware recovery.
+- A renamed file keeps its old mtime (POSIX guarantee). If a file was renamed between
+  backups, `-w` may return the renamed copy even when you intended the original name.
+  Use PITR in that case.
+- This is a direct `dar_manager` call, not a dar-backup CLI feature. It bypasses
+  dar-backup's target safety checks, so choose your `-R` target carefully.
+
+---
 
 ## Default location for restores
 

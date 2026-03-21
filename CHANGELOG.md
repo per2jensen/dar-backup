@@ -6,6 +6,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 ## v2-1.1.3 - not released
 
 - More robust PITR edge-case handling for file vs directory inodes.
+- PITR integration tests extended to cover multi-slice archives, symlinks (relative, dangling, hard links), and special-character filenames; `dar_manager -w` file-version-restore documented.
 
 ## v2-1.1.2 - 2026-03-15
 

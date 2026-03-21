@@ -973,7 +973,7 @@ class TestRestoreAtPathNormalization:
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
-            # "." and "/" both normalize to "." after lstrip+normpath → skipped
+            # "." and "/" both normalize to "." after lstrip+normpath → skipped in overlap check.
             ret = restore_at("def", ["/"], "now", "/tmp/restore", mock_config)
 
         assert ret == 0

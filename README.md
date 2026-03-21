@@ -41,6 +41,10 @@ archive verified and restore-tested before the job completes.
 
 ✗ You need a GUI, Windows support, or just a quick incremental sync — `rsync` or `restic` may suit you better
 
+✗ You need **multiple backups per day** — dar-backup is designed around one backup run per day
+   per definition (one FULL, one DIFF, one INCR). If you need hourly or continuous backups,
+   look at `restic` or `BorgBackup` instead
+
 ---
 
 ## TL;DR

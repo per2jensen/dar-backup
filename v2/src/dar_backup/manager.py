@@ -483,27 +483,32 @@ def find_file(file, backup_def, config_settings):
 
 def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings, verbose: bool = False) -> int:
     """
-    Perform a Point-in-Time Recovery (PITR) using dar_manager.
+    Perform a Point-in-Time Recovery (PITR) by selecting the correct archive
+    chain from the dar_manager catalog and restoring directly with dar.
+
+    dar_manager's native ``-w DATE`` option filters by *file mtime*, not by
+    *archive creation date*.  Because a POSIX rename does not update the
+    renamed entry's mtime, ``dar_manager -w`` would include post-rename names
+    even when restoring to a point before the rename occurred.
+    ``_restore_with_dar`` instead filters by archive creation date, which
+    correctly reflects the state of the backup at the requested point in time.
+    See ``v2/doc/pitr-archive-date-vs-file-mtime.md`` for the full analysis.
 
     Args:
         backup_def: Backup definition name (prefix for the catalog DB, e.g. "example").
         paths: One or more file or directory paths as stored in the DAR catalog
             (must be relative, e.g. "tmp/unit-test/.../file.txt").
         when: Date/time string to restore "as of". Parsed via dateparser and
-            converted to dar_manager format YYYY/MM/DD-HH:MM:SS. If None/empty,
+            converted to a datetime for archive selection. If None/empty,
             the latest version is restored.
         target: Destination directory for restore output. Required to avoid
-            restoring into an unintended working directory. Restore is rebased
-            under this directory using dar options (-R).
+            restoring into an unintended working directory.
         config_settings: Loaded ConfigSettings used to locate backup dirs/DB and
             timeouts.
-        verbose: If True, enables dar_manager verbose logging (-v).
+        verbose: Unused; kept for API compatibility.
 
     Returns:
-        Process return code (0 on success, non-zero on failure). If dar_manager
-        reports no files restored for a dated PITR, a fallback path is attempted
-        that selects the correct archive via dar_manager metadata and restores
-        the file(s) directly with dar.
+        Process return code (0 on success, non-zero on failure).
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -529,6 +534,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
         return 1
 
     # Parse date (or default to "now" for latest restore)
+    date_arg = None
     parsed_date = None
     if when:
         parsed_date = _parse_when(when)
@@ -580,11 +586,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             )
             return 1
 
-    # For PITR restores, skip dar_manager -w restore to avoid interactive prompts.
-    # Use dar_manager metadata for selection, then restore directly with dar.
-    logger.info(
-        "PITR restore uses direct dar restore with catalog-derived chain (non-interactive)."
-    )
+    # PITR restore: select archives by creation date and restore with dar directly.
+    # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
     return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings)
 
 

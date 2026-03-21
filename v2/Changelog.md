@@ -5,6 +5,15 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.3 - not released
 
+### Added
+
+- PITR integration test `test_pitr_multislice_archive`: verifies PITR restore works correctly across multi-slice archives (`.1.dar`, `.2.dar`, …); proves that content in later slices is actually reached by checking restored file content rather than dar exit code (dar returns 0 on partial/graceful restores).
+- PITR integration test `test_pitr_symlinks_and_hardlinks`: verifies that relative symlinks, dangling symlinks, and hard-link pairs are all preserved correctly after PITR restore (symlink targets checked with `os.readlink`; hard links verified via inode equality `os.stat().st_ino`).
+- PITR integration test `test_pitr_special_char_filenames`: verifies PITR restore of files whose names contain spaces, Danish characters (æøå / ÆØÅ), colons, hashes, currency symbols, parentheses, `+`, `!`, and brackets; `&` excluded as a known `sanitize_cmd()` limitation (subprocess safety guard rejects `&` even without `shell=True`).
+- New doc `v2/doc/pitr-archive-date-vs-file-mtime.md`: explains why dar-backup implements its own archive-creation-date PITR selection instead of delegating to `dar_manager -w`, with a concrete rename/mtime counter-example and a reference to the torture test that validates the design choice.
+- New doc section in `v2/doc/restoring.md` — **"Restore a file by its mtime (file-version restore)"**: step-by-step guide for `dar_manager -w` direct use (find `.db`, run `-f` to list versions, restore with `-w -r -e`), date format `YYYY/MM/DD-HH:MM:SS`, caveats (deletions not handled per Denis's own man page; rename/mtime trap; bypasses dar-backup target safety checks). Requires dar ≥ 2.7.21 (DST `tm_isdst=1` bug fixed in `line_tools_convert_date()`).
+- **PITR contract** prominently stated at the top of the PITR section in `v2/doc/restoring.md`: selection is by archive creation date, not file mtime; cross-referenced to the new design-decision doc.
+
 ### Changed
 
 - Checks for edge cases in PITR expanded
