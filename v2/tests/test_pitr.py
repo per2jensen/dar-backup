@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import os
 import sys
 import datetime
-from dar_backup.manager import restore_at, main, _restore_with_dar, _pitr_chain_report, relocate_archive_paths
+from dar_backup.manager import restore_at, main, _restore_with_dar, _pitr_chain_report, relocate_archive_paths, _parse_when, _normalize_when_dt
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.command_runner import CommandResult
 import pytest
@@ -47,7 +47,6 @@ def mock_logger():
 def test_restore_at_basic_success(mock_config, mock_logger):
     """Test a standard restore operation with a valid date and target."""
 
-    # Setup
     backup_def = "test_backup"
     paths = ["home/user/file.txt"]
     when = "2023-10-27 14:30"
@@ -144,7 +143,7 @@ def test_restore_at_target_creation_fail(mock_config, mock_logger):
 
 
 def test_restore_at_returns_restore_with_dar_code(mock_config, mock_logger):
-    """Test that restore_at returns the direct dar restore result."""
+    """Test that restore_at returns the result of _restore_with_dar."""
     def _exists(path):
         if path == "/tmp/db_dir/def.db":
             return True
@@ -377,8 +376,8 @@ def test_cli_pitr_report_first_requires_restore_path():
             main()
 
         assert excinfo.value.code == 1
-def test_restore_at_uses_direct_dar_restore(mock_config, mock_logger):
-    """Test that PITR restore uses direct dar restore path."""
+def test_restore_at_uses_restore_with_dar(mock_config, mock_logger):
+    """Test that PITR restore uses _restore_with_dar (archive-date semantics)."""
     def _exists(path):
         if path == "/tmp/db_dir/def.db":
             return True
@@ -1226,3 +1225,139 @@ def test_restore_with_dar_file_restore_failure(mock_config, mock_runner, mock_lo
             "dar restore failed for 'tmp/file.txt' from '/tmp/backups/example_FULL_2026-01-29': dar failed"
         )
         mock_discord.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# TestNormalizeWhenDt — direct unit tests for _normalize_when_dt
+# ---------------------------------------------------------------------------
+
+class TestNormalizeWhenDt:
+    """Tests for _normalize_when_dt: timezone stripping and conversion."""
+
+    def test_naive_datetime_passes_through_unchanged(self) -> None:
+        """A naive datetime (no tzinfo) must be returned as-is."""
+        naive = datetime.datetime(2026, 6, 15, 10, 0, 0)
+        result = _normalize_when_dt(naive)
+        assert result == naive
+        assert result.tzinfo is None
+
+    def test_utc_aware_datetime_converted_to_local_naive(self) -> None:
+        """UTC-aware datetime converted to UTC+1 local time, tzinfo stripped."""
+        utc_plus_1 = datetime.timezone(datetime.timedelta(hours=1))
+        aware = datetime.datetime(2026, 6, 15, 10, 0, 0, tzinfo=datetime.timezone.utc)
+        # Local timezone is UTC+1; 10:00 UTC → 11:00 local
+        with patch("dar_backup.manager._local_tzinfo", return_value=utc_plus_1):
+            result = _normalize_when_dt(aware)
+        assert result == datetime.datetime(2026, 6, 15, 11, 0, 0)
+        assert result.tzinfo is None
+
+    def test_utc_plus_530_aware_datetime_converted_to_utc_local(self) -> None:
+        """UTC+5:30 (IST) aware datetime converted correctly to UTC local time."""
+        utc_tz = datetime.timezone.utc
+        ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        # 15:30 IST = 10:00 UTC
+        aware = datetime.datetime(2026, 3, 1, 15, 30, 0, tzinfo=ist)
+        with patch("dar_backup.manager._local_tzinfo", return_value=utc_tz):
+            result = _normalize_when_dt(aware)
+        assert result == datetime.datetime(2026, 3, 1, 10, 0, 0)
+        assert result.tzinfo is None
+
+
+# ---------------------------------------------------------------------------
+# TestParseWhenTimezones — tests for _parse_when timezone normalisation
+# ---------------------------------------------------------------------------
+
+class TestParseWhenTimezones:
+    """
+    Tests that _parse_when correctly normalizes timezone-aware strings to a
+    naive datetime in the local timezone, preserving the absolute moment.
+
+    dateparser.parse is mocked to inject known aware datetimes so that the
+    tests are deterministic and independent of locale/NLP parsing.
+    """
+
+    # Convenience: a fixed UTC moment used across several tests.
+    # 2026-07-01 12:00:00 UTC
+    _BASE_UTC = datetime.datetime(2026, 7, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+    def _run(
+        self,
+        aware_dt: datetime.datetime,
+        local_tz: datetime.timezone,
+    ) -> datetime.datetime | None:
+        """
+        Helper: mock dateparser.parse to return aware_dt, mock local timezone,
+        then call _parse_when and return its result.
+        """
+        with patch("dar_backup.manager.dateparser") as mock_dp, \
+             patch("dar_backup.manager._local_tzinfo", return_value=local_tz), \
+             patch("dar_backup.manager.logger", MagicMock()):
+            mock_dp.parse.return_value = aware_dt
+            return _parse_when("dummy string")
+
+    def test_parse_when_utc_input_normalized_to_local_naive(self) -> None:
+        """UTC timezone input with local=UTC → naive datetime, time unchanged."""
+        result = self._run(self._BASE_UTC, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 7, 1, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_ist_input_normalized_to_utc_local(self) -> None:
+        """UTC+5:30 (IST) input with local=UTC → naive UTC datetime."""
+        ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        # 17:30 IST = 12:00 UTC
+        ist_dt = datetime.datetime(2026, 7, 1, 17, 30, 0, tzinfo=ist)
+        result = self._run(ist_dt, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 7, 1, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_est_input_normalized_to_utc_local(self) -> None:
+        """UTC-5 (EST standard time) input with local=UTC → naive UTC datetime."""
+        est = datetime.timezone(datetime.timedelta(hours=-5))
+        # 07:00 EST = 12:00 UTC
+        est_dt = datetime.datetime(2026, 7, 1, 7, 0, 0, tzinfo=est)
+        result = self._run(est_dt, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 7, 1, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_edt_input_normalized_to_utc_local(self) -> None:
+        """UTC-4 (EDT daylight time) input with local=UTC → naive UTC datetime."""
+        edt = datetime.timezone(datetime.timedelta(hours=-4))
+        # 08:00 EDT = 12:00 UTC
+        edt_dt = datetime.datetime(2026, 7, 1, 8, 0, 0, tzinfo=edt)
+        result = self._run(edt_dt, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 7, 1, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_cet_input_normalized_to_utc_local(self) -> None:
+        """UTC+1 (CET, Denmark in winter — where DST bug was found) with local=UTC."""
+        cet = datetime.timezone(datetime.timedelta(hours=1))
+        # 13:00 CET = 12:00 UTC
+        cet_dt = datetime.datetime(2026, 1, 15, 13, 0, 0, tzinfo=cet)
+        result = self._run(cet_dt, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 1, 15, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_cest_input_normalized_to_utc_local(self) -> None:
+        """UTC+2 (CEST, Denmark in summer) input with local=UTC → naive UTC datetime."""
+        cest = datetime.timezone(datetime.timedelta(hours=2))
+        # 14:00 CEST = 12:00 UTC
+        cest_dt = datetime.datetime(2026, 7, 1, 14, 0, 0, tzinfo=cest)
+        result = self._run(cest_dt, datetime.timezone.utc)
+        assert result == datetime.datetime(2026, 7, 1, 12, 0, 0)
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_naive_input_passes_through_unchanged(self) -> None:
+        """A naive datetime returned by dateparser passes through without modification."""
+        naive_dt = datetime.datetime(2026, 4, 10, 9, 30, 0)
+        # _local_tzinfo should never be called for a naive input; use UTC as a sentinel
+        result = self._run(naive_dt, datetime.timezone.utc)
+        assert result == naive_dt
+        assert result is not None and result.tzinfo is None
+
+    def test_parse_when_invalid_input_returns_none(self) -> None:
+        """Unparseable input (dateparser returns None) → _parse_when returns None."""
+        with patch("dar_backup.manager.dateparser") as mock_dp, \
+             patch("dar_backup.manager.logger", MagicMock()):
+            mock_dp.parse.return_value = None
+            result = _parse_when("not-a-date-at-all")
+        assert result is None

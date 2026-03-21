@@ -1408,3 +1408,631 @@ def test_pitr_full_diff_incr_add_delete_mutate(setup_environment, env):
     restore_and_verify(t4, "T4_after_INCR3", expected_t4)
 
     env.logger.info("All 5 PITR restore points verified successfully.")
+
+
+def test_pitr_multislice_archive(setup_environment, env):
+    """
+    Verify that PITR correctly restores files from archives that span multiple
+    slices (.1.dar, .2.dar, .3.dar, ...).
+
+    Strategy:
+    - Write a backup definition with a small slice size (4 kB) and no
+      compression so raw file bytes fill multiple slices.
+    - Write 3 binary files of 4 kB each → total 12 kB → guaranteed 3+ slices
+      per archive.
+    - Take FULL backup; assert .2.dar exists.
+    - Modify all files; take DIFF backup; assert .2.dar exists for DIFF too.
+    - PITR restore to T0 (FULL date): verify original binary content.
+    - PITR restore to T1 (DIFF date): verify modified binary content.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+
+    # Clear default fixture data so only our controlled files are in the backup.
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    # Write a custom backup definition: small slice size + no compression.
+    # Slice size goes in the backup definition, as is the convention in dar-backup.
+    SLICE_BYTES = 4096  # 4 kB per slice
+    data_dir_for_dar = env.data_dir.lstrip("/")
+    sliced_def_path = os.path.join(env.backup_d_dir, "example_sliced")
+    with open(sliced_def_path, "w") as f:
+        f.write(
+            f"-R /\n"
+            f"-s {SLICE_BYTES}\n"
+            f"-n\n"                    # no compression → raw bytes fill slices
+            f"-am\n"
+            f"--cache-directory-tagging\n"
+            f"-g {data_dir_for_dar}\n"
+        )
+
+    # Non-compressible binary data: a linear byte pattern based on a seed.
+    # Since -n disables compression, each file occupies its full size in the archive.
+    FILE_SIZE = SLICE_BYTES  # one slice worth per file → 3 files → 3+ slices
+
+    def write_binary_file(name: str, seed: int) -> str:
+        """Write a deterministic binary file and return its path."""
+        fpath = os.path.join(env.data_dir, name)
+        data = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+        with open(fpath, "wb") as f:
+            f.write(data)
+        clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+        return fpath
+
+    seq = [0]
+
+    def create_archive(backup_type: str, base_archive: str = None) -> str:
+        """Create a dar archive using the sliced backup definition."""
+        seq[0] += 1
+        archive_time = clock.tick(PITR_STEP_SECONDS)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
+        # Prefix "example_" so manager --add-specific-archive registers in example.db.
+        archive_base = os.path.join(
+            env.backup_dir, f"example_{backup_type}_{timestamp}_{seq[0]:02d}"
+        )
+        cmd = [
+            "dar", "-c", archive_base,
+            "-N",
+            "-B", env.dar_rc,
+            "-B", sliced_def_path,
+            "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        result = runner.run(cmd, timeout=300)
+        assert result.returncode == 0, f"dar {backup_type} failed: {result.stderr}"
+        add_result = runner.run([
+            "manager", "--add-specific-archive", archive_base,
+            "--config-file", env.config_file,
+            "--log-stdout",
+        ], timeout=300)
+        assert add_result.returncode == 0, f"manager add-specific-archive failed: {add_result.stderr}"
+        return archive_base
+
+    # --- T0: initial files → FULL backup ---
+    write_binary_file("slice_a.bin", seed=0xAA)
+    write_binary_file("slice_b.bin", seed=0xBB)
+    write_binary_file("slice_c.bin", seed=0xCC)
+
+    full_archive = create_archive("FULL")
+    t0 = clock.tick(PITR_STEP_SECONDS)
+
+    # Must have at least two slices.
+    assert os.path.exists(f"{full_archive}.1.dar"), f"FULL .1.dar missing: {full_archive}"
+    slice2_full = f"{full_archive}.2.dar"
+    assert os.path.exists(slice2_full), (
+        f"FULL .2.dar missing — slice size may be too large or data too small: {full_archive}"
+    )
+    env.logger.info("FULL multi-slice archive confirmed: at least 2 slices present")
+
+    # Prove that restored content lives in slice 2+, not just in .1.dar:
+    # Hide .2.dar, attempt restore, then verify that at least one file is
+    # absent or has wrong content in the probe directory.  dar -x with -Q
+    # returns 0 even when slices are missing (graceful partial restore), so
+    # we cannot rely on the return code — we check the actual content.
+    slice2_hidden = slice2_full + ".hidden"
+    os.rename(slice2_full, slice2_hidden)
+    try:
+        probe_dir = os.path.join(env.test_dir, "restore_ms_probe")
+        os.makedirs(probe_dir, exist_ok=True)
+        runner.run([
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", data_dir_for_dar,
+            "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", probe_dir,
+            "--log-stdout",
+        ], timeout=300)
+        # Check whether the probe restore is incomplete (file absent or wrong bytes).
+        probe_data_dir = os.path.join(probe_dir, data_dir_for_dar)
+        probe_incomplete = False
+        for name, seed in [("slice_a.bin", 0xAA), ("slice_b.bin", 0xBB), ("slice_c.bin", 0xCC)]:
+            expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+            fpath = os.path.join(probe_data_dir, name)
+            if not os.path.exists(fpath):
+                probe_incomplete = True
+                env.logger.info(
+                    "Probe (without .2.dar): '%s' absent — content lives in later slices", name
+                )
+                break
+            with open(fpath, "rb") as f:
+                if f.read() != expected:
+                    probe_incomplete = True
+                    env.logger.info(
+                        "Probe (without .2.dar): '%s' has wrong content — spans multiple slices", name
+                    )
+                    break
+        assert probe_incomplete, (
+            "Probe restore with .2.dar absent returned correct content for all files — "
+            "content may not actually span multiple slices; try a smaller slice size"
+        )
+    finally:
+        os.rename(slice2_hidden, slice2_full)  # always restore the slice
+
+    # --- T1: modify all files → DIFF backup ---
+    write_binary_file("slice_a.bin", seed=0x11)
+    write_binary_file("slice_b.bin", seed=0x22)
+    write_binary_file("slice_c.bin", seed=0x33)
+
+    diff_archive = create_archive("DIFF", base_archive=full_archive)
+    t1 = clock.tick(PITR_STEP_SECONDS)
+
+    assert os.path.exists(f"{diff_archive}.1.dar"), f"DIFF .1.dar missing: {diff_archive}"
+    slice2_diff = f"{diff_archive}.2.dar"
+    assert os.path.exists(slice2_diff), (
+        f"DIFF .2.dar missing — slice size may be too large or data too small: {diff_archive}"
+    )
+    env.logger.info("DIFF multi-slice archive confirmed: at least 2 slices present")
+
+    # Same proof for the DIFF archive.
+    slice2_diff_hidden = slice2_diff + ".hidden"
+    os.rename(slice2_diff, slice2_diff_hidden)
+    try:
+        probe_dir_diff = os.path.join(env.test_dir, "restore_ms_probe_diff")
+        os.makedirs(probe_dir_diff, exist_ok=True)
+        runner.run([
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", data_dir_for_dar,
+            "--when", t1.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", probe_dir_diff,
+            "--log-stdout",
+        ], timeout=300)
+        probe_data_dir_diff = os.path.join(probe_dir_diff, data_dir_for_dar)
+        probe_diff_incomplete = False
+        for name, seed in [("slice_a.bin", 0x11), ("slice_b.bin", 0x22), ("slice_c.bin", 0x33)]:
+            expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+            fpath = os.path.join(probe_data_dir_diff, name)
+            if not os.path.exists(fpath):
+                probe_diff_incomplete = True
+                env.logger.info(
+                    "Probe DIFF (without .2.dar): '%s' absent — content in later slices", name
+                )
+                break
+            with open(fpath, "rb") as f:
+                if f.read() != expected:
+                    probe_diff_incomplete = True
+                    env.logger.info(
+                        "Probe DIFF (without .2.dar): '%s' wrong content — spans slices", name
+                    )
+                    break
+        assert probe_diff_incomplete, (
+            "Probe DIFF restore with .2.dar absent returned correct content — "
+            "DIFF content may not span multiple slices; try a smaller slice size"
+        )
+    finally:
+        os.rename(slice2_diff_hidden, slice2_diff)
+
+    # --- PITR restore at T0 → expect FULL (original) content ---
+    restore_t0 = os.path.join(env.test_dir, "restore_ms_t0")
+    os.makedirs(restore_t0, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_for_dar,
+        "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t0,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T0 failed: {result.stderr}"
+
+    restored_t0 = os.path.join(restore_t0, data_dir_for_dar)
+    for name, seed in [("slice_a.bin", 0xAA), ("slice_b.bin", 0xBB), ("slice_c.bin", 0xCC)]:
+        expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+        fpath = os.path.join(restored_t0, name)
+        assert os.path.exists(fpath), f"Restored {name} missing at T0"
+        with open(fpath, "rb") as f:
+            assert f.read() == expected, f"{name}: wrong content at T0 (FULL)"
+    env.logger.info("T0 restore verified: original content from multi-slice FULL archive")
+
+    # --- PITR restore at T1 → expect DIFF (modified) content ---
+    restore_t1 = os.path.join(env.test_dir, "restore_ms_t1")
+    os.makedirs(restore_t1, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_for_dar,
+        "--when", t1.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t1,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T1 failed: {result.stderr}"
+
+    restored_t1 = os.path.join(restore_t1, data_dir_for_dar)
+    for name, seed in [("slice_a.bin", 0x11), ("slice_b.bin", 0x22), ("slice_c.bin", 0x33)]:
+        expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+        fpath = os.path.join(restored_t1, name)
+        assert os.path.exists(fpath), f"Restored {name} missing at T1"
+        with open(fpath, "rb") as f:
+            assert f.read() == expected, f"{name}: wrong content at T1 (DIFF)"
+    env.logger.info("T1 restore verified: modified content from multi-slice DIFF archive")
+
+    env.logger.info("Multi-slice PITR test passed.")
+
+
+def test_pitr_symlinks_and_hardlinks(setup_environment, env):
+    """
+    Verify PITR correctly preserves symbolic links and hard links across a
+    FULL → DIFF archive chain.
+
+    Setup at FULL time:
+    - target_file.txt:    regular file with "original content"
+    - link_to_target.lnk: relative symlink → target_file.txt
+    - dangling.lnk:       symlink → does_not_exist.txt  (always dangling)
+    - original.txt:       regular file; hardlink.txt hard-linked to it
+
+    Between FULL and DIFF:
+    - target_file.txt content changed
+    - link_to_target.lnk retargeted to new_target.txt
+    - new_target.txt added
+
+    PITR assertions at T0 (FULL date):
+    - link_to_target.lnk is a symlink pointing to "target_file.txt"
+    - target_file.txt has "original content"
+    - dangling.lnk is a symlink pointing to "does_not_exist.txt"
+    - original.txt and hardlink.txt share the same inode (hard link preserved)
+
+    PITR assertions at T1 (DIFF date):
+    - link_to_target.lnk is a symlink pointing to "new_target.txt"
+    - target_file.txt has "modified content"
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+
+    # Clear default fixture data.
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        elif os.path.exists(path) or os.path.islink(path):
+            os.remove(path)
+
+    # --- Create FULL state ---
+    target_file  = os.path.join(env.data_dir, "target_file.txt")
+    link_to_target = os.path.join(env.data_dir, "link_to_target.lnk")
+    dangling_link  = os.path.join(env.data_dir, "dangling.lnk")
+    original_file  = os.path.join(env.data_dir, "original.txt")
+    hardlink_file  = os.path.join(env.data_dir, "hardlink.txt")
+
+    with open(target_file, "w") as f:
+        f.write("original content")
+    clock.touch(target_file, seconds=PITR_STEP_SECONDS)
+
+    with open(original_file, "w") as f:
+        f.write("hardlink content")
+    clock.touch(original_file, seconds=PITR_STEP_SECONDS)
+
+    os.link(original_file, hardlink_file)            # hard link
+    os.symlink("target_file.txt", link_to_target)    # relative symlink (in-tree)
+    os.symlink("does_not_exist.txt", dangling_link)  # dangling symlink
+
+    # Use direct dar calls rather than run_backup_script to avoid the post-backup
+    # verification step.  Verification randomly picks files to restore; unchanged
+    # files (original.txt, hardlink.txt) are not in the DIFF archive and would
+    # cause a false "restored file missing" failure unrelated to PITR correctness.
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    seq = [0]
+
+    def create_archive(backup_type: str, base_archive: str = None) -> str:
+        """Create a dar archive and register it in the catalog database."""
+        seq[0] += 1
+        archive_time = clock.tick(PITR_STEP_SECONDS)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
+        archive_base = os.path.join(
+            env.backup_dir, f"example_{backup_type}_{timestamp}_{seq[0]:02d}"
+        )
+        cmd = [
+            "dar", "-c", archive_base,
+            "-N",
+            "-B", env.dar_rc,
+            "-B", backup_def_path,
+            "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        result = runner.run(cmd, timeout=300)
+        assert result.returncode == 0, f"dar {backup_type} failed: {result.stderr}"
+        add_result = runner.run([
+            "manager", "--add-specific-archive", archive_base,
+            "--config-file", env.config_file,
+            "--log-stdout",
+        ], timeout=300)
+        assert add_result.returncode == 0, f"manager add failed: {add_result.stderr}"
+        return archive_base
+
+    full_archive = create_archive("FULL")
+    t0 = clock.tick(PITR_STEP_SECONDS)
+
+    # --- Modify for DIFF ---
+    with open(target_file, "w") as f:
+        f.write("modified content")
+    clock.touch(target_file, seconds=PITR_STEP_SECONDS)
+
+    new_target = os.path.join(env.data_dir, "new_target.txt")
+    with open(new_target, "w") as f:
+        f.write("new target content")
+    clock.touch(new_target, seconds=PITR_STEP_SECONDS)
+
+    # Retarget symlink: remove old link, create new one pointing elsewhere.
+    os.remove(link_to_target)
+    os.symlink("new_target.txt", link_to_target)
+
+    create_archive("DIFF", base_archive=full_archive)
+    t1 = clock.tick(PITR_STEP_SECONDS)
+
+    data_dir_rel = env.data_dir.lstrip("/")
+
+    # --- PITR restore at T0 (FULL state) ---
+    restore_t0 = os.path.join(env.test_dir, "restore_links_t0")
+    os.makedirs(restore_t0, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_rel,
+        "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t0,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T0 failed: {result.stderr}"
+
+    restored_t0 = os.path.join(restore_t0, data_dir_rel)
+
+    # Symlink points to original target.
+    r_link = os.path.join(restored_t0, "link_to_target.lnk")
+    assert os.path.islink(r_link), "link_to_target.lnk should be a symlink at T0"
+    assert os.readlink(r_link) == "target_file.txt", (
+        f"Symlink target mismatch at T0: expected 'target_file.txt', got '{os.readlink(r_link)}'"
+    )
+
+    # target_file.txt has original content.
+    r_target = os.path.join(restored_t0, "target_file.txt")
+    with open(r_target) as f:
+        assert f.read() == "original content", "target_file.txt wrong content at T0"
+
+    # Dangling symlink is preserved as-is.
+    r_dangling = os.path.join(restored_t0, "dangling.lnk")
+    assert os.path.islink(r_dangling), "dangling.lnk should be a symlink at T0"
+    assert os.readlink(r_dangling) == "does_not_exist.txt", (
+        f"Dangling symlink target mismatch at T0: got '{os.readlink(r_dangling)}'"
+    )
+
+    # Hard link pair shares the same inode.
+    r_original  = os.path.join(restored_t0, "original.txt")
+    r_hardlink  = os.path.join(restored_t0, "hardlink.txt")
+    assert os.path.exists(r_original), "original.txt missing at T0"
+    assert os.path.exists(r_hardlink), "hardlink.txt missing at T0"
+    inode_original = os.stat(r_original).st_ino
+    inode_hardlink = os.stat(r_hardlink).st_ino
+    assert inode_original == inode_hardlink, (
+        f"Hard link not preserved at T0: original inode={inode_original}, "
+        f"hardlink inode={inode_hardlink}"
+    )
+    env.logger.info("T0: symlink, dangling symlink, and hard link assertions passed")
+
+    # --- PITR restore at T1 (DIFF state) ---
+    restore_t1 = os.path.join(env.test_dir, "restore_links_t1")
+    os.makedirs(restore_t1, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_rel,
+        "--when", t1.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t1,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T1 failed: {result.stderr}"
+
+    restored_t1 = os.path.join(restore_t1, data_dir_rel)
+
+    # Symlink was retargeted to new_target.txt in the DIFF.
+    r_link_t1 = os.path.join(restored_t1, "link_to_target.lnk")
+    assert os.path.islink(r_link_t1), "link_to_target.lnk should be a symlink at T1"
+    assert os.readlink(r_link_t1) == "new_target.txt", (
+        f"Symlink not retargeted at T1: expected 'new_target.txt', "
+        f"got '{os.readlink(r_link_t1)}'"
+    )
+
+    # target_file.txt has modified content.
+    r_target_t1 = os.path.join(restored_t1, "target_file.txt")
+    with open(r_target_t1) as f:
+        assert f.read() == "modified content", "target_file.txt wrong content at T1"
+
+    env.logger.info("T1: retargeted symlink and modified file content assertions passed")
+    env.logger.info("Symlink and hard link PITR test passed.")
+
+
+# Special-character filenames present in the standard conftest fixture data
+# plus additional cases added by this test.  Defined at module level so the
+# expected values are visible alongside the assertions.
+_CONFTEST_SPECIAL_FILES = {
+    "file with spaces.txt":               "This is file with spaces.",
+    "file_with_danish_chars_æøå.txt":     "This is file with danish chars æøå.",
+    "file_with_DANISH_CHARS_ÆØÅ.txt":    "This is file with DANISH CHARS ÆØÅ.",
+    "file_with_colon.txt":                "This is file with colon .",
+    "file_with_hash.txt":                 "This is file with hash #.",
+    "file_with_currency.txt":             "This is file with currency ¤.",
+}
+
+_EXTRA_SPECIAL_FILES = {
+    "file (with) parens.txt":   "parentheses content v1",
+    # "file&ampersand.txt" is intentionally excluded: dar-backup's sanitize_cmd()
+    # rejects '&' as an unsafe shell character.  Since subprocess is used (no shell),
+    # '&' in filenames is safe at the OS level, but the sanitizer blocks it.
+    # This is a known limitation to address separately.
+    "file+plus.txt":            "plus content v1",
+    "urgent!.txt":              "exclamation content v1",
+    "file[brackets].txt":       "brackets content v1",
+}
+
+
+def test_pitr_special_char_filenames(setup_environment, env):
+    """
+    Verify PITR correctly handles files whose names contain characters that
+    are significant in shells or filesystems: spaces, Unicode letters (æ ø å
+    Æ Ø Å), hash (#), currency (¤), parentheses, plus, exclamation mark, and
+    square brackets.
+
+    Note: '&' in filenames is intentionally excluded — dar-backup's sanitize_cmd()
+    rejects it as an unsafe character even though subprocess is used (no shell).
+    That is a separate known limitation.
+
+    The conftest fixture already creates several special-char files; this test
+    adds more, then:
+    1. Takes a FULL backup (T0).
+    2. Overwrites all special-char files with "modified: <name>" content.
+    3. Takes a DIFF backup (T1).
+    4. PITR restore to T0 → expects original content for every file.
+    5. PITR restore to T1 → expects modified content for every file.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+
+    # Create the extra special-char files (conftest files already exist).
+    for name, content in _EXTRA_SPECIAL_FILES.items():
+        fpath = os.path.join(env.data_dir, name)
+        with open(fpath, "w") as f:
+            f.write(content)
+        clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+
+    # Touch the conftest-created files so they have a deterministic mtime
+    # that the clock has already advanced past.
+    for name in _CONFTEST_SPECIAL_FILES:
+        fpath = os.path.join(env.data_dir, name)
+        if os.path.exists(fpath):
+            clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+
+    # Build the union of all special-char files we will test.
+    all_special: dict = {**_CONFTEST_SPECIAL_FILES, **_EXTRA_SPECIAL_FILES}
+
+    # Record original content from disk (source of truth for T0 assertions).
+    original_content: dict = {}
+    for name in all_special:
+        fpath = os.path.join(env.data_dir, name)
+        if os.path.exists(fpath):
+            with open(fpath, encoding="utf-8") as f:
+                original_content[name] = f.read()
+
+    # Use direct dar calls to avoid the post-backup verification step, which
+    # can pick files not present in the DIFF archive and raise a false failure.
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    seq = [0]
+
+    def create_archive(backup_type: str, base_archive: str = None) -> str:
+        """Create a dar archive and register it in the catalog database."""
+        seq[0] += 1
+        archive_time = clock.tick(PITR_STEP_SECONDS)
+        timestamp = archive_time.strftime("%Y-%m-%d_%H%M%S")
+        archive_base = os.path.join(
+            env.backup_dir, f"example_{backup_type}_{timestamp}_{seq[0]:02d}"
+        )
+        cmd = [
+            "dar", "-c", archive_base,
+            "-N",
+            "-B", env.dar_rc,
+            "-B", backup_def_path,
+            "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        result = runner.run(cmd, timeout=300)
+        assert result.returncode == 0, f"dar {backup_type} failed: {result.stderr}"
+        add_result = runner.run([
+            "manager", "--add-specific-archive", archive_base,
+            "--config-file", env.config_file,
+            "--log-stdout",
+        ], timeout=300)
+        assert add_result.returncode == 0, f"manager add failed: {add_result.stderr}"
+        return archive_base
+
+    # --- FULL backup → T0 ---
+    full_archive = create_archive("FULL")
+    t0 = clock.tick(PITR_STEP_SECONDS)
+
+    # Overwrite every special-char file with a modified value.
+    for name in original_content:
+        fpath = os.path.join(env.data_dir, name)
+        with open(fpath, "w", encoding="utf-8") as f:
+            f.write(f"modified: {name}")
+        clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+
+    # --- DIFF backup → T1 ---
+    create_archive("DIFF", base_archive=full_archive)
+    t1 = clock.tick(PITR_STEP_SECONDS)
+
+    data_dir_rel = env.data_dir.lstrip("/")
+
+    # --- PITR restore at T0 → original content ---
+    restore_t0 = os.path.join(env.test_dir, "restore_specials_t0")
+    os.makedirs(restore_t0, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_rel,
+        "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t0,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T0 failed: {result.stderr}"
+
+    restored_t0 = os.path.join(restore_t0, data_dir_rel)
+    failures = []
+    for name, expected in original_content.items():
+        fpath = os.path.join(restored_t0, name)
+        if not os.path.exists(fpath):
+            failures.append(f"MISSING at T0: '{name}'")
+            continue
+        with open(fpath, encoding="utf-8") as f:
+            actual = f.read()
+        if actual != expected:
+            failures.append(
+                f"CONTENT MISMATCH at T0 for '{name}': "
+                f"expected {expected!r}, got {actual!r}"
+            )
+    assert not failures, "Special-char PITR failures at T0:\n" + "\n".join(failures)
+    env.logger.info("T0 restore verified: %d special-char files have original content", len(original_content))
+
+    # --- PITR restore at T1 → modified content ---
+    restore_t1 = os.path.join(env.test_dir, "restore_specials_t1")
+    os.makedirs(restore_t1, exist_ok=True)
+    result = runner.run([
+        "manager",
+        "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_dir_rel,
+        "--when", t1.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_t1,
+        "--log-stdout",
+    ], timeout=300)
+    assert result.returncode == 0, f"PITR T1 failed: {result.stderr}"
+
+    restored_t1 = os.path.join(restore_t1, data_dir_rel)
+    failures = []
+    for name in original_content:
+        expected = f"modified: {name}"
+        fpath = os.path.join(restored_t1, name)
+        if not os.path.exists(fpath):
+            failures.append(f"MISSING at T1: '{name}'")
+            continue
+        with open(fpath, encoding="utf-8") as f:
+            actual = f.read()
+        if actual != expected:
+            failures.append(
+                f"CONTENT MISMATCH at T1 for '{name}': "
+                f"expected {expected!r}, got {actual!r}"
+            )
+    assert not failures, "Special-char PITR failures at T1:\n" + "\n".join(failures)
+    env.logger.info("T1 restore verified: %d special-char files have modified content", len(original_content))
+
+    env.logger.info("Special character filename PITR test passed.")
