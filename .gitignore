@@ -22,3 +22,4 @@ v2/coverage.xml
 v2/doc/test-report/coverage.xml
 v2/packages/*
 v2/.coverage.*.*.*.*
+.claude/**

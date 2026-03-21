@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>dar-backup metrics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
+  onerror="window._chartjsFailed=true"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
@@ -140,6 +142,117 @@
     color: var(--muted);
     margin-top: 4px;
     font-family: var(--mono);
+  }
+
+  /* Trend section */
+  .trends-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .trends-header h2 {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .gran-btns {
+    display: flex;
+    gap: 4px;
+  }
+
+  .gran-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .gran-btn:hover { color: var(--text); border-color: var(--accent); }
+  .gran-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #trend-panels {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 2rem;
+  }
+
+  .trend-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .trend-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0.6rem 1.25rem;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .trend-panel-header .def-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--info);
+  }
+
+  .trend-panel-header .trend-meta {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+
+  .trend-failure-badge {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--failure);
+    background: #450a0a;
+    border-radius: 3px;
+    padding: 1px 6px;
+  }
+
+  .trend-chart-wrap {
+    padding: 1rem;
+    height: 220px;
+    position: relative;
+  }
+
+  .trend-legend {
+    display: flex;
+    gap: 12px;
+    padding: 0 1rem 0.75rem;
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  .trend-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   /* Definition sections */
@@ -357,6 +470,22 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* Section divider */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.5rem 0 0.75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
 </style>
 </head>
 <body>
@@ -380,11 +509,27 @@
   <div id="error-msg" style="display:none"></div>
   <div id="content" style="display:none">
     <div class="summary-grid" id="summary-cards"></div>
+
+    <!-- Recent runs per definition -->
+    <div class="section-label">Recent runs</div>
     <div id="definitions"></div>
+
+    <!-- Trend panels -->
+    <div class="section-label" id="trends-section-label">
+      Trends
+      <div class="gran-btns">
+        <button class="gran-btn" data-gran="week">Weekly</button>
+        <button class="gran-btn active" data-gran="month">Monthly</button>
+        <button class="gran-btn" data-gran="year">Yearly</button>
+      </div>
+    </div>
+    <div id="trend-panels"></div>
   </div>
 </main>
 
 <script>
+/* ── helpers ────────────────────────────────────────────────────── */
+
 function dsUrl() {
   const base = document.getElementById('ds-url').value.replace(/\/$/, '');
   const db   = document.getElementById('ds-db').value.trim();
@@ -452,6 +597,8 @@ function typeBadge(type) {
   return `<span class="type-badge type-${type}">${type}</span>`;
 }
 
+/* ── summary cards ──────────────────────────────────────────────── */
+
 function buildSummaryCards(rows) {
   const total = rows.length;
   const successCount = rows.filter(r => r.status === 'SUCCESS').length;
@@ -497,6 +644,300 @@ function buildSummaryCards(rows) {
   `;
 }
 
+/* ── trend panels ───────────────────────────────────────────────── */
+
+let _allTrendRuns = [];
+let _chartInstances = {};   // panelId → Chart instance
+let _currentGran = 'month';
+
+/**
+ * Return a period key string for a given run timestamp and granularity.
+ * week  → "2026-W12"
+ * month → "2026-03"
+ * year  → "2026"
+ */
+function periodKey(tsStr, gran) {
+  const d = new Date(tsStr);
+  if (gran === 'year') {
+    return d.getFullYear().toString();
+  }
+  if (gran === 'month') {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  // ISO week
+  const tmp = new Date(d);
+  tmp.setUTCHours(0, 0, 0, 0);
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+  return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/**
+ * Worst status in an array of runs: FAILURE > WARNING > SUCCESS.
+ */
+function worstStatus(runs) {
+  if (runs.some(r => r.status === 'FAILURE')) return 'FAILURE';
+  if (runs.some(r => r.status === 'WARNING')) return 'WARNING';
+  return 'SUCCESS';
+}
+
+function statusColor(status) {
+  if (status === 'FAILURE') return '#ef4444';
+  if (status === 'WARNING') return '#f59e0b';
+  return '#22c55e';
+}
+
+function buildTrendPanels(gran) {
+  _currentGran = gran;
+
+  const container = document.getElementById('trend-panels');
+
+  if (window._chartjsFailed || typeof Chart === 'undefined') {
+    document.getElementById('trends-section-label').style.display = 'none';
+    container.innerHTML =
+      '<p style="color:var(--warning);font-family:var(--mono);font-size:12px;' +
+      'padding:0 0 1.5rem;border-left:2px solid var(--warning);padding-left:10px">' +
+      'Trend charts unavailable — Chart.js could not be loaded (no internet access or CDN unreachable).' +
+      '</p>';
+    return;
+  }
+
+  // Destroy existing Chart instances to free canvas memory
+  for (const [id, chart] of Object.entries(_chartInstances)) {
+    chart.destroy();
+  }
+  _chartInstances = {};
+  container.innerHTML = '';
+
+  if (!_allTrendRuns.length) {
+    container.innerHTML = '<p style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:1rem 0">No run history available for trend charts.</p>';
+    return;
+  }
+
+  // Group all runs by definition
+  const byDef = {};
+  for (const r of _allTrendRuns) {
+    if (!byDef[r.backup_definition]) byDef[r.backup_definition] = [];
+    byDef[r.backup_definition].push(r);
+  }
+
+  for (const [defName, runs] of Object.entries(byDef).sort(([a], [b]) => a.localeCompare(b))) {
+    // Group runs into periods
+    const byPeriod = {};
+    for (const r of runs) {
+      const key = periodKey(r.run_started_at, gran);
+      if (!byPeriod[key]) byPeriod[key] = [];
+      byPeriod[key].push(r);
+    }
+
+    const labels = Object.keys(byPeriod).sort();
+
+    // --- Dataset 1: FULL carry-forward stepped reference line ---
+    // The indigo stepped line shows the most recent FULL archive size, carried
+    // forward into subsequent periods until the next FULL.  A dot is only drawn
+    // at periods where a FULL actually ran; carry-forward periods have no dot.
+    const fullSizes       = [];
+    const fullPointColors = [];
+    const fullPointRadii  = [];
+    const fullPointBorder = [];
+    const fullPointBorderW = [];
+    let lastFullSize = null;
+    for (const k of labels) {
+      const pRuns   = byPeriod[k];
+      const fullRuns = pRuns.filter(r => r.backup_type === 'FULL' && r.archive_size_bytes != null);
+      if (fullRuns.length > 0) {
+        // Pick the last FULL in the period (chronologically latest)
+        lastFullSize = fullRuns[fullRuns.length - 1].archive_size_bytes;
+        const worst = worstStatus(fullRuns);
+        fullSizes.push(lastFullSize);
+        fullPointColors.push(statusColor(worst));
+        fullPointRadii.push(worst === 'FAILURE' ? 9 : worst === 'WARNING' ? 6 : 4);
+        fullPointBorder.push(worst === 'FAILURE' ? '#fff' : 'transparent');
+        fullPointBorderW.push(worst === 'FAILURE' ? 2 : 0);
+      } else {
+        // Carry forward last known FULL size; no visible dot
+        fullSizes.push(lastFullSize);
+        fullPointColors.push('transparent');
+        fullPointRadii.push(0);
+        fullPointBorder.push('transparent');
+        fullPointBorderW.push(0);
+      }
+    }
+
+    // --- Dataset 2: DIFF/INCR sum per period (scatter, no line) ---
+    // Each cyan dot represents the combined size of all DIFF and INCR runs in
+    // that period, making it easy to see how much incremental activity happened.
+    const incrSizes       = [];
+    const incrPointColors = [];
+    const incrPointRadii  = [];
+    const incrPointBorder = [];
+    const incrPointBorderW = [];
+    for (const k of labels) {
+      const pRuns   = byPeriod[k];
+      const incrRuns = pRuns.filter(r => r.backup_type !== 'FULL' && r.archive_size_bytes != null);
+      if (incrRuns.length > 0) {
+        const sum   = incrRuns.reduce((s, r) => s + r.archive_size_bytes, 0);
+        const worst = worstStatus(incrRuns);
+        incrSizes.push(sum);
+        incrPointColors.push(statusColor(worst));
+        incrPointRadii.push(worst === 'FAILURE' ? 9 : worst === 'WARNING' ? 6 : 4);
+        incrPointBorder.push(worst === 'FAILURE' ? '#fff' : 'transparent');
+        incrPointBorderW.push(worst === 'FAILURE' ? 2 : 0);
+      } else {
+        incrSizes.push(null);
+        incrPointColors.push('transparent');
+        incrPointRadii.push(0);
+        incrPointBorder.push('transparent');
+        incrPointBorderW.push(0);
+      }
+    }
+
+    const failureCount = labels.filter(k => worstStatus(byPeriod[k]) === 'FAILURE').length;
+    const failureBadge = failureCount > 0
+      ? `<span class="trend-failure-badge">✗ ${failureCount} failure${failureCount > 1 ? 's' : ''}</span>`
+      : '';
+
+    const panelId = `chart-${defName.replace(/\W/g, '_')}`;
+
+    const panel = document.createElement('div');
+    panel.className = 'trend-panel';
+    panel.innerHTML = `
+      <div class="trend-panel-header">
+        <span class="def-name">${defName}</span>
+        ${failureBadge}
+        <span class="trend-meta">${labels.length} ${gran}${labels.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="trend-chart-wrap">
+        <canvas id="${panelId}"></canvas>
+      </div>
+      <div class="trend-legend">
+        <div class="trend-legend-item"><span style="display:inline-block;width:22px;height:2px;background:#6366f1;vertical-align:middle;margin-right:5px"></span>FULL (carry-forward)</div>
+        <div class="trend-legend-item"><div class="legend-dot" style="background:#06b6d4"></div>DIFF/INCR sum</div>
+        <div class="trend-legend-item"><div class="legend-dot" style="background:#f59e0b"></div>warning</div>
+        <div class="trend-legend-item"><div class="legend-dot" style="background:#ef4444;border:2px solid #fff;box-sizing:border-box"></div>failure</div>
+        <span style="margin-left:auto;color:var(--muted)">hover for details</span>
+      </div>`;
+    container.appendChild(panel);
+
+    const ctx = document.getElementById(panelId).getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'FULL (carry-forward)',
+            data: fullSizes,
+            borderColor: '#6366f1',
+            borderWidth: 2,
+            pointBackgroundColor: fullPointColors,
+            pointBorderColor: fullPointBorder,
+            pointBorderWidth: fullPointBorderW,
+            pointRadius: fullPointRadii,
+            pointHoverRadius: fullPointRadii.map(r => r > 0 ? r + 2 : 0),
+            stepped: 'before',
+            fill: {
+              target: 'origin',
+              above: 'rgba(99,102,241,0.06)',
+            },
+            spanGaps: true,
+          },
+          {
+            label: 'DIFF/INCR sum',
+            data: incrSizes,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            showLine: false,
+            pointBackgroundColor: incrPointColors,
+            pointBorderColor: incrPointBorder,
+            pointBorderWidth: incrPointBorderW,
+            pointRadius: incrPointRadii,
+            pointHoverRadius: incrPointRadii.map(r => r > 0 ? r + 2 : 0),
+            spanGaps: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e2333',
+            borderColor: '#2a3045',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            titleFont: { family: 'IBM Plex Mono', size: 11 },
+            bodyFont:  { family: 'IBM Plex Mono', size: 11 },
+            // Show all datasets for the hovered period in one tooltip
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              title: ctx => ctx[0].label,
+              label: ctx => {
+                const k = labels[ctx.dataIndex];
+                const pRuns = byPeriod[k];
+                if (ctx.datasetIndex === 0) {
+                  // FULL carry-forward line
+                  const fullRuns = pRuns.filter(r => r.backup_type === 'FULL');
+                  if (ctx.raw == null) return null;
+                  const suffix = fullRuns.length > 0 ? '' : ' (carried fwd)';
+                  return `FULL: ${fmtBytes(ctx.raw)}${suffix}`;
+                } else {
+                  // DIFF/INCR sum
+                  const incrRuns = pRuns.filter(r => r.backup_type !== 'FULL');
+                  if (ctx.raw == null || incrRuns.length === 0) return null;
+                  return `DIFF/INCR: ${fmtBytes(ctx.raw)} · ${incrRuns.length} run${incrRuns.length > 1 ? 's' : ''}`;
+                }
+              },
+              afterLabel: ctx => {
+                // Only append the summary block once (after dataset 0)
+                if (ctx.datasetIndex !== 0) return null;
+                const k = labels[ctx.dataIndex];
+                const pRuns = byPeriod[k];
+                const worst = worstStatus(pRuns);
+                const lines = [`Status: ${worst}`];
+                const failures = pRuns.filter(r => r.status === 'FAILURE');
+                if (failures.length) {
+                  lines.push(`⚠ ${failures.length} failed run${failures.length > 1 ? 's' : ''}`);
+                }
+                const types = [...new Set(pRuns.map(r => r.backup_type))].join(', ');
+                lines.push(`${pRuns.length} run${pRuns.length > 1 ? 's' : ''} (${types})`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#2a3045' },
+            ticks: {
+              color: '#64748b',
+              font: { family: 'IBM Plex Mono', size: 10 },
+              maxRotation: 45,
+            }
+          },
+          y: {
+            grid: { color: '#2a3045' },
+            ticks: {
+              color: '#64748b',
+              font: { family: 'IBM Plex Mono', size: 10 },
+              callback: v => fmtBytes(v),
+            },
+            beginAtZero: false,
+          }
+        }
+      }
+    });
+
+    _chartInstances[panelId] = chart;
+  }
+}
+
+/* ── recent-run table ───────────────────────────────────────────── */
+
 function buildRunRow(r) {
   const hasFail = r.inodes_failed > 0;
   const rowClass = hasFail ? 'has-failures' : '';
@@ -511,7 +952,7 @@ function buildRunRow(r) {
     <td class="duration" title="dar: ${fmtDuration(r.dar_duration_secs)} · verify: ${fmtDuration(r.verify_duration_secs)} · par2: ${fmtDuration(r.par2_duration_secs)}">${fmtDuration(r.duration_secs)}</td>
     <td class="size">${fmtBytes(r.archive_size_bytes)}</td>
     <td>${inodeCell(r.inodes_saved, r.inodes_failed)}</td>
-    <td title="inodes not saved (unchanged)"style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_not_saved != null ? r.inodes_not_saved.toLocaleString() : '—'}</td>
+    <td title="inodes not saved (unchanged)" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_not_saved != null ? r.inodes_not_saved.toLocaleString() : '—'}</td>
     <td title="inodes excluded by filters" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_excluded != null ? r.inodes_excluded.toLocaleString() : '—'}</td>
     <td class="phases">
       <div class="phase">${chk(r.verify_passed)}<span>verify</span></div>
@@ -559,13 +1000,16 @@ function buildDefSection(defName, runs) {
     </div>`;
 }
 
+/* ── main load ──────────────────────────────────────────────────── */
+
 async function loadAll() {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('content').style.display = 'none';
   document.getElementById('error-msg').style.display = 'none';
 
   try {
-    const sql = `
+    // Recent runs for the table (last 3 per definition)
+    const recentSql = `
       SELECT b.*
       FROM backup_runs b
       WHERE (
@@ -576,15 +1020,29 @@ async function loadAll() {
       ORDER BY b.backup_definition, b.run_started_at DESC
     `;
 
-    const rows = await query(sql);
+    // All runs for trend charts (no limit)
+    const trendSql = `
+      SELECT run_started_at, backup_definition, backup_type,
+             archive_size_bytes, status, inodes_saved, inodes_failed
+      FROM backup_runs
+      ORDER BY backup_definition, run_started_at ASC
+    `;
 
+    const [recentRows, trendRows] = await Promise.all([query(recentSql), query(trendSql)]);
+
+    // Summary cards use all recent rows
+    document.getElementById('summary-cards').innerHTML = buildSummaryCards(recentRows);
+
+    // Trend panels
+    _allTrendRuns = trendRows;
+    buildTrendPanels(_currentGran);
+
+    // Recent run tables
     const grouped = {};
-    for (const r of rows) {
+    for (const r of recentRows) {
       if (!grouped[r.backup_definition]) grouped[r.backup_definition] = [];
       grouped[r.backup_definition].push(r);
     }
-
-    document.getElementById('summary-cards').innerHTML = buildSummaryCards(rows);
 
     const defHtml = Object.entries(grouped)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -609,7 +1067,17 @@ async function loadAll() {
   }
 }
 
-// Auto-populate Datasette base URL from query param if launched by dar-backup-dashboard
+/* ── granularity toggle ─────────────────────────────────────────── */
+
+document.querySelectorAll('.gran-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.gran-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    buildTrendPanels(btn.dataset.gran);
+  });
+});
+
+/* ── auto-populate Datasette URL from query param ───────────────── */
 (function() {
   const params = new URLSearchParams(window.location.search);
   const ds = params.get('datasette');

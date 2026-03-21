@@ -18,7 +18,7 @@ a failed run is surfaced — highlighted in amber so it stands out immediately:
 
 ### What the dashboard shows
 
-At the top, four summary metric cards give an instant health overview:
+At the top, summary metric cards give an instant health overview:
 
 - Total runs recorded
 - Success rate across all runs shown
@@ -31,7 +31,7 @@ Below the summary, each backup definition gets its own section showing the last
 three runs in a table with the following columns:
 
 | Column | Description |
-|--------|-------------|
+| --- | --- |
 | Started | Timestamp of the run |
 | Type | `FULL`, `DIFF`, or `INCR` |
 | Status | `SUCCESS`, `WARNING`, or `FAILURE` pill — colour coded |
@@ -45,6 +45,88 @@ three runs in a table with the following columns:
 
 Rows with failed inodes are highlighted with a left amber border so they stand
 out at a glance without needing to read every cell.
+
+Below the recent-run tables, one trend chart is rendered per backup definition,
+covering the full run history in the database.  See
+[Reading the trend charts](#reading-the-trend-charts) below.
+
+### Reading the trend charts
+
+[![dar-backup trend panels](dar-backup-dashboard-trends.png)](dar-backup-dashboard-trends.png)
+
+Each chart plots archive size over time, grouped by time period
+(week / month / year — selectable via the toggle above the charts).
+
+Every chart shows **two datasets** overlaid on the same axes:
+
+#### Dataset 1 — FULL carry-forward (indigo stepped line)
+
+The indigo line shows the size of the most recent FULL backup, stepped
+forward into subsequent periods until the next FULL replaces it.
+
+- A dot is drawn **only** at periods where a FULL backup actually ran.
+- Carry-forward periods have the same Y value but no visible dot.
+- This gives a stable capacity baseline — the true size of the entire
+  source data set at the last full snapshot.
+
+#### Dataset 2 — DIFF/INCR combined size (cyan scatter dots)
+
+Each cyan dot represents the **sum** of all DIFF and INCR archive sizes
+in that period.  Ten 24 GB INCR runs in one week appear as a single dot
+at ~240 GB, not ten separate dots.
+
+Comparing the cyan dot height against the indigo step shows at a glance
+how much incremental activity happened relative to the full data set size.
+
+#### Dot colour and size
+
+Each dot reflects the **worst status** of the runs that make up that dot:
+
+| Dot appearance | Meaning |
+| --- | --- |
+| Small green dot | All runs in the period succeeded |
+| Medium amber dot | At least one run ended with a `WARNING` |
+| Large red dot with white border | At least one run **failed** — investigate immediately |
+
+The white border on failure dots makes them stand out even when the chart is
+small or printed.
+
+#### Hover tooltip
+
+Hovering a dot (or anywhere on the chart area) shows a combined tooltip for
+that period.  Two example tooltips:
+
+A week with ten INCR runs and no FULL:
+
+```text
+2025-W11
+FULL: 1.84 TB (carried fwd)
+DIFF/INCR: 238.6 GB · 10 runs
+Status: SUCCESS
+10 runs (INCR)
+```
+
+A month where a FULL ran alongside some DIFFs, with one warning:
+
+```text
+2025-03
+FULL: 1.91 TB
+DIFF/INCR: 42.3 GB · 3 runs
+Status: WARNING
+4 runs (FULL, DIFF)
+```
+
+If any run in the period failed, an extra line appears:
+
+```text
+⚠ 1 failed run
+```
+
+#### Granularity
+
+Use the **Weekly / Monthly / Yearly** buttons to zoom in or out.  Monthly is the
+default and works well for most setups.  Yearly is useful when you have several
+years of history and want to see the long-term growth trend at a glance.
 
 ### Installation
 
@@ -208,6 +290,73 @@ backup is never affected.
 
 ---
 
+## Seeding historical archives into the metrics database
+
+The metrics database is populated automatically going forward from the first
+backup run after the feature was introduced.  Archives that predate the metrics
+feature are invisible to the trend charts.
+
+`v2/scripts/import-archive-metrics.py` fills that gap.  It scans a directory of
+existing `.dar` archives and imports one row per archive into the metrics DB —
+without re-running any backups.
+
+### What is recovered
+
+| Field | Source |
+| --- | --- |
+| `backup_definition`, `backup_type` | Parsed from the archive filename |
+| `archive_name`, `run_started_at` | Parsed from the archive filename |
+| `archive_size_bytes`, `num_slices` | Summed from the `.N.dar` slice files on disk |
+| `status` | Always `SUCCESS` — the archive exists, so the backup completed |
+| Inode stats (`inodes_saved` etc.) | Attempted via `dar -l`; left `NULL` if not available |
+
+Timing fields (`duration_secs`, phase durations), verification results
+(`verify_passed`, `restore_test_passed`, `par2_passed`), and error details are
+always `NULL` for historical imports — they were never recorded by dar.
+
+### Idempotency
+
+Archives already present in the DB (matched by `archive_name`) are silently
+skipped.  The script is safe to run repeatedly as new archives accumulate —
+only genuinely new archives are inserted.
+
+### Usage
+
+Run the script from inside the dar-backup virtualenv so that
+`dar_backup.util.ensure_metrics_db` is importable and the full schema
+(including all migration columns) is guaranteed:
+
+```bash
+cd ~/git/dar-backup/v2
+source venv/bin/activate
+
+# Preview what would be imported (no DB changes)
+python scripts/import-archive-metrics.py \
+    --archive-dir /path/to/archives \
+    --metrics-db  /path/to/dar-backup-metrics.db \
+    --dar ~/.local/dar/bin/dar \
+    --dry-run
+
+# Import for real
+python scripts/import-archive-metrics.py \
+    --archive-dir /path/to/archives \
+    --metrics-db  /path/to/dar-backup-metrics.db \
+    --dar ~/.local/dar/bin/dar
+```
+
+The script processes archives in chronological order and commits each row
+individually, so a failure partway through leaves the DB consistent.
+Re-running picks up where it left off.
+
+### Effect on the dashboard
+
+Once imported, the historical archives appear in the trend charts alongside
+live backup runs.  The chart always renders in chronological order regardless
+of the order rows were inserted — so mixing old imports with new live rows
+works correctly.
+
+---
+
 ## Datasette
 
 [Datasette](https://datasette.io) is a lightweight, zero-configuration tool for
@@ -215,7 +364,7 @@ exploring SQLite databases through a web browser.  It requires no server setup �
 just point it at the metrics database and it renders tables, runs SQL queries,
 and produces charts instantly.
 
-### Installation
+### Installing Datasette
 
 ```bash
 pip install datasette

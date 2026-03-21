@@ -7,6 +7,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 - More robust PITR edge-case handling for file vs directory inodes.
 - PITR integration tests extended to cover multi-slice archives, symlinks (relative, dangling, hard links), and special-character filenames; `dar_manager -w` file-version-restore documented.
+- Dashboard trend charts redesigned: indigo stepped FULL carry-forward line + cyan DIFF/INCR sum scatter per period; `import-archive-metrics.py` script seeds the metrics DB from existing archives.
 
 ## v2-1.1.2 - 2026-03-15
 

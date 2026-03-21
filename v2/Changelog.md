@@ -19,6 +19,14 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - Checks for edge cases in PITR expanded
   - Logic determining if an inode is file or dir much more robust
 
+### Added (dashboard & metrics)
+
+- **Two-dataset trend charts** in the dashboard: an indigo stepped line carries the most recent FULL archive size forward between FULL runs; cyan scatter dots show the combined size of all DIFF/INCR runs per period.  This makes it easy to see true data-set growth (FULL line) alongside incremental activity (cyan dots) at a glance.
+- Trend panel layout changed to single-column so each chart has full content width.
+- Hover tooltip shows both datasets in one popup: FULL size (with `carried fwd` label when no FULL ran in that period), DIFF/INCR combined size + run count, overall worst status, and total run breakdown.
+- **`v2/scripts/import-archive-metrics.py`**: standalone idempotent script that seeds the metrics DB from existing `.dar` archives on disk without re-running any backups.  Parses definition, type, and date from the archive filename; sums slice sizes; attempts `dar -l` for inode stats (NULL on failure); supports `--backup-definition` filter for shared archive directories; `--dry-run` previews what would be imported.  Non-UTF-8 filenames in archives (e.g. media collections) handled with `errors='replace'` so the inode-summary block is always parsed cleanly.
+- **`v2/doc/dashboard-and-metrics.md`** updated with: two-dataset chart interpretation guide, annotated tooltip examples, screenshot of the trend panels, and full `import-archive-metrics.py` usage documentation including what fields are recovered vs left NULL.
+
 ## v2-1.1.2 - 2026-03-15
 
 ### Added
