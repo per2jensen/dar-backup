@@ -234,8 +234,8 @@ Primary key fingerprint: 1BE4 7606 A74F 178C 7328  43B0 5F64 5B19 16D5 6546
 
 ### Build
 
-export DAR_VERSION=2.7.17
-This worked for dar version 2.7.17 on ubuntu 24.04
+export DAR_VERSION=2.7.21.RC1
+This worked for dar version 2.7.21.RC1 on ubuntu 24.04
 
 export SRC_CODE=/some/dir
 export DAR_DIR=$HOME/.local/dar-${DAR_VERSION}
