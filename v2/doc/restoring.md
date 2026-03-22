@@ -4,6 +4,16 @@ Back to [README](../../README.md)
 
 ## Point-in-Time Recovery (PITR)
 
+### Real-world validation
+
+PITR was validated against a live media archive in March 2026:
+
+- **Archive:** a 904 GB FULL backup (85 slices × 10 GB) of a personal media collection
+  spanning 2018–2026, stored on a NAS over a network mount.
+- **Request:** restore `--when "2025-12-31 23:59:59"` to an isolated target directory.
+- **Result:** 337 GB extracted in ~57 minutes; year directories 2018–2025 present,
+  2026 directory absent — the date boundary held exactly as specified.
+
 ### What PITR promises
 
 dar-backup selects archives by **archive creation date**, not by file mtime.
