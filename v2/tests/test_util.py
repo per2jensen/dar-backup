@@ -664,3 +664,188 @@ def test_sort_key_invalid_date_string_returns_fallback():
     def_name, date = util.sort_key(name)
     assert def_name == name
     assert date == datetime.min
+
+
+# ---------------------------------------------------------------------------
+# parse_dar_stats — graceful degradation
+# ---------------------------------------------------------------------------
+
+class TestParseDarStats:
+    """parse_dar_stats must never raise and must return None for absent fields."""
+
+    def test_empty_string_returns_all_none(self):
+        """Empty output (e.g. dar produced no stdout/stderr) → all None, no crash."""
+        result = util.parse_dar_stats("")
+        assert all(v is None for v in result.values()), (
+            "All metrics must be None when output is empty"
+        )
+
+    def test_none_like_empty_string_returns_all_none(self):
+        """Passing an empty string (stdout_tail default) → all None."""
+        result = util.parse_dar_stats("")
+        assert isinstance(result, dict)
+        assert len(result) > 0
+
+    def test_garbage_output_returns_all_none(self):
+        """Unrecognised output (old dar format, truncated run) → all None, no crash."""
+        result = util.parse_dar_stats("This is some random text with no dar stats\n")
+        assert all(v is None for v in result.values())
+
+    def test_partial_output_parses_available_fields(self):
+        """Only fields present in output are non-None; absent fields stay None."""
+        partial = " 7 inode(s) saved\n  including 0 hard link(s) treated\n"
+        result = util.parse_dar_stats(partial)
+        assert result["inodes_saved"] == 7
+        assert result["hard_links_treated"] == 0
+        # A field not in the partial output must be None
+        assert result["inodes_total"] is None
+
+    def test_full_dar_output_parses_correctly(self):
+        """
+        A complete dar statistics block (as produced by dar >= 2.7.21) is parsed
+        without error and all key fields are non-None integers.
+        """
+        sample = (
+            " --------------------------------------------\n"
+            " 15 inode(s) saved\n"
+            "   including 2 hard link(s) treated\n"
+            " 0 inode(s) changed at the moment of the backup and could not be saved properly\n"
+            " 0 byte(s) have been wasted in the archive to resave changing files\n"
+            " 1 inode(s) with only metadata changed\n"
+            " 3 inode(s) not saved (no inode/file change)\n"
+            " 0 inode(s) failed to be saved (filesystem error)\n"
+            " 0 inode(s) ignored (excluded by filters)\n"
+            " 0 inode(s) recorded as deleted from reference backup\n"
+            " --------------------------------------------\n"
+            " Total number of inode(s) considered: 18\n"
+            " --------------------------------------------\n"
+            " EA saved for 0 inode(s)\n"
+            " FSA saved for 15 inode(s)\n"
+            " --------------------------------------------\n"
+        )
+        result = util.parse_dar_stats(sample)
+        assert result["inodes_saved"] == 15
+        assert result["hard_links_treated"] == 2
+        assert result["inodes_metadata_only"] == 1
+        assert result["inodes_not_saved"] == 3
+        assert result["inodes_total"] == 18
+        assert result["ea_saved"] == 0
+        assert result["fsa_saved"] == 15
+        assert all(v is not None for v in result.values()), (
+            "All fields must parse for a complete dar stats block"
+        )
+
+    def test_returns_dict_with_all_expected_keys(self):
+        """Result always contains all metric keys regardless of output content."""
+        result = util.parse_dar_stats("no stats here")
+        expected_keys = {
+            "inodes_saved", "hard_links_treated", "inodes_changed_during_backup",
+            "bytes_wasted", "inodes_metadata_only", "inodes_not_saved",
+            "inodes_failed", "inodes_excluded", "inodes_deleted",
+            "inodes_total", "ea_saved", "fsa_saved",
+        }
+        assert expected_keys.issubset(result.keys())
+
+
+# ---------------------------------------------------------------------------
+# write_metrics_row — graceful degradation
+# ---------------------------------------------------------------------------
+
+class TestWriteMetricsRowGraceful:
+    """write_metrics_row must never raise — metrics must not abort a backup."""
+
+    def _make_config(self, db_path: str):
+        """Return a minimal config_settings stub with metrics_db_path set."""
+        cfg = SimpleNamespace()
+        cfg.metrics_db_path = db_path
+        return cfg
+
+    def test_all_null_inode_stats_writes_row_without_error(self, tmp_path):
+        """
+        A metrics dict where all inode fields are None (dar < 2.7.21 or absent
+        stats block) must still write a row successfully — graceful degradation.
+        """
+        db = str(tmp_path / "metrics.db")
+        metrics = {
+            "backup_definition": "test-def",
+            "backup_type": "FULL",
+            "archive_name": "test-def_FULL_2026-01-01",
+            "dar_backup_version": "1.1.3",
+            "dar_version": "2.7.19",
+            "run_started_at": "2026-01-01T00:00:00Z",
+            "run_finished_at": "2026-01-01T00:01:00Z",
+            "duration_secs": 60.0,
+            "dar_duration_secs": 50.0,
+            "verify_duration_secs": 9.0,
+            "par2_duration_secs": None,
+            "status": "SUCCESS",
+            "dar_exit_code": 0,
+            "failed_phase": None,
+            "error_summary": None,
+            "catalog_updated": 1,
+            "verify_passed": 1,
+            "restore_test_passed": 1,
+            "par2_passed": None,
+            "archive_size_bytes": 1024,
+            "num_slices": 1,
+            "par2_size_bytes": None,
+            "files_verified": 3,
+            "backup_dir_free_bytes": 1_000_000,
+            "hostname": "testhost",
+            # All inode stats None — simulates dar < 2.7.21
+            "inodes_saved": None,
+            "hard_links_treated": None,
+            "inodes_changed_during_backup": None,
+            "bytes_wasted": None,
+            "inodes_metadata_only": None,
+            "inodes_not_saved": None,
+            "inodes_failed": None,
+            "inodes_excluded": None,
+            "inodes_deleted": None,
+            "inodes_total": None,
+            "ea_saved": None,
+            "fsa_saved": None,
+        }
+        cfg = self._make_config(db)
+        # Must not raise
+        util.write_metrics_row(metrics, cfg)
+
+        import sqlite3
+        with sqlite3.connect(db) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM backup_runs").fetchone()
+        assert row is not None, "Row must be written even when all inode stats are NULL"
+        assert row["status"] == "SUCCESS"
+        assert row["inodes_saved"] is None, "NULL inode stats stored as NULL — not an error"
+
+    def test_db_write_error_does_not_raise(self, tmp_path):
+        """
+        If the SQLite write fails (e.g. DB is read-only), write_metrics_row must
+        log a warning and return — never propagate the exception to the caller.
+        """
+        db = str(tmp_path / "metrics.db")
+        # Pre-create the DB then make it read-only
+        util.ensure_metrics_db(db)
+        import stat
+        os.chmod(db, stat.S_IRUSR | stat.S_IRGRP)
+        try:
+            cfg = self._make_config(db)
+            metrics = {k: None for k in [
+                "backup_definition", "backup_type", "archive_name",
+                "dar_backup_version", "dar_version", "run_started_at",
+                "run_finished_at", "duration_secs", "dar_duration_secs",
+                "verify_duration_secs", "par2_duration_secs", "status",
+                "dar_exit_code", "failed_phase", "error_summary",
+                "catalog_updated", "verify_passed", "restore_test_passed",
+                "par2_passed", "archive_size_bytes", "num_slices",
+                "par2_size_bytes", "files_verified", "backup_dir_free_bytes",
+                "hostname", "inodes_saved", "hard_links_treated",
+                "inodes_changed_during_backup", "bytes_wasted",
+                "inodes_metadata_only", "inodes_not_saved", "inodes_failed",
+                "inodes_excluded", "inodes_deleted", "inodes_total",
+                "ea_saved", "fsa_saved",
+            ]}
+            # Must not raise — backup must continue even if metrics write fails
+            util.write_metrics_row(metrics, cfg)
+        finally:
+            os.chmod(db, stat.S_IRUSR | stat.S_IWUSR)
