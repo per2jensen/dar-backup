@@ -213,6 +213,30 @@ def test_restore_at_empty_target_allows_restore(tmp_path, mock_config, mock_logg
         mock_restore.assert_called_once()
 
 
+def test_restore_at_multiple_paths_all_restored(mock_config, mock_logger):
+    """Multiple paths passed to restore_at are all forwarded to _restore_with_dar."""
+
+    paths = ["home/pj/data", "data/billeder", "data/film"]
+    when = "2025-12-31 23:59:59"
+    target = "/tmp/restore_target"
+    parsed_date = datetime.datetime(2025, 12, 31, 23, 59, 59)
+
+    def _exists(path):
+        return path in {"/tmp/db_dir/media-files.db", target}
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("os.path.exists", side_effect=_exists), \
+         patch("dateparser.parse", return_value=parsed_date), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+        ret = restore_at("media-files", paths, when, target, mock_config)
+
+        assert ret == 0
+        # All three paths must be forwarded together in a single call
+        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config)
+
+
 def test_restore_at_multiple_paths_and_no_target(mock_config, mock_runner, mock_logger):
     """Test that restore requires a target directory."""
 

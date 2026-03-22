@@ -72,7 +72,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
-- Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can't resolve a dated restore.
+- Point-in-Time Recovery (PITR): restore paths as of a specific time via `manager --restore-path --when --target`, with safety checks, logging, and fallback restore when catalogs can't resolve a dated restore.  `--restore-path` accepts multiple space-separated paths in one invocation.
 - PITR integration torture tests for rename/mtime traps and catalog rebuild after DB loss.
 - PITR dry-run chain report (`manager --pitr-report`) to preview archive selection and detect missing archives.
 - PITR fallback now reports missing archive slices and can notify via Discord when configured.

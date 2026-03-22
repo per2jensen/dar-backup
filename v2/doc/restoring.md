@@ -50,6 +50,21 @@ manager --config-file <dar-backup.conf> \
 deactivate
 ```
 
+Restore multiple paths in one invocation — pass them space-separated after `--restore-path`:
+
+```bash
+. <the virtual env>/bin/activate
+manager --config-file <dar-backup.conf> \
+  --backup-def <definition> \
+  --restore-path path/to/data media/billeder media/film \
+  --when "2025-12-31 23:59:59" \
+  --target /tmp/restore_pitr \
+  --log-stdout --verbose
+deactivate
+```
+
+Each path is processed independently. Directories use the full archive chain (FULL → DIFF → INCR); files use version-based selection.
+
 Dry-run the archive chain selection before restoring:
 
 ```bash
@@ -68,7 +83,7 @@ deactivate
 - `--restore-path` must be a relative path as stored in the catalog (no leading slash).
 - If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
   - Example (directory name has no extension):
-    - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - iPhone/2026/01/" --when "now" --target /tmp/restore_pitr`
+    - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - 2026/01/" --when "now" --target /tmp/restore_pitr`
 - `--target` is required to avoid accidental restores into the current working directory.
 - Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
 - `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
