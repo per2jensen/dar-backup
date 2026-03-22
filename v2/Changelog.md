@@ -19,6 +19,11 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - Checks for edge cases in PITR expanded
   - Logic determining if an inode is file or dir much more robust
 
+### Added (tests)
+
+- **`v2/tests/test_import_archive_metrics.py`**: 51 new unit tests covering all testable functions in `import-archive-metrics.py` — archive filename scanning (current and legacy formats, definition filter, chronological sort), slice size summation, dar stat regex parsing, `dar -l` subprocess handling (not found / timeout / OSError / non-UTF-8 bytes), idempotency checks, DB insert, byte formatting, schema creation, and the `main()` end-to-end path including dry-run, definition filter, missing slices, and multi-archive imports.
+- **`v2/tests/test_dashboard_html.py`**: 24 new static-analysis unit tests for `dashboard.html` using Python's `html.parser` (no browser dependency).  Covers: Chart.js CDN script tag has `onerror="window._chartjsFailed=true"`; required DOM element IDs (`trend-panels`, `trends-section-label`) exist; JS failure guard checks both `_chartjsFailed` and `typeof Chart === 'undefined'`; degradation path hides the section label and inserts a user-readable CDN warning; three granularity buttons present with correct `data-gran` attributes and monthly set as the default active; key JS functions (`buildTrendPanels`, `periodKey`, `worstStatus`, `fmtBytes`) are defined; two-dataset chart design markers present (`stepped`, FULL and DIFF/INCR references).
+
 ### Added (dashboard & metrics)
 
 - **Two-dataset trend charts** in the dashboard: an indigo stepped line carries the most recent FULL archive size forward between FULL runs; cyan scatter dots show the combined size of all DIFF/INCR runs per period.  This makes it easy to see true data-set growth (FULL line) alongside incremental activity (cyan dots) at a glance.

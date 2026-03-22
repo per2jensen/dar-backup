@@ -130,7 +130,7 @@ file with the most recent **mtime ≤ the given date**.
 | The filesystem state captured by the backup closest to a point in time | PITR (`manager --when`) |
 | A specific version of a file by when it was last modified | `dar_manager -w` (this section) |
 
-**Requirement:** dar ≥ 2.7.21 — earlier versions had a DST bug in date parsing that caused
+**Requirement:** dar ≥ 2.7.21.RC1 — earlier versions had a DST bug in date parsing that caused
 `-w` to silently miss files during standard-time months. See
 [dar_manager_w_dst_bug_report.md](dar_manager_w_dst_bug_report.md) for details.
 
@@ -174,15 +174,9 @@ dar_manager -B /path/to/homedir.db \
   archive for each file across the full backup history is its core purpose. For each
   requested file it picks the archive that holds the most recent version with mtime ≤ the
   given date.
-- **Deletions are not handled.** dar_manager restores the most recent saved version of
-  every file it knows about, but it has no mechanism to *remove* files from the target
-  that were deleted before the restore point. Denis's own man page notes: *"It is not
-  really adapted/efficient to restore the state a full system had at a given time, in
-  particular when some files have to be removed. For that you would better use dar
-  directly."* Use PITR (`manager --when`) when you need deletion-aware recovery.
-- A renamed file keeps its old mtime (POSIX guarantee). If a file was renamed between
-  backups, `-w` may return the renamed copy even when you intended the original name.
-  Use PITR in that case.
+- **Renames.** If a file was renamed between backups its mtime is unchanged. `-w` may
+  therefore return the renamed copy even when requesting a date before the rename occurred.
+  Use PITR (`manager --when`) when you need archive-date-accurate recovery.
 - This is a direct `dar_manager` call, not a dar-backup CLI feature. It bypasses
   dar-backup's target safety checks, so choose your `-R` target carefully.
 
