@@ -199,6 +199,26 @@ cp Changelog.md "$TEMP_CHANGELOG"  ||
 trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
 
 ########################################
+# Stamp release date in changelogs and update README version
+########################################
+TODAY="$(date -u +%Y-%m-%d)"
+NOT_RELEASED_PATTERN="## v2-${VERSION} - not released"
+RELEASED_LINE="## v2-${VERSION} - ${TODAY}"
+
+for _cl in "../CHANGELOG.md" "Changelog.md"; do
+    if [[ -f "${_cl}" ]] && grep -qF "${NOT_RELEASED_PATTERN}" "${_cl}"; then
+        sed -i "s|${NOT_RELEASED_PATTERN}|${RELEASED_LINE}|" "${_cl}"
+        green "Stamped release date in ${_cl}"
+    fi
+done
+
+_readme="../README.md"
+if [[ -f "${_readme}" ]] && ! grep -qF "current release is \*\*${VERSION}\*\*" "${_readme}"; then
+    sed -i -E "s/current release is \*\*[0-9]+\.[0-9]+(\.[0-9]+)+\*\*/current release is \*\*${VERSION}\*\*/" "${_readme}"
+    green "Updated current release version in ${_readme}"
+fi
+
+########################################
 # Run FULL test suite and commit report output
 ########################################
 green "Running full pytest suite with report generation..."
@@ -229,20 +249,25 @@ else
 fi
 
 REPORT_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- "${REPORT_PREFIX}")"
-if [[ -n "${REPORT_STATUS}" ]]; then
+RELEASE_META_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- \
+    "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" 2>/dev/null || true)"
+
+if [[ -n "${REPORT_STATUS}" || -n "${RELEASE_META_STATUS}" ]]; then
     TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
     git -C "${REPO_ROOT}" add "${REPORT_PREFIX}"
-    git -C "${REPO_ROOT}" commit -m "test-report: dar-backup ${VERSION} full ${TS}"
-    green "Committed test reports to doc/test-report/"
+    # Stage changelog/README changes if present (paths relative to repo root)
+    git -C "${REPO_ROOT}" add -- "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" 2>/dev/null || true
+    git -C "${REPO_ROOT}" commit -m "release: dar-backup ${VERSION} — stamp date, update README, test-report ${TS}"
+    green "Committed release metadata and test reports"
 else
-    green "No changes in doc/test-report/; nothing to commit"
+    green "No changes to commit for release metadata or test reports"
 fi
 
 ########################################
 # Safety check: only allow tag move if the ONLY changes between
-# the existing tag commit and current HEAD are inside doc/test-report/
+# the existing tag commit and current HEAD are release-managed files
+# (doc/test-report/, CHANGELOG.md, v2/Changelog.md, README.md).
 
-# At this point we just created a commit (HEAD) that should only touch doc/test-report/.
 # Enforce that invariant before moving the tag.
 
 OLD_TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
@@ -263,10 +288,20 @@ if [[ -z "${CHANGED_PATHS}" ]]; then
     exit 1
 fi
 
-# Ensure every changed path is under the computed doc/test-report prefix.
-# Any path not matching that prefix is a hard abort.
+# Ensure every changed path is either under doc/test-report/ or is one of
+# the known release-metadata files (changelogs, README).  Anything else aborts.
 VIOLATIONS="$(
-  printf '%s\n' "${CHANGED_PATHS}" | awk -v prefix="${REPORT_PREFIX}" 'NF && index($0, prefix) != 1 {print}'
+  printf '%s\n' "${CHANGED_PATHS}" | awk \
+    -v prefix="${REPORT_PREFIX}" \
+    -v rel="${REPO_REL}" \
+    'NF {
+       allowed = (index($0, prefix) == 1) \
+              || ($0 == "CHANGELOG.md") \
+              || ($0 == "README.md") \
+              || (rel != "." && $0 == rel "/Changelog.md") \
+              || (rel == "." && $0 == "Changelog.md");
+       if (!allowed) print $0
+     }'
 )"
 
 if [[ -n "${VIOLATIONS}" ]]; then

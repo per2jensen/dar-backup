@@ -3,7 +3,15 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.3 - not released
+## v2-1.1.4 - not released
+
+### Added
+
+### Changed
+
+- **`release.sh`** auto-stamps the release date in both changelogs (`CHANGELOG.md`, `v2/Changelog.md`) and updates the `README.md` current-version reference as part of the post-test commit — eliminating two manual pre-release steps that were easy to forget.
+
+## v2-1.1.3 - 2026-03-22
 
 ### Added
 
@@ -18,9 +26,11 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 - Checks for edge cases in PITR expanded
   - Logic determining if an inode is file or dir much more robust
+- **`release.sh`** auto-stamps the release date in both changelogs (`CHANGELOG.md`, `v2/Changelog.md`) and updates the `README.md` current-version reference as part of the post-test commit — eliminating two manual pre-release steps that were easy to forget.
 
 ### Added (tests)
 
+- **`TestParseDarStats` / `TestWriteMetricsRowGraceful`** (8 unit tests in `test_util.py`): prove that `parse_dar_stats()` always returns a complete dict with `None` for every unmatched field (empty output, garbage output, partial block), and that `write_metrics_row()` stores the row successfully with NULL inode columns when dar < 2.7.21 produces no stats — and silently absorbs DB write errors without propagating them to the backup run.
 - **`v2/tests/test_import_archive_metrics.py`**: 51 new unit tests covering all testable functions in `import-archive-metrics.py` — archive filename scanning (current and legacy formats, definition filter, chronological sort), slice size summation, dar stat regex parsing, `dar -l` subprocess handling (not found / timeout / OSError / non-UTF-8 bytes), idempotency checks, DB insert, byte formatting, schema creation, and the `main()` end-to-end path including dry-run, definition filter, missing slices, and multi-archive imports.
 - **`v2/tests/test_dashboard_html.py`**: 24 new static-analysis unit tests for `dashboard.html` using Python's `html.parser` (no browser dependency).  Covers: Chart.js CDN script tag has `onerror="window._chartjsFailed=true"`; required DOM element IDs (`trend-panels`, `trends-section-label`) exist; JS failure guard checks both `_chartjsFailed` and `typeof Chart === 'undefined'`; degradation path hides the section label and inserts a user-readable CDN warning; three granularity buttons present with correct `data-gran` attributes and monthly set as the default active; key JS functions (`buildTrendPanels`, `periodKey`, `worstStatus`, `fmtBytes`) are defined; two-dataset chart design markers present (`stepped`, FULL and DIFF/INCR references).
 
