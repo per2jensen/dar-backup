@@ -19,7 +19,7 @@ from typing import Dict, Iterable, List, Optional
 
 # --- CONFIGURATION ---
 PACKAGE_NAME = "dar-backup"
-JSON_FILE = Path("downloads.json")
+JSON_FILE = Path("clonepulse/downloads.json")
 PYPI_STATS_BASE = "https://pypistats.org/api"
 MIRRORS = False  # False => exclude known mirrors
 DEFAULT_DAYS_BACK = 31

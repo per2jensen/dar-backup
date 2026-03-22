@@ -1,4 +1,4 @@
-name: Update GitHub Clone Metrics
+name: Update clone#, PyPI download# and Dashboard
 
 permissions:
   contents: write
@@ -20,15 +20,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests matplotlib pandas
 
-      - name: Run fetch_clones.py
+      - name: Run fetch_clones.py  # GitHub clone stats
         env:
           TOKEN: ${{ secrets.DAR_BACKUP_METRICS }}
         run: PYTHONPATH=src python src/clonepulse/fetch_clones.py --user per2jensen --repo dar-backup
+
+      - name: Run download tracker
+        run: python v2/scripts/track_downloads.py  # get PyPI download stats for `dar-backup`
+
+      - name: Generate dashboard image
+        run: PYTHONPATH=src python src/clonepulse/generate_clone_dashboard.py --user per2jensen --repo dar-backup
 
       - name: Show Git status (debug)
         run: |
@@ -51,7 +57,7 @@ jobs:
           if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
             echo "Changes detected, committing..."
             git add $(find clonepulse -type f \( -name '*.json' -o -name '*.png' -o -name 'milestone_*.txt' \)) || true
-            git commit -m "Update clone data on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            git commit -m "clone#, PyPI download#, update dashboard on $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
             # Push changes — if it fails, likely due to race; next run will retry
             git push || echo "⚠️ Push failed (likely a fast-forward conflict). Will retry next time."
           else
