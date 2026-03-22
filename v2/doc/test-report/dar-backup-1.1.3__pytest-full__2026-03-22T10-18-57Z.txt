@@ -1,0 +1,46 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 66%]
+........................................................................ [ 74%]
+........................................................................ [ 82%]
+.......s................................................................ [ 90%]
+....................................................................s.s. [ 99%]
+.......                                                                  [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                                                                       Stmts   Miss  Cover
+--------------------------------------------------------------------------------------------------------------
+/tmp/pytest-of-pj/pytest-38/test_changelog_missing___chang0/src/dar_backup/__init__.py         0      0   100%
+/tmp/pytest-of-pj/pytest-38/test_changelog_missing___chang0/src/dar_backup/dar_backup.py      11      1    91%
+/tmp/pytest-of-pj/pytest-38/test_changelog_missing___chang1/src/dar_backup/__init__.py         0      0   100%
+/tmp/pytest-of-pj/pytest-38/test_changelog_missing___chang1/src/dar_backup/dar_backup.py      11      1    91%
+/tmp/pytest-of-pj/pytest-38/test_readme_missing___readme_0/src/dar_backup/__init__.py          0      0   100%
+/tmp/pytest-of-pj/pytest-38/test_readme_missing___readme_0/src/dar_backup/dar_backup.py       11      1    91%
+/tmp/pytest-of-pj/pytest-38/test_readme_missing___readme_p0/src/dar_backup/__init__.py         0      0   100%
+/tmp/pytest-of-pj/pytest-38/test_readme_missing___readme_p0/src/dar_backup/dar_backup.py      11      1    91%
+src/dar_backup/__about__.py                                                                    3      0   100%
+src/dar_backup/__init__.py                                                                     0      0   100%
+src/dar_backup/clean_log.py                                                                  114     10    91%
+src/dar_backup/cleanup.py                                                                    300     43    86%
+src/dar_backup/command_runner.py                                                             243     20    92%
+src/dar_backup/config_settings.py                                                            178      9    95%
+src/dar_backup/dar_backup.py                                                                1213     64    95%
+src/dar_backup/dar_backup_systemd.py                                                          56      1    98%
+src/dar_backup/dashboard.py                                                                  130      3    98%
+src/dar_backup/data/__init__.py                                                                0      0   100%
+src/dar_backup/demo.py                                                                       100      1    99%
+src/dar_backup/exceptions.py                                                                   2      0   100%
+src/dar_backup/installer.py                                                                  120      4    97%
+src/dar_backup/manager.py                                                                   1145     84    93%
+src/dar_backup/rich_progress.py                                                               70      2    97%
+src/dar_backup/util.py                                                                       599     53    91%
+--------------------------------------------------------------------------------------------------------------
+TOTAL                                                                                       4317    298    93%
+Coverage XML written to file doc/test-report/coverage.xml
+868 passed, 3 skipped, 1 deselected in 680.45s (0:11:20)
