@@ -517,10 +517,13 @@ def main(argv=None):
     ax2 = None
     dl_lines = []
     if downloads_weekly is not None:
-        # Filter downloads to the same report_date window as clone data
+        # Filter downloads to exactly the same report_date window as clone data.
+        # Do NOT extend by +7 days: that would include a partial current week
+        # whose report_date falls beyond plot_end, pushing ax2's x-range past
+        # the last clone tick and breaking the shared x-axis limits.
         dl_window = downloads_weekly[
             (downloads_weekly["report_date"] >= plot_start) &
-            (downloads_weekly["report_date"] <= plot_end + pd.Timedelta(days=7))
+            (downloads_weekly["report_date"] <= plot_end)
         ].copy()
         if not dl_window.empty:
             ax2 = ax.twinx()
@@ -556,12 +559,23 @@ def main(argv=None):
 
     if not annotation_df.empty:
         for ann_date, group in annotation_df.groupby("date", sort=True):
-            ax.axvline(x=ann_date, linestyle=":", linewidth=1)
+            # Snap the annotation to the report_date of its week (the following Monday)
+            # so vertical lines align with x-axis ticks, which are all report_dates.
+            week_start = ann_date - pd.Timedelta(days=ann_date.weekday())
+            ann_report_date = week_start + pd.Timedelta(days=7)
+            ax.axvline(x=ann_report_date, linestyle=":", linewidth=1)
             side_counts = {"left": 0, "right": 0}
+            # At the right edge of the plot, text placed to the right would overflow
+            # outside the axes boundary, so prefer left for all labels on that tick.
+            at_right_edge = ann_report_date >= plot_end
             for _, row in group.iterrows():
                 label = _truncate_on_word_boundary(row["label"], max_chars)
-                # Alternate annotation placement left/right of the date line
-                side = "right" if side_counts["right"] <= side_counts["left"] else "left"
+                # Alternate annotation placement left/right of the date line,
+                # but always prefer left when the line is at the right plot boundary.
+                if at_right_edge:
+                    side = "left" if side_counts["left"] <= side_counts["right"] else "right"
+                else:
+                    side = "right" if side_counts["right"] <= side_counts["left"] else "left"
                 side_index = side_counts[side]
                 side_counts[side] += 1
 
@@ -572,7 +586,7 @@ def main(argv=None):
                 vertical_offset = -vertical_offset_base - side_index * vertical_offset_step_pts
                 ax.annotate(
                     label,
-                    xy=(ann_date, label_y),
+                    xy=(ann_report_date, label_y),
                     xytext=(horizontal_offset, vertical_offset),
                     textcoords="offset points",
                     rotation=90,
@@ -605,7 +619,13 @@ def main(argv=None):
     tick_dates = pd.to_datetime(weekly_data["report_date"], errors="coerce")
     tick_labels = tick_dates.dt.strftime("%Y-%m-%d").fillna("Invalid")
     ax.set_xticks(tick_dates.to_list())
-    ax.set_xticklabels(tick_labels.to_list(), rotation=45)
+    ax.set_xticklabels(tick_labels.to_list(), rotation=45, ha="right")
+    # Pad x-axis by half a week on each side so edge ticks and their annotation
+    # labels have breathing room and are not clipped at the axis boundary.
+    ax.set_xlim(
+        left=tick_dates.min() - pd.Timedelta(days=7),
+        right=tick_dates.max() + pd.Timedelta(days=7),
+    )
 
     # Merge legends from both axes so everything appears in one box
     all_lines = [l1, l2, l3, l4] + dl_lines
