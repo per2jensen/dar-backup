@@ -10,6 +10,11 @@ from pathlib import Path
 tests_dir = os.path.abspath(os.path.dirname(__file__))
 project_dir = os.path.abspath(os.path.join(tests_dir, ".."))
 
+# Force en_US.UTF-8 for the entire test suite so that dar's locale-sensitive
+# output (inode counts, sizes) is in the format parse_dar_stats() expects.
+# This mirrors what the generated systemd units do via Environment=LANG=en_US.UTF-8.
+os.environ["LANG"] = "en_US.UTF-8"
+
 # Ensure subprocess coverage matches CI by default.
 # Opt out with DAR_BACKUP_NO_SUBPROCESS_COVERAGE=1.
 _coverage_config = Path(project_dir) / "pyproject.toml"

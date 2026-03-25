@@ -207,6 +207,14 @@ If you need to use this option, un-comment it in the [.darrc](config-reference.m
 
 ---
 
+## LANG=en_US.UTF8
+
+LANG should be set to `en_US.UTF8` in the environment in which `dar-backup` runs.
+
+This is to ensure that `dar-backup` can read the metadata `dar` emits after a backup.
+
+---
+
 ## Known Limitations / Edge Cases
 
 - Does not currently encrypt data (by design — relies on encrypted storage)

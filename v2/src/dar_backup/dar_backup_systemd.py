@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from pathlib import Path
+import os
 import subprocess
 import argparse
+
+REQUIRED_LANG = "en_US.UTF-8"
 
 SERVICE_TEMPLATE = """[Unit]
 Description=dar-backup {mode}
@@ -14,6 +17,7 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
+Environment=LANG=en_US.UTF-8
 ExecStart=/bin/bash -c '{exec_command}'
 """
 
@@ -37,6 +41,7 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=60
 RemainAfterExit=no
+Environment=LANG=en_US.UTF-8
 ExecStart=/bin/bash -c '{exec_command}'
 """
 
@@ -61,6 +66,25 @@ FLAGS = {
     "DIFF": "-D",
     "INCR": "-I"
 }
+
+def check_locale() -> None:
+    """
+    Warn if the current LANG is not en_US.UTF-8.
+
+    dar emits backup metadata (inode counts, sizes) in a locale-sensitive
+    format. Running dar-backup with a non-US locale can produce metadata that
+    is unparseable or silently wrong. The generated service units set
+    Environment=LANG=en_US.UTF-8 to prevent this, but this check catches
+    cases where the unit generator itself is invoked from an unexpected locale.
+    """
+    lang = os.environ.get("LANG", "")
+    if lang != REQUIRED_LANG:
+        print(
+            f"WARNING: LANG is {lang!r}, expected {REQUIRED_LANG!r}. "
+            "dar metadata parsing may be unreliable. "
+            "The generated service units set LANG=en_US.UTF-8 explicitly."
+        )
+
 
 def build_exec_command(venv, flag, dar_path=None, tool='dar-backup'):
     if dar_path:
@@ -111,6 +135,7 @@ def write_unit_files(venv, dar_path, install=False):
         print("Systemd `dar-backup` units and timers installed and user daemon reloaded.")
 
 def main():
+    check_locale()
     parser = argparse.ArgumentParser(description="Generate systemd service and timer units for dar-backup.")
     parser.add_argument("--venv",     required=True,       help="Path to the Python venv with dar-backup")
     parser.add_argument("--dar-path",                      help="Optional path to dar binary's directory")

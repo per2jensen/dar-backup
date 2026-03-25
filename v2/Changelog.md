@@ -7,6 +7,14 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
+- **Locale guard in `dar_backup_systemd.py`**: `check_locale()` warns at unit-generation time if `LANG` is not `en_US.UTF-8`; all generated service units now include `Environment=LANG=en_US.UTF-8` so `dar` always runs with the correct locale regardless of the calling shell.
+- **Locale guard in `dar_backup.py`**: `_locale_ok()` helper and a startup warning to `stderr` when `LANG` is not `en_US.UTF-8`; `generic_backup()` skips `parse_dar_stats()` and returns an empty stats dict when the locale is wrong, preventing silently corrupt inode metadata.
+
+### Added (tests)
+
+- **Locale tests in `test_systemd_unit_generation.py`** (4 tests): positive — no warning when `LANG=en_US.UTF-8`, `Environment=LANG=en_US.UTF-8` present in both service and cleanup service units; negative — `check_locale()` prints a `WARNING` for a wrong locale.
+- **Locale tests in `test_dar_backup_startup.py`** (5 tests): positive — `_locale_ok()` returns `True` and `parse_dar_stats` is called when locale is correct; negative — `_locale_ok()` returns `False`, `main()` emits a locale warning to `stderr`, and `generic_backup()` skips `parse_dar_stats` when locale is wrong.
+
 ### Changed
 
 - **`release.sh`** auto-stamps the release date in both changelogs (`CHANGELOG.md`, `v2/Changelog.md`) and updates the `README.md` current-version reference as part of the post-test commit — eliminating two manual pre-release steps that were easy to forget.

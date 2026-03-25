@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import dar_backup.dar_backup as dar_backup
 import pytest
@@ -143,6 +144,92 @@ def test_dar_backup_logs_preflight_failures_to_main_log(monkeypatch, tmp_path):
     assert "Preflight checks failed." in log_text
     assert "Preflight check failed: Cannot write to BACKUP_DIR" in log_text
     assert "stale NFS handle" in log_text
+
+
+def test_locale_ok_returns_true_when_lang_is_en_us_utf8(monkeypatch):
+    """_locale_ok() returns True when LANG is exactly en_US.UTF-8."""
+    monkeypatch.setenv("LANG", dar_backup.REQUIRED_LANG)
+    assert dar_backup._locale_ok() is True
+
+
+def test_locale_ok_returns_false_when_lang_is_not_en_us_utf8(monkeypatch):
+    """_locale_ok() returns False when LANG is any other value."""
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    assert dar_backup._locale_ok() is False
+
+
+def test_main_warns_on_non_us_locale(monkeypatch, tmp_path, capsys):
+    """main() writes a locale warning to stderr when LANG is not en_US.UTF-8."""
+    config_path = tmp_path / "dar-backup.conf"
+    _write_min_config(config_path, logfile_location=str(tmp_path / "dar-backup.log"))
+
+    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
+    monkeypatch.setattr(sys, "argv", ["dar-backup", "--config-file", str(config_path)])
+    monkeypatch.setattr(dar_backup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(dar_backup, "stderr", sys.stderr)
+    # Stop execution after the locale check by raising SystemExit from setup_logging
+    monkeypatch.setattr(dar_backup, "setup_logging", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit(0)))
+
+    with pytest.raises(SystemExit):
+        dar_backup.main()
+
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "fr_FR.UTF-8" in err
+    assert dar_backup.REQUIRED_LANG in err
+
+
+def _make_generic_backup_mocks(monkeypatch, lang: str) -> list:
+    """
+    Set up mocks needed to call generic_backup() in isolation.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture.
+        lang: Value to set for the LANG environment variable.
+
+    Returns:
+        List of arguments passed to parse_dar_stats (empty means it was not called).
+    """
+    monkeypatch.setenv("LANG", lang)
+    monkeypatch.setattr(dar_backup, "logger", MagicMock())
+
+    fake_process = MagicMock()
+    fake_process.returncode = 0
+    fake_process.stdout_tail = ""
+    fake_process.stderr_tail = ""
+
+    fake_runner = MagicMock()
+    fake_runner.run.return_value = fake_process
+    monkeypatch.setattr(dar_backup, "runner", fake_runner)
+
+    parse_called: list = []
+    monkeypatch.setattr(dar_backup, "parse_dar_stats", lambda txt: parse_called.append(txt) or {})
+
+    return parse_called
+
+
+def test_generic_backup_calls_parse_dar_stats_when_locale_correct(monkeypatch):
+    """generic_backup() calls parse_dar_stats when LANG is en_US.UTF-8."""
+    parse_called = _make_generic_backup_mocks(monkeypatch, dar_backup.REQUIRED_LANG)
+
+    config = MagicMock()
+    config.command_timeout_secs = 10
+
+    dar_backup.generic_backup("FULL", ["dar", "-c", "test"], "/tmp/test", "example", "", config, MagicMock())
+
+    assert len(parse_called) == 1, "parse_dar_stats should be called exactly once"
+
+
+def test_generic_backup_skips_parse_dar_stats_when_locale_wrong(monkeypatch):
+    """generic_backup() does NOT call parse_dar_stats when LANG is not en_US.UTF-8."""
+    parse_called = _make_generic_backup_mocks(monkeypatch, "de_DE.UTF-8")
+
+    config = MagicMock()
+    config.command_timeout_secs = 10
+
+    dar_backup.generic_backup("FULL", ["dar", "-c", "test"], "/tmp/test", "example", "", config, MagicMock())
+
+    assert len(parse_called) == 0, "parse_dar_stats must not be called with a non-US locale"
 
 
 def test_dar_backup_preflight_check_continues_with_fallback_logging(monkeypatch, tmp_path, capsys):

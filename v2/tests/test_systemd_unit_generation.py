@@ -150,5 +150,38 @@ def test_main_passes_args_to_write_unit_files(monkeypatch):
     assert calls == [("/opt/venv", "/opt/dar", True)]
 
 
+from dar_backup.dar_backup_systemd import check_locale, REQUIRED_LANG
+
+
+def test_check_locale_no_output_when_lang_correct(monkeypatch, capsys):
+    """check_locale() prints nothing when LANG is already en_US.UTF-8."""
+    monkeypatch.setenv("LANG", REQUIRED_LANG)
+    check_locale()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_check_locale_warns_when_lang_wrong(monkeypatch, capsys):
+    """check_locale() prints a WARNING when LANG is not en_US.UTF-8."""
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    check_locale()
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert "de_DE.UTF-8" in captured.out
+    assert REQUIRED_LANG in captured.out
+
+
+def test_generate_service_contains_lang_env():
+    """Generated service unit must set Environment=LANG=en_US.UTF-8."""
+    content = generate_service("FULL", "/fake/venv", None)
+    assert "Environment=LANG=en_US.UTF-8" in content
+
+
+def test_generate_cleanup_service_contains_lang_env():
+    """Generated cleanup service unit must set Environment=LANG=en_US.UTF-8."""
+    content = generate_cleanup_service("/fake/venv", None)
+    assert "Environment=LANG=en_US.UTF-8" in content
+
+
 if __name__ == '__main__':
     unittest.main()

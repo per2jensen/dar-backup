@@ -90,6 +90,12 @@ Persistent=true
 WantedBy=timers.target
 ```
 
+## LANG=en_US.UTF8
+
+LANG is set to `en_US.UTF8` in the environment setup by systemd.
+
+This is to ensure that `dar-backup` can read the metadata `dar` emits after a backup.
+
 ## systemd timer note
 
 OnCalendar syntax is flexible — you can tweak backup schedules easily. Run `systemd-analyze calendar` to preview timers.

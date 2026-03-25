@@ -60,7 +60,26 @@ from dar_backup.util import send_discord_message
 from dar_backup.util import write_metrics_row
 from dar_backup.util import parse_dar_stats
 
-from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandRunner
+
+REQUIRED_LANG = "en_US.UTF-8"
+
+
+def _locale_ok() -> bool:
+    """
+    Return True if LANG is set to en_US.UTF-8.
+
+    dar emits inode counts and sizes in a locale-sensitive format. A non-US
+    locale can cause parse_dar_stats() to silently return None for every field
+    because the number formatting (decimal separator, thousand separator) does
+    not match the expected English pattern. Checking once at startup lets callers
+    skip metadata capture and log a clear explanation instead of producing
+    misleading all-None stats.
+
+    Returns:
+        True if os.environ["LANG"] == "en_US.UTF-8", False otherwise.
+    """
+    return os.environ.get("LANG", "") == REQUIRED_LANG
 
 
 
@@ -149,7 +168,17 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         # 500 lines regardless of the main capture limit.  The summary appears at
         # the very end of dar's output, so the tail is reliable even for large
         # backups where process.stdout may have been truncated.
-        dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
+        # Skip parsing when LANG is not en_US.UTF-8: dar's number formatting is
+        # locale-sensitive and would produce silently wrong (all-None) stats.
+        if _locale_ok():
+            dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
+        else:
+            logger.warning(
+                "Skipping dar metadata capture: LANG is %r, not %r.",
+                os.environ.get("LANG", "(unset)"),
+                REQUIRED_LANG,
+            )
+            dar_stats = {}
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
@@ -1714,6 +1743,14 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
 def main():
     global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
+
+    if not _locale_ok():
+        stderr.write(
+            f"WARNING: LANG is {os.environ.get('LANG', '(unset)')!r}, "
+            f"expected {REQUIRED_LANG!r}. "
+            "dar metadata (inode stats) will not be captured to avoid "
+            "locale-dependent parsing errors.\n"
+        )
 
     MIN_PYTHON_VERSION = (3, 9)
     if version_info < MIN_PYTHON_VERSION:
