@@ -184,39 +184,40 @@ if [[ "$TAG" != "$EXPECTED_TAG" ]]; then
 fi
 
 ########################################
-# Prepare README/Changelog copies for wheel inclusion
-########################################
-cp ../README.md "${PWD}/README.md"
-
-TEMP_README="src/dar_backup/README.md"
-cp README.md "$TEMP_README"  ||
-    { red "❌ Error: Failed to copy README.md to $TEMP_README"; exit 1; }
-
-TEMP_CHANGELOG="src/dar_backup/Changelog.md"
-cp Changelog.md "$TEMP_CHANGELOG"  ||
-    { red "❌ Error: Failed to copy Changelog.md to $TEMP_CHANGELOG"; exit 1; }
-
-trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
-
-########################################
 # Stamp release date in changelogs and update README version
 ########################################
 TODAY="$(date -u +%Y-%m-%d)"
-NOT_RELEASED_PATTERN="## v2-${VERSION} - not released"
+NOT_RELEASED_PATTERN="## v2-${VERSION}[[:space:]]+ -[[:space:]]+not released"
 RELEASED_LINE="## v2-${VERSION} - ${TODAY}"
 
 for _cl in "../CHANGELOG.md" "Changelog.md"; do
-    if [[ -f "${_cl}" ]] && grep -qF "${NOT_RELEASED_PATTERN}" "${_cl}"; then
-        sed -i "s|${NOT_RELEASED_PATTERN}|${RELEASED_LINE}|" "${_cl}"
+    if [[ -f "${_cl}" ]]; then
+        sed -i -E "s|${NOT_RELEASED_PATTERN}|${RELEASED_LINE}|" "${_cl}"
         green "Stamped release date in ${_cl}"
     fi
 done
 
 _readme="../README.md"
-if [[ -f "${_readme}" ]] && ! grep -qF "current release is \*\*${VERSION}\*\*" "${_readme}"; then
-    sed -i -E "s/current release is \*\*[0-9]+\.[0-9]+(\.[0-9]+)+\*\*/current release is \*\*${VERSION}\*\*/" "${_readme}"
+if [[ -f "${_readme}" ]]; then
+    sed -i -E "s/Version[[:space:]]+\*\*[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\*\*/Version **${VERSION}**/" "${_readme}"
     green "Updated current release version in ${_readme}"
 fi
+
+########################################
+# Prepare README/Changelog copies for wheel inclusion
+########################################
+
+TEMP_README="src/dar_backup/README.md"
+TEMP_CHANGELOG="src/dar_backup/Changelog.md"
+
+trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
+
+cp ../README.md "$TEMP_README"  ||
+    { red "❌ Error: Failed to copy README.md to $TEMP_README"; exit 1; }
+
+cp Changelog.md "$TEMP_CHANGELOG"  ||
+    { red "❌ Error: Failed to copy Changelog.md to $TEMP_CHANGELOG"; exit 1; }
+
 
 ########################################
 # Run FULL test suite and commit report output
