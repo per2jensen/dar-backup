@@ -982,6 +982,20 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
             except OSError:
                 pass
 
+    # Prod NFS mounts before checking — lazy mounts may not respond to
+    # os.access() until the kernel establishes the connection.
+    _nfs_dirs = [
+        config_settings.backup_dir,
+        config_settings.test_restore_dir,
+        getattr(config_settings, "manager_db_dir", None),
+    ]
+    for _d in _nfs_dirs:
+        if _d and os.path.isdir(_d):
+            try:
+                os.listdir(_d)
+            except OSError:
+                pass  # let check_dir below report the real error
+
     # Directories and permissions
     check_dir("BACKUP_DIR", config_settings.backup_dir)
     check_dir("BACKUP.D_DIR", config_settings.backup_d_dir)
