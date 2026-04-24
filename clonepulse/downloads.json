@@ -1,22 +1,22 @@
 {
   "package": "dar-backup",
   "source": "https://pypistats.org/api/packages/dar-backup/overall?mirrors=false",
-  "updated": "2026-04-23",
+  "updated": "2026-04-24",
   "update_notice": {
     "status": "ok",
-    "timestamp": "2026-04-23T05:16:53Z"
+    "timestamp": "2026-04-24T05:20:17Z"
   },
   "recent": {
-    "last_day": 11,
-    "last_month": 288,
-    "last_week": 35
+    "last_day": 15,
+    "last_month": 283,
+    "last_week": 47
   },
-  "total_downloads": 3148,
+  "total_downloads": 3163,
   "rollups": {
-    "last_7_days": 35,
-    "last_30_days": 438,
-    "avg_7_days": 5.0,
-    "avg_30_days": 14.6
+    "last_7_days": 47,
+    "last_30_days": 451,
+    "avg_7_days": 6.71,
+    "avg_30_days": 15.03
   },
   "daily": [
     {
@@ -814,6 +814,10 @@
     {
       "timestamp": "2026-04-22T00:00:00Z",
       "count": 11
+    },
+    {
+      "timestamp": "2026-04-23T00:00:00Z",
+      "count": 15
     }
   ],
   "annotations": [
