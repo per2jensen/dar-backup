@@ -91,11 +91,26 @@ if [[ -z "$TAG" ]]; then
     exit 1
 fi
 
+
 ########################################
 # Helpers
 ########################################
 red()   { echo -e "\033[1;31m$*\033[0m"; }
 green() { echo -e "\033[1;32m$*\033[0m"; }
+
+
+# Check for TWINE_PASSWORD if upload is requested
+if $UPLOAD; then
+  if [[ -z "${TWINE_PASSWORD:-}" ]]; then
+    red "❌ TWINE_PASSWORD is not set. Export it before uploading."
+    echo "  export TWINE_USERNAME=__token__"
+    echo "  export TWINE_PASSWORD=\$(bw get password pypi-dar-backup)"
+    exit 1
+  fi
+fi
+
+
+
 
 ########################################
 # Environment checks (early exit gates)
@@ -350,6 +365,14 @@ green "✅ Tag ${TAG} now points at release commit ${HEAD_COMMIT}"
 ########################################
 rm -rf "$DIST_DIR" || { red "❌ Error: Failed to remove $DIST_DIR"; exit 1; }
 python3 -m build
+
+# Verify that artifacts were created
+mapfile -t ARTIFACTS < <(ls "$DIST_DIR"/*.whl "$DIST_DIR"/*.tar.gz 2>/dev/null)
+if [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
+  red "❌ No artifacts found in $DIST_DIR"
+  exit 1
+fi
+
 
 ########################################
 # Sign + verify
