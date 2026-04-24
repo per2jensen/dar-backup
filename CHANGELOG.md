@@ -3,7 +3,12 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.3 - not released
+## v2-1.1.4 - not released
+
+- guard that env locale is en_US.UTF-8, to ensure english dar output (which is parsed here and there)
+- preflight: list a directory to warm up stale NFS mounts before the real checks happen
+
+## v2-1.1.3 - 2026-03-22
 
 - More robust PITR edge-case handling for file vs directory inodes.
 - PITR integration tests extended to cover multi-slice archives, symlinks (relative, dangling, hard links), and special-character filenames; `dar_manager -w` file-version-restore documented.
