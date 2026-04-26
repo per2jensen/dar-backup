@@ -226,6 +226,8 @@ class CommandRunner:
             try:
                 start_time = time.monotonic()
                 use_pipes = capture_output or log_output
+                cmd_env = os.environ.copy()
+                cmd_env["LC_ALL"] = "C"
                 process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE if use_pipes else None,
@@ -233,7 +235,8 @@ class CommandRunner:
                     stdin=stdin,
                     text=False,
                     bufsize=-1,
-                    cwd=cwd
+                    cwd=cwd,
+                    env=cmd_env,
                 )
                 pid = getattr(process, "pid", None)
                 if log_output:

@@ -5,7 +5,12 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 ## v2-1.1.4 - not released
 
-- guard that env locale is en_US.UTF-8, to ensure english dar output (which is parsed here and there)
+- set LANG=C in command_runner to ensure dar delivers stats
+
+  test case to compare C and en_US.UTF-8 dar outputs for those locales added
+
+  C locale used as it is always available, no matter what locales are installed on a computer
+
 - preflight: list a directory to warm up stale NFS mounts before the real checks happen
 
 ## v2-1.1.3 - 2026-03-22

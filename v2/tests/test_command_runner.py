@@ -825,3 +825,35 @@ def test_command_runner_completes_within_generous_timeout(tmp_path):
 
     assert result.returncode == 0
     assert "hello" in result.stdout
+
+
+def test_command_runner_sets_lc_all_c(tmp_path):
+    """
+    CommandRunner always passes LC_ALL=C to subprocesses, regardless of the
+    caller's environment.  LC_ALL=C is always available on every Linux system
+    and ensures consistent output from locale-sensitive programs like dar.
+    """
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["printenv", "LC_ALL"], timeout=10)
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "C"
+
+
+def test_command_runner_overrides_caller_locale(tmp_path, monkeypatch):
+    """
+    Even when the caller's process has a non-C locale, subprocesses spawned
+    by CommandRunner always receive LC_ALL=C.
+    """
+    monkeypatch.setenv("LC_ALL", "da_DK.UTF-8")
+    monkeypatch.setenv("LANG", "da_DK.UTF-8")
+
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["printenv", "LC_ALL"], timeout=10)
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "C"

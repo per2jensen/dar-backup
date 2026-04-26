@@ -170,15 +170,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         # backups where process.stdout may have been truncated.
         # Skip parsing when LANG is not en_US.UTF-8: dar's number formatting is
         # locale-sensitive and would produce silently wrong (all-None) stats.
-        if _locale_ok():
-            dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
-        else:
-            logger.warning(
-                "Skipping dar metadata capture: LANG is %r, not %r.",
-                os.environ.get("LANG", "(unset)"),
-                REQUIRED_LANG,
-            )
-            dar_stats = {}
+        dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
@@ -1757,14 +1749,6 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
 def main():
     global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
-
-    if not _locale_ok():
-        stderr.write(
-            f"WARNING: LANG is {os.environ.get('LANG', '(unset)')!r}, "
-            f"expected {REQUIRED_LANG!r}. "
-            "dar metadata (inode stats) will not be captured to avoid "
-            "locale-dependent parsing errors.\n"
-        )
 
     MIN_PYTHON_VERSION = (3, 9)
     if version_info < MIN_PYTHON_VERSION:

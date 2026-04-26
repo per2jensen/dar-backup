@@ -158,26 +158,6 @@ def test_locale_ok_returns_false_when_lang_is_not_en_us_utf8(monkeypatch):
     assert dar_backup._locale_ok() is False
 
 
-def test_main_warns_on_non_us_locale(monkeypatch, tmp_path, capsys):
-    """main() writes a locale warning to stderr when LANG is not en_US.UTF-8."""
-    config_path = tmp_path / "dar-backup.conf"
-    _write_min_config(config_path, logfile_location=str(tmp_path / "dar-backup.log"))
-
-    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
-    monkeypatch.setattr(sys, "argv", ["dar-backup", "--config-file", str(config_path)])
-    monkeypatch.setattr(dar_backup.argcomplete, "autocomplete", lambda *a, **k: None)
-    monkeypatch.setattr(dar_backup, "stderr", sys.stderr)
-    # Stop execution after the locale check by raising SystemExit from setup_logging
-    monkeypatch.setattr(dar_backup, "setup_logging", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit(0)))
-
-    with pytest.raises(SystemExit):
-        dar_backup.main()
-
-    err = capsys.readouterr().err
-    assert "WARNING" in err
-    assert "fr_FR.UTF-8" in err
-    assert dar_backup.REQUIRED_LANG in err
-
 
 def _make_generic_backup_mocks(monkeypatch, lang: str) -> list:
     """
@@ -209,7 +189,7 @@ def _make_generic_backup_mocks(monkeypatch, lang: str) -> list:
 
 
 def test_generic_backup_calls_parse_dar_stats_when_locale_correct(monkeypatch):
-    """generic_backup() calls parse_dar_stats when LANG is en_US.UTF-8."""
+    """generic_backup() always calls parse_dar_stats — LC_ALL=C is pinned in CommandRunner."""
     parse_called = _make_generic_backup_mocks(monkeypatch, dar_backup.REQUIRED_LANG)
 
     config = MagicMock()
@@ -220,8 +200,12 @@ def test_generic_backup_calls_parse_dar_stats_when_locale_correct(monkeypatch):
     assert len(parse_called) == 1, "parse_dar_stats should be called exactly once"
 
 
-def test_generic_backup_skips_parse_dar_stats_when_locale_wrong(monkeypatch):
-    """generic_backup() does NOT call parse_dar_stats when LANG is not en_US.UTF-8."""
+def test_generic_backup_calls_parse_dar_stats_regardless_of_caller_locale(monkeypatch):
+    """
+    generic_backup() calls parse_dar_stats even when the caller's LANG is not
+    en_US.UTF-8.  CommandRunner pins LC_ALL=C for all subprocesses, so dar
+    always produces consistent, parseable output.
+    """
     parse_called = _make_generic_backup_mocks(monkeypatch, "de_DE.UTF-8")
 
     config = MagicMock()
@@ -229,7 +213,7 @@ def test_generic_backup_skips_parse_dar_stats_when_locale_wrong(monkeypatch):
 
     dar_backup.generic_backup("FULL", ["dar", "-c", "test"], "/tmp/test", "example", "", config, MagicMock())
 
-    assert len(parse_called) == 0, "parse_dar_stats must not be called with a non-US locale"
+    assert len(parse_called) == 1, "parse_dar_stats must always be called"
 
 
 def test_dar_backup_preflight_check_continues_with_fallback_logging(monkeypatch, tmp_path, capsys):
