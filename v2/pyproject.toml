@@ -78,7 +78,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dashboard = [
-  "datasette>=0.64.0",
+  "datasette>=0.65.2",
 ]
 
 dev = [
