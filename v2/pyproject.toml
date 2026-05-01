@@ -82,7 +82,7 @@ dashboard = [
 ]
 
 dev = [
-  "pytest>=8.4.0",
+  "pytest>=9.0.3",
   "pytest-cov>=6.1.1",
   "pytest-mock",
   "pytest-timeout>=2.4.0",
