@@ -1240,6 +1240,27 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if backup_result.dar_exit_code != 0 and metrics["failed_phase"] is None:
                 metrics["failed_phase"] = "DAR"
             results.extend(backup_result.issues)
+
+            # Somewhere <  version 2.7.21 dar omits "Total number of inode(s) considered:" for DIFF/INCR.
+            # Derive it from component counters so the column is never NULL when
+            # the individual counters were parsed successfully.
+            if metrics.get("inodes_total") is None:
+                components = [
+                    metrics.get("inodes_saved"),
+                    metrics.get("inodes_not_saved"),
+                    metrics.get("inodes_failed"),
+                    metrics.get("inodes_excluded"),
+                    metrics.get("inodes_deleted"),
+                    metrics.get("inodes_metadata_only"),
+                ]
+                known = [v for v in components if v is not None]
+                if known:
+                    metrics["inodes_total"] = sum(known)
+                    logger.debug(
+                        "inodes_total not in dar output (dar < ~2.7.21); "
+                        "derived from components: %d", metrics["inodes_total"]
+                    )
+
             # Inode stats parsed from dar's summary output; any unparsed field stays None
             metrics.update(backup_result.dar_stats)
 
