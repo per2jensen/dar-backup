@@ -1241,7 +1241,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 metrics["failed_phase"] = "DAR"
             results.extend(backup_result.issues)
 
-            # Somewhere <  version 2.7.21 dar omits "Total number of inode(s) considered:" for DIFF/INCR.
+            # Inode stats parsed from dar's summary output; any unparsed field stays None
+            metrics.update(backup_result.dar_stats)
+
+            # Somewhere <  version ~2.7.21 dar omits "Total number of inode(s) considered:" for DIFF/INCR.
             # Derive it from component counters so the column is never NULL when
             # the individual counters were parsed successfully.
             if metrics.get("inodes_total") is None:
@@ -1260,9 +1263,6 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                         "inodes_total not in dar output (dar < ~2.7.21); "
                         "derived from components: %d", metrics["inodes_total"]
                     )
-
-            # Inode stats parsed from dar's summary output; any unparsed field stays None
-            metrics.update(backup_result.dar_stats)
 
             # Archive slice count and total size
             dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))
