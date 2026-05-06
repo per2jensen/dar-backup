@@ -23,6 +23,7 @@ import random
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import configparser
 import xml.etree.ElementTree as ET
@@ -474,6 +475,13 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
  
     try:
         process = runner.run(command, timeout=config_settings.command_timeout_secs)
+    except KeyboardInterrupt:
+        msg = (
+            f"Verification interrupted (Ctrl-C or SIGTERM) for '{backup_file}'. "
+            f"Archive integrity is unconfirmed."
+        )
+        logger.error(msg)
+        raise
     except Exception as e:
         print(f"[!] Backup failed: {e}")
         raise
@@ -550,6 +558,13 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             else:
                 result = False
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
+        except KeyboardInterrupt:
+            msg = (
+                f"Verification interrupted (Ctrl-C or SIGTERM) during restore-test of "
+                f"'{restored_file_path}' from '{backup_file}'. Verification is incomplete."
+            )
+            logger.error(msg)
+            raise
         except PermissionError:
             result = False
             logger.exception("Permission error while comparing files, continuing....")
@@ -611,6 +626,13 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     except OSError as e:
         logger.error(f"Failed to create restore directory: {e}")
         raise RestoreError("Could not create restore directory")
+    except KeyboardInterrupt:
+        msg = (
+            f"Restore interrupted (Ctrl-C or SIGTERM) for '{backup_name}'. "
+            f"The restore directory '{restore_dir}' may be incomplete and must NOT be used."
+        )
+        logger.error(msg)
+        raise
     except Exception as e:
         raise RestoreError(f"Unexpected error during restore: {e}") from e
 
@@ -1266,6 +1288,18 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             if par2_files:
                 metrics["par2_size_bytes"] = sum(os.path.getsize(p) for p in par2_files)
 
+        except KeyboardInterrupt:
+            msg = (
+                f"Backup interrupted by user (Ctrl-C) during {_current_phase} phase "
+                f"for '{backup_definition}'. "
+                f"Any partial archive slices on disk are INCOMPLETE and must NOT be used for restore."
+            )
+            logger.error(msg)
+            results.append((msg, 1))
+            metrics["failed_phase"] = metrics["failed_phase"] or _current_phase
+            metrics["error_summary"] = msg[:500]
+            success = False
+            raise  # re-raise so the process still exits on Ctrl-C
         except Exception as e:
             if metrics["failed_phase"] is None:
                 metrics["failed_phase"] = _current_phase
@@ -1287,8 +1321,16 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 logger.debug("Skipping stats/metrics collection for example backup definition.")
                 continue
 
-            if has_error:
+            slices_written = bool(glob.glob(f"{backup_file}.*.dar"))
+
+            if not success or has_error or not slices_written:
                 status = "FAILURE"
+                if not slices_written and not has_error:
+                    msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
+                    logger.error(msg)
+                    results.append((msg, 1))
+                    metrics["error_summary"] = msg
+                    metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
             elif has_warning:
                 status = "WARNING"
             else:
@@ -1749,6 +1791,14 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
 def main():
     global logger, runner
     results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
+
+    # Install a SIGTERM handler so that `kill <pid>` (SIGTERM) triggers the
+    # same KeyboardInterrupt handling chain as Ctrl-C (SIGINT).  Without this,
+    # SIGTERM terminates the process immediately without running finally blocks,
+    # meaning metrics are not written and partial slices on disk go unrecorded.
+    def _sigterm_handler(signum, frame):
+        raise KeyboardInterrupt("SIGTERM received — backup terminated by kill signal")
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     MIN_PYTHON_VERSION = (3, 9)
     if version_info < MIN_PYTHON_VERSION:

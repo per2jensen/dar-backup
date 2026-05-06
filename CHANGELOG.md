@@ -3,7 +3,7 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.4 - not released
+## v2-1.1.4 - 
 
 - set LANG=C in command_runner to ensure dar delivers stats
 
@@ -12,6 +12,8 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
   C locale used as it is always available, no matter what locales are installed on a computer
 
 - preflight: list a directory to warm up stale NFS mounts before the real checks happen
+
+- Bugs fixed around KeyboardExceptions, SIGINT & SIGTERM, see details in [v2/Changelog.md](v2/Changelog.md)
 
 ## v2-1.1.3 - 2026-03-22
 
