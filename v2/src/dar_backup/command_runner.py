@@ -349,6 +349,14 @@ class CommandRunner:
                 )
                 self.logger.error(log_msg)
                 return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
+            except KeyboardInterrupt:
+                # Kill the child process and drain threads so callers can log
+                # and flush before the process exits. Without this, background
+                # streaming threads block exit and logs never reach disk.
+                process.kill()
+                for t in threads:
+                    t.join(timeout=2)
+                raise
             except Exception as e:
                 stack = traceback.format_exc()
                 log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"

@@ -413,6 +413,9 @@ def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
          patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
+         patch("dar_backup.dar_backup.os.path.getsize", return_value=1024), \
+         patch("dar_backup.dar_backup.glob.glob", return_value=["test_FULL_2026-05-05.1.dar"]), \
          patch("dar_backup.dar_backup.write_metrics_row", side_effect=Exception("simulated metrics failure")), \
          patch("dar_backup.dar_backup.logger"):
         results = perform_backup(args, config, "FULL", [])
@@ -444,6 +447,9 @@ def test_perform_backup_succeeds_when_metrics_db_path_is_none(env):
          patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
+         patch("dar_backup.dar_backup.os.path.getsize", return_value=1024), \
+         patch("dar_backup.dar_backup.glob.glob", return_value=["test_FULL_2026-05-05.1.dar"]), \
          patch("dar_backup.dar_backup.logger"):
         results = perform_backup(args, config, "FULL", [])
 

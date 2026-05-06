@@ -25,6 +25,7 @@ import argcomplete
 import argparse
 import os
 import re
+import signal
 import sys
 import subprocess
 import threading
@@ -588,7 +589,16 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
 
     # PITR restore: select archives by creation date and restore with dar directly.
     # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
-    return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings)
+    try:
+        return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings)
+    except KeyboardInterrupt:
+        msg = (
+            f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
+            f"paths={paths} target='{target}'. "
+            f"The target directory may be incomplete and must NOT be used."
+        )
+        logger.error(msg)
+        raise
 
 
 def _restore_target_unsafe_reason(target: str) -> Optional[str]:
@@ -864,10 +874,19 @@ def _is_directory_in_archive(
     Returns:
         True if the path appears as a directory in the archive.
     """
-    result = runner.run(
-        ['dar', '-l', archive_path, '-g', path, '--noconf', '-Q'],
-        timeout=timeout,
-    )
+    try:
+        result = runner.run(
+            ['dar', '-l', archive_path, '-g', path, '--noconf', '-Q'],
+            timeout=timeout,
+        )
+    except KeyboardInterrupt:
+        msg = (
+            f"PITR restore interrupted (Ctrl-C or SIGTERM) while checking if "
+            f"'{path}' is a directory in '{archive_path}'. "
+            f"Restore is incomplete."
+        )
+        logger.error(msg)
+        raise
     if result.returncode != 0:
         return False
     # Look for permission string starting with 'd' on a line ending with the path.
@@ -1117,29 +1136,78 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     successes = 0
     missing_archives = set()
 
-    for path in paths:
-        is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
-        if is_directory:
-            logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
-            chain = _select_archive_chain(archive_info, when_dt)
-            if not chain:
-                logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
-                failures += 1
+    try:
+        for path in paths:
+            is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
+            if is_directory:
+                logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
+                chain = _select_archive_chain(archive_info, when_dt)
+                if not chain:
+                    logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
+                    failures += 1
+                    continue
+                missing = _missing_chain_elements(chain, archive_map)
+                if missing:
+                    for item in missing:
+                        missing_archives.add(item)
+                        logger.error("PITR restore missing archive in chain for '%s': %s", path, item)
+                    failures += 1
+                    continue
+                logger.info(
+                    "PITR restore directory '%s' using archive chain: %s",
+                    path,
+                    ", ".join(_describe_archive(num, archive_map, info_by_no) for num in chain),
+                )
+                restored = True
+                for catalog_no in chain:
+                    archive_path = archive_map.get(catalog_no)
+                    if not archive_path:
+                        missing_archives.add(f"catalog #{catalog_no} missing from archive map")
+                        logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
+                        restored = False
+                        break
+                    if not os.path.exists(f"{archive_path}.1.dar"):
+                        missing_archives.add(f"{archive_path}.1.dar")
+                        logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
+                        restored = False
+                        break
+                    cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
+                    if target:
+                        cmd.extend(['-R', target])
+                    if darrc_path:
+                        cmd.extend(['-B', darrc_path, 'restore-options'])
+                    logger.info(
+                        "Applying archive %s for '%s'.",
+                        _describe_archive(catalog_no, archive_map, info_by_no),
+                        path,
+                    )
+                    result = runner.run(cmd, timeout=timeout)
+                    if result.returncode != 0:
+                        logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
+                        restored = False
+                        break
+                if restored:
+                    successes += 1
+                else:
+                    failures += 1
                 continue
-            missing = _missing_chain_elements(chain, archive_map)
-            if missing:
-                for item in missing:
-                    missing_archives.add(item)
-                    logger.error("PITR restore missing archive in chain for '%s': %s", path, item)
-                failures += 1
-                continue
-            logger.info(
-                "PITR restore directory '%s' using archive chain: %s",
+
+            file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
+            versions = _parse_file_versions(file_result.stdout)
+            candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
+            candidates.sort(key=lambda item: item[1], reverse=True)
+            logger.debug(
+                "PITR candidates for '%s': %s",
                 path,
-                ", ".join(_describe_archive(num, archive_map, info_by_no) for num in chain),
+                ", ".join(f"#{num}@{dt}" for num, dt in candidates) or "<none>",
             )
-            restored = True
-            for catalog_no in chain:
+            if not candidates:
+                logger.error(f"No archive version found for '{path}' at or before {when_dt}")
+                failures += 1
+                continue
+
+            restored = False
+            for catalog_no, dt in candidates:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
                     missing_archives.add(f"catalog #{catalog_no} missing from archive map")
@@ -1148,81 +1216,41 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     break
                 if not os.path.exists(f"{archive_path}.1.dar"):
                     missing_archives.add(f"{archive_path}.1.dar")
-                    logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
+                    logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
                     restored = False
                     break
+                logger.info(
+                    "PITR restore file '%s' using archive %s.",
+                    path,
+                    _describe_archive(catalog_no, archive_map, info_by_no),
+                )
                 cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
                 if target:
                     cmd.extend(['-R', target])
                 if darrc_path:
                     cmd.extend(['-B', darrc_path, 'restore-options'])
                 logger.info(
-                    "Applying archive %s for '%s'.",
-                    _describe_archive(catalog_no, archive_map, info_by_no),
+                    "Restoring '%s' from archive %s using dar.",
                     path,
+                    _describe_archive(catalog_no, archive_map, info_by_no),
                 )
                 result = runner.run(cmd, timeout=timeout)
-                if result.returncode != 0:
-                    logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
-                    restored = False
+                if result.returncode == 0:
+                    restored = True
+                    successes += 1
                     break
-            if restored:
-                successes += 1
-            else:
+                logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
+
+            if not restored:
                 failures += 1
-            continue
 
-        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-        versions = _parse_file_versions(file_result.stdout)
-        candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
-        candidates.sort(key=lambda item: item[1], reverse=True)
-        logger.debug(
-            "PITR candidates for '%s': %s",
-            path,
-            ", ".join(f"#{num}@{dt}" for num, dt in candidates) or "<none>",
+    except KeyboardInterrupt:
+        msg = (
+            f"PITR restore interrupted (Ctrl-C or SIGTERM) mid-restore. "
+            f"Target directory '{target}' may be incomplete and must NOT be used."
         )
-        if not candidates:
-            logger.error(f"No archive version found for '{path}' at or before {when_dt}")
-            failures += 1
-            continue
-
-        restored = False
-        for catalog_no, dt in candidates:
-            archive_path = archive_map.get(catalog_no)
-            if not archive_path:
-                missing_archives.add(f"catalog #{catalog_no} missing from archive map")
-                logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
-                restored = False
-                break
-            if not os.path.exists(f"{archive_path}.1.dar"):
-                missing_archives.add(f"{archive_path}.1.dar")
-                logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
-                restored = False
-                break
-            logger.info(
-                "PITR restore file '%s' using archive %s.",
-                path,
-                _describe_archive(catalog_no, archive_map, info_by_no),
-            )
-            cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
-            if target:
-                cmd.extend(['-R', target])
-            if darrc_path:
-                cmd.extend(['-B', darrc_path, 'restore-options'])
-            logger.info(
-                "Restoring '%s' from archive %s using dar.",
-                path,
-                _describe_archive(catalog_no, archive_map, info_by_no),
-            )
-            result = runner.run(cmd, timeout=timeout)
-            if result.returncode == 0:
-                restored = True
-                successes += 1
-                break
-            logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
-
-        if not restored:
-            failures += 1
+        logger.error(msg)
+        raise
 
     logger.info("PITR restore summary: %d succeeded, %d failed.", successes, failures)
     if missing_archives:
@@ -1513,6 +1541,13 @@ def main():
         sys.stderr.write(f"Error: This script requires Python {'.'.join(map(str, MIN_PYTHON_VERSION))} or higher.\n")
         sys.exit(1)
         return
+
+    # Install a SIGTERM handler so that `kill <pid>` triggers the same
+    # KeyboardInterrupt handling chain as Ctrl-C (SIGINT). Without this,
+    # SIGTERM terminates immediately without running finally blocks or logging.
+    def _sigterm_handler(signum, frame):
+        raise KeyboardInterrupt("SIGTERM received — manager terminated by kill signal")
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
     parser = build_arg_parser()

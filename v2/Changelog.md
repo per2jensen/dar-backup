@@ -3,7 +3,7 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.4 - not released
+## v2-1.1.4 - 
 
 ### Added
 
@@ -15,9 +15,20 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - **Locale tests in `test_systemd_unit_generation.py`** (4 tests): positive — no warning when `LANG=en_US.UTF-8`, `Environment=LANG=en_US.UTF-8` present in both service and cleanup service units; negative — `check_locale()` prints a `WARNING` for a wrong locale.
 - **Locale tests in `test_dar_backup_startup.py`** (5 tests): positive — `_locale_ok()` returns `True` and `parse_dar_stats` is called when locale is correct; negative — `_locale_ok()` returns `False`, `main()` emits a locale warning to `stderr`, and `generic_backup()` skips `parse_dar_stats` when locale is wrong.
 
+- Tests added proving all signal handling scenarios: silent dar failure, NFS stall, Ctrl-C and SIGTERM during backup, restore, verify, and PITR restore.
+
 ### Changed
 
 - **`release.sh`** auto-stamps the release date in both changelogs (`CHANGELOG.md`, `v2/Changelog.md`) and updates the `README.md` current-version reference as part of the post-test commit — eliminating two manual pre-release steps that were easy to forget.
+
+### Bugfix
+
+- perform_backup() now correctly records FAILURE in the metrics DB when dar exits 0 but writes no archive slices (e.g. due to an NFS mount stall). Previously, the run was silently recorded as SUCCESS.
+- NFS stall scenario now logs a clear error in the main log. Previously the failure was visible only in the command log.
+- KeyboardInterrupt (Ctrl-C) is now caught explicitly in perform_backup(). A clear error message naming the interrupted phase and warning that partial slices must not be used for restore is logged and recorded in the metrics DB. Previously, a Ctrl-C with a partial slice on disk could be recorded as SUCCESS.
+- SIGTERM (kill <pid>) is now handled in dar-backup and manager — a handler converts it to KeyboardInterrupt so the same logging and cleanup chain fires as for Ctrl-C. Previously SIGTERM terminated the process immediately with no log entry and no metrics written.
+- KeyboardInterrupt and SIGTERM are now caught in restore_backup(), verify(), _is_directory_in_archive(), _restore_with_dar() and restore_at() (PITR). Each handler logs a clear error naming the interrupted operation and warns that the target directory may be incomplete.
+- CommandRunner.run() now kills the child process and joins streaming threads on KeyboardInterrupt, ensuring log buffers are flushed to disk before the process exits.
 
 ## v2-1.1.3 - 2026-03-22
 
