@@ -21,12 +21,12 @@
       "label": "v1.1.3 + LinkedIn"
     },
     {
-      "date": "2026-03-22",
-      "label": "Daily max: 138"
+      "date": "2026-05-06",
+      "label": "Daily max: 144"
     }
   ],
-  "total_clones": 9898,
-  "unique_clones": 5288,
+  "total_clones": 10176,
+  "unique_clones": 5385,
   "daily": [
     {
       "timestamp": "2025-05-04T00:00:00Z",
@@ -1842,6 +1842,16 @@
       "timestamp": "2026-05-04T00:00:00Z",
       "count": 32,
       "uniques": 16
+    },
+    {
+      "timestamp": "2026-05-05T00:00:00Z",
+      "count": 134,
+      "uniques": 52
+    },
+    {
+      "timestamp": "2026-05-06T00:00:00Z",
+      "count": 144,
+      "uniques": 45
     }
   ]
 }
