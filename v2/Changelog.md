@@ -29,6 +29,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - SIGTERM (kill <pid>) is now handled in dar-backup and manager — a handler converts it to KeyboardInterrupt so the same logging and cleanup chain fires as for Ctrl-C. Previously SIGTERM terminated the process immediately with no log entry and no metrics written.
 - KeyboardInterrupt and SIGTERM are now caught in restore_backup(), verify(), _is_directory_in_archive(), _restore_with_dar() and restore_at() (PITR). Each handler logs a clear error naming the interrupted operation and warns that the target directory may be incomplete.
 - CommandRunner.run() now kills the child process and joins streaming threads on KeyboardInterrupt, ensuring log buffers are flushed to disk before the process exits.
+- CommandRunner fixed, so log lines in command log are not split. Test cases added.
 
 ## v2-1.1.3 - 2026-03-22
 
