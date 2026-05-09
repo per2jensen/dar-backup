@@ -172,6 +172,12 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         # Skip parsing when LANG is not en_US.UTF-8: dar's number formatting is
         # locale-sensitive and would produce silently wrong (all-None) stats.
         dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
+        if process.returncode in (0, 5) and dar_stats.get("inodes_saved") is None:
+            logger.warning(
+                "dar inode summary not parsed — inodes_saved is None after successful backup "
+                "(exit code %d); check command log for split output or locale issues",
+                process.returncode,
+            )
 
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")

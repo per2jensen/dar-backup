@@ -217,3 +217,91 @@ def test_generic_backup_dar_stats_all_none_when_no_output(
     assert all(v is None for v in result.dar_stats.values()), (
         "Every dar_stats value must be None when dar produced no parseable output"
     )
+
+
+# ---------------------------------------------------------------------------
+# Warning: inodes_saved is None after a successful backup
+# ---------------------------------------------------------------------------
+
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists")
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_warns_when_inodes_saved_none_after_success(
+    mock_runner,
+    mock_exists,
+    mock_logger,
+    mock_popen,
+    mock_which,
+    mock_get_logger,
+    mock_envdata,
+    mock_config,
+):
+    """
+    When dar exits 0 or 5 but inodes_saved is None (e.g. chunk-boundary split
+    or locale mismatch), a WARNING must be logged so the operator knows to
+    inspect the command log.
+    """
+    for exit_code in (0, 5):
+        mock_logger.reset_mock()
+        mock_exists.return_value = False
+        mock_runner.run.side_effect = [
+            MagicMock(returncode=exit_code, stdout="", stderr="",
+                      stdout_tail="", stderr_tail=""),
+            MagicMock(returncode=0, stdout="catalog added", stderr="",
+                      stdout_tail="", stderr_tail=""),
+        ]
+        args = MagicMock()
+        args.config_file = "/mock/dar-backup.conf"
+        command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+        generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", mock_config, args)
+
+        warning_texts = " ".join(
+            str(call) for call in mock_logger.warning.call_args_list
+        )
+        assert "inodes_saved" in warning_texts, (
+            f"Expected warning about inodes_saved for exit code {exit_code}"
+        )
+
+
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists")
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_no_inodes_warning_when_stats_parsed(
+    mock_runner,
+    mock_exists,
+    mock_logger,
+    mock_popen,
+    mock_which,
+    mock_get_logger,
+    mock_envdata,
+    mock_config,
+):
+    """
+    When inodes_saved is successfully parsed no warning about it must be logged.
+    """
+    mock_exists.return_value = False
+    mock_runner.run.side_effect = [
+        MagicMock(returncode=0, stdout="", stderr="",
+                  stdout_tail=_DAR_SUMMARY, stderr_tail=""),
+        MagicMock(returncode=0, stdout="catalog added", stderr="",
+                  stdout_tail="", stderr_tail=""),
+    ]
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", mock_config, args)
+
+    warning_texts = " ".join(
+        str(call) for call in mock_logger.warning.call_args_list
+    )
+    assert "inodes_saved" not in warning_texts, (
+        "No inodes_saved warning must be emitted when stats parsed successfully"
+    )

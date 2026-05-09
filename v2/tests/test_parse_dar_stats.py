@@ -151,3 +151,24 @@ def test_parse_dar_stats_extra_whitespace_handled():
     result = parse_dar_stats(output)
     assert result["inodes_saved"]       == 42
     assert result["hard_links_treated"] == 7
+
+
+def test_parse_dar_stats_mid_word_newline_returns_none():
+    """
+    Document the symptom produced by an unfixed stream_output: when a 1 KiB
+    chunk boundary splits 'inode' between 'i' and 'node', the tail deque
+    receives two fragments on separate lines and the regex cannot match.
+    inodes_saved must be None; other fields on complete lines are unaffected.
+    """
+    # This is exactly what stream_output would put in stdout_tail before the
+    # partial-line buffer fix: 'i' ends one entry, 'node(s) saved' starts the next.
+    split_output = (
+        " 6553 i\n"
+        "node(s) saved\n"
+        "   including 0 hard link(s) treated\n"
+        " Total number of inode(s) considered: 31656\n"
+    )
+    result = parse_dar_stats(split_output)
+    assert result["inodes_saved"] is None          # the split line cannot be matched
+    assert result["hard_links_treated"] == 0       # complete lines still parse fine
+    assert result["inodes_total"]       == 31656   # complete lines still parse fine

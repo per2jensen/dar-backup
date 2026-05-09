@@ -265,23 +265,40 @@ class CommandRunner:
                 )
 
             def stream_output(stream, lines, level, truncated_flag, tail_deque):
-                """Read *stream* in 1 KiB chunks, log each chunk, append to *lines*
-                up to *capture_output_limit_bytes*, and unconditionally append every
-                decoded line to *tail_deque* (capped at maxlen=500).  The tail is
-                used to recover end-of-output summaries (e.g. dar inode stats) that
-                would otherwise be lost when the main capture limit is exceeded."""
+                """Read *stream* in 1 KiB chunks, log each complete line, append
+                to *lines* up to *capture_output_limit_bytes*, and unconditionally
+                append every decoded line to *tail_deque* (capped at maxlen=500).
+                The tail is used to recover end-of-output summaries (e.g. dar inode
+                stats) that would otherwise be lost when the main capture limit is
+                exceeded.
+
+                A partial-line buffer ensures that a line whose bytes straddle a
+                1 KiB chunk boundary is assembled before being logged and inserted
+                into tail_deque, so neither the command log nor the regex parser
+                ever sees a mid-word split."""
                 captured_bytes = 0
+                partial = ""  # incomplete line carried over from the previous chunk
                 try:
                     while True:
                         chunk = stream.read(1024)
                         if not chunk:
+                            if partial:
+                                if log_output:
+                                    self.command_logger.log(level, partial)
+                                tail_deque.append(partial)
                             break
                         if self._text_mode:
                             decoded = chunk.decode('utf-8', errors='replace')
+                            # Prepend any leftover fragment, split on newlines, and
+                            # hold back the final element: it is either "" (trailing
+                            # newline) or an incomplete line continued by the next chunk.
+                            parts = (partial + decoded).split('\n')
+                            partial = parts[-1]
+                            complete_lines = parts[:-1]
                             if log_output:
-                                self.command_logger.log(level, decoded.strip())
-                            # Always feed the tail buffer regardless of capture limit.
-                            for line in decoded.splitlines():
+                                for line in complete_lines:
+                                    self.command_logger.log(level, line)
+                            for line in complete_lines:
                                 tail_deque.append(line)
                             if capture_output:
                                 if capture_output_limit_bytes is None:

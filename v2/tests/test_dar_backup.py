@@ -731,7 +731,8 @@ def test_generic_backup_warns_on_returncode_5(env):
 
         assert isinstance(result.issues, list)
         assert result.dar_exit_code == 5
-        mock_logger.warning.assert_called_once()
+        warning_texts = " ".join(str(c) for c in mock_logger.warning.call_args_list)
+        assert "some files were not saved" in warning_texts
 
 
 

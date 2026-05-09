@@ -6,6 +6,7 @@ import subprocess
 import time
 
 from dar_backup.command_runner import CommandRunner, CommandResult
+from dar_backup.util import parse_dar_stats
 from io import StringIO
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
@@ -840,6 +841,58 @@ def test_command_runner_sets_lc_all_c(tmp_path):
 
     assert result.returncode == 0
     assert result.stdout.strip() == "C"
+
+
+def test_tail_assembles_line_split_at_chunk_boundary(tmp_path):
+    """
+    A line whose bytes straddle the 1 KiB read boundary must appear in
+    stdout_tail as one complete entry so that parse_dar_stats can match it.
+
+    The ControlledStream returns two specific chunks that place 'i' of 'inode'
+    as the very last byte of the first 1024-byte read:
+
+        chunk 1 (1024 bytes): b'x' * 1016 + b'\\n 6553 i'
+        chunk 2  (14 bytes):  b'node(s) saved\\n'
+
+    Without the partial-line buffer stream_output would append ' 6553 i' and
+    'node(s) saved' as separate tail entries — the regex cannot span them.
+    With the fix both fragments are joined before insertion.
+    """
+    class ControlledStream:
+        """Yields pre-defined byte chunks, ignoring the requested read size."""
+        def __init__(self, chunks: list) -> None:
+            self._chunks = iter(chunks)
+        def read(self, n: int) -> bytes:
+            return next(self._chunks, b"")
+        def close(self) -> None:
+            pass
+
+    class FakeProcess:
+        returncode = 0
+        pid = None
+        def __init__(self) -> None:
+            self.stdout = ControlledStream([
+                b"x" * 1016 + b"\n 6553 i",  # 1024 bytes; 'i' is the last byte
+                b"node(s) saved\n",            # completes the word across the boundary
+                b"",
+            ])
+            self.stderr = ControlledStream([b""])
+        def wait(self, timeout=None) -> None:
+            pass
+
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()):
+        result = runner.run(["echo", "ignored"])
+
+    assert " 6553 inode(s) saved" in result.stdout_tail, (
+        "Complete line must be assembled across the chunk boundary"
+    )
+    stats = parse_dar_stats(result.stdout_tail)
+    assert stats["inodes_saved"] == 6553, (
+        "parse_dar_stats must extract the count from the assembled line"
+    )
 
 
 def test_command_runner_overrides_caller_locale(tmp_path, monkeypatch):
