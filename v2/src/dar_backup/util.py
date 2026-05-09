@@ -219,18 +219,27 @@ def setup_logging(
 
         # Setup main logger
         logger = logging.getLogger("main_logger")
+        # Remove handlers left by any previous setup_logging call so stale
+        # file handles (e.g. from a prior test's tmp directory) cannot
+        # accumulate and cause FileNotFoundError on the next log write.
+        for _h in list(logger.handlers):
+            _h.close()
+            logger.removeHandler(_h)
         # Ensure logger captures everything so trace_handler can see DEBUG messages even if main log_level is INFO
-        logger.setLevel(logging.DEBUG) 
+        logger.setLevel(logging.DEBUG)
         logger.propagate = True
-        
+
         # Configure file_handler level based on user preference
         file_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
-        
+
         logger.addHandler(file_handler)
         logger.addHandler(trace_handler)
 
         # Setup secondary logger for command outputs
         secondary_logger = logging.getLogger("command_output_logger")
+        for _h in list(secondary_logger.handlers):
+            _h.close()
+            secondary_logger.removeHandler(_h)
         secondary_logger.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
         secondary_logger.propagate = True
         secondary_logger.addHandler(command_handler)
