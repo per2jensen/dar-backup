@@ -12,7 +12,8 @@ include = [
   "doc/**",
   "src/dar_backup/README.md",
   "src/dar_backup/Changelog.md",
-  "src/dar_backup/data/dashboard.html"
+  "src/dar_backup/data/dashboard.html",
+  "src/dar_backup/data/discord_report.j2"
 ]
 
 [tool.hatch.build.targets.wheel]

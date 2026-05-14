@@ -1,0 +1,25 @@
+---- Start of dar-backup report ----
+Start time: {{ start_time }}
+Backups:
+{% for b in backups %}
+  - {{ b.definition }}: {{ b.end_time }}  {{ "Completed" if b.status != "FAILURE" else "Failed" }} (warnings: {{ b.warning_count }}, errors: {{ b.error_count }})
+{% if not loop.last %}
+
+{% endif %}
+{% else %}
+  (none)
+{% endfor %}
+PREREQs: {{ prereqs.status }}
+{% if prereqs.status == "failure" %}
+{% for f in prereqs.failures %}
+  {{ f.script }} {{ f.message }}
+{% endfor %}
+{% endif %}
+POSTREQs: {{ postreqs.status }}
+{% if postreqs.status == "failure" %}
+{% for f in postreqs.failures %}
+  {{ f.script }} {{ f.message }}
+{% endfor %}
+{% endif %}
+End time: {{ end_time }}
+---- End of dar-backup report ----

@@ -359,6 +359,49 @@ def show_version():
     print(about.__license__)
 
 
+def render_discord_report(
+    start_time: str,
+    end_time: str,
+    backups: list,
+    prereqs: dict,
+    postreqs: dict,
+) -> str:
+    """
+    Render the Discord backup report from the bundled Jinja2 template.
+
+    Args:
+        start_time: ISO-8601 timestamp for the start of the run.
+        end_time: ISO-8601 timestamp for the end of the run.
+        backups: List of backup stat dicts (pre-sorted by definition name).
+        prereqs: PREREQ result dict with 'status' and 'failures' keys.
+        postreqs: POSTREQ result dict with 'status' and 'failures' keys.
+
+    Returns:
+        Rendered report string ready to send to Discord.
+    """
+    import importlib.resources as pkg_resources
+    from jinja2 import Environment, BaseLoader
+
+    ref = pkg_resources.files("dar_backup.data").joinpath("discord_report.j2")
+    with pkg_resources.as_file(ref) as p:
+        template_text = p.read_text(encoding="utf-8")
+
+    env = Environment(
+        loader=BaseLoader(),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        keep_trailing_newline=True,
+    )
+    template = env.from_string(template_text)
+    return template.render(
+        start_time=start_time,
+        end_time=end_time,
+        backups=backups,
+        prereqs=prereqs,
+        postreqs=postreqs,
+    )
+
+
 def send_discord_message(
     content: str,
     config_settings: typing.Optional[ConfigSettings] = None,
@@ -488,27 +531,33 @@ def get_binary_info(command):
         }
 
 
-def requirements(type: str, config_setting: ConfigSettings):
+def requirements(
+    type: str,
+    config_setting: ConfigSettings,
+    report_out: typing.Optional[dict] = None,
+) -> None:
     """
     Perform PREREQ or POSTREQ requirements.
 
     Args:
         type (str): The type of prereq (PREREQ, POSTREQ).
-        config_settings (ConfigSettings): An instance of the ConfigSettings class.
+        config_setting (ConfigSettings): An instance of the ConfigSettings class.
+        report_out (dict, optional): If provided, populated with execution results:
+            ``{"status": "none"|"success"|"failure", "failures": [{"script": key, "message": str}]}``.
+            Status starts as "none" (caller must initialise the dict before passing it in).
+            Still raises on failure so callers can short-circuit if needed.
 
     Raises:
         RuntimeError: If a subprocess returns anything but zero.
-
-        subprocess.CalledProcessError: if CalledProcessError is raised in subprocess.run(), let it bobble up.
+        subprocess.CalledProcessError: if CalledProcessError is raised in subprocess.run(), let it bubble up.
     """
-    
+
     if type is None or config_setting is None:
         raise RuntimeError("requirements: 'type' or config_setting is None")
 
-    allowed_types = ['PREREQ', 'POSTREQ'] 
+    allowed_types = ['PREREQ', 'POSTREQ']
     if type not in allowed_types:
         raise RuntimeError(f"requirements: {type} not in: {allowed_types}")
-
 
     logger.debug(f"Performing  {type}")
     if type in config_setting.config:
@@ -574,7 +623,18 @@ def requirements(type: str, config_setting: ConfigSettings):
                         raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {process.returncode}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error executing {key}: '{script}': {e}")
-                raise e
+                if report_out is not None:
+                    report_out["status"] = "failure"
+                    report_out["failures"].append({"script": key, "message": str(e)})
+                raise
+            except RuntimeError as e:
+                if report_out is not None:
+                    report_out["status"] = "failure"
+                    report_out["failures"].append({"script": key, "message": str(e)})
+                raise
+
+        if report_out is not None:
+            report_out["status"] = "success"
 
 
 

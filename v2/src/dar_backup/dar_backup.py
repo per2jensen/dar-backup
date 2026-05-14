@@ -57,7 +57,7 @@ from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
-from dar_backup.util import send_discord_message
+from dar_backup.util import send_discord_message, render_discord_report
 from dar_backup.util import write_metrics_row
 from dar_backup.util import parse_dar_stats
 
@@ -1382,7 +1382,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
                 "definition": backup_definition,
                 "status": status,
                 "type": backup_type,
-                "timestamp": datetime.now().strftime("%Y-%m-%d_%H:%M")
+                "end_time": run_finished_at.astimezone().isoformat(timespec='seconds'),
+                "warning_count": sum(1 for _, code in new_results if code == 2),
+                "error_count": sum(1 for _, code in new_results if code == 1),
             })
 
     logger.trace(f"perform_backup() results[]: {results}")
@@ -1995,6 +1997,7 @@ def main():
         start_msgs: List[Tuple[str, str]] = []
 
         start_time=int(time())
+        run_start = datetime.now().astimezone()
         start_msgs.append((f"{show_scriptname()}:", about.__version__))
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"Command line:\n{get_invocation_command_line()}")
@@ -2050,7 +2053,8 @@ def main():
                 exit(1)
 
 
-        requirements('PREREQ', config_settings)
+        prereq_report: dict = {"status": "none", "failures": []}
+        requirements('PREREQ', config_settings, report_out=prereq_report)
 
         stats: List[dict] = []
 
@@ -2080,38 +2084,25 @@ def main():
 
         logger.debug(f"results[]: {results}")
 
-        # Send aggregated Discord notification if stats were collected
+        # POSTREQ: capture result without short-circuiting so the report is always sent
+        postreq_report: dict = {"status": "none", "failures": []}
+        try:
+            requirements('POSTREQ', config_settings, report_out=postreq_report)
+        except RuntimeError as postreq_err:
+            logger.error("POSTREQ failed: %s", postreq_err)
+            results.append((str(postreq_err), 1))
+
+        # Send unified Discord report for any backup run
         if stats:
-            total = len(stats)
-            failures = [s for s in stats if s['status'] == 'FAILURE']
-            warnings = [s for s in stats if s['status'] == 'WARNING']
-            successes = [s for s in stats if s['status'] == 'SUCCESS']
-            
-            ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-            
-            msg_lines = [f"{ts} - dar-backup Run Completed"]
-            msg_lines.append(f"Total: {total}, Success: {len(successes)}, Warning: {len(warnings)}, Failure: {len(failures)}")
-            
-            if successes:
-                msg_lines.append("\nSuccesses:")
-                for f in successes:
-                    msg_lines.append(f"- {f['definition']} ({f['type']})")
-
-            if failures:
-                msg_lines.append("\nFailures:")
-                for f in failures:
-                    msg_lines.append(f"- {f['definition']} ({f['type']})")
-            
-            if warnings:
-                msg_lines.append("\nWarnings:")
-                for w in warnings:
-                    msg_lines.append(f"- {w['definition']} ({w['type']})")
-            
-            msg_lines.append("---- End Of Report ----")
-            
-            send_discord_message("\n".join(msg_lines), config_settings=config_settings)
-
-        requirements('POSTREQ', config_settings)
+            run_end = datetime.now().astimezone()
+            msg = render_discord_report(
+                start_time=run_start.isoformat(timespec='seconds'),
+                end_time=run_end.isoformat(timespec='seconds'),
+                backups=sorted(stats, key=lambda s: s['definition']),
+                prereqs=prereq_report,
+                postreqs=postreq_report,
+            )
+            send_discord_message(msg, config_settings=config_settings)
 
 
     except Exception as e:
