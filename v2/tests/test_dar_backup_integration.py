@@ -24,6 +24,7 @@ pytestmark = [pytest.mark.integration]
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import dar_backup.dar_backup as dar_backup_mod
+from dar_backup import __about__ as about
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from tests.testdata_verification import run_backup_script
@@ -267,3 +268,190 @@ def test_dar_backup_full_backup_with_suppress_dar_msg(setup_environment, env):
         if os.path.exists(filtered_darrc):
             os.chmod(filtered_darrc, 0o644)
             os.remove(filtered_darrc)
+
+
+# ---------------------------------------------------------------------------
+# list_definitions() — subdir in backup_d_dir must be skipped
+# ---------------------------------------------------------------------------
+
+def test_dar_backup_list_definitions_skips_subdirectory(setup_environment, env):
+    """
+    list_definitions() must not include subdirectories of backup_d_dir in the
+    returned list — only plain files are valid backup definitions.
+
+    Covers: line 1747 (continue for non-file entries).
+    """
+    subdir = os.path.join(env.backup_d_dir, "a_subdir_that_must_be_skipped")
+    os.makedirs(subdir, exist_ok=True)
+    try:
+        defs = dar_backup_mod.list_definitions(env.backup_d_dir)
+        assert "a_subdir_that_must_be_skipped" not in defs, (
+            "subdirectory must never appear in the definitions list"
+        )
+        assert "example" in defs, "the real 'example' definition must still be present"
+    finally:
+        os.rmdir(subdir)
+    env.logger.info("list_definitions() correctly skipped subdirectory ✓")
+
+
+# ---------------------------------------------------------------------------
+# clean_restore_test_directory() — early-return guards
+# ---------------------------------------------------------------------------
+
+def test_dar_backup_clean_restore_no_restore_dir_configured():
+    """
+    clean_restore_test_directory() must be a no-op when test_restore_dir is
+    not set on the config object — it must return without touching anything.
+
+    Covers: line 1765 (early return when restore_dir is falsy).
+    """
+    class _Config:
+        test_restore_dir = None
+
+    # If the function proceeds past the guard it would crash (no logger set).
+    # Completing without exception proves the early return fired.
+    dar_backup_mod.clean_restore_test_directory(_Config())
+
+
+def test_dar_backup_clean_restore_nonexistent_path_is_noop(tmp_path):
+    """
+    clean_restore_test_directory() must not raise and must not create or
+    delete anything when the configured test_restore_dir does not exist.
+
+    Covers: line 1770 (early return when restore_dir path is absent).
+    """
+    class _Config:
+        test_restore_dir = str(tmp_path / "this_dir_does_not_exist")
+
+    # Sentinel: verify no directory was created as a side-effect
+    dar_backup_mod.clean_restore_test_directory(_Config())
+    assert not (tmp_path / "this_dir_does_not_exist").exists(), (
+        "function must not create a missing restore directory"
+    )
+
+
+# ---------------------------------------------------------------------------
+# _normalize_restore_dir() — None / empty input
+# ---------------------------------------------------------------------------
+
+def test_dar_backup_normalize_restore_dir_falsy_inputs():
+    """
+    _normalize_restore_dir() must return None for None and for an empty string.
+    This guards callers that compare the result to a known path against
+    accidental matches with an uninitialised value.
+
+    Covers: line 1803 (return None when path is falsy).
+    """
+    assert dar_backup_mod._normalize_restore_dir(None) is None
+    assert dar_backup_mod._normalize_restore_dir("") is None
+
+
+# ---------------------------------------------------------------------------
+# should_clean_restore_test_directory() — no-operation fallback
+# ---------------------------------------------------------------------------
+
+def test_dar_backup_should_not_clean_when_no_operation(setup_environment, env):
+    """
+    should_clean_restore_test_directory() must return False when the args
+    object requests neither backup nor restore — there is no operation that
+    would write to the restore directory, so cleaning it would be incorrect.
+
+    Covers: line 1817 (return False fallback at end of function).
+    """
+    config_settings = ConfigSettings(env.config_file)
+    args = SimpleNamespace(
+        full_backup=False, differential_backup=False, incremental_backup=False,
+        restore=False,
+    )
+    result = dar_backup_mod.should_clean_restore_test_directory(args, config_settings)
+    assert result is False, (
+        "must not clean restore dir when no backup/restore operation is requested"
+    )
+
+
+# ---------------------------------------------------------------------------
+# main() early-exit CLI flags — no dar, no config needed
+# ---------------------------------------------------------------------------
+
+def test_dar_backup_main_version_flag_prints_version(capsys):
+    """
+    dar-backup --version must exit 0 and print the version string so that
+    scripts and users can reliably detect the installed release.
+
+    Covers: lines 1888-1889 (show_version() + exit in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["dar-backup", "--version"]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            dar_backup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert about.__version__ in out, (
+        f"version string '{about.__version__}' must appear in --version output; got: {out!r}"
+    )
+
+
+def test_dar_backup_main_examples_flag_prints_usage(capsys):
+    """
+    dar-backup --examples must exit 0 and print at least one example command
+    so that new users can get started without reading the full manual.
+
+    Covers: lines 1891-1892 (show_examples() + exit in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["dar-backup", "--examples"]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            dar_backup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert "full-backup" in out.lower() or "dar-backup" in out.lower(), (
+        f"expected example commands in output; got: {out!r}"
+    )
+
+
+def test_dar_backup_main_readme_flag_prints_content(capsys):
+    """
+    dar-backup --readme must exit 0 and print the README so that the
+    documentation is accessible directly from the CLI.
+
+    Covers: lines 1894-1895 (print_readme() + exit in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["dar-backup", "--readme"]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            dar_backup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert len(out) > 100, "README output must be non-trivial"
+
+
+def test_dar_backup_main_changelog_flag_prints_content(capsys):
+    """
+    dar-backup --changelog must exit 0 and print the CHANGELOG so users can
+    inspect release history directly from the CLI.
+
+    Covers: lines 1900-1901 (print_changelog() + exit in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["dar-backup", "--changelog"]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            dar_backup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert len(out) > 100, "CHANGELOG output must be non-trivial"

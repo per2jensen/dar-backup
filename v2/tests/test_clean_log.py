@@ -522,3 +522,154 @@ def test_clean_log_file_write_permission_denied_in_process(tmp_path, capsys):
         assert "No write permission" in captured.out + captured.err
     finally:
         os.chmod(log_file, stat.S_IRUSR | stat.S_IWUSR)
+
+
+# ---------------------------------------------------------------------------
+# main() in-process tests — no subprocess, coverage is tracked.
+# All use sys.argv save/restore; no pytest monkeypatch.
+# ---------------------------------------------------------------------------
+
+def test_clean_log_split_no_separator_returns_none_pair():
+    """
+    _split_level_and_message() must return (None, None) when the line contains
+    no ' - ' separator, so that _should_remove_line() treats such lines as
+    non-removable (preserving them in the output).
+
+    Covers: line 55 (return None, None branch).
+    """
+    level, message = clean_log_module._split_level_and_message("a plain line with no separator")
+    assert level is None
+    assert message is None
+    # Downstream guard: such lines must NOT be silently dropped
+    assert clean_log_module._should_remove_line("a plain line with no separator") is False
+
+
+def test_clean_log_main_invalid_config_exits_127(capsys):
+    """
+    main() must exit with code 127 and print a config-error message to stderr
+    when the config file does not exist.
+
+    Covers: lines 150-155 (ConfigSettings exception handler in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["clean-log", "--config-file", "/nonexistent/path/to/dar-backup.conf"]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            clean_log_module.main()
+        assert exc_info.value.code == 127, f"expected 127, got {exc_info.value.code}"
+    finally:
+        sys.argv = saved_argv
+
+    captured = capsys.readouterr()
+    assert "Config error" in captured.err, (
+        f"expected 'Config error' in stderr; got: {captured.err!r}"
+    )
+
+
+def test_clean_log_main_empty_filename_exits_1(setup_environment, env, capsys):
+    """
+    main() must reject an empty filename with exit code 1 and an informative
+    error message.  An empty string passed as -f must never reach the filesystem
+    or corrupt any file.
+
+    Covers: lines 172-173 (empty-filename guard in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["clean-log", "-f", "", "--config-file", env.config_file]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            clean_log_module.main()
+        assert exc_info.value.code == 1
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert "Invalid empty filename" in out, f"expected empty-filename error; got: {out!r}"
+
+
+def test_clean_log_main_path_traversal_exits_1(setup_environment, env, capsys):
+    """
+    main() must reject a path containing '..' with exit code 1 — the
+    path-traversal guard prevents clean-log from being pointed at arbitrary
+    files outside the allowed log directory.
+
+    Covers: lines 176-177 (path-traversal guard in main()).
+    """
+    saved_argv = sys.argv[:]
+    sys.argv = ["clean-log", "-f", "../../etc/passwd", "--config-file", env.config_file]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            clean_log_module.main()
+        assert exc_info.value.code == 1
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert "traversal" in out.lower() or "not allowed" in out.lower(), (
+        f"expected traversal-rejection message; got: {out!r}"
+    )
+
+
+def test_clean_log_main_file_not_found_in_logdir_exits_1(setup_environment, env, capsys):
+    """
+    main() must exit with code 1 when the requested file is inside the allowed
+    log directory but does not exist on disk — verifying the file-existence
+    check that guards against silent no-ops.
+
+    Covers: lines 185-187 (file-not-found guard after logfile_dir validation).
+    """
+    from dar_backup.config_settings import ConfigSettings
+    config = ConfigSettings(env.config_file)
+    logfile_dir = os.path.dirname(os.path.realpath(config.logfile_location))
+    missing_file = os.path.join(logfile_dir, "nonexistent_test_clean_log.log")
+
+    saved_argv = sys.argv[:]
+    sys.argv = ["clean-log", "-f", missing_file, "--config-file", env.config_file]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            clean_log_module.main()
+        assert exc_info.value.code == 1
+    finally:
+        sys.argv = saved_argv
+
+    out = capsys.readouterr().out
+    assert "does not exist" in out, f"expected 'does not exist' message; got: {out!r}"
+
+
+def test_clean_log_main_removes_dar_lines_and_keeps_others(setup_environment, env, capsys):
+    """
+    main() must remove dar INFO lines from a log file and preserve WARNING /
+    ERROR lines.  The file is modified in-place; the success message is printed
+    to stdout.
+
+    Covers: lines 189 (validated_files.append), 193-199 (cleaning loop and
+    success prints).
+    """
+    from dar_backup.config_settings import ConfigSettings
+    config = ConfigSettings(env.config_file)
+    logfile_dir = os.path.dirname(os.path.realpath(config.logfile_location))
+
+    log_file = os.path.join(logfile_dir, "test_main_clean.log")
+    dar_line    = "2026-01-01 12:00:00,000 - INFO - <File example.txt>\n"
+    kept_line   = "2026-01-01 12:00:00,000 - WARNING - Disk nearly full\n"
+    with open(log_file, "w") as f:
+        f.write(dar_line + kept_line)
+
+    saved_argv = sys.argv[:]
+    sys.argv = ["clean-log", "-f", log_file, "--config-file", env.config_file]
+    try:
+        clean_log_module.main()   # returns normally — no sys.exit on success
+    finally:
+        sys.argv = saved_argv
+
+    with open(log_file) as f:
+        cleaned = f.read()
+    os.remove(log_file)
+
+    assert "<File example.txt>" not in cleaned, "dar INFO line must be stripped"
+    assert "Disk nearly full" in cleaned, "WARNING line must be preserved"
+
+    out = capsys.readouterr().out
+    assert "cleaned" in out.lower() or "successfully" in out.lower(), (
+        f"expected success message; got: {out!r}"
+    )
