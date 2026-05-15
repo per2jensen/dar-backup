@@ -439,3 +439,86 @@ def test_clean_log_file_handles_open_error(tmp_path, monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "Error processing file" in captured.out + captured.err
+
+
+# ---------------------------------------------------------------------------
+# In-process tests that cover lines missed because subprocess coverage is not
+# tracked (no sitecustomize.py in the venv).  These call clean_log_file() and
+# the private helpers directly so coverage IS recorded.
+# ---------------------------------------------------------------------------
+
+_DAR_LOG_CONTENT = (
+    # timestamped format → exercises the timestamp branch in _split_level_and_message
+    "2026-01-01 12:00:00,000 - INFO - <File example.txt>\n"
+    "2026-01-01 12:00:00,000 - INFO - <Directory /some/path>\n"
+    "2026-01-01 12:00:00,000 - INFO - Inspecting directory /mnt/data\n"
+    "2026-01-01 12:00:00,000 - INFO - Finished Inspecting /mnt/data\n"
+    # non-timestamped format → exercises the else branch
+    "INFO - <Attributes modified>\n"
+    "INFO - </File>\n"
+    # lines that must be KEPT
+    "2026-01-01 12:00:00,000 - WARNING - Disk nearly full\n"
+    "ERROR - Something failed badly\n"
+)
+
+
+def test_clean_log_file_in_process_removes_dar_lines(tmp_path, capsys):
+    """
+    Call clean_log_file() directly in-process.
+
+    Covers: _split_level_and_message (53-65), _should_remove_line (68-72),
+    and the non-dry-run write path in clean_log_file (105-110).
+    """
+    log_file = tmp_path / "dar.log"
+    log_file.write_text(_DAR_LOG_CONTENT)
+
+    clean_log_module.clean_log_file(str(log_file))
+
+    cleaned = log_file.read_text()
+    for marker in ["<File", "<Directory", "Inspecting directory", "Finished Inspecting", "<Attributes", "</File"]:
+        assert marker not in cleaned, f"dar line with '{marker}' should have been removed"
+    assert "WARNING - Disk nearly full" in cleaned
+    assert "ERROR - Something failed badly" in cleaned
+    captured = capsys.readouterr()
+    assert "Successfully cleaned" in captured.out
+
+
+def test_clean_log_file_in_process_dry_run(tmp_path, capsys):
+    """
+    Call clean_log_file(dry_run=True) directly in-process.
+
+    Covers: the dry-run print (line 92) and the dry-run reading loop (98-102).
+    """
+    log_file = tmp_path / "dar.log"
+    log_file.write_text(_DAR_LOG_CONTENT)
+    original = log_file.read_text()
+
+    clean_log_module.clean_log_file(str(log_file), dry_run=True)
+
+    # File must be unchanged
+    assert log_file.read_text() == original
+
+    captured = capsys.readouterr()
+    out = captured.out
+    assert "Performing a dry run" in out
+    assert "Would remove" in out
+
+
+def test_clean_log_file_write_permission_denied_in_process(tmp_path, capsys):
+    """
+    Call clean_log_file() (not dry_run) on a file that has read but no write
+    permission.
+
+    Covers: the write-permission guard (lines 87-88).
+    """
+    log_file = tmp_path / "readonly.log"
+    log_file.write_text(_DAR_LOG_CONTENT)
+    os.chmod(log_file, stat.S_IRUSR)  # readable, not writable
+    try:
+        with pytest.raises(SystemExit) as exc:
+            clean_log_module.clean_log_file(str(log_file))
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        assert "No write permission" in captured.out + captured.err
+    finally:
+        os.chmod(log_file, stat.S_IRUSR | stat.S_IWUSR)

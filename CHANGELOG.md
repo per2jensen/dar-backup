@@ -3,7 +3,17 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.4 - 
+## v2-1.1.5 - not released
+
+### Added
+
+- More PITR test cases
+
+### Changed
+
+- Discord report refactored, now much more readable
+
+## v2-1.1.4 - 2026-05-07
 
 - set LANG=C in command_runner to ensure dar delivers stats
 

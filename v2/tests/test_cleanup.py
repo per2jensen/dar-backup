@@ -1005,3 +1005,550 @@ def test_delete_catalog_handles_exception(monkeypatch):
 
     assert result is False
     assert mock_logger.error.called
+
+
+# ---------------------------------------------------------------------------
+# In-process integration tests using real `dar` archives.
+# Subprocess coverage is not tracked in this project (no sitecustomize.py),
+# so these tests call cleanup module functions directly to record coverage.
+# ---------------------------------------------------------------------------
+
+import dar_backup.cleanup as _cleanup_mod
+
+
+def _make_real_archive(runner, env, backup_type: str, date_str: str, base_archive: str = None) -> str:
+    """
+    Create a real dar archive with an old-style date name and register it in
+    the manager catalog.  Returns the archive base path (without .N.dar).
+
+    The name format is example_{type}_{YYYY-MM-DD} (no sequence suffix) so
+    that:
+      - delete_old_backups() can parse the date via strptime('%Y-%m-%d')
+      - is_safe_filename() accepts the resulting .N.dar slice name
+    """
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    base = os.path.join(env.backup_dir, f"example_{backup_type}_{date_str}")
+    cmd = [
+        "dar", "-c", base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ]
+    if base_archive:
+        cmd.extend(["-A", base_archive])
+    r = runner.run(cmd, timeout=300)
+    assert r.returncode == 0, f"dar {backup_type} creation failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+    return base
+
+
+def test_cleanup_delete_old_diff_in_process(setup_environment, env):
+    """
+    Call delete_old_backups() directly (in-process) with a real old-dated DIFF
+    archive.  Verifies the slice is removed from disk and from the catalog.
+
+    Covers: delete_old_backups scanning loop (124, 129), file deletion (138-154),
+    and the catalog removal call (166).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2020-01-01")
+    diff_base = _make_real_archive(runner, env, "DIFF", "2020-01-01", base_archive=full_base)
+
+    diff_slice = diff_base + ".1.dar"
+    assert os.path.exists(diff_slice), "DIFF slice must exist before cleanup"
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_old_backups(
+            backup_dir=env.backup_dir,
+            age=30,
+            backup_type="DIFF",
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+            backup_definition="example",
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    assert not os.path.exists(diff_slice), "Old DIFF slice should have been deleted"
+    full_slice = full_base + ".1.dar"
+    assert os.path.exists(full_slice), "FULL archive must NOT be deleted by DIFF cleanup"
+    env.logger.info("delete_old_backups() removed old DIFF slice ✓")
+
+
+def test_cleanup_delete_old_incr_in_process(setup_environment, env):
+    """
+    Call delete_old_backups() directly (in-process) with a real old-dated INCR
+    archive.  Covers the INCR branch of the scanning loop.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2019-06-15")
+    incr_base = _make_real_archive(runner, env, "INCR", "2019-06-15", base_archive=full_base)
+
+    incr_slice = incr_base + ".1.dar"
+    assert os.path.exists(incr_slice)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_old_backups(
+            backup_dir=env.backup_dir,
+            age=15,
+            backup_type="INCR",
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+            backup_definition="example",
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    assert not os.path.exists(incr_slice), "Old INCR slice should have been deleted"
+    env.logger.info("delete_old_backups() removed old INCR slice ✓")
+
+
+def test_cleanup_delete_old_dry_run_in_process(setup_environment, env):
+    """
+    Call delete_old_backups(dry_run=True) in-process with an old-dated DIFF.
+    The slice must remain on disk.
+
+    Covers: the dry_run logger line inside the archive_deleted loop (line 164).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2018-03-10")
+    diff_base = _make_real_archive(runner, env, "DIFF", "2018-03-10", base_archive=full_base)
+
+    diff_slice = diff_base + ".1.dar"
+    assert os.path.exists(diff_slice)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_old_backups(
+            backup_dir=env.backup_dir,
+            age=30,
+            backup_type="DIFF",
+            args=SimpleNamespace(config_file=env.config_file, dry_run=True),
+            backup_definition="example",
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    assert os.path.exists(diff_slice), "Dry-run must NOT delete the DIFF slice"
+    env.logger.info("delete_old_backups(dry_run=True) preserved old DIFF slice ✓")
+
+
+def test_cleanup_delete_archive_in_process(setup_environment, env):
+    """
+    Call delete_archive() directly (in-process) with a real dar archive.
+
+    Covers: the entire delete_archive() body (lines 175-211) including the
+    scandir loop, safe_remove_file(), delete_catalog(), and _delete_par2_files().
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2021-07-04")
+    full_slice = full_base + ".1.dar"
+    assert os.path.exists(full_slice)
+
+    archive_name = os.path.basename(full_base)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_archive(
+            backup_dir=env.backup_dir,
+            archive_name=archive_name,
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    assert not os.path.exists(full_slice), "delete_archive() should have removed the FULL slice"
+    env.logger.info("delete_archive() removed real FULL archive ✓")
+
+
+def test_cleanup_delete_archive_dry_run_in_process(setup_environment, env):
+    """
+    Call delete_archive() with dry_run=True on a real dar archive.
+    The slice must remain on disk; only logging must happen.
+
+    Covers: dry_run branch inside the scandir loop (190-191) and the
+    'would run manager' log after files_deleted is set (204).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2017-05-20")
+    full_slice = full_base + ".1.dar"
+    assert os.path.exists(full_slice)
+
+    archive_name = os.path.basename(full_base)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_archive(
+            backup_dir=env.backup_dir,
+            archive_name=archive_name,
+            args=SimpleNamespace(config_file=env.config_file, dry_run=True),
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    assert os.path.exists(full_slice), "dry_run must NOT delete the FULL slice"
+    env.logger.info("delete_archive(dry_run=True) preserved real FULL slice ✓")
+
+
+def test_cleanup_delete_archive_no_matching_files_in_process(setup_environment, env):
+    """
+    Call delete_archive() with an archive name that matches no files in backup_dir.
+    Verifies the 'No .dar files matched' branch is reached.
+
+    Covers: line 208 (no-match log inside delete_archive).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_archive(
+            backup_dir=env.backup_dir,
+            archive_name="example_DIFF_1999-12-31",   # nothing with this name exists
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+
+    env.logger.info("delete_archive() 'no files matched' path reached ✓")
+
+
+def test_cleanup_delete_old_backups_skips_nonfile_and_other_def_in_process(setup_environment, env):
+    """
+    Verify delete_old_backups() skips non-file entries and files from other
+    backup definitions when backup_definition is specified.
+
+    Covers: line 124 (continue for non-file entry) and line 129 (continue when
+    filename does not start with backup_definition).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    # Non-file entry: a subdirectory inside backup_dir triggers line 124
+    subdir = os.path.join(env.backup_dir, "subdir_triggers_nonfile_skip")
+    os.makedirs(subdir, exist_ok=True)
+
+    # File from a different definition triggers line 129
+    other_def_file = os.path.join(env.backup_dir, "other_DIFF_2010-06-01.1.dar")
+    with open(other_def_file, "w") as f:
+        f.write("dummy")
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_old_backups(
+            backup_dir=env.backup_dir,
+            age=30,
+            backup_type="DIFF",
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+            backup_definition="example",
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        if os.path.exists(other_def_file):
+            os.remove(other_def_file)
+        if os.path.exists(subdir):
+            os.rmdir(subdir)
+
+    # other_def_file must NOT have been deleted (wrong definition)
+    env.logger.info("delete_old_backups() skipped subdir and other-def file ✓")
+
+
+def test_cleanup_delete_archive_skips_nonfile_in_process(setup_environment, env):
+    """
+    Verify delete_archive() skips non-file entries in the backup_dir scan.
+
+    Covers: line 184 (continue for non-file entry inside delete_archive scandir loop).
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2016-09-11")
+    full_slice = full_base + ".1.dar"
+    assert os.path.exists(full_slice)
+
+    archive_name = os.path.basename(full_base)
+
+    # Subdirectory inside backup_dir: triggers the non-file continue at line 184
+    subdir = os.path.join(env.backup_dir, "subdir_triggers_nonfile_skip_in_delete_archive")
+    os.makedirs(subdir, exist_ok=True)
+
+    saved_logger, saved_runner = _cleanup_mod.logger, _cleanup_mod.runner
+    try:
+        _cleanup_mod.logger = env.logger
+        _cleanup_mod.runner = runner
+        _cleanup_mod.delete_archive(
+            backup_dir=env.backup_dir,
+            archive_name=archive_name,
+            args=SimpleNamespace(config_file=env.config_file, dry_run=False),
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        if os.path.exists(subdir):
+            os.rmdir(subdir)
+
+    assert not os.path.exists(full_slice), "FULL slice must be deleted despite the subdir being present"
+    env.logger.info("delete_archive() skipped subdir correctly ✓")
+
+
+def test_cleanup_main_specific_archive_in_process(setup_environment, env):
+    """
+    Call main() in-process with --cleanup-specific-archives pointing to a real
+    DIFF archive.  Real manager removes the catalog entry; real dar slice is
+    deleted from disk.
+
+    Covers: the specific-archive deletion path in main() (lines 397-399).
+
+    sys.argv is saved and restored directly — no pytest monkeypatch is used so
+    that coverage is tracked in-process.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2014-03-22")
+    diff_base = _make_real_archive(runner, env, "DIFF", "2014-03-22", base_archive=full_base)
+    diff_slice = diff_base + ".1.dar"
+    assert os.path.exists(diff_slice)
+
+    archive_name = os.path.basename(diff_base)   # e.g. "example_DIFF_2014-03-22"
+
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--cleanup-specific-archives", archive_name,
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0, f"main() exited with {exc_info.value.code}"
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    assert not os.path.exists(diff_slice), "main() --cleanup-specific-archives must delete the DIFF slice"
+    env.logger.info("main() --cleanup-specific-archives deleted real DIFF archive ✓")
+
+
+def test_cleanup_main_age_based_in_process(setup_environment, env):
+    """
+    Call main() in-process without --cleanup-specific-archives so the age-based
+    cleanup else-branch runs for the 'example' definition.  The old DIFF archive
+    is deleted by delete_old_backups() via manager (real catalog removal).
+
+    Covers: the age-based cleanup else branch in main() (lines 402-420).
+
+    sys.argv is saved and restored directly — no pytest monkeypatch is used.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    full_base = _make_real_archive(runner, env, "FULL", "2013-11-05")
+    diff_base = _make_real_archive(runner, env, "DIFF", "2013-11-05", base_archive=full_base)
+    diff_slice = diff_base + ".1.dar"
+    assert os.path.exists(diff_slice)
+
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0, f"main() exited with {exc_info.value.code}"
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    assert not os.path.exists(diff_slice), "Age-based cleanup in main() must delete the old DIFF slice"
+    env.logger.info("main() age-based cleanup deleted old DIFF archive ✓")
+
+
+def test_cleanup_main_list_in_process(setup_environment, env):
+    """
+    Call main() in-process with --list so the list_backups() branch runs.
+
+    Covers: line 401 (list_backups() call in the elif args.list: branch).
+    """
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--list",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    env.logger.info("main() --list path reached ✓")
+
+
+def test_cleanup_main_all_definitions_no_dash_d_in_process(setup_environment, env):
+    """
+    Call main() in-process without -d so main() walks backup.d to discover all
+    backup definitions, covering the os.walk branch.
+
+    Uses --dry-run so no actual archives are deleted.
+
+    Covers: lines 407-409 (os.walk loop over backup_d_dir).
+    """
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--dry-run",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    env.logger.info("main() walk-all-definitions (no -d) path reached ✓")
+
+
+def test_cleanup_main_test_mode_no_specific_archives_in_process(setup_environment, env):
+    """
+    Call main() in-process with --test-mode and no --cleanup-specific-archives so the
+    'No --cleanup-specific-archives provided' info log is reached.
+
+    Uses --dry-run so no actual archives are deleted.
+
+    Covers: line 381 (test-mode no-specific-archives logger.info).
+    """
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--test-mode",
+        "--dry-run",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    env.logger.info("main() --test-mode no-specific-archives log reached ✓")
+
+
+def test_cleanup_main_alternate_archive_dir_in_process(setup_environment, env):
+    """
+    Call main() in-process with --alternate-archive-dir pointing to a real
+    directory.  main() reassigns config_settings.backup_dir to that path.
+
+    Uses --dry-run so no actual archives are deleted.
+
+    Covers: line 378 (config_settings.backup_dir = args.alternate_archive_dir).
+    """
+    alternate_dir = os.path.join(env.test_dir, "backups-alternate-inprocess")
+    os.makedirs(alternate_dir, exist_ok=True)
+
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--alternate-archive-dir", alternate_dir,
+        "--dry-run",
+        "-d", "example",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 0
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    env.logger.info("main() --alternate-archive-dir assignment path reached ✓")
+
+
+def test_cleanup_main_invalid_config_covers_error_path_in_process(env):
+    """
+    Call main() in-process with a non-existent config-file path.  Because pytest
+    sets PYTEST_CURRENT_TEST, the 'test_mode or PYTEST_CURRENT_TEST' guard at
+    line 300 is True, so the program continues past the missing-file check and
+    then fails when ConfigSettings() cannot parse the file, triggering the
+    ConfigSettings exception handler.
+
+    Covers: lines 300-301 (missing-file guard with PYTEST_CURRENT_TEST),
+            lines 309-314 (ConfigSettings exception handler → sys.exit(127)).
+    """
+    saved_logger = _cleanup_mod.logger
+    saved_runner = _cleanup_mod.runner
+    saved_argv = sys.argv[:]
+    sys.argv = [
+        "cleanup",
+        "--config-file", "/nonexistent/path/to/dar-backup.conf",
+        "--log-stdout",
+    ]
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            _cleanup_mod.main()
+        assert exc_info.value.code == 127, (
+            f"Expected exit 127 for bad config, got {exc_info.value.code}"
+        )
+    finally:
+        _cleanup_mod.logger = saved_logger
+        _cleanup_mod.runner = saved_runner
+        sys.argv = saved_argv
+
+    env.logger.info("main() invalid-config error path (lines 300-301, 309-314) reached ✓")
