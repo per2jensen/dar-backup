@@ -3,7 +3,17 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.4 - 
+## v2-1.1.5 - not released
+
+### Added
+
+- Added 10 PITR integration tests covering multi-archive boundary selection, catalog fallback, archive relocation, fail-fast on missing slices, timezone-aware --when, multi-path restore, catalog isolation across backup definitions, and single-version file restore.
+
+### Changed
+
+- Discord report now much more readable
+
+## v2-1.1.4 - 2026-05-07
 
 ### Added
 

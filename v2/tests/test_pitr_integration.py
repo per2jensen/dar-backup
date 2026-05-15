@@ -2036,3 +2036,989 @@ def test_pitr_special_char_filenames(setup_environment, env):
     env.logger.info("T1 restore verified: %d special-char files have modified content", len(original_content))
 
     env.logger.info("Special character filename PITR test passed.")
+
+
+def test_pitr_multiple_full_archives_boundary(setup_environment, env):
+    """
+    Verify PITR selects the correct archive chain when two FULL archives exist
+    and --when timestamps straddle the FULL rotation boundary.
+
+    Chain: FULL_1 -> DIFF_1 -> INCR_1 -> FULL_2 -> DIFF_2
+
+    Four restores cover every selection region:
+    - after DIFF_1 : FULL_1 + DIFF_1 (must not bleed into INCR_1 or FULL_2)
+    - after INCR_1 : FULL_1 + DIFF_1 + INCR_1
+    - after FULL_2 : FULL_2 only (new FULL resets the chain)
+    - after DIFF_2 : FULL_2 + DIFF_2
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = ["dar", "-c", base, "-N", "-B", env.dar_rc, "-B", backup_def_path,
+               "-Q", "compress-exclusion", "verbose"]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    def write_file(name, content):
+        fpath = os.path.join(env.data_dir, name)
+        with open(fpath, "w") as f:
+            f.write(content)
+        clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+
+    def restore_and_verify(when_dt, label, expected):
+        restore_dir = os.path.join(env.test_dir, f"restore_{label}")
+        os.makedirs(restore_dir, exist_ok=True)
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", env.data_dir.lstrip("/"),
+            "--when", when_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", restore_dir, "--log-stdout",
+        ], timeout=300)
+        assert r.returncode == 0, f"PITR {label} failed: {r.stderr}"
+        base = os.path.join(restore_dir, env.data_dir.lstrip("/"))
+        actual = {}
+        if os.path.isdir(base):
+            for name in sorted(os.listdir(base)):
+                fpath = os.path.join(base, name)
+                if os.path.isfile(fpath):
+                    with open(fpath) as f:
+                        actual[name] = f.read()
+        assert actual == expected, (
+            f"PITR {label} mismatch.\nExpected: {expected}\nActual:   {actual}"
+        )
+        env.logger.info("PITR %s verified: %d files correct.", label, len(actual))
+
+    # --- FULL_1: tracked=state-1, stable=stable ---
+    write_file("tracked.txt", "state-1")
+    write_file("stable.txt", "stable-content")
+    full1 = create_archive("FULL")
+
+    # --- DIFF_1: tracked -> state-2 ---
+    write_file("tracked.txt", "state-2")
+    diff1 = create_archive("DIFF", base_archive=full1)
+    t_diff1 = clock.tick(PITR_STEP_SECONDS)
+
+    # --- INCR_1: tracked -> state-3, new file ---
+    write_file("tracked.txt", "state-3")
+    write_file("incr1_only.txt", "incr1-content")
+    _ = create_archive("INCR", base_archive=diff1)
+    t_incr1 = clock.tick(PITR_STEP_SECONDS)
+
+    # --- FULL_2: fresh full over current disk state ---
+    write_file("tracked.txt", "state-4")
+    write_file("full2_only.txt", "full2-content")
+    full2 = create_archive("FULL")
+    t_full2 = clock.tick(PITR_STEP_SECONDS)
+
+    # --- DIFF_2: tracked -> state-5 ---
+    write_file("tracked.txt", "state-5")
+    create_archive("DIFF", base_archive=full2)
+    t_diff2 = clock.tick(PITR_STEP_SECONDS)
+
+    restore_and_verify(t_diff1, "diff1", {
+        "tracked.txt": "state-2",
+        "stable.txt": "stable-content",
+        # incr1_only and full2_only not yet created at this point
+    })
+    restore_and_verify(t_incr1, "incr1", {
+        "tracked.txt": "state-3",
+        "stable.txt": "stable-content",
+        "incr1_only.txt": "incr1-content",
+        # full2_only not yet created
+    })
+    restore_and_verify(t_full2, "full2", {
+        # FULL_2 captured everything on disk: tracked=4, stable, incr1_only, full2_only
+        "tracked.txt": "state-4",
+        "stable.txt": "stable-content",
+        "incr1_only.txt": "incr1-content",
+        "full2_only.txt": "full2-content",
+    })
+    restore_and_verify(t_diff2, "diff2", {
+        "tracked.txt": "state-5",
+        "stable.txt": "stable-content",
+        "incr1_only.txt": "incr1-content",
+        "full2_only.txt": "full2-content",
+    })
+
+
+def test_pitr_detect_directory_via_catalog_fallback(setup_environment, env):
+    """
+    Verify _detect_directory() falls back to dar -l catalog inspection when the
+    path no longer exists on the live filesystem.
+
+    This is the disaster-recovery path: a directory is backed up, then deleted
+    from disk entirely. PITR must detect it as a directory by inspecting the
+    archive catalog (not os.path.isdir) and restore the full subtree.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    # Create a subdirectory with a nested file tree inside data_dir.
+    mydir = os.path.join(env.data_dir, "mydir")
+    subdir = os.path.join(mydir, "sub")
+    os.makedirs(subdir, exist_ok=True)
+    hello_path = os.path.join(mydir, "hello.txt")
+    world_path = os.path.join(subdir, "world.txt")
+    with open(hello_path, "w") as f:
+        f.write("hello")
+    clock.touch(hello_path, seconds=PITR_STEP_SECONDS)
+    with open(world_path, "w") as f:
+        f.write("world")
+    clock.touch(world_path, seconds=PITR_STEP_SECONDS)
+
+    # FULL backup capturing mydir and its contents.
+    archive_time = clock.tick(PITR_STEP_SECONDS)
+    ts = archive_time.strftime("%Y-%m-%d_%H%M%S")
+    archive_base = os.path.join(env.backup_dir, f"example_FULL_{ts}_01")
+    r = runner.run([
+        "dar", "-c", archive_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ], timeout=300)
+    assert r.returncode == 0, f"dar FULL failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", archive_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+    t_full = clock.tick(PITR_STEP_SECONDS)
+
+    # Remove mydir from the live filesystem — simulates accidental deletion or
+    # restoring on a different machine where the path does not exist.
+    shutil.rmtree(mydir)
+    assert not os.path.exists(mydir), "mydir must be absent before PITR to exercise the fallback"
+
+    # PITR: restore the deleted directory. _detect_directory() will find that
+    # os.path.isdir() returns False and fall back to dar -l on the FULL archive.
+    restore_dir = os.path.join(env.test_dir, "restore_catalog_fallback")
+    os.makedirs(restore_dir, exist_ok=True)
+    restore_path = mydir.lstrip("/")
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", restore_path,
+        "--when", t_full.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR catalog-fallback restore failed: {r.stderr}"
+
+    restored_mydir = os.path.join(restore_dir, restore_path)
+    assert os.path.isdir(restored_mydir), f"mydir not restored: {restored_mydir}"
+
+    hello_restored = os.path.join(restored_mydir, "hello.txt")
+    assert os.path.exists(hello_restored), "hello.txt missing after catalog-fallback restore"
+    with open(hello_restored) as f:
+        assert f.read() == "hello", "hello.txt content wrong after catalog-fallback restore"
+
+    world_restored = os.path.join(restored_mydir, "sub", "world.txt")
+    assert os.path.exists(world_restored), "sub/world.txt missing after catalog-fallback restore"
+    with open(world_restored) as f:
+        assert f.read() == "world", "sub/world.txt content wrong after catalog-fallback restore"
+
+    env.logger.info("_detect_directory catalog fallback verified: mydir and subtree restored correctly.")
+
+
+def test_pitr_after_archive_path_relocation(setup_environment, env):
+    """
+    Verify PITR works after archive slices are physically moved to a new
+    directory and the catalog is updated via manager --relocate-archive-path.
+
+    This is the standard storage-migration workflow: archives are moved,
+    the catalog is updated, and PITR must still find and restore the data.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = ["dar", "-c", base, "-N", "-B", env.dar_rc, "-B", backup_def_path,
+               "-Q", "compress-exclusion", "verbose"]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    # FULL with one tracked file.
+    fpath = os.path.join(env.data_dir, "relocate_me.txt")
+    with open(fpath, "w") as f:
+        f.write("original-content")
+    clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+    full_archive = create_archive("FULL")
+    t_full = clock.tick(PITR_STEP_SECONDS)
+
+    # DIFF: modify the file so the catalog holds two versions.
+    with open(fpath, "w") as f:
+        f.write("modified-content")
+    clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+    create_archive("DIFF", base_archive=full_archive)
+
+    # Move all .dar slices to a new directory, leaving the .db in place.
+    new_backup_dir = os.path.join(env.test_dir, "backups_new")
+    os.makedirs(new_backup_dir, exist_ok=True)
+    for fname in os.listdir(env.backup_dir):
+        if fname.endswith(".dar"):
+            shutil.move(
+                os.path.join(env.backup_dir, fname),
+                os.path.join(new_backup_dir, fname),
+            )
+
+    # Update the catalog so it points at the new location.
+    r = runner.run([
+        "manager",
+        "--relocate-archive-path", env.backup_dir, new_backup_dir,
+        "--backup-def", "example",
+        "--config-file", env.config_file,
+        "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"--relocate-archive-path failed: {r.stderr}"
+
+    # PITR at FULL time must restore original-content via the new path.
+    restore_dir = os.path.join(env.test_dir, "restore_relocated")
+    os.makedirs(restore_dir, exist_ok=True)
+    restore_path = fpath.lstrip("/")
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", restore_path,
+        "--when", t_full.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR after relocation failed: {r.stderr}"
+
+    restored_file = os.path.join(restore_dir, restore_path)
+    assert os.path.exists(restored_file), f"Restored file missing: {restored_file}"
+    with open(restored_file) as f:
+        assert f.read() == "original-content", "Wrong content after relocation + PITR"
+
+    env.logger.info("Archive path relocation + PITR verified successfully.")
+
+
+def test_pitr_report_and_pitr_report_first(setup_environment, env):
+    """
+    Verify --pitr-report and --pitr-report-first with real archives:
+
+    1. --pitr-report returns 0 when the archive chain is intact.
+    2. --pitr-report returns non-zero when the FULL slice is missing.
+    3. --pitr-report-first with an intact chain proceeds to restore correctly.
+    4. --pitr-report-first aborts without restoring when the chain is broken.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = ["dar", "-c", base, "-N", "-B", env.dar_rc, "-B", backup_def_path,
+               "-Q", "compress-exclusion", "verbose"]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    fpath = os.path.join(env.data_dir, "report_test.txt")
+    with open(fpath, "w") as f:
+        f.write("v1")
+    clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+    full_archive = create_archive("FULL")
+
+    with open(fpath, "w") as f:
+        f.write("v2")
+    clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+    create_archive("DIFF", base_archive=full_archive)
+    t_diff = clock.tick(PITR_STEP_SECONDS)
+
+    restore_path = env.data_dir.lstrip("/")
+    when_str = t_diff.strftime("%Y-%m-%d %H:%M:%S")
+    full_slice = f"{full_archive}.1.dar"
+    assert os.path.exists(full_slice), f"FULL slice not found: {full_slice}"
+    full_slice_hidden = full_slice + ".hidden"
+
+    # --- Part 1: intact chain → rc 0 ---
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--pitr-report",
+        "--restore-path", restore_path,
+        "--when", when_str,
+        "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"--pitr-report with intact chain failed: {r.stderr}"
+    env.logger.info("--pitr-report intact chain: rc=0 ✓")
+
+    # --- Part 2: missing FULL slice → rc != 0 ---
+    os.rename(full_slice, full_slice_hidden)
+    try:
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--pitr-report",
+            "--restore-path", restore_path,
+            "--when", when_str,
+            "--log-stdout",
+        ], timeout=300)
+        assert r.returncode != 0, "--pitr-report should fail when FULL slice is missing"
+        env.logger.info("--pitr-report missing slice: rc=%d (non-zero) ✓", r.returncode)
+    finally:
+        os.rename(full_slice_hidden, full_slice)
+
+    # --- Part 3: --pitr-report-first with intact chain → restores content ---
+    restore_dir_ok = os.path.join(env.test_dir, "restore_report_first_ok")
+    os.makedirs(restore_dir_ok, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--pitr-report-first",
+        "--restore-path", restore_path,
+        "--when", when_str,
+        "--target", restore_dir_ok,
+        "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"--pitr-report-first with intact chain failed: {r.stderr}"
+    restored_file = os.path.join(restore_dir_ok, restore_path, "report_test.txt")
+    assert os.path.exists(restored_file), "Restored file missing after --pitr-report-first"
+    with open(restored_file) as f:
+        assert f.read() == "v2", "Wrong content after --pitr-report-first restore"
+    env.logger.info("--pitr-report-first intact chain: rc=0, content verified ✓")
+
+    # --- Part 4: --pitr-report-first with missing slice → aborts, no restore ---
+    os.rename(full_slice, full_slice_hidden)
+    try:
+        restore_dir_fail = os.path.join(env.test_dir, "restore_report_first_fail")
+        os.makedirs(restore_dir_fail, exist_ok=True)
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--pitr-report-first",
+            "--restore-path", restore_path,
+            "--when", when_str,
+            "--target", restore_dir_fail,
+            "--log-stdout",
+        ], timeout=300)
+        assert r.returncode != 0, "--pitr-report-first should abort when FULL slice is missing"
+        # The nested restore path must not exist — no restore was attempted.
+        restored_data_dir = os.path.join(restore_dir_fail, restore_path)
+        assert not os.path.exists(restored_data_dir), (
+            "--pitr-report-first restored files despite a broken chain"
+        )
+        env.logger.info("--pitr-report-first broken chain: rc=%d, no restore ✓", r.returncode)
+    finally:
+        os.rename(full_slice_hidden, full_slice)
+
+
+def test_pitr_when_before_any_archive(setup_environment, env):
+    """
+    Verify PITR returns a non-zero exit code when --when is earlier than every
+    archive in the catalog.
+
+    _select_archive_chain returns an empty list when no FULL archive exists at
+    or before the requested timestamp, and _restore_with_dar propagates rc=1.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        path = os.path.join(env.data_dir, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    fpath = os.path.join(env.data_dir, "file.txt")
+    with open(fpath, "w") as f:
+        f.write("content")
+
+    # Record a timestamp that will be strictly before the archive is created.
+    before_archive = clock.tick(PITR_STEP_SECONDS)
+
+    # Create the FULL archive after recording before_archive.
+    clock.touch(fpath, seconds=PITR_STEP_SECONDS)
+    ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+    archive_base = os.path.join(env.backup_dir, f"example_FULL_{ts}_01")
+    r = runner.run([
+        "dar", "-c", archive_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ], timeout=300)
+    assert r.returncode == 0, f"dar FULL failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", archive_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+
+    # PITR with --when before any archive: _select_archive_chain returns [] → rc 1.
+    restore_dir = os.path.join(env.test_dir, "restore_before_any")
+    os.makedirs(restore_dir, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", env.data_dir.lstrip("/"),
+        "--when", before_archive.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode != 0, (
+        f"PITR should fail when --when precedes every archive, got rc={r.returncode}"
+    )
+    env.logger.info(
+        "PITR with --when before any archive returned rc=%d (non-zero) ✓", r.returncode
+    )
+
+
+def test_pitr_multipath_dir_and_file(setup_environment, env):
+    """
+    Verify that a single --restore-path call with both a directory and a file
+    path exercises the for-path loop in _restore_with_dar(), taking the directory
+    branch for one path and the file-version branch for the other.
+
+    Archive layout:
+        FULL: subdir/fileA.txt = "fileA-v1", top_file.txt = "top-v1"
+        DIFF: subdir/fileA.txt = "fileA-v2"  (top_file unchanged)
+
+    Restore --when = just before DIFF (→ FULL only for both paths).
+    Expected: subdir/fileA.txt = "fileA-v1", top_file.txt = "top-v1".
+    """
+    _apply_fast_pitr_config(env)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    # Clear default test data so archives only contain our controlled files.
+    for name in os.listdir(env.data_dir):
+        p = os.path.join(env.data_dir, name)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+
+    subdir = os.path.join(env.data_dir, "subdir")
+    os.makedirs(subdir, exist_ok=True)
+    file_a = os.path.join(subdir, "fileA.txt")
+    top_file = os.path.join(env.data_dir, "top_file.txt")
+
+    with open(file_a, "w") as f:
+        f.write("fileA-v1")
+    with open(top_file, "w") as f:
+        f.write("top-v1")
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = [
+            "dar", "-c", base, "-N", "-B", env.dar_rc,
+            "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    full1 = create_archive("FULL")
+    t_after_full = clock.tick(PITR_STEP_SECONDS)  # timestamp to use as --when
+
+    # DIFF: update file_a (top_file unchanged)
+    with open(file_a, "w") as f:
+        f.write("fileA-v2")
+    clock.touch(file_a, seconds=PITR_STEP_SECONDS)
+    _ = create_archive("DIFF", base_archive=full1)
+
+    restore_dir = os.path.join(env.test_dir, "restore_multipath")
+    os.makedirs(restore_dir, exist_ok=True)
+
+    subdir_rp = subdir.lstrip("/")
+    top_file_rp = top_file.lstrip("/")
+
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", subdir_rp, top_file_rp,
+        "--when", t_after_full.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR multi-path failed: {r.stderr}"
+
+    restored_a = os.path.join(restore_dir, subdir_rp, "fileA.txt")
+    restored_top = os.path.join(restore_dir, top_file_rp)
+
+    with open(restored_a) as f:
+        assert f.read() == "fileA-v1", "subdir/fileA.txt should be v1 from FULL"
+    with open(restored_top) as f:
+        assert f.read() == "top-v1", "top_file.txt should be top-v1 from FULL"
+
+    env.logger.info("Multi-path PITR (dir + file) ✓")
+
+
+def test_pitr_file_single_version_full_only(setup_environment, env):
+    """
+    Verify PITR restores a file that exists only in the FULL archive when
+    dar_manager -f returns a single candidate.
+
+    stable.txt is written once into FULL and never modified — the DIFF archive
+    treats it as unchanged and does not contain a new copy.  Requesting PITR at
+    DIFF-time for stable.txt must restore the FULL version.
+    """
+    _apply_fast_pitr_config(env)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        p = os.path.join(env.data_dir, name)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+
+    stable = os.path.join(env.data_dir, "stable.txt")
+    changed = os.path.join(env.data_dir, "changed.txt")
+    with open(stable, "w") as f:
+        f.write("stable-content")
+    with open(changed, "w") as f:
+        f.write("changed-v1")
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = [
+            "dar", "-c", base, "-N", "-B", env.dar_rc,
+            "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    full1 = create_archive("FULL")
+
+    # Modify changed.txt; stable.txt stays identical → DIFF won't store a new copy.
+    with open(changed, "w") as f:
+        f.write("changed-v2")
+    clock.touch(changed, seconds=PITR_STEP_SECONDS)
+    _ = create_archive("DIFF", base_archive=full1)
+    t_after_diff = clock.tick(PITR_STEP_SECONDS)
+
+    restore_dir = os.path.join(env.test_dir, "restore_single_ver")
+    os.makedirs(restore_dir, exist_ok=True)
+
+    stable_rp = stable.lstrip("/")
+
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", stable_rp,
+        "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR single-version file failed: {r.stderr}"
+
+    restored = os.path.join(restore_dir, stable_rp)
+    with open(restored) as f:
+        content = f.read()
+    assert content == "stable-content", (
+        f"Expected 'stable-content', got '{content}'"
+    )
+    env.logger.info("Single-version file PITR (FULL-only candidate) ✓")
+
+
+def test_pitr_two_backup_definitions_catalog_isolation(setup_environment, env):
+    """
+    Verify that two independent backup definitions ('home' and 'proj') each have
+    their own catalog database and that PITR for one definition does not bleed
+    into the other.
+
+    Each definition gets a FULL archive with a unique file.  PITR for 'home'
+    must restore only the home file; PITR for 'proj' must restore only the proj
+    file.
+    """
+    _apply_fast_pitr_config(env)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+
+    # ------------------------------------------------------------------
+    # Create two data trees and their backup definitions
+    # ------------------------------------------------------------------
+    home_data = os.path.join(env.test_dir, "home_data")
+    proj_data = os.path.join(env.test_dir, "proj_data")
+    os.makedirs(home_data, exist_ok=True)
+    os.makedirs(proj_data, exist_ok=True)
+
+    home_file = os.path.join(home_data, "home_secret.txt")
+    proj_file = os.path.join(proj_data, "proj_readme.txt")
+    with open(home_file, "w") as f:
+        f.write("home-only-content")
+    with open(proj_file, "w") as f:
+        f.write("proj-only-content")
+
+    def make_def(name: str, data_dir: str) -> str:
+        """Write a backup definition file and return its path."""
+        content = (
+            f"-R /\n"
+            f"-s 10G\n"
+            f"-z6\n"
+            f"-am\n"
+            f"--cache-directory-tagging\n"
+            f"-g {data_dir}\n"
+        ).replace("-g /tmp/", "-g tmp/")
+        def_path = os.path.join(env.backup_d_dir, name)
+        with open(def_path, "w") as f:
+            f.write(content)
+        return def_path
+
+    home_def = make_def("home", home_data)
+    proj_def = make_def("proj", proj_data)
+
+    # Create separate catalog DBs for each definition
+    for backup_def in ("home", "proj"):
+        r = runner.run([
+            "manager", "--create-db", "--backup-def", backup_def,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r.returncode == 0, f"--create-db --backup-def {backup_def} failed: {r.stderr}"
+
+    seq = [0]
+
+    def create_archive(backup_type: str, backup_def_name: str, def_path: str, base_archive=None) -> str:
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"{backup_def_name}_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = [
+            "dar", "-c", base, "-N", "-B", env.dar_rc,
+            "-B", def_path, "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} ({backup_def_name}) failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add ({backup_def_name}) failed: {r2.stderr}"
+        return base
+
+    _ = create_archive("FULL", "home", home_def)
+    t_home_full = clock.tick(PITR_STEP_SECONDS)
+    _ = create_archive("FULL", "proj", proj_def)
+    t_proj_full = clock.tick(PITR_STEP_SECONDS)
+
+    # ------------------------------------------------------------------
+    # PITR for 'home' — must restore home_file, must NOT restore proj_file
+    # ------------------------------------------------------------------
+    restore_home = os.path.join(env.test_dir, "restore_home")
+    os.makedirs(restore_home, exist_ok=True)
+    home_rp = home_file.lstrip("/")
+
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "home",
+        "--restore-path", home_rp,
+        "--when", t_home_full.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_home, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR home failed: {r.stderr}"
+
+    restored_home_file = os.path.join(restore_home, home_rp)
+    assert os.path.exists(restored_home_file), "home_secret.txt should be restored"
+    with open(restored_home_file) as f:
+        assert f.read() == "home-only-content"
+
+    proj_in_home_restore = os.path.join(restore_home, proj_file.lstrip("/"))
+    assert not os.path.exists(proj_in_home_restore), (
+        "proj file must NOT appear in the home restore"
+    )
+
+    # ------------------------------------------------------------------
+    # PITR for 'proj' — must restore proj_file, must NOT restore home_file
+    # ------------------------------------------------------------------
+    restore_proj = os.path.join(env.test_dir, "restore_proj")
+    os.makedirs(restore_proj, exist_ok=True)
+    proj_rp = proj_file.lstrip("/")
+
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "proj",
+        "--restore-path", proj_rp,
+        "--when", t_proj_full.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_proj, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR proj failed: {r.stderr}"
+
+    restored_proj_file = os.path.join(restore_proj, proj_rp)
+    assert os.path.exists(restored_proj_file), "proj_readme.txt should be restored"
+    with open(restored_proj_file) as f:
+        assert f.read() == "proj-only-content"
+
+    home_in_proj_restore = os.path.join(restore_proj, home_file.lstrip("/"))
+    assert not os.path.exists(home_in_proj_restore), (
+        "home file must NOT appear in the proj restore"
+    )
+
+    env.logger.info("Two-definition catalog isolation ✓")
+
+
+def test_pitr_file_failfast_missing_diff_slice(setup_environment, env):
+    """
+    Verify that when the best-match archive slice for a file is the DIFF archive
+    but its .dar slice is missing, PITR returns non-zero and does NOT silently
+    fall back to restoring the FULL version.
+
+    The fail-fast break at lines 1217-1221 of manager.py must prevent the older
+    FULL version from leaking through as a silent success.
+    """
+    _apply_fast_pitr_config(env)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    for name in os.listdir(env.data_dir):
+        p = os.path.join(env.data_dir, name)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+
+    target_file = os.path.join(env.data_dir, "target.txt")
+    with open(target_file, "w") as f:
+        f.write("target-v1")
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = [
+            "dar", "-c", base, "-N", "-B", env.dar_rc,
+            "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    full1 = create_archive("FULL")
+    # Modify target_file so DIFF contains a new version.
+    with open(target_file, "w") as f:
+        f.write("target-v2")
+    clock.touch(target_file, seconds=PITR_STEP_SECONDS)
+    diff1 = create_archive("DIFF", base_archive=full1)
+    t_after_diff = clock.tick(PITR_STEP_SECONDS)
+
+    # Find the first .dar slice of the DIFF archive and hide it.
+    diff_slice = diff1 + ".1.dar"
+    assert os.path.exists(diff_slice), f"Expected DIFF slice at {diff_slice}"
+    diff_slice_hidden = diff_slice + ".hidden"
+    os.rename(diff_slice, diff_slice_hidden)
+
+    restore_dir = os.path.join(env.test_dir, "restore_failfast")
+    os.makedirs(restore_dir, exist_ok=True)
+    target_rp = target_file.lstrip("/")
+
+    try:
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", target_rp,
+            "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", restore_dir, "--log-stdout",
+        ], timeout=300)
+        assert r.returncode != 0, (
+            f"PITR should fail when DIFF slice is missing, got rc={r.returncode}"
+        )
+
+        # The file must NOT be restored (no silent FULL fallback).
+        restored = os.path.join(restore_dir, target_rp)
+        assert not os.path.exists(restored), (
+            "target.txt must NOT be restored from FULL after DIFF slice failure"
+        )
+        env.logger.info("Fail-fast on missing DIFF slice ✓ (rc=%d)", r.returncode)
+    finally:
+        os.rename(diff_slice_hidden, diff_slice)
+
+
+def test_pitr_timezone_aware_when(setup_environment, env):
+    """
+    Verify that a timezone-aware --when string (UTC offset) is correctly handled
+    by _normalize_when_dt() when selecting the archive chain.
+
+    Two archives are created:
+        FULL:  target.txt = "v1"
+        DIFF:  target.txt = "v2"
+
+    Two PITR calls use UTC-formatted --when strings:
+        1. Between FULL and DIFF → expect "v1"
+        2. After DIFF            → expect "v2"
+    """
+    _apply_fast_pitr_config(env)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+
+    from datetime import timezone
+
+    def local_to_utc_str(dt: datetime) -> str:
+        """Convert a naive local datetime to a UTC offset string that _normalize_when_dt() understands."""
+        local_tz = datetime.now(timezone.utc).astimezone().tzinfo
+        aware_local = dt.replace(tzinfo=local_tz)
+        utc_dt = aware_local.astimezone(timezone.utc)
+        return utc_dt.strftime("%Y-%m-%d %H:%M:%S+00:00")
+
+    for name in os.listdir(env.data_dir):
+        p = os.path.join(env.data_dir, name)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+
+    target_file = os.path.join(env.data_dir, "target.txt")
+    with open(target_file, "w") as f:
+        f.write("v1")
+
+    seq = [0]
+
+    def create_archive(backup_type, base_archive=None):
+        seq[0] += 1
+        ts = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+        base = os.path.join(env.backup_dir, f"example_{backup_type}_{ts}_{seq[0]:02d}")
+        cmd = [
+            "dar", "-c", base, "-N", "-B", env.dar_rc,
+            "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        ]
+        if base_archive:
+            cmd.extend(["-A", base_archive])
+        r = runner.run(cmd, timeout=300)
+        assert r.returncode == 0, f"dar {backup_type} failed: {r.stderr}"
+        r2 = runner.run([
+            "manager", "--add-specific-archive", base,
+            "--config-file", env.config_file, "--log-stdout",
+        ], timeout=300)
+        assert r2.returncode == 0, f"manager add failed: {r2.stderr}"
+        return base
+
+    full1 = create_archive("FULL")
+    t_between = clock.tick(PITR_STEP_SECONDS)  # after FULL, before DIFF
+
+    with open(target_file, "w") as f:
+        f.write("v2")
+    clock.touch(target_file, seconds=PITR_STEP_SECONDS)
+    _ = create_archive("DIFF", base_archive=full1)
+    t_after_diff = clock.tick(PITR_STEP_SECONDS)
+
+    target_rp = target_file.lstrip("/")
+
+    # --- Restore 1: --when between FULL and DIFF (UTC string) → expect v1 ---
+    restore_v1 = os.path.join(env.test_dir, "restore_tz_v1")
+    os.makedirs(restore_v1, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", target_rp,
+        "--when", local_to_utc_str(t_between),
+        "--target", restore_v1, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR tz v1 failed: {r.stderr}"
+
+    restored_v1 = os.path.join(restore_v1, target_rp)
+    with open(restored_v1) as f:
+        content = f.read()
+    assert content == "v1", f"Expected 'v1' from FULL, got '{content}'"
+    env.logger.info("Timezone-aware PITR → v1 (between FULL/DIFF) ✓")
+
+    # --- Restore 2: --when after DIFF (UTC string) → expect v2 ---
+    restore_v2 = os.path.join(env.test_dir, "restore_tz_v2")
+    os.makedirs(restore_v2, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", target_rp,
+        "--when", local_to_utc_str(t_after_diff),
+        "--target", restore_v2, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR tz v2 failed: {r.stderr}"
+
+    restored_v2 = os.path.join(restore_v2, target_rp)
+    with open(restored_v2) as f:
+        content = f.read()
+    assert content == "v2", f"Expected 'v2' from DIFF, got '{content}'"
+    env.logger.info("Timezone-aware PITR → v2 (after DIFF) ✓")
