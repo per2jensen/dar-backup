@@ -479,18 +479,18 @@ def xtest_dar_with_superblock_corruption(guestmount_disk):
 
     # Start dar backup
     backup_cmd = f"dar -c {backup_name} -R {guestmount_disk}"
-    backup_proc = subprocess.Popen(backup_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+backup_proc = subprocess.Popen(backup_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.set
 
     # Allow backup to start (avoid fixed sleeps in tests)
 
     # Unmount to safely corrupt the superblock
-    subprocess.run(f"guestunmount {guestmount_disk}", shell=True, check=True)
+subprocess.run(f"guestunmount {guestmount_disk}", shell=False, check=True)
 
     # Corrupt superblock directly
     corrupt_superblock(DISK_IMG)
 
     # Attempt remount (expected to fail)
-    mount_result = subprocess.run(f"guestmount -a {DISK_IMG} -m /dev/sda {MOUNT_POINT}", shell=True)
+mount_result = subprocess.run(f"guestmount -a {DISK_IMG} -m /dev/sda {MOUNT_POINT}", shell=False)
     if mount_result.returncode != 0:
         print("[+] Mount failed as expected due to superblock corruption.")
 
