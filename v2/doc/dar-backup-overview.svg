@@ -1,620 +1,2235 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1600" height="1080" viewBox="0 0 1600 1080" version="1.1"
-     xmlns="http://www.w3.org/2000/svg">
-  <title>dar-backup overview</title>
-
-  <defs>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1600"
+   height="1200"
+   viewBox="0 0 1600 1200"
+   version="1.1"
+   id="svg138"
+   sodipodi:docname="dar-backup-overview.svg"
+   inkscape:version="1.4.3 (fcd0343856, 2026-01-01)"
+   inkscape:export-filename="dar-backup-overview-small.png"
+   inkscape:export-xdpi="21.6"
+   inkscape:export-ydpi="21.6"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview138"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="0.7972629"
+     inkscape:cx="812.15368"
+     inkscape:cy="652.23153"
+     inkscape:window-width="2251"
+     inkscape:window-height="1214"
+     inkscape:window-x="1060"
+     inkscape:window-y="66"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg138"
+     showgrid="false" />
+  <title
+     id="title1">dar-backup overview</title>
+  <defs
+     id="defs2">
     <!-- Arrowhead marker -->
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0,0 10,3.5 0,7" fill="#555"/>
+    <marker
+       id="arrow"
+       markerWidth="10"
+       markerHeight="7"
+       refX="9"
+       refY="3.5"
+       orient="auto">
+      <polygon
+         points="0,0 10,3.5 0,7"
+         fill="#555"
+         id="polygon1" />
     </marker>
     <!-- Dashed arrowhead for cleanup -->
-    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0,0 10,3.5 0,7" fill="#c53030"/>
+    <marker
+       id="arrow-red"
+       markerWidth="10"
+       markerHeight="7"
+       refX="9"
+       refY="3.5"
+       orient="auto">
+      <polygon
+         points="0,0 10,3.5 0,7"
+         fill="#c53030"
+         id="polygon2" />
     </marker>
     <!-- Drop shadow filter -->
-    <filter id="shadow" x="-5%" y="-5%" width="115%" height="120%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#00000022"/>
+    <filter
+       id="shadow"
+       x="-0.010416667"
+       y="-0.022727273"
+       width="1.0208333"
+       height="1.0454545">
+      <feDropShadow
+         dx="2"
+         dy="2"
+         stdDeviation="3"
+         flood-color="#00000022" />
     </filter>
+    <marker
+       id="arrow-3"
+       markerWidth="10"
+       markerHeight="7"
+       refX="9"
+       refY="3.5"
+       orient="auto">
+      <polygon
+         points="10,3.5 0,7 0,0 "
+         fill="#555555"
+         id="polygon1-6" />
+    </marker>
   </defs>
-
   <!-- ═══════════════════════════════════════════════
        BACKGROUND
   ══════════════════════════════════════════════════ -->
-  <rect width="1600" height="1080" fill="#f0ece4"/>
-
+  <rect
+     width="1600"
+     height="1200"
+     fill="#f0ece4"
+     id="rect2" />
   <!-- ═══════════════════════════════════════════════
        TITLE
   ══════════════════════════════════════════════════ -->
-  <text x="800" y="38" text-anchor="middle"
-        font-family="sans-serif" font-weight="bold" font-size="22" fill="#1a1a2e">
+  <text
+     x="800"
+     y="38"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="22"
+     fill="#1a1a2e"
+     id="text2">
     dar-backup — Architecture Overview
   </text>
-  <text x="800" y="60" text-anchor="middle"
-        font-family="sans-serif" font-size="13" fill="#555">
+  <text
+     x="800"
+     y="60"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="13"
+     fill="#555"
+     id="text3">
     Flow · Backup types · Directories · Logging · Cleanup · Systemd
   </text>
-
   <!-- ═══════════════════════════════════════════════
        ROW DIVIDERS with inline section labels
   ══════════════════════════════════════════════════ -->
-
   <!-- Row 1 label: CONFIGURATION -->
-  <line x1="30" y1="72" x2="1570" y2="72" stroke="#bbb" stroke-width="1"/>
-  <rect x="30" y="63" width="120" height="16" rx="4" fill="#e2e8f0"/>
-  <text x="90" y="75" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="10" fill="#444" letter-spacing="1">CONFIGURATION</text>
-
+  <line
+     x1="30"
+     y1="72"
+     x2="1570"
+     y2="72"
+     stroke="#bbb"
+     stroke-width="1"
+     id="line3" />
+  <rect
+     x="30"
+     y="63"
+     width="120"
+     height="16"
+     rx="4"
+     fill="#e2e8f0"
+     id="rect3" />
+  <text
+     x="90"
+     y="75"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="10"
+     fill="#444"
+     letter-spacing="1"
+     id="text4">CONFIGURATION</text>
   <!-- Row 2 label: EXECUTION -->
-  <line x1="30" y1="217" x2="1570" y2="217" stroke="#bbb" stroke-width="1"/>
-  <rect x="30" y="208" width="90" height="16" rx="4" fill="#e2e8f0"/>
-  <text x="75" y="220" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="10" fill="#444" letter-spacing="1">EXECUTION</text>
-
+  <line
+     x1="30"
+     y1="217"
+     x2="1570"
+     y2="217"
+     stroke="#bbb"
+     stroke-width="1"
+     id="line4" />
+  <rect
+     x="30"
+     y="208"
+     width="90"
+     height="16"
+     rx="4"
+     fill="#e2e8f0"
+     id="rect4" />
+  <text
+     x="75"
+     y="220"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="10"
+     fill="#444"
+     letter-spacing="1"
+     id="text5">EXECUTION</text>
   <!-- Row 3 label: ARCHIVES -->
-  <line x1="30" y1="360" x2="1570" y2="360" stroke="#bbb" stroke-width="1"/>
-  <rect x="30" y="351" width="80" height="16" rx="4" fill="#e2e8f0"/>
-  <text x="70" y="363" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="10" fill="#444" letter-spacing="1">ARCHIVES</text>
-
+  <line
+     x1="30"
+     y1="360"
+     x2="1570"
+     y2="360"
+     stroke="#bbb"
+     stroke-width="1"
+     id="line5" />
+  <rect
+     x="30"
+     y="351"
+     width="80"
+     height="16"
+     rx="4"
+     fill="#e2e8f0"
+     id="rect5" />
+  <text
+     x="70"
+     y="363"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="10"
+     fill="#444"
+     letter-spacing="1"
+     id="text6">ARCHIVES</text>
   <!-- Row 4 label: DIRECTORIES -->
-  <line x1="30" y1="743" x2="1570" y2="743" stroke="#bbb" stroke-width="1"/>
-  <rect x="30" y="734" width="100" height="16" rx="4" fill="#e2e8f0"/>
-  <text x="80" y="746" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="10" fill="#444" letter-spacing="1">DIRECTORIES</text>
-
+  <line
+     x1="30"
+     y1="743"
+     x2="1570"
+     y2="743"
+     stroke="#bbb"
+     stroke-width="1"
+     id="line6" />
+  <rect
+     x="30"
+     y="734"
+     width="100"
+     height="16"
+     rx="4"
+     fill="#e2e8f0"
+     id="rect6" />
+  <text
+     x="80"
+     y="746"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="10"
+     fill="#444"
+     letter-spacing="1"
+     id="text7">DIRECTORIES</text>
   <!-- Row 5 label: TOOLS -->
-  <line x1="30" y1="877" x2="1570" y2="877" stroke="#bbb" stroke-width="1"/>
-  <rect x="30" y="868" width="60" height="16" rx="4" fill="#e2e8f0"/>
-  <text x="60" y="880" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="10" fill="#444" letter-spacing="1">TOOLS</text>
-
-
+  <line
+     x1="30"
+     y1="877"
+     x2="1570"
+     y2="877"
+     stroke="#bbb"
+     stroke-width="1"
+     id="line7" />
+  <rect
+     x="30"
+     y="868"
+     width="60"
+     height="16"
+     rx="4"
+     fill="#e2e8f0"
+     id="rect7" />
+  <text
+     x="60"
+     y="880"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="10"
+     fill="#444"
+     letter-spacing="1"
+     id="text8">TOOLS</text>
   <!-- ═══════════════════════════════════════════════
        ROW 1 — CONFIGURATION BOXES
   ══════════════════════════════════════════════════ -->
-
   <!-- dar-backup.conf -->
-  <rect x="30" y="75" width="380" height="110" rx="10" ry="10"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="3" filter="url(#shadow)"/>
-  <text x="220" y="100" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#2b6cb0">dar-backup.conf</text>
-  <text x="50" y="122" font-family="monospace" font-size="12" fill="#333">
+  <rect
+     x="30"
+     y="75"
+     width="380"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect8" />
+  <text
+     x="220"
+     y="100"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#2b6cb0"
+     id="text9">dar-backup.conf</text>
+  <text
+     x="50"
+     y="122"
+     font-family="monospace"
+     font-size="12"
+     fill="#333"
+     id="text10">
     ~/.config/dar-backup/dar-backup.conf
   </text>
-  <text x="50" y="142" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="142"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text11">
     Directories · retention ages · PAR2 settings
   </text>
-  <text x="50" y="160" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="160"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text12">
     Logging · timeout · Discord webhook
   </text>
-
   <!-- Backup definitions -->
-  <rect x="440" y="75" width="360" height="110" rx="10" ry="10"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="3" filter="url(#shadow)"/>
-  <text x="620" y="100" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#2b6cb0">Backup Definitions</text>
-  <text x="460" y="122" font-family="monospace" font-size="12" fill="#333">
+  <rect
+     x="440"
+     y="75"
+     width="360"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect12" />
+  <text
+     x="620"
+     y="100"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#2b6cb0"
+     id="text13">Backup Definitions</text>
+  <text
+     x="460"
+     y="122"
+     font-family="monospace"
+     font-size="12"
+     fill="#333"
+     id="text14">
     ~/.config/dar-backup/backup.d/
   </text>
-  <text x="460" y="142" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="460"
+     y="142"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text15">
     One file per definition: photos, documents…
   </text>
-  <text x="460" y="160" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="460"
+     y="160"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text16">
     Defines root dir, includes/excludes, per-backup PAR2
   </text>
-
   <!-- dar-backup CLI box -->
-  <rect x="830" y="75" width="360" height="110" rx="10" ry="10"
-        fill="#fffaf5" stroke="#b7791f" stroke-width="3" filter="url(#shadow)"/>
-  <text x="1010" y="100" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#b7791f">dar-backup CLI</text>
-  <text x="850" y="122" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="830"
+     y="75"
+     width="360"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#fffaf5"
+     stroke="#b7791f"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect16" />
+  <text
+     x="1010"
+     y="100"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text17">dar-backup CLI</text>
+  <text
+     x="850"
+     y="122"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text18">
     --full-backup  /  --diff-backup  /  --incr-backup
   </text>
-  <text x="850" y="142" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="850"
+     y="142"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text19">
     --list  /  --list-contents  /  --restore  ...
   </text>
-  <text x="850" y="160" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="850"
+     y="160"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text20">
     Optional: -d &lt;definition&gt; to target one definition
   </text>
-
   <!-- manager CLI box -->
-  <rect x="1220" y="75" width="350" height="110" rx="10" ry="10"
-        fill="#fffaf5" stroke="#b7791f" stroke-width="3" filter="url(#shadow)"/>
-  <text x="1395" y="100" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#b7791f">manager CLI</text>
-  <text x="1240" y="122" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="1220"
+     y="75"
+     width="350"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#fffaf5"
+     stroke="#b7791f"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect20" />
+  <text
+     x="1395"
+     y="100"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text21">manager CLI</text>
+  <text
+     x="1240"
+     y="122"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text22">
     Wraps dar_manager catalog databases
   </text>
-  <text x="1240" y="142" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="1240"
+     y="142"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text23">
     --create-db  /  --add-dir  /  --list
   </text>
-  <text x="1240" y="160" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="1240"
+     y="160"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text24">
     Point-in-time recovery (PITR) via catalog
   </text>
-
   <!-- Arrows from conf → CLI -->
-  <line x1="410" y1="130" x2="828" y2="130" stroke="#555" stroke-width="1.5"
-        stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <line
+     x1="306.94531"
+     y1="130"
+     x2="827.63153"
+     y2="130"
+     stroke="#555555"
+     stroke-width="1.5"
+     stroke-dasharray="5, 4"
+     marker-end="url(#arrow)"
+     id="line24" />
   <!-- Arrows from backup.d → CLI -->
-  <line x1="800" y1="130" x2="828" y2="130" stroke="#555" stroke-width="1.5"
-        stroke-dasharray="5,4"/>
-
+  <line
+     x1="800"
+     y1="130"
+     x2="828"
+     y2="130"
+     stroke="#555"
+     stroke-width="1.5"
+     stroke-dasharray="5,4"
+     id="line25" />
   <!-- ═══════════════════════════════════════════════
        ROW 2 — EXECUTION FLOW (par2 + systemd)
   ══════════════════════════════════════════════════ -->
-
   <!-- Systemd timers box -->
-  <rect x="30" y="220" width="380" height="110" rx="10" ry="10"
-        fill="#faf5ff" stroke="#6b46c1" stroke-width="3" filter="url(#shadow)"/>
-  <text x="220" y="246" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#6b46c1">systemd Timers (optional)</text>
-  <text x="50" y="268" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="30"
+     y="220"
+     width="380"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#faf5ff"
+     stroke="#6b46c1"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect25" />
+  <text
+     x="220"
+     y="246"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#6b46c1"
+     id="text25">systemd Timers (optional)</text>
+  <text
+     x="50"
+     y="268"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text26">
     dar-full-backup.timer   → yearly (Dec 30)
   </text>
-  <text x="50" y="287" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="287"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text27">
     dar-diff-backup.timer   → monthly (1st)
   </text>
-  <text x="50" y="306" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="306"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text28">
     dar-incr-backup.timer   → every 3 days
   </text>
-
   <!-- PAR2 box -->
-  <rect x="440" y="220" width="360" height="110" rx="10" ry="10"
-        fill="#f0fff4" stroke="#276749" stroke-width="3" filter="url(#shadow)"/>
-  <text x="620" y="246" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#276749">PAR2 Redundancy</text>
-  <text x="460" y="268" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="440"
+     y="220"
+     width="360"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#f0fff4"
+     stroke="#276749"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect28" />
+  <text
+     x="620"
+     y="246"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#276749"
+     id="text29">PAR2 Redundancy</text>
+  <text
+     x="460"
+     y="268"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text30">
     Created after each archive (par2create)
   </text>
-  <text x="460" y="287" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="460"
+     y="287"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text31">
     Configurable ratio per backup type (FULL/DIFF/INCR)
   </text>
-  <text x="460" y="306" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="460"
+     y="306"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text32">
     Optional separate PAR2_DIR · optional verify after create
   </text>
-
   <!-- Restore-test box -->
-  <rect x="830" y="220" width="360" height="110" rx="10" ry="10"
-        fill="#fffff0" stroke="#975a16" stroke-width="3" filter="url(#shadow)"/>
-  <text x="1010" y="246" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#975a16">Restore Test (built-in)</text>
-  <text x="850" y="268" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="830"
+     y="220"
+     width="360"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#fffff0"
+     stroke="#975a16"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect32" />
+  <text
+     x="1010"
+     y="246"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#975a16"
+     id="text33">Restore Test (built-in)</text>
+  <text
+     x="850"
+     y="268"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text34">
     Random files extracted &amp; compared after each backup
   </text>
-  <text x="850" y="287" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="850"
+     y="287"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text35">
     Configurable exclude prefixes / suffixes / regex
   </text>
-  <text x="850" y="306" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="850"
+     y="306"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text36">
     Uses TEST_RESTORE_DIR · PITR test supported
   </text>
-
   <!-- Logging box (narrowed to make room for Discord) -->
-  <rect x="1220" y="220" width="180" height="110" rx="10" ry="10"
-        fill="#fff5f0" stroke="#9c4221" stroke-width="3" filter="url(#shadow)"/>
-  <text x="1310" y="246" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#9c4221">Logging</text>
-  <text x="1234" y="268" font-family="sans-serif" font-size="11" fill="#555">dar-backup.log</text>
-  <text x="1234" y="285" font-family="sans-serif" font-size="11" fill="#555">dar-backup-commands.log</text>
-  <text x="1234" y="302" font-family="sans-serif" font-size="11" fill="#555">dar-backup.trace.log</text>
-  <text x="1234" y="319" font-family="sans-serif" font-size="10" fill="#888">(all rotating, size-capped)</text>
-
+  <rect
+     x="1220"
+     y="220"
+     width="180"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#fff5f0"
+     stroke="#9c4221"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect36" />
+  <text
+     x="1310"
+     y="246"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#9c4221"
+     id="text37">Logging</text>
+  <text
+     x="1234"
+     y="268"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text38">dar-backup.log</text>
+  <text
+     x="1234"
+     y="285"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text39">dar-backup-commands.log</text>
+  <text
+     x="1234"
+     y="302"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text40">dar-backup.trace.log</text>
+  <text
+     x="1234"
+     y="319"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#888"
+     id="text41">(all rotating, size-capped)</text>
   <!-- Discord notification box -->
-  <rect x="1415" y="220" width="155" height="110" rx="10" ry="10"
-        fill="#f0f0ff" stroke="#5865F2" stroke-width="3" filter="url(#shadow)"/>
-  <text x="1493" y="246" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#5865F2">Discord</text>
-  <text x="1428" y="266" font-family="sans-serif" font-size="11" fill="#555">Webhook on success</text>
-  <text x="1428" y="282" font-family="sans-serif" font-size="11" fill="#555">or failure</text>
-  <text x="1428" y="300" font-family="sans-serif" font-size="11" fill="#888">dar-backup · cleanup</text>
-  <text x="1428" y="316" font-family="sans-serif" font-size="11" fill="#888">clean-log</text>
-
+  <rect
+     x="1415"
+     y="220"
+     width="155"
+     height="110"
+     rx="10"
+     ry="10"
+     fill="#f0f0ff"
+     stroke="#5865F2"
+     stroke-width="3"
+     filter="url(#shadow)"
+     id="rect41" />
+  <text
+     x="1493"
+     y="246"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#5865F2"
+     id="text42">Discord</text>
+  <text
+     x="1428"
+     y="266"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text43">Webhook on success</text>
+  <text
+     x="1428"
+     y="282"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text44">or failure</text>
+  <text
+     x="1428"
+     y="300"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#888"
+     id="text45">dar-backup · cleanup</text>
+  <text
+     x="1428"
+     y="316"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#888"
+     id="text46">clean-log</text>
   <!-- Arrow: systemd → dar-backup CLI -->
-  <line x1="410" y1="275" x2="828" y2="130" stroke="#6b46c1" stroke-width="1.5"
-        stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-
   <!-- Arrow: dar-backup CLI → PAR2 -->
-  <line x1="1010" y1="185" x2="620" y2="220" stroke="#555" stroke-width="1.5"
-        marker-end="url(#arrow)"/>
-
   <!-- Arrow: dar-backup CLI → Restore test -->
-  <line x1="1010" y1="185" x2="1010" y2="218" stroke="#555" stroke-width="1.5"
-        marker-end="url(#arrow)"/>
-
+  <line
+     x1="1010"
+     y1="185"
+     x2="1010"
+     y2="218"
+     stroke="#555"
+     stroke-width="1.5"
+     marker-end="url(#arrow)"
+     id="line48" />
   <!-- Arrow: dar-backup CLI → Logging -->
-  <line x1="1190" y1="155" x2="1290" y2="218" stroke="#555" stroke-width="1.5"
-        marker-end="url(#arrow)"/>
-
+  <line
+     x1="1142.8594"
+     y1="163.2485"
+     x2="1289.6686"
+     y2="217.90401"
+     stroke="#555555"
+     stroke-width="1.5"
+     marker-end="url(#arrow)"
+     id="line49" />
   <!-- Arrow: manager → Logging -->
-  <line x1="1395" y1="155" x2="1310" y2="218" stroke="#555" stroke-width="1.5"
-        marker-end="url(#arrow)"/>
-
+  <line
+     x1="1362.4957"
+     y1="168.60052"
+     x2="1309.6061"
+     y2="218.25824"
+     stroke="#555555"
+     stroke-width="1.5"
+     marker-end="url(#arrow)"
+     id="line50" />
   <!-- Arrow: dar-backup CLI → Discord (dashed blue) -->
-  <line x1="1190" y1="140" x2="1460" y2="218" stroke="#5865F2" stroke-width="1.8"
-        stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-
+  <line
+     x1="1142.6364"
+     y1="151.78119"
+     x2="1459.8896"
+     y2="218.07011"
+     stroke="#5865f2"
+     stroke-width="1.8"
+     stroke-dasharray="5, 4"
+     marker-end="url(#arrow)"
+     id="line51" />
   <!-- Arrow: cleanup tool → Discord -->
-  <path d="M 200,882 Q 200,820 1493,332" stroke="#5865F2" stroke-width="1.4"
-        stroke-dasharray="4,4" fill="none" marker-end="url(#arrow)"/>
-
-
   <!-- ═══════════════════════════════════════════════
        ROW 3 — ARCHIVE LANES (two definitions shown)
   ══════════════════════════════════════════════════ -->
-
   <!-- ── Lane background: photos ── -->
-  <rect x="30" y="365" width="1540" height="155" rx="12" ry="12"
-        fill="#ffffff" stroke="#aaa" stroke-width="1.5" opacity="0.5"/>
-  <text x="50" y="389" font-family="sans-serif" font-weight="bold" font-size="14" fill="#333">
+  <rect
+     x="30"
+     y="365"
+     width="1540"
+     height="155"
+     rx="12"
+     ry="12"
+     fill="#ffffff"
+     stroke="#aaa"
+     stroke-width="1.5"
+     opacity="0.5"
+     id="rect51" />
+  <text
+     x="50"
+     y="389"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#333"
+     id="text51">
     Backup definition: photos
   </text>
-
   <!-- FULL -->
-  <rect x="70" y="400" width="120" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="130" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">FULL</text>
-  <text x="130" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="70"
+     y="400"
+     width="120"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect52" />
+  <text
+     x="130"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text52">FULL</text>
+  <text
+     x="130"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text53">
     baseline
   </text>
-
   <!-- DIFF × 2 -->
-  <rect x="240" y="400" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="295" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">DIFF</text>
-  <text x="295" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="240"
+     y="400"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect53" />
+  <text
+     x="295"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text54">DIFF</text>
+  <text
+     x="295"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text55">
     vs last FULL
   </text>
-  <rect x="380" y="400" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="435" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">DIFF</text>
-  <text x="435" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="380"
+     y="400"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect55" />
+  <text
+     x="435"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text56">DIFF</text>
+  <text
+     x="435"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text57">
     vs last FULL
   </text>
-
   <!-- INCR × 3 -->
-  <rect x="540" y="400" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="595" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="595" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="540"
+     y="400"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect57" />
+  <text
+     x="595"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text58">INCR</text>
+  <text
+     x="595"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text59">
     vs last DIFF
   </text>
-  <rect x="680" y="400" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="735" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="735" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="680"
+     y="400"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect59" />
+  <text
+     x="735"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text60">INCR</text>
+  <text
+     x="735"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text61">
     vs last DIFF
   </text>
-  <rect x="820" y="400" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="875" y="424" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="875" y="443" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="820"
+     y="400"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect61" />
+  <text
+     x="875"
+     y="424"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text62">INCR</text>
+  <text
+     x="875"
+     y="443"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text63">
     vs last DIFF
   </text>
-
   <!-- "..." continuation -->
-  <text x="970" y="432" font-family="sans-serif" font-weight="bold" font-size="20" fill="#aaa">
+  <text
+     x="970"
+     y="432"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="20"
+     fill="#aaa"
+     id="text64">
     . . .
   </text>
-
   <!-- PAR2 icon strip (photos) -->
-  <rect x="70" y="465" width="120" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="130" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="70"
+     y="465"
+     width="120"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect64" />
+  <text
+     x="130"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text65">
     .par2 files
   </text>
-  <rect x="240" y="465" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="295" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="240"
+     y="465"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect65" />
+  <text
+     x="295"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text66">
     .par2 files
   </text>
-  <rect x="380" y="465" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="435" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="380"
+     y="465"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect66" />
+  <text
+     x="435"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text67">
     .par2 files
   </text>
-  <rect x="540" y="465" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="595" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="540"
+     y="465"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect67" />
+  <text
+     x="595"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text68">
     .par2 files
   </text>
-  <rect x="680" y="465" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="735" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="680"
+     y="465"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect68" />
+  <text
+     x="735"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text69">
     .par2 files
   </text>
-  <rect x="820" y="465" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="875" y="481" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="820"
+     y="465"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect69" />
+  <text
+     x="875"
+     y="481"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text70">
     .par2 files
   </text>
-
   <!-- ── Lane background: documents ── -->
-  <rect x="30" y="535" width="1540" height="155" rx="12" ry="12"
-        fill="#ffffff" stroke="#aaa" stroke-width="1.5" opacity="0.5"/>
-  <text x="50" y="559" font-family="sans-serif" font-weight="bold" font-size="14" fill="#333">
+  <rect
+     x="30"
+     y="535"
+     width="1540"
+     height="155"
+     rx="12"
+     ry="12"
+     fill="#ffffff"
+     stroke="#aaa"
+     stroke-width="1.5"
+     opacity="0.5"
+     id="rect70" />
+  <text
+     x="50"
+     y="559"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#333"
+     id="text71">
     Backup definition: documents
   </text>
-
   <!-- FULL -->
-  <rect x="70" y="568" width="120" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="130" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">FULL</text>
-  <text x="130" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="70"
+     y="568"
+     width="120"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect71" />
+  <text
+     x="130"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text72">FULL</text>
+  <text
+     x="130"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text73">
     baseline
   </text>
   <!-- DIFF × 2 -->
-  <rect x="240" y="568" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="295" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">DIFF</text>
-  <text x="295" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="240"
+     y="568"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect73" />
+  <text
+     x="295"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text74">DIFF</text>
+  <text
+     x="295"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text75">
     vs last FULL
   </text>
-  <rect x="380" y="568" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="435" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">DIFF</text>
-  <text x="435" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="380"
+     y="568"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect75" />
+  <text
+     x="435"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text76">DIFF</text>
+  <text
+     x="435"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text77">
     vs last FULL
   </text>
   <!-- INCR × 3 -->
-  <rect x="540" y="568" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="595" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="595" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="540"
+     y="568"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect77" />
+  <text
+     x="595"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text78">INCR</text>
+  <text
+     x="595"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text79">
     vs last DIFF
   </text>
-  <rect x="680" y="568" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="735" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="735" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="680"
+     y="568"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect79" />
+  <text
+     x="735"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text80">INCR</text>
+  <text
+     x="735"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text81">
     vs last DIFF
   </text>
-  <rect x="820" y="568" width="110" height="55" rx="8" ry="8"
-        fill="#f5faff" stroke="#2b6cb0" stroke-width="2.5"/>
-  <text x="875" y="592" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="13" fill="#2b6cb0">INCR</text>
-  <text x="875" y="611" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#555">
+  <rect
+     x="820"
+     y="568"
+     width="110"
+     height="55"
+     rx="8"
+     ry="8"
+     fill="#f5faff"
+     stroke="#2b6cb0"
+     stroke-width="2.5"
+     id="rect81" />
+  <text
+     x="875"
+     y="592"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="13"
+     fill="#2b6cb0"
+     id="text82">INCR</text>
+  <text
+     x="875"
+     y="611"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#555"
+     id="text83">
     vs last DIFF
   </text>
-
-  <text x="970" y="600" font-family="sans-serif" font-weight="bold" font-size="20" fill="#aaa">
+  <text
+     x="970"
+     y="600"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="20"
+     fill="#aaa"
+     id="text84">
     . . .
   </text>
-
   <!-- PAR2 icon strip (documents) -->
-  <rect x="70" y="633" width="120" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="130" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="70"
+     y="633"
+     width="120"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect84" />
+  <text
+     x="130"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text85">
     .par2 files
   </text>
-  <rect x="240" y="633" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="295" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="240"
+     y="633"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect85" />
+  <text
+     x="295"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text86">
     .par2 files
   </text>
-  <rect x="380" y="633" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="435" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="380"
+     y="633"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect86" />
+  <text
+     x="435"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text87">
     .par2 files
   </text>
-  <rect x="540" y="633" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="595" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="540"
+     y="633"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect87" />
+  <text
+     x="595"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text88">
     .par2 files
   </text>
-  <rect x="680" y="633" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="735" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="680"
+     y="633"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect88" />
+  <text
+     x="735"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text89">
     .par2 files
   </text>
-  <rect x="820" y="633" width="110" height="22" rx="4" ry="4"
-        fill="#e6ffed" stroke="#276749" stroke-width="1.5"/>
-  <text x="875" y="649" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#276749">
+  <rect
+     x="820"
+     y="633"
+     width="110"
+     height="22"
+     rx="4"
+     ry="4"
+     fill="#e6ffed"
+     stroke="#276749"
+     stroke-width="1.5"
+     id="rect89" />
+  <text
+     x="875"
+     y="649"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-size="10"
+     fill="#276749"
+     id="text90">
     .par2 files
   </text>
-
   <!-- More backup definitions hint -->
-  <text x="1060" y="590" font-family="sans-serif" font-size="13" fill="#888"
-        font-style="italic">more definitions…</text>
-
+  <text
+     x="1060"
+     y="590"
+     font-family="sans-serif"
+     font-size="13"
+     fill="#888"
+     font-style="italic"
+     id="text91">more definitions…</text>
   <!-- Constraint note -->
-  <rect x="30" y="702" width="780" height="28" rx="6" fill="#fffbe6" stroke="#d69e2e" stroke-width="1.5"/>
-  <text x="42" y="721" font-family="sans-serif" font-size="12" fill="#744210">
+  <rect
+     x="30"
+     y="702"
+     width="780"
+     height="28"
+     rx="6"
+     fill="#fffbe6"
+     stroke="#d69e2e"
+     stroke-width="1.5"
+     id="rect91" />
+  <text
+     x="42"
+     y="721"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#744210"
+     id="text92">
     ⚠  Constraint: If no DIFF exists, no INCR will be created. Seed a new cycle by running a DIFF first.
   </text>
-
-
   <!-- ═══════════════════════════════════════════════
        ROW 4 — DIRECTORIES
   ══════════════════════════════════════════════════ -->
-
   <!-- BACKUP_DIR -->
-  <rect x="30" y="748" width="280" height="105" rx="10" ry="10"
-        fill="#f7fff5" stroke="#2f855a" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="170" y="772" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="14" fill="#2f855a">BACKUP_DIR</text>
-  <text x="50" y="793" font-family="monospace" font-size="11" fill="#333">
+  <rect
+     x="30"
+     y="748"
+     width="280"
+     height="105"
+     rx="10"
+     ry="10"
+     fill="#f7fff5"
+     stroke="#2f855a"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect92" />
+  <text
+     x="170"
+     y="772"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#2f855a"
+     id="text93">BACKUP_DIR</text>
+  <text
+     x="50"
+     y="793"
+     font-family="monospace"
+     font-size="11"
+     fill="#333"
+     id="text94">
     ~/dar-backup/backups/
   </text>
-  <text x="50" y="812" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="50"
+     y="812"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text95">
     FULL, DIFF, INCR archives
   </text>
-  <text x="50" y="829" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="50"
+     y="829"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text96">
     + .par2 files (unless PAR2_DIR set)
   </text>
-
   <!-- TEST_RESTORE_DIR -->
-  <rect x="330" y="748" width="280" height="105" rx="10" ry="10"
-        fill="#f7fff5" stroke="#2f855a" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="470" y="772" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="14" fill="#2f855a">TEST_RESTORE_DIR</text>
-  <text x="350" y="793" font-family="monospace" font-size="11" fill="#333">
+  <rect
+     x="330"
+     y="748"
+     width="280"
+     height="105"
+     rx="10"
+     ry="10"
+     fill="#f7fff5"
+     stroke="#2f855a"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect96" />
+  <text
+     x="470"
+     y="772"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#2f855a"
+     id="text97">TEST_RESTORE_DIR</text>
+  <text
+     x="350"
+     y="793"
+     font-family="monospace"
+     font-size="11"
+     fill="#333"
+     id="text98">
     ~/dar-backup/restore/
   </text>
-  <text x="350" y="812" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="350"
+     y="812"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text99">
     Temporary restore test target
   </text>
-  <text x="350" y="829" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="350"
+     y="829"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text100">
     Cleaned after each test run
   </text>
-
   <!-- BACKUP.D_DIR -->
-  <rect x="630" y="748" width="280" height="105" rx="10" ry="10"
-        fill="#f7fff5" stroke="#2f855a" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="770" y="772" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="14" fill="#2f855a">BACKUP.D_DIR</text>
-  <text x="650" y="793" font-family="monospace" font-size="11" fill="#333">
+  <rect
+     x="630"
+     y="748"
+     width="280"
+     height="105"
+     rx="10"
+     ry="10"
+     fill="#f7fff5"
+     stroke="#2f855a"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect100" />
+  <text
+     x="770"
+     y="772"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#2f855a"
+     id="text101">BACKUP.D_DIR</text>
+  <text
+     x="650"
+     y="793"
+     font-family="monospace"
+     font-size="11"
+     fill="#333"
+     id="text102">
     ~/.config/dar-backup/backup.d/
   </text>
-  <text x="650" y="812" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="650"
+     y="812"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text103">
     One file per backup definition
   </text>
-  <text x="650" y="829" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="650"
+     y="829"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text104">
     Read at startup by dar-backup
   </text>
-
   <!-- MANAGER_DB_DIR -->
-  <rect x="930" y="748" width="280" height="105" rx="10" ry="10"
-        fill="#f7fff5" stroke="#2f855a" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="1070" y="772" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="14" fill="#2f855a">MANAGER_DB_DIR</text>
-  <text x="950" y="793" font-family="monospace" font-size="11" fill="#333">
+  <rect
+     x="930"
+     y="748"
+     width="280"
+     height="105"
+     rx="10"
+     ry="10"
+     fill="#f7fff5"
+     stroke="#2f855a"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect104" />
+  <text
+     x="1070"
+     y="772"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#2f855a"
+     id="text105">MANAGER_DB_DIR</text>
+  <text
+     x="950"
+     y="793"
+     font-family="monospace"
+     font-size="11"
+     fill="#333"
+     id="text106">
     default: under BACKUP_DIR
   </text>
-  <text x="950" y="812" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="950"
+     y="812"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text107">
     dar_manager catalog databases
   </text>
-  <text x="950" y="829" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="950"
+     y="829"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text108">
     Override with MANAGER_DB_DIR in conf
   </text>
-
   <!-- PAR2_DIR -->
-  <rect x="1230" y="748" width="330" height="105" rx="10" ry="10"
-        fill="#f7fff5" stroke="#2f855a" stroke-width="2.5" filter="url(#shadow)"/>
-  <text x="1395" y="772" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="14" fill="#2f855a">PAR2_DIR  (optional)</text>
-  <text x="1250" y="793" font-family="monospace" font-size="11" fill="#333">
+  <rect
+     x="1230"
+     y="748"
+     width="330"
+     height="105"
+     rx="10"
+     ry="10"
+     fill="#f7fff5"
+     stroke="#2f855a"
+     stroke-width="2.5"
+     filter="url(#shadow)"
+     id="rect108" />
+  <text
+     x="1395"
+     y="772"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="14"
+     fill="#2f855a"
+     id="text109">PAR2_DIR  (optional)</text>
+  <text
+     x="1250"
+     y="793"
+     font-family="monospace"
+     font-size="11"
+     fill="#333"
+     id="text110">
     no default — user configured
   </text>
-  <text x="1250" y="812" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="1250"
+     y="812"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text111">
     Separate location for .par2 files
   </text>
-  <text x="1250" y="829" font-family="sans-serif" font-size="11" fill="#555">
+  <text
+     x="1250"
+     y="829"
+     font-family="sans-serif"
+     font-size="11"
+     fill="#555"
+     id="text112">
     Useful for offsite / different device
   </text>
-
-
   <!-- ═══════════════════════════════════════════════
        ROW 5 — CLEANUP + HELPER TOOLS
   ══════════════════════════════════════════════════ -->
-
   <!-- cleanup CLI -->
-  <rect x="30" y="882" width="520" height="120" rx="10" ry="10"
-        fill="#fff5f5" stroke="#c53030" stroke-width="2.5" stroke-dasharray="8,5"
-        filter="url(#shadow)"/>
-  <text x="290" y="907" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#c53030">cleanup CLI</text>
-  <text x="50" y="928" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="30"
+     y="882"
+     width="520"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fff5f5"
+     stroke="#c53030"
+     stroke-width="2.5"
+     stroke-dasharray="8,5"
+     filter="url(#shadow)"
+     id="rect112" />
+  <text
+     x="290"
+     y="907"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#c53030"
+     id="text113">cleanup CLI</text>
+  <text
+     x="50"
+     y="928"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text114">
     • Deletes DIFF and INCR older than configured age thresholds
   </text>
-  <text x="50" y="947" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="947"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text115">
     • FULL deletion requires explicit --delete-old-full flag
   </text>
-  <text x="50" y="966" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="966"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text116">
     • --cleanup-specific-archives for targeted removal
   </text>
-  <text x="50" y="985" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="50"
+     y="985"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text117">
     • dar-cleanup.timer  runs nightly at 21:07
   </text>
-
   <!-- clean-log helper -->
-  <rect x="580" y="882" width="330" height="120" rx="10" ry="10"
-        fill="#fef9f0" stroke="#b7791f" stroke-width="2" filter="url(#shadow)"/>
-  <text x="745" y="907" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#b7791f">clean-log</text>
-  <text x="600" y="928" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="580"
+     y="882"
+     width="330"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fef9f0"
+     stroke="#b7791f"
+     stroke-width="2"
+     filter="url(#shadow)"
+     id="rect117" />
+  <text
+     x="745"
+     y="907"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text118">clean-log</text>
+  <text
+     x="600"
+     y="928"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text119">
     Strips verbose dar output from logs
   </text>
-  <text x="600" y="947" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="600"
+     y="947"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text120">
     Removes: &lt;File&gt;, &lt;Directory&gt;, Inspecting…
   </text>
-  <text x="600" y="966" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="600"
+     y="966"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text121">
     --dry-run mode to preview removals
   </text>
-
   <!-- demo helper -->
-  <rect x="930" y="882" width="330" height="120" rx="10" ry="10"
-        fill="#fef9f0" stroke="#b7791f" stroke-width="2" filter="url(#shadow)"/>
-  <text x="1095" y="907" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#b7791f">demo</text>
-  <text x="950" y="928" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="930"
+     y="882"
+     width="330"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fef9f0"
+     stroke="#b7791f"
+     stroke-width="2"
+     filter="url(#shadow)"
+     id="rect121" />
+  <text
+     x="1095"
+     y="907"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text122">demo</text>
+  <text
+     x="950"
+     y="928"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text123">
     Non-destructive setup wizard
   </text>
-  <text x="950" y="947" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="950"
+     y="947"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text124">
     Creates dirs + sample config + backup.d/demo
   </text>
-  <text x="950" y="966" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="950"
+     y="966"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text125">
     --generate writes to /tmp for inspection
   </text>
-
   <!-- installer helper -->
-  <rect x="1280" y="882" width="290" height="120" rx="10" ry="10"
-        fill="#fef9f0" stroke="#b7791f" stroke-width="2" filter="url(#shadow)"/>
-  <text x="1425" y="907" text-anchor="middle" font-family="sans-serif" font-weight="bold"
-        font-size="15" fill="#b7791f">installer</text>
-  <text x="1298" y="928" font-family="sans-serif" font-size="12" fill="#555">
+  <rect
+     x="1280"
+     y="882"
+     width="290"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fef9f0"
+     stroke="#b7791f"
+     stroke-width="2"
+     filter="url(#shadow)"
+     id="rect125" />
+  <text
+     x="1425"
+     y="907"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text126">installer</text>
+  <text
+     x="1298"
+     y="928"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text127">
     Creates required dirs from config
   </text>
-  <text x="1298" y="947" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="1298"
+     y="947"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text128">
     --create-db initialises catalogs
   </text>
-  <text x="1298" y="966" font-family="sans-serif" font-size="12" fill="#555">
+  <text
+     x="1298"
+     y="966"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text129">
     --install-autocompletion (bash/zsh)
   </text>
-
+  <!-- ── TOOLS row 2 ── -->
+  <!-- dar-backup-dashboard -->
+  <rect
+     x="30"
+     y="1017"
+     width="750"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fef9f0"
+     stroke="#b7791f"
+     stroke-width="2"
+     filter="url(#shadow)"
+     id="rect_dashboard" />
+  <text
+     x="405"
+     y="1042"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text_dashboard_title">dar-backup-dashboard</text>
+  <text
+     x="50"
+     y="1063"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text_dashboard_1">
+    Starts Datasette · opens metrics dashboard in the browser
+  </text>
+  <text
+     x="50"
+     y="1082"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text_dashboard_2">
+    --db to override metrics DB path · --port (default 8001)
+  </text>
+  <text
+     x="50"
+     y="1101"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#888"
+     id="text_dashboard_3">
+    Optional dep: pip install dar-backup[dashboard]
+  </text>
+  <!-- dar-backup-systemd -->
+  <rect
+     x="800"
+     y="1017"
+     width="770"
+     height="120"
+     rx="10"
+     ry="10"
+     fill="#fef9f0"
+     stroke="#b7791f"
+     stroke-width="2"
+     filter="url(#shadow)"
+     id="rect_systemd_tool" />
+  <text
+     x="1185"
+     y="1042"
+     text-anchor="middle"
+     font-family="sans-serif"
+     font-weight="bold"
+     font-size="15"
+     fill="#b7791f"
+     id="text_systemd_title">dar-backup-systemd</text>
+  <text
+     x="820"
+     y="1063"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text_systemd_1">
+    Generates systemd service + timer units for dar-backup
+  </text>
+  <text
+     x="820"
+     y="1082"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text_systemd_2">
+    --venv &lt;path&gt;  (required) · --dar-path for non-default dar location
+  </text>
+  <text
+     x="820"
+     y="1101"
+     font-family="sans-serif"
+     font-size="12"
+     fill="#555"
+     id="text_systemd_3">
+    --install  deploys units to ~/.config/systemd/user
+  </text>
   <!-- cleanup targeting arrow -->
-  <line x1="290" y1="882" x2="440" y2="703" stroke="#c53030" stroke-width="1.8"
-        stroke-dasharray="6,4" marker-end="url(#arrow-red)"/>
-
-
+  <line
+     x1="290"
+     y1="882"
+     x2="440"
+     y2="703"
+     stroke="#c53030"
+     stroke-width="1.8"
+     stroke-dasharray="6,4"
+     marker-end="url(#arrow-red)"
+     id="line129" />
   <!-- ═══════════════════════════════════════════════
        LEGEND
   ══════════════════════════════════════════════════ -->
-  <rect x="1080" y="700" width="490" height="57" rx="8" fill="#f9f9f9"
-        stroke="#ccc" stroke-width="1.5"/>
-  <text x="1092" y="718" font-family="sans-serif" font-weight="bold" font-size="12" fill="#333">
-    Legend:
-  </text>
-  <rect x="1148" y="706" width="18" height="12" rx="3" fill="#f5faff" stroke="#2b6cb0" stroke-width="2"/>
-  <text x="1172" y="718" font-family="sans-serif" font-size="11" fill="#333">Archive object</text>
-  <rect x="1278" y="706" width="18" height="12" rx="3" fill="#f7fff5" stroke="#2f855a" stroke-width="2"/>
-  <text x="1302" y="718" font-family="sans-serif" font-size="11" fill="#333">Directory</text>
-  <rect x="1388" y="706" width="18" height="12" rx="3" fill="#fffaf5" stroke="#b7791f" stroke-width="2"/>
-  <text x="1412" y="718" font-family="sans-serif" font-size="11" fill="#333">Process / tool</text>
-  <rect x="1148" y="722" width="18" height="12" rx="3" fill="#fff5f5" stroke="#c53030"
-        stroke-width="2" stroke-dasharray="4,3"/>
-  <text x="1172" y="734" font-family="sans-serif" font-size="11" fill="#333">Cleanup scope</text>
-  <rect x="1278" y="722" width="18" height="12" rx="3" fill="#e6ffed" stroke="#276749" stroke-width="2"/>
-  <text x="1302" y="734" font-family="sans-serif" font-size="11" fill="#333">PAR2 redundancy</text>
-  <rect x="1388" y="722" width="18" height="12" rx="3" fill="#faf5ff" stroke="#6b46c1" stroke-width="2"/>
-  <text x="1412" y="734" font-family="sans-serif" font-size="11" fill="#333">Systemd scheduler</text>
   <!-- Discord legend entry -->
-  <rect x="1148" y="738" width="18" height="12" rx="3" fill="#f0f0ff" stroke="#5865F2" stroke-width="2"/>
-  <text x="1172" y="750" font-family="sans-serif" font-size="11" fill="#333">Discord notification</text>
-
+  <g
+     id="g1"
+     transform="translate(-8,-2)">
+    <rect
+       x="1103.5212"
+       y="1117.9913"
+       width="478.48755"
+       height="57.017502"
+       rx="7.8120422"
+       fill="#f9f9f9"
+       stroke="#cccccc"
+       stroke-width="1.4825"
+       id="rect129" />
+    <text
+       x="1127.5088"
+       y="1117.7953"
+       font-family="sans-serif"
+       font-weight="bold"
+       font-size="11.8329px"
+       fill="#333333"
+       id="text130"
+       transform="scale(0.98571346,1.0144936)"
+       style="stroke-width:0.986075">Legend:</text>
+    <rect
+       x="1171.8319"
+       y="1123.9918"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#f5faff"
+       stroke="#2b6cb0"
+       stroke-width="1.97215"
+       id="rect130" />
+    <text
+       x="1212.4818"
+       y="1119.7667"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text131"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Archive object</text>
+    <rect
+       x="1298.1902"
+       y="1123.9918"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#f7fff5"
+       stroke="#2f855a"
+       stroke-width="1.97215"
+       id="rect131" />
+    <text
+       x="1340.6715"
+       y="1119.7667"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text132"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Directory</text>
+    <rect
+       x="1405.1088"
+       y="1123.9918"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#fffaf5"
+       stroke="#b7791f"
+       stroke-width="1.97215"
+       id="rect132" />
+    <text
+       x="1449.1398"
+       y="1119.7667"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text133"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Process / tool</text>
+    <rect
+       x="1171.8319"
+       y="1139.9977"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#fff5f5"
+       stroke="#c53030"
+       stroke-width="1.97215"
+       stroke-dasharray="4, 3"
+       id="rect133" />
+    <text
+       x="1212.4818"
+       y="1135.5439"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text134"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Cleanup scope</text>
+    <rect
+       x="1298.1902"
+       y="1139.9977"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#e6ffed"
+       stroke="#276749"
+       stroke-width="1.97215"
+       id="rect134" />
+    <text
+       x="1340.6715"
+       y="1135.5439"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text135"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">PAR2 redundancy</text>
+    <rect
+       x="1405.1088"
+       y="1139.9977"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#faf5ff"
+       stroke="#6b46c1"
+       stroke-width="1.97215"
+       id="rect135" />
+    <text
+       x="1449.1398"
+       y="1135.5439"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text136"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Systemd scheduler</text>
+    <rect
+       x="1171.8319"
+       y="1156.0035"
+       width="17.495768"
+       height="12.004398"
+       rx="2.9159613"
+       fill="#f0f0ff"
+       stroke="#5865f2"
+       stroke-width="1.97215"
+       id="rect136" />
+    <text
+       x="1212.4818"
+       y="1151.321"
+       font-family="sans-serif"
+       font-size="10.8468px"
+       fill="#333333"
+       id="text137"
+       transform="scale(0.98571343,1.0144936)"
+       style="stroke-width:0.986075">Discord notification</text>
+  </g>
   <!-- Version -->
-  <text x="1580" y="1070" text-anchor="end" font-family="sans-serif" font-size="10" fill="#aaa">
-    dar-backup v1.1.2 · GPL-3.0 · Per Jensen
-  </text>
+  <text
+     x="1576"
+     y="1190"
+     text-anchor="end"
+     font-family="sans-serif"
+     font-size="10px"
+     fill="#aaaaaa"
+     id="text138">dar-backup v1.1.5 · GPL-3.0 · Per Jensen</text>
 </svg>
