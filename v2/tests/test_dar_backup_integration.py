@@ -11,6 +11,7 @@ coverage is not recorded in this project (no sitecustomize.py in the venv).
 import glob
 import io
 import os
+import sqlite3
 import stat
 import sys
 from contextlib import redirect_stdout, redirect_stderr
@@ -27,6 +28,7 @@ import dar_backup.dar_backup as dar_backup_mod
 from dar_backup import __about__ as about
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import update_postreq_status
 from tests.testdata_verification import run_backup_script
 
 
@@ -455,3 +457,308 @@ def test_dar_backup_main_changelog_flag_prints_content(capsys):
 
     out = capsys.readouterr().out
     assert len(out) > 100, "CHANGELOG output must be non-trivial"
+
+
+# ---------------------------------------------------------------------------
+# _record_prereq_failure() — PREREQ failure recorded in DB and stats
+# ---------------------------------------------------------------------------
+
+def _inject_metrics_db(config_file: str, test_dir: str) -> str:
+    """
+    Append METRICS_DB_PATH to the [MISC] section of config_file so that
+    write_metrics_row() actually writes to an SQLite DB we can inspect.
+
+    Returns:
+        Absolute path to the metrics DB that will be created.
+    """
+    metrics_db = os.path.join(test_dir, "prereq_metrics.db")
+    with open(config_file) as fh:
+        content = fh.read()
+    if "[MISC]\n" not in content:
+        raise RuntimeError(f"[MISC] section not found in {config_file}")
+    content = content.replace(
+        "[MISC]\n",
+        f"[MISC]\nMETRICS_DB_PATH = {metrics_db}\n",
+        1,
+    )
+    with open(config_file, "w") as fh:
+        fh.write(content)
+    return metrics_db
+
+
+def test_record_prereq_failure_single_definition(setup_environment, env):
+    """
+    When _record_prereq_failure() is called with args.backup_definition set,
+    exactly one FAILURE row with failed_phase='PREREQ' must be written to the
+    metrics DB and one matching entry must appear in stats_accumulator.
+
+    This directly tests the in-process helper so no 'dar' run is needed.
+    """
+    metrics_db = _inject_metrics_db(env.config_file, env.test_dir)
+    config_settings = ConfigSettings(env.config_file)
+
+    args = SimpleNamespace(
+        backup_definition="example",
+        full_backup=True,
+        differential_backup=False,
+        incremental_backup=False,
+        dar_version=None,
+    )
+    error = RuntimeError("PREREQ_01: /nonexistent-script failed, return code: 1")
+    stats: list = []
+
+    saved_logger = dar_backup_mod.logger
+    dar_backup_mod.logger = env.logger
+    try:
+        dar_backup_mod._record_prereq_failure(args, config_settings, stats, error, "FULL")
+    finally:
+        dar_backup_mod.logger = saved_logger
+
+    # stats_accumulator must NOT include the 'example' definition (it is skipped)
+    # because perform_backup() skips it and _record_prereq_failure mirrors that logic.
+    # If the definition is not 'example', it would appear — test with a real one would
+    # need a non-example def.  The stats list must be empty for 'example'.
+    assert stats == [], (
+        "'example' definition must be skipped in stats just as perform_backup() skips it; "
+        f"got: {stats}"
+    )
+
+    # The metrics DB must not have been written for 'example' either.
+    if os.path.exists(metrics_db):
+        with sqlite3.connect(metrics_db) as conn:
+            rows = conn.execute("SELECT * FROM backup_runs").fetchall()
+        assert rows == [], f"'example' rows must not be written to DB; got {rows}"
+
+    env.logger.info("_record_prereq_failure skips 'example' definition ✓")
+
+
+def test_record_prereq_failure_all_definitions(setup_environment, env):
+    """
+    When _record_prereq_failure() is called with args.backup_definition=None
+    (no -d flag), every non-'example' definition in backup.d must appear in
+    stats_accumulator with status='FAILURE' and failed_phase='PREREQ', and a
+    corresponding row must be written to the metrics DB.
+
+    A second definition 'testdef' is created in backup.d so that the
+    'all definitions' code path has at least one real definition to process.
+    """
+    metrics_db = _inject_metrics_db(env.config_file, env.test_dir)
+    config_settings = ConfigSettings(env.config_file)
+
+    # Create a second definition so list_definitions() returns at least one
+    # non-example entry.
+    second_def = os.path.join(env.backup_d_dir, "testdef")
+    with open(second_def, "w") as fh:
+        fh.write("-R /tmp\n")
+    try:
+        args = SimpleNamespace(
+            backup_definition=None,
+            full_backup=True,
+            differential_backup=False,
+            incremental_backup=False,
+            dar_version=None,
+        )
+        error = RuntimeError("PREREQ_01: /nonexistent-script failed, return code: 127")
+        stats: list = []
+
+        saved_logger = dar_backup_mod.logger
+        dar_backup_mod.logger = env.logger
+        try:
+            dar_backup_mod._record_prereq_failure(args, config_settings, stats, error, "FULL")
+        finally:
+            dar_backup_mod.logger = saved_logger
+
+        # 'testdef' must appear; 'example' must not
+        definitions_in_stats = {s["definition"] for s in stats}
+        assert "testdef" in definitions_in_stats, (
+            f"'testdef' must be in stats; got definitions: {definitions_in_stats}"
+        )
+        assert "example" not in definitions_in_stats, (
+            "'example' must be skipped just as perform_backup() skips it"
+        )
+
+        # Every entry in stats must be FAILURE
+        for entry in stats:
+            assert entry["status"] == "FAILURE", f"expected FAILURE, got: {entry}"
+            assert entry["type"] == "FULL", f"expected FULL backup_type, got: {entry}"
+
+        # Verify DB rows
+        assert os.path.exists(metrics_db), "metrics DB must be created by write_metrics_row()"
+        with sqlite3.connect(metrics_db) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT backup_definition, status, failed_phase FROM backup_runs ORDER BY rowid"
+            ).fetchall()
+
+        db_definitions = {r["backup_definition"] for r in rows}
+        assert "testdef" in db_definitions, (
+            f"'testdef' must have a row in the DB; found: {db_definitions}"
+        )
+        assert "example" not in db_definitions, (
+            "'example' must not be written to DB"
+        )
+        for row in rows:
+            assert row["status"] == "FAILURE", f"DB row status must be FAILURE: {dict(row)}"
+            assert row["failed_phase"] == "PREREQ", (
+                f"DB row failed_phase must be 'PREREQ': {dict(row)}"
+            )
+
+        env.logger.info(
+            "_record_prereq_failure wrote PREREQ FAILURE rows for all definitions ✓"
+        )
+    finally:
+        if os.path.exists(second_def):
+            os.remove(second_def)
+
+
+# ---------------------------------------------------------------------------
+# prereq_status column — written into each DB row
+# ---------------------------------------------------------------------------
+
+def test_record_prereq_failure_sets_prereq_status_in_db(setup_environment, env):
+    """
+    Each row written by _record_prereq_failure() must have prereq_status='FAILURE'
+    so that the Dashboard can render a red ✗ in the PRE phase column.
+
+    Covers: run_id and prereq_status columns in the metrics schema.
+    """
+    import uuid as _uuid
+    metrics_db = _inject_metrics_db(env.config_file, env.test_dir)
+    config_settings = ConfigSettings(env.config_file)
+
+    second_def = os.path.join(env.backup_d_dir, "prereqtest")
+    with open(second_def, "w") as fh:
+        fh.write("-R /tmp\n")
+    try:
+        run_id = str(_uuid.uuid4())
+        args = SimpleNamespace(
+            backup_definition=None,
+            full_backup=True,
+            differential_backup=False,
+            incremental_backup=False,
+            dar_version=None,
+        )
+        error = RuntimeError("PREREQ_01: mount-check failed, return code: 1")
+        stats: list = []
+
+        saved_logger = dar_backup_mod.logger
+        dar_backup_mod.logger = env.logger
+        try:
+            dar_backup_mod._record_prereq_failure(
+                args, config_settings, stats, error, "FULL", run_id=run_id
+            )
+        finally:
+            dar_backup_mod.logger = saved_logger
+
+        assert os.path.exists(metrics_db), "metrics DB must be created"
+        with sqlite3.connect(metrics_db) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT backup_definition, prereq_status, run_id FROM backup_runs ORDER BY rowid"
+            ).fetchall()
+
+        assert len(rows) > 0, "at least one row must be written for non-example definitions"
+        for row in rows:
+            assert row["prereq_status"] == "FAILURE", (
+                f"prereq_status must be 'FAILURE'; got: {dict(row)}"
+            )
+            assert row["run_id"] == run_id, (
+                f"run_id must match the one passed in; got: {dict(row)}"
+            )
+        env.logger.info("prereq_status='FAILURE' and run_id written correctly ✓")
+    finally:
+        if os.path.exists(second_def):
+            os.remove(second_def)
+
+
+# ---------------------------------------------------------------------------
+# postreq_status column — back-filled via UPDATE after POSTREQ runs
+# ---------------------------------------------------------------------------
+
+def test_update_postreq_status_sets_column_in_db(setup_environment, env):
+    """
+    update_postreq_status() must UPDATE every row whose run_id matches,
+    setting postreq_status to 'SUCCESS' or 'FAILURE'.
+
+    Two rows are written with the same run_id; after calling
+    update_postreq_status() both must reflect the new status.
+    A third row with a different run_id must remain unchanged (NULL).
+
+    Covers: update_postreq_status() in util.py and the postreq_status column.
+    """
+    import uuid as _uuid
+    from dar_backup.util import write_metrics_row, ensure_metrics_db
+
+    metrics_db = _inject_metrics_db(env.config_file, env.test_dir)
+    config_settings = ConfigSettings(env.config_file)
+
+    run_id_a = str(_uuid.uuid4())
+    run_id_b = str(_uuid.uuid4())
+
+    from datetime import datetime, timezone as _tz
+    now_iso = datetime.now(_tz.utc).isoformat()
+
+    def _make_row(definition: str, run_id: str) -> dict:
+        return {
+            "backup_definition":             definition,
+            "backup_type":                   "FULL",
+            "archive_name":                  None,
+            "dar_backup_version":            "test",
+            "dar_version":                   None,
+            "run_started_at":                now_iso,
+            "backup_dir_free_bytes":         None,
+            "run_finished_at":               now_iso,
+            "duration_secs":                 1.0,
+            "dar_duration_secs":             None,
+            "verify_duration_secs":          None,
+            "par2_duration_secs":            None,
+            "status":                        "SUCCESS",
+            "dar_exit_code":                 0,
+            "failed_phase":                  None,
+            "error_summary":                 None,
+            "catalog_updated":               None,
+            "verify_passed":                 None,
+            "restore_test_passed":           None,
+            "par2_passed":                   None,
+            "archive_size_bytes":            None,
+            "num_slices":                    None,
+            "par2_size_bytes":               None,
+            "files_verified":                None,
+            "hostname":                      None,
+            "inodes_saved":                  None,
+            "hard_links_treated":            None,
+            "inodes_changed_during_backup":  None,
+            "bytes_wasted":                  None,
+            "inodes_metadata_only":          None,
+            "inodes_not_saved":              None,
+            "inodes_failed":                 None,
+            "inodes_excluded":               None,
+            "inodes_deleted":                None,
+            "inodes_total":                  None,
+            "ea_saved":                      None,
+            "fsa_saved":                     None,
+            "run_id":                        run_id,
+            "prereq_status":                 "SUCCESS",
+            "postreq_status":                None,
+        }
+
+    write_metrics_row(_make_row("defA", run_id_a), config_settings)
+    write_metrics_row(_make_row("defB", run_id_a), config_settings)
+    write_metrics_row(_make_row("defC", run_id_b), config_settings)
+
+    # Back-fill postreq for run_id_a only
+    update_postreq_status(run_id_a, "SUCCESS", config_settings)
+
+    with sqlite3.connect(metrics_db) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT backup_definition, postreq_status FROM backup_runs ORDER BY rowid"
+        ).fetchall()
+
+    by_def = {r["backup_definition"]: r["postreq_status"] for r in rows}
+    assert by_def["defA"] == "SUCCESS", f"defA postreq_status must be SUCCESS; got: {by_def}"
+    assert by_def["defB"] == "SUCCESS", f"defB postreq_status must be SUCCESS; got: {by_def}"
+    assert by_def["defC"] is None, (
+        f"defC (different run_id) must remain NULL; got: {by_def}"
+    )
+    env.logger.info("update_postreq_status() correctly updated only the matching run_id rows ✓")

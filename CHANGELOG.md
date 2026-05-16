@@ -8,10 +8,16 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 ### Added
 
 - More PITR test cases
+- Dashboard filter bar
+- Dashboard PHASES column extended with PRE and POST indicators
 
 ### Changed
 
 - Discord report refactored, now much more readable
+
+### Bugfix
+
+- When a PREREQ script failed, the affected backup definitions were not recorded as FAILURE in the SQLite metrics DB or the Dashboard
 
 ## v2-1.1.4 - 2026-05-07
 

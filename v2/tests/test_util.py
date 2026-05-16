@@ -805,6 +805,9 @@ class TestWriteMetricsRowGraceful:
             "inodes_total": None,
             "ea_saved": None,
             "fsa_saved": None,
+            "run_id": None,
+            "prereq_status": None,
+            "postreq_status": None,
         }
         cfg = self._make_config(db)
         # Must not raise
@@ -844,6 +847,7 @@ class TestWriteMetricsRowGraceful:
                 "inodes_metadata_only", "inodes_not_saved", "inodes_failed",
                 "inodes_excluded", "inodes_deleted", "inodes_total",
                 "ea_saved", "fsa_saved",
+                "run_id", "prereq_status", "postreq_status",
             ]}
             # Must not raise — backup must continue even if metrics write fails
             util.write_metrics_row(metrics, cfg)

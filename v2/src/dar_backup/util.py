@@ -1229,7 +1229,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     par2_duration_secs            REAL,
     status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
     dar_exit_code                 INTEGER,
-    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('DAR', 'VERIFY', 'PAR2')),
+    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREREQ', 'DAR', 'VERIFY', 'PAR2')),
     error_summary                 TEXT,
     catalog_updated               INTEGER,
     verify_passed                 INTEGER,
@@ -1241,6 +1241,9 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     files_verified                INTEGER,
     backup_dir_free_bytes         INTEGER,
     hostname                      TEXT,
+    run_id                        TEXT,
+    prereq_status                 TEXT    CHECK (prereq_status  IS NULL OR prereq_status  IN ('SUCCESS', 'FAILURE')),
+    postreq_status                TEXT    CHECK (postreq_status IS NULL OR postreq_status IN ('SUCCESS', 'FAILURE')),
     inodes_saved                  INTEGER,
     hard_links_treated            INTEGER,
     inodes_changed_during_backup  INTEGER,
@@ -1332,6 +1335,9 @@ _METRICS_MIGRATIONS: list[tuple[str, str]] = [
     ("inodes_total",                  "INTEGER"),
     ("ea_saved",                      "INTEGER"),
     ("fsa_saved",                     "INTEGER"),
+    ("run_id",                        "TEXT"),
+    ("prereq_status",                 "TEXT"),
+    ("postreq_status",                "TEXT"),
 ]
 
 
@@ -1382,7 +1388,8 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
                     inodes_saved, hard_links_treated, inodes_changed_during_backup,
                     bytes_wasted, inodes_metadata_only, inodes_not_saved,
                     inodes_failed, inodes_excluded, inodes_deleted,
-                    inodes_total, ea_saved, fsa_saved
+                    inodes_total, ea_saved, fsa_saved,
+                    run_id, prereq_status, postreq_status
                 ) VALUES (
                     :backup_definition, :backup_type, :archive_name,
                     :dar_backup_version, :dar_version,
@@ -1396,7 +1403,8 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
                     :inodes_saved, :hard_links_treated, :inodes_changed_during_backup,
                     :bytes_wasted, :inodes_metadata_only, :inodes_not_saved,
                     :inodes_failed, :inodes_excluded, :inodes_deleted,
-                    :inodes_total, :ea_saved, :fsa_saved
+                    :inodes_total, :ea_saved, :fsa_saved,
+                    :run_id, :prereq_status, :postreq_status
                 )
                 """,
                 metrics,
@@ -1406,6 +1414,38 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
         log = get_logger()
         if log:
             log.warning("Failed to write metrics row: %s", exc)
+
+
+def update_postreq_status(run_id: str, status: str, config_settings) -> None:
+    """
+    Set postreq_status for every backup_runs row that belongs to this run.
+
+    Called after requirements('POSTREQ', …) resolves (success or failure) so
+    that the Dashboard can show the POST phase result alongside each backup row.
+    Errors are caught and logged — they must never abort the backup process.
+
+    Args:
+        run_id:          UUID generated at the start of main(); shared by all
+                         rows written during the same invocation.
+        status:          'SUCCESS' or 'FAILURE'.
+        config_settings: Configuration object; metrics_db_path must be set or
+                         this is a silent no-op.
+    """
+    db_path = getattr(config_settings, "metrics_db_path", None)
+    if not db_path:
+        return
+    try:
+        db_path = os.path.expanduser(os.path.expandvars(db_path))
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "UPDATE backup_runs SET postreq_status = ? WHERE run_id = ?",
+                (status, run_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        log = get_logger()
+        if log:
+            log.warning("Failed to update postreq_status: %s", exc)
 
 
 def is_archive_name_allowed(name: str) -> bool:

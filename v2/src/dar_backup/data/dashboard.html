@@ -73,7 +73,7 @@
 
   #config-bar label { font-size: 12px; color: var(--muted); }
 
-  #config-bar input {
+  #config-bar input[type="text"] {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--text);
@@ -82,6 +82,34 @@
     font-family: var(--mono);
     font-size: 12px;
     width: 320px;
+  }
+
+  #config-bar input[type="number"] {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 56px;
+  }
+
+  #config-bar select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  #config-bar .sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 0.25rem;
   }
 
   #config-bar input:focus { outline: 1px solid var(--accent); }
@@ -499,6 +527,24 @@
   <label for="ds-url">Datasette URL</label>
   <input id="ds-url" type="text" value="http://localhost:8001" placeholder="http://localhost:8001" />
   <input id="ds-db" type="text" value="dar-backup-metrics" placeholder="database name" style="width:180px" />
+  <div class="sep"></div>
+  <label for="filter-def">Definition</label>
+  <select id="filter-def">
+    <option value="">— all —</option>
+  </select>
+  <div class="sep"></div>
+  <label for="filter-runs">Runs</label>
+  <input id="filter-runs" type="number" min="1" value="3" title="Number of most-recent runs to show per definition" />
+  <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+    <input id="filter-all" type="checkbox" style="width:auto;padding:0" />
+    All
+  </label>
+  <div class="sep"></div>
+  <label for="filter-from">From</label>
+  <input id="filter-from" type="datetime-local" step="1" title="Show runs started on or after this time (local time)" style="width:auto" />
+  <label for="filter-to">To</label>
+  <input id="filter-to" type="datetime-local" step="1" title="Show runs started on or before this time (local time)" style="width:auto" />
+  <div class="sep"></div>
   <button id="refresh-btn" onclick="loadAll()">&#8635; Refresh</button>
 </div>
 
@@ -511,7 +557,7 @@
     <div class="summary-grid" id="summary-cards"></div>
 
     <!-- Recent runs per definition -->
-    <div class="section-label">Recent runs</div>
+    <div class="section-label" id="recent-runs-label">Recent runs</div>
     <div id="definitions"></div>
 
     <!-- Trend panels -->
@@ -955,9 +1001,11 @@ function buildRunRow(r) {
     <td title="inodes not saved (unchanged)" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_not_saved != null ? r.inodes_not_saved.toLocaleString() : '—'}</td>
     <td title="inodes excluded by filters" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_excluded != null ? r.inodes_excluded.toLocaleString() : '—'}</td>
     <td class="phases">
+      <div class="phase">${chk(r.prereq_status == null ? null : r.prereq_status === 'SUCCESS' ? 1 : 0)}<span>pre</span></div>
       <div class="phase">${chk(r.verify_passed)}<span>verify</span></div>
       <div class="phase">${chk(r.restore_test_passed)}<span>restore</span></div>
       <div class="phase">${chk(r.par2_passed)}<span>par2</span></div>
+      <div class="phase">${chk(r.postreq_status == null ? null : r.postreq_status === 'SUCCESS' ? 1 : 0)}<span>post</span></div>
     </td>
     <td>${errorCell}</td>
   </tr>`;
@@ -1000,6 +1048,51 @@ function buildDefSection(defName, runs) {
     </div>`;
 }
 
+/* ── filter helpers ─────────────────────────────────────────────── */
+
+function filterDef() {
+  return document.getElementById('filter-def').value.trim();
+}
+
+function filterRunLimit() {
+  if (document.getElementById('filter-all').checked) return null;
+  const n = parseInt(document.getElementById('filter-runs').value, 10);
+  return (Number.isFinite(n) && n >= 1) ? n : 3;
+}
+
+function filterTimeRange() {
+  /* datetime-local gives local time; convert to UTC ISO for SQLite comparison.
+     run_started_at is stored as UTC ISO 8601, so datetime() normalises both
+     sides consistently. Returns { from: str|null, to: str|null }. */
+  function toUtcIso(localVal) {
+    if (!localVal) return null;
+    const d = new Date(localVal);
+    return isNaN(d) ? null : d.toISOString();
+  }
+  return {
+    from: toUtcIso(document.getElementById('filter-from').value),
+    to:   toUtcIso(document.getElementById('filter-to').value),
+  };
+}
+
+async function populateDefDropdown() {
+  try {
+    const rows = await query(
+      `SELECT DISTINCT backup_definition FROM backup_runs ORDER BY backup_definition`
+    );
+    const sel = document.getElementById('filter-def');
+    const current = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    for (const r of rows) {
+      const opt = document.createElement('option');
+      opt.value = r.backup_definition;
+      opt.textContent = r.backup_definition;
+      if (r.backup_definition === current) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  } catch (_) { /* non-fatal — dropdown stays as-is */ }
+}
+
 /* ── main load ──────────────────────────────────────────────────── */
 
 async function loadAll() {
@@ -1008,23 +1101,43 @@ async function loadAll() {
   document.getElementById('error-msg').style.display = 'none';
 
   try {
-    // Recent runs for the table (last 3 per definition)
+    await populateDefDropdown();
+
+    const def       = filterDef();
+    const limit     = filterRunLimit();
+    const timeRange = filterTimeRange();
+
+    const defClause   = def ? `AND b.backup_definition = '${def.replace(/'/g, "''")}'` : '';
+    const limitClause = limit != null
+      ? `AND (SELECT COUNT(*) FROM backup_runs b2
+             WHERE b2.backup_definition = b.backup_definition
+               AND b2.run_started_at > b.run_started_at) < ${limit}`
+      : '';
+    const fromClause = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
+    const toClause   = timeRange.to   ? `AND datetime(b.run_started_at) <= datetime('${timeRange.to}')`   : '';
+
     const recentSql = `
       SELECT b.*
       FROM backup_runs b
-      WHERE (
-        SELECT COUNT(*) FROM backup_runs b2
-        WHERE b2.backup_definition = b.backup_definition
-          AND b2.run_started_at > b.run_started_at
-      ) < 3
+      WHERE 1=1
+        ${limitClause}
+        ${defClause}
+        ${fromClause}
+        ${toClause}
       ORDER BY b.backup_definition, b.run_started_at DESC
     `;
 
-    // All runs for trend charts (no limit)
+    const trendWhere = [
+      def          ? `backup_definition = '${def.replace(/'/g, "''")}'`         : '',
+      timeRange.from ? `datetime(run_started_at) >= datetime('${timeRange.from}')` : '',
+      timeRange.to   ? `datetime(run_started_at) <= datetime('${timeRange.to}')`   : '',
+    ].filter(Boolean).join(' AND ');
+    // All runs for trend charts (no row limit — trends always show full history)
     const trendSql = `
       SELECT run_started_at, backup_definition, backup_type,
              archive_size_bytes, status, inodes_saved, inodes_failed
       FROM backup_runs
+      ${trendWhere ? 'WHERE ' + trendWhere : ''}
       ORDER BY backup_definition, run_started_at ASC
     `;
 
@@ -1051,6 +1164,13 @@ async function loadAll() {
 
     document.getElementById('definitions').innerHTML = defHtml;
 
+    const limitLabel = limit != null ? `last ${limit} runs` : 'all runs';
+    const defLabel   = def ? ` · ${def}` : '';
+    const fromLabel  = timeRange.from ? ` · from ${document.getElementById('filter-from').value}` : '';
+    const toLabel    = timeRange.to   ? ` · to ${document.getElementById('filter-to').value}`     : '';
+    document.getElementById('recent-runs-label').textContent =
+      `Recent runs (${limitLabel}${defLabel}${fromLabel}${toLabel})`;
+
     document.getElementById('last-updated').textContent =
       'updated ' + new Date().toLocaleTimeString();
 
@@ -1075,6 +1195,11 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
     btn.classList.add('active');
     buildTrendPanels(btn.dataset.gran);
   });
+});
+
+/* ── "All" checkbox toggles the number input ────────────────────── */
+document.getElementById('filter-all').addEventListener('change', function() {
+  document.getElementById('filter-runs').disabled = this.checked;
 });
 
 /* ── auto-populate Datasette URL from query param ───────────────── */

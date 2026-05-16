@@ -64,6 +64,9 @@ _FULL_METRICS = {
     "inodes_total":                  31298,
     "ea_saved":                      0,
     "fsa_saved":                     0,
+    "run_id":                        "aaaaaaaa-0000-0000-0000-000000000001",
+    "prereq_status":                 "SUCCESS",
+    "postreq_status":                "SUCCESS",
 }
 
 _SPARSE_METRICS = {
@@ -104,6 +107,9 @@ _SPARSE_METRICS = {
     "inodes_total":                  None,
     "ea_saved":                      None,
     "fsa_saved":                     None,
+    "run_id":                        None,
+    "prereq_status":                 None,
+    "postreq_status":                None,
 }
 
 
@@ -524,6 +530,7 @@ _EXPECTED_COLUMNS = {
     "bytes_wasted", "inodes_metadata_only", "inodes_not_saved",
     "inodes_failed", "inodes_excluded", "inodes_deleted",
     "inodes_total", "ea_saved", "fsa_saved",
+    "run_id", "prereq_status", "postreq_status",
 }
 
 

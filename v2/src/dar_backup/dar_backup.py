@@ -26,6 +26,7 @@ import shutil
 import signal
 import subprocess
 import configparser
+import uuid
 import xml.etree.ElementTree as ET
 import tempfile
 import threading
@@ -58,7 +59,7 @@ from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message, render_discord_report
-from dar_backup.util import write_metrics_row
+from dar_backup.util import write_metrics_row, update_postreq_status
 from dar_backup.util import parse_dar_stats
 
 from dar_backup.command_runner import CommandRunner
@@ -1096,7 +1097,112 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     return True
 
 
-def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, backup_type: str, stats_accumulator: list) -> List[str]:
+def _record_prereq_failure(
+    args: argparse.Namespace,
+    config_settings: ConfigSettings,
+    stats_accumulator: list,
+    error: RuntimeError,
+    backup_type: str,
+    run_id: Optional[str] = None,
+) -> None:
+    """
+    Record a PREREQ failure in the metrics DB and stats accumulator for every
+    backup definition that would have run.
+
+    Called when requirements('PREREQ', ...) raises RuntimeError so that the
+    Dashboard and SQLite DB show a FAILURE row even though no actual backup ran.
+
+    Args:
+        args: Parsed CLI arguments; args.backup_definition selects a single
+              definition, or None/empty means all definitions.
+        config_settings: Configuration settings object.
+        stats_accumulator: List to append per-definition failure dicts to
+                           (same list consumed by the Discord report).
+        error: The RuntimeError raised by requirements().
+        backup_type: One of "FULL", "DIFF", "INCR".
+        run_id: UUID generated once per main() invocation so that
+                postreq_status can be back-filled via UPDATE later.
+    """
+    if args.backup_definition:
+        definitions = [args.backup_definition]
+    else:
+        try:
+            definitions = list_definitions(config_settings.backup_d_dir)
+        except Exception as exc:
+            logger.error("_record_prereq_failure: could not list definitions: %s", exc)
+            definitions = []
+
+    now = datetime.now(timezone.utc)
+    error_summary = f"PREREQ failed: {error}"[:500]
+
+    for definition in definitions:
+        if definition.lower() == "example":
+            continue
+        metrics: dict = {
+            "backup_definition":             definition,
+            "backup_type":                   backup_type,
+            "archive_name":                  None,
+            "dar_backup_version":            about.__version__,
+            "dar_version":                   getattr(args, "dar_version", None),
+            "run_started_at":                now.isoformat(),
+            "backup_dir_free_bytes":         None,
+            "run_finished_at":               now.isoformat(),
+            "duration_secs":                 0.0,
+            "dar_duration_secs":             None,
+            "verify_duration_secs":          None,
+            "par2_duration_secs":            None,
+            "status":                        "FAILURE",
+            "dar_exit_code":                 None,
+            "failed_phase":                  "PREREQ",
+            "error_summary":                 error_summary,
+            "catalog_updated":               None,
+            "verify_passed":                 None,
+            "restore_test_passed":           None,
+            "par2_passed":                   None,
+            "archive_size_bytes":            None,
+            "num_slices":                    None,
+            "par2_size_bytes":               None,
+            "files_verified":                None,
+            "hostname":                      platform.node() or None,
+            "inodes_saved":                  None,
+            "hard_links_treated":            None,
+            "inodes_changed_during_backup":  None,
+            "bytes_wasted":                  None,
+            "inodes_metadata_only":          None,
+            "inodes_not_saved":              None,
+            "inodes_failed":                 None,
+            "inodes_excluded":               None,
+            "inodes_deleted":                None,
+            "inodes_total":                  None,
+            "ea_saved":                      None,
+            "fsa_saved":                     None,
+            "run_id":                        run_id,
+            "prereq_status":                 "FAILURE",
+            "postreq_status":                None,
+        }
+        try:
+            write_metrics_row(metrics, config_settings)
+        except Exception as metrics_exc:
+            logger.warning("_record_prereq_failure: metrics write failed: %s", metrics_exc)
+
+        stats_accumulator.append({
+            "definition": definition,
+            "status":     "FAILURE",
+            "type":       backup_type,
+            "end_time":   now.astimezone().isoformat(timespec='seconds'),
+            "warning_count": 0,
+            "error_count":   1,
+        })
+
+
+def perform_backup(
+    args: argparse.Namespace,
+    config_settings: ConfigSettings,
+    backup_type: str,
+    stats_accumulator: list,
+    run_id: Optional[str] = None,
+    prereq_status: Optional[str] = None,
+) -> List[str]:
     """
     Perform backup operation.
 
@@ -1105,6 +1211,10 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
         config_settings: An instance of the ConfigSettings class.
         backup_type: Type of backup (FULL, DIFF, INCR).
         stats_accumulator: List to collect backup statuses.
+        run_id: UUID generated once per main() invocation; written into every
+                metrics row so that postreq_status can be back-filled via UPDATE.
+        prereq_status: 'SUCCESS' if PREREQ ran and passed (always the case when
+                       perform_backup is reached), or None if no PREREQ section.
 
     Returns:
       List[tuples] - each tuple consists of (<str message>, <exit code>)
@@ -1194,6 +1304,9 @@ def perform_backup(args: argparse.Namespace, config_settings: ConfigSettings, ba
             "inodes_total":                  None,
             "ea_saved":                      None,
             "fsa_saved":                     None,
+            "run_id":                        run_id,
+            "prereq_status":                 prereq_status,
+            "postreq_status":                None,
         }
 
         try:
@@ -1998,6 +2111,7 @@ def main():
 
         start_time=int(time())
         run_start = datetime.now().astimezone()
+        run_id = str(uuid.uuid4())
         start_msgs.append((f"{show_scriptname()}:", about.__version__))
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"Command line:\n{get_invocation_command_line()}")
@@ -2054,11 +2168,31 @@ def main():
 
 
         prereq_report: dict = {"status": "none", "failures": []}
-        requirements('PREREQ', config_settings, report_out=prereq_report)
+        prereq_failed: Optional[RuntimeError] = None
+        try:
+            requirements('PREREQ', config_settings, report_out=prereq_report)
+        except RuntimeError as prereq_err:
+            logger.error("PREREQ failed: %s", prereq_err)
+            prereq_failed = prereq_err
+            results.append((str(prereq_err), 1))
+
+        prereq_status: Optional[str] = (
+            None          if prereq_report["status"] == "none"
+            else "FAILURE" if prereq_failed is not None
+            else "SUCCESS"
+        )
 
         stats: List[dict] = []
 
-        if args.list:
+        if prereq_failed is not None:
+            backup_type = (
+                "FULL" if args.full_backup
+                else "DIFF" if args.differential_backup
+                else "INCR" if args.incremental_backup
+                else "FULL"
+            )
+            _record_prereq_failure(args, config_settings, stats, prereq_failed, backup_type, run_id=run_id)
+        elif args.list:
             list_filter = args.backup_definition
             if isinstance(args.list, str):
                 if list_filter:
@@ -2068,11 +2202,11 @@ def main():
                     list_filter = args.list
             list_backups(config_settings.backup_dir, list_filter)
         elif args.full_backup and not args.differential_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "FULL", stats))
+            results.extend(perform_backup(args, config_settings, "FULL", stats, run_id=run_id, prereq_status=prereq_status))
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "DIFF", stats))
+            results.extend(perform_backup(args, config_settings, "DIFF", stats, run_id=run_id, prereq_status=prereq_status))
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
-            results.extend(perform_backup(args, config_settings, "INCR", stats))
+            results.extend(perform_backup(args, config_settings, "INCR", stats, run_id=run_id, prereq_status=prereq_status))
             logger.debug(f"results from perform_backup(): {results}")
         elif args.list_contents:
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
@@ -2086,11 +2220,17 @@ def main():
 
         # POSTREQ: capture result without short-circuiting so the report is always sent
         postreq_report: dict = {"status": "none", "failures": []}
+        postreq_failed = False
         try:
             requirements('POSTREQ', config_settings, report_out=postreq_report)
         except RuntimeError as postreq_err:
             logger.error("POSTREQ failed: %s", postreq_err)
             results.append((str(postreq_err), 1))
+            postreq_failed = True
+
+        if postreq_report["status"] != "none":
+            postreq_db_status = "FAILURE" if postreq_failed else "SUCCESS"
+            update_postreq_status(run_id, postreq_db_status, config_settings)
 
         # Send unified Discord report for any backup run
         if stats:

@@ -7,11 +7,21 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
-- Added 10 PITR integration tests covering multi-archive boundary selection, catalog fallback, archive relocation, fail-fast on missing slices, timezone-aware --when, multi-path restore, catalog isolation across backup definitions, and single-version file restore.
+- Added 10 PITR integration tests covering multi-archive boundary selection, catalog fallback, archive relocation, fail-fast on missing slices, timezone-aware when, multi-path restore, catalog isolation across backup definitions, and single-version file restore.
 
 ### Changed
 
 - Discord report now much more readable
+
+### Added
+
+- Dashboard filter bar: filter by backup definition (dropdown populated from the DB), number of most-recent runs per definition, show-all toggle, and a start/end time range to seconds precision; all filters combine freely and apply to both the run table and the trend charts.
+- Dashboard PHASES column extended with PRE and POST indicators; PRE shows the PREREQ script result, POST shows the POSTREQ script result. Old rows (before this release) show `—` for both new columns.
+- SQLite metrics DB gains three new columns (`run_id`, `prereq_status`, `postreq_status`); existing databases are migrated automatically on the first backup run — no manual steps required.
+
+### Bugfix
+
+- When a PREREQ script failed, no FAILURE row was written to the SQLite metrics DB and the Dashboard showed no trace of the failed run. A `FAILURE` row with `failed_phase='PREREQ'` is now written for every affected definition (all definitions, or only the one selected with `-d`).
 
 ## v2-1.1.4 - 2026-05-07
 
