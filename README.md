@@ -215,6 +215,30 @@ I needed the following:
 
 5. No dependency on original system
 
+6. Docker image archived alongside the dar archives
+
+   The [dar-backup Docker image](https://github.com/per2jensen/dar-backup-image)
+   packages `dar-backup`, `dar`, and `par2` in a self-contained environment — a time
+   capsule of the exact tools needed to restore your archives, years from now, without
+   hunting for the right versions or fighting package managers.
+
+   A small helper script,
+
+   [`save-dar-backup-image.sh`](https://github.com/per2jensen/dar-backup-image/blob/main/scripts/save-dar-backup-image.sh),
+   checks the latest released image against
+   [`build-history.json`](https://github.com/per2jensen/dar-backup-image/blob/main/doc/build-history.json)
+   and saves it as a compressed tar alongside the dar archives on the backup server.
+   Run it as a cron job or systemd timer — it is idempotent and only pulls when a new
+   image is available.
+
+```bash
+   # Example: run daily via cron
+   DOCKER_ARCHIVE_DIR=/mnt/dar/docker-archives ~/.local/bin/save-dar-backup-image.sh
+```
+
+   The result: my `rsync` to USB disks on the storage server picks up the Docker image automatically, so the
+   restore environment travels with the archives onto every offsite copy.
+
 ### Why PAR2 is especially good for portable / offsite copies
 
 PAR2 parity is:
