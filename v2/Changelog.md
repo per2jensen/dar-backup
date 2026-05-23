@@ -18,6 +18,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 ### Added (tests)
 
 - **`test_real_verify_and_backup.py`** (10 real integration tests): replaces mock-heavy unit tests with end-to-end runs against genuine dar archives — `verify()` detects real file corruption and corrupt archive slices, stale restore files are replaced, `get_backed_up_files()` lists real archive contents, `list_contents()` raises on nonexistent archive, par2 verify detects corrupt dar slices, full backup pipeline runs verify and leaves restored files on disk, unreadable files cause dar exit-code 5 (CLI exits 0), and catalog-add fails when the dar_manager DB is read-only.
+- **`test_real_pitr_and_pipeline.py`** (10 real integration tests): replaces the most mock-heavy tests across PITR, backup pipeline, CLI startup, and cleanup — PITR file restore selects the correct archive before `--when`, directory restore applies FULL→DIFF chain, `--pitr-report-first` aborts on missing slice and succeeds with intact archives, verify-before-par2 ordering is confirmed in log output, backup completes when metrics DB is unwritable, `--restore` cleans TEST_RESTORE_DIR while `--list-contents` does not, `--alternate-archive-dir` redirects both catalog DB lookup and archive path resolution after a backup is moved, and `cleanup` refuses path-traversal archive names without touching real slices.
 
 ### Changed
 
