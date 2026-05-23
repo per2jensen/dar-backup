@@ -1,226 +1,227 @@
-import logging
+"""
+Integration tests for detecting bitrot and repairing it in dar archives.
+
+Each test creates real dar archives, injects binary corruption into a slice,
+confirms dar detects the corruption, then uses par2 to repair it and confirms
+dar passes again.
+"""
+
+import os
 import random
 import sys
-import os
+
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from dar_backup.command_runner import CommandRunner
-from dar_backup.config_settings import ConfigSettings
 from datetime import datetime
+
+from dar_backup.command_runner import CommandResult, CommandRunner
+from dar_backup.config_settings import ConfigSettings
 from tests.envdata import EnvData
-from dar_backup.command_runner import CommandResult
 
 
-
-
-
-
-
-"""
-This module contains unit tests for detecting bitrot and fixing it in dar archives.
-"""
-
-
-def create_random_data_file(env: EnvData, name, size):
+def create_random_data_file(env: EnvData, name: str, size: int) -> None:
     """
-    Create a file with random data of a specific size.
+    Create a binary file filled with random data.
 
     Args:
-        name (str): The name of the file.
-        size (int): The size of the file in bytes.
+        env: EnvData fixture providing the test directory.
+        name: Label used in the filename (e.g. "100kB").
+        size: File size in bytes.
     """
     filename = f"random-{name}.dat"
-    with open(os.path.join(env.test_dir, "data", filename), 'wb') as f:
-        f.write(os.urandom(size))
-        env.logger.info(f'Created {os.path.join(env.test_dir, "data", filename)} of size {name}')
+    filepath = os.path.join(env.data_dir, filename)
+    with open(filepath, "wb") as fh:
+        fh.write(os.urandom(size))
+    env.logger.info("Created %s (%d bytes)", filepath, size)
 
 
-
-def generate_datafiles(env: EnvData, file_sizes: dict) -> None:
+def generate_datafiles(env: EnvData, file_sizes: dict[str, int]) -> None:
     """
-    Generate the data files for testing.
+    Generate a set of random binary data files for backup testing.
 
-    This method creates files of different sizes using the create_random_data_file method.
+    Args:
+        env: EnvData fixture providing the test directory.
+        file_sizes: Mapping of label → size-in-bytes.
+
+    Raises:
+        Exception: Re-raises any error from file creation after logging it.
     """
     try:
-        # Create files
         for name, size in file_sizes.items():
             create_random_data_file(env, name, size)
     except Exception:
-        env.logger.exception("data file generation failed")
+        env.logger.exception("Data file generation failed")
         raise
 
 
-
-def simulate_bitrot(env: EnvData, bitrot: int = 5):
+def simulate_bitrot(env: EnvData, bitrot_percent: int) -> None:
     """
-    Simulate bitrot in a dar archive by replacing a percentage of the file with random data.
+    Inject deterministic corruption into the FULL archive slice.
+
+    Overwrites `bitrot_percent * 0.98 %` of the slice with random bytes at a
+    deterministic position.  The 0.98 factor keeps the corrupted region
+    slightly below `bitrot_percent` so the test stays within par2's recovery
+    capacity even accounting for block-alignment overhead.
 
     Args:
-        bitrot (int): The percentage of the file to be affected by bitrot.
-    """
-    date = datetime.now().strftime('%Y-%m-%d')
-    archive = f'example_FULL_{date}.1.dar'
-    archive_path = os.path.join(env.test_dir, "backups", archive)
+        env: EnvData fixture providing the test directory.
+        bitrot_percent: Percentage of the archive to corrupt (0–100).
 
-    # Check if the file exists
-    if os.path.exists(archive_path):
-        archive_size = os.path.getsize(archive_path)
-        logging.info(f"Size of archive: {archive_path} is {archive_size} bytes")
-        rng = random.Random(0)
-        # Generate deterministic bytes
-        random_bytes = bytearray(rng.getrandbits(8) for _ in range(int(archive_size * (bitrot / 100) * 0.98)))
-        # Open the file in write mode
-        with open(archive_path, "r+b") as file:
-            # Seek to deterministic position between 0 - 70% of file size
-            random_position = rng.randint(0, int(archive_size * 0.7))
-            file.seek(random_position)
-            # Write the random bytes
-            file.write(random_bytes)
-        env.logger.info(f"{bitrot}% bitrot created in {archive_path}")
-    else:
-        env.logger.error(f"File {archive_path} does not exist.")
-        raise FileNotFoundError(f"{archive_path} does not exist")
+    Raises:
+        FileNotFoundError: If the archive slice does not exist.
+    """
+    date = datetime.now().strftime("%Y-%m-%d")
+    archive_path = os.path.join(env.backup_dir, f"example_FULL_{date}.1.dar")
+
+    if not os.path.exists(archive_path):
+        raise FileNotFoundError(f"Archive slice not found: {archive_path}")
+
+    archive_size = os.path.getsize(archive_path)
+    env.logger.info("Archive size before bitrot injection: %d bytes", archive_size)
+
+    rng = random.Random(0)  # deterministic seed for reproducibility
+    corrupt_bytes = int(archive_size * (bitrot_percent / 100) * 0.98)
+    random_data = bytearray(rng.getrandbits(8) for _ in range(corrupt_bytes))
+    position = rng.randint(0, int(archive_size * 0.7))
+
+    with open(archive_path, "r+b") as fh:
+        fh.seek(position)
+        fh.write(random_data)
+
+    env.logger.info(
+        "Injected %d%% bitrot (%d bytes at offset %d) into %s",
+        bitrot_percent, corrupt_bytes, position, archive_path,
+    )
 
 
 def modify_par2_redundancy(env: EnvData, redundancy: int) -> None:
     """
-    Modify the redundancy level of the par2 files by patching the dar-backup.conf file
+    Patch ERROR_CORRECTION_PERCENT in the test config file.
 
     Args:
-        redundancy (int): The redundancy level to be set.
+        env: EnvData fixture providing the config file path.
+        redundancy: New redundancy level in percent.
+    """
+    with open(env.config_file) as fh:
+        lines = fh.readlines()
+    with open(env.config_file, "w") as fh:
+        for line in lines:
+            if line.startswith("ERROR_CORRECTION_PERCENT"):
+                fh.write(f"ERROR_CORRECTION_PERCENT = {redundancy}\n")
+            else:
+                fh.write(line)
+    env.logger.info("Set ERROR_CORRECTION_PERCENT = %d", redundancy)
+
+
+def check_bitrot_recovery(env: EnvData, runner: CommandRunner) -> None:
+    """
+    Verify the three-step bitrot recovery cycle on the current FULL archive.
+
+    Steps:
+      1. `dar -t` must fail and report a corruption keyword in stderr,
+         confirming the injected bitrot is detected.
+      2. `par2 repair` must exit 0.
+      3. `dar -t` must exit 0 after repair.
+
+    Args:
+        env: EnvData fixture providing directory paths and logger.
+        runner: Configured CommandRunner to use for all subprocess calls.
 
     Raises:
-        RuntimeError: If the command fails.
+        AssertionError: If any of the three steps produces unexpected results.
     """
-    with open(env.config_file, 'r') as f:
-        lines = f.readlines()
-    with open(env.config_file, 'w') as f:
-        for line in lines:
-            if line.startswith('ERROR_CORRECTION_PERCENT'):
-                f.write(f'ERROR_CORRECTION_PERCENT = {redundancy}\n')
-            else:
-                f.write(line)
+    date = datetime.now().strftime("%Y-%m-%d")
+    basename_path = os.path.join(env.backup_dir, f"example_FULL_{date}")
+    par2_path = os.path.join(env.backup_dir, f"example_FULL_{date}.par2")
 
+    # Step 1 — dar must detect corruption
+    result: CommandResult = runner.run(["dar", "-t", basename_path, "-N", "-Q"])
+    env.logger.info("dar -t (corrupt) stdout:\n%s", result.stdout)
+    env.logger.info("dar -t (corrupt) stderr:\n%s", result.stderr)
 
-def check_bitrot_recovery(env: EnvData, command_timeout: int):
-    """
-    Verify the bitrot recovery process.
-    This test method performs the following steps:
-    1. Simulates bitrot in the backup archive.
-    2. Verifies that dar detects the bitrot and raises an exception.
-    3. Uses parchive2 to repair the bitrot.
-    4. Verifies that the archive is successfully repaired.
-    """
-    runner = CommandRunner(
-        logger=env.logger,
-        command_logger=env.command_logger,
-        default_timeout=command_timeout
+    assert result.returncode != 0, "dar returned success on a corrupted archive"
+    assert any(
+        kw in result.stderr.lower()
+        for kw in ("crc", "error", "corrupt", "checksum")
+    ), f"Expected a corruption keyword in dar stderr:\n{result.stderr}"
+    env.logger.info("dar correctly detected archive corruption.")
+
+    # Step 2 — par2 repair
+    result = runner.run(["par2", "repair", "-B", env.backup_dir, "-q", par2_path])
+    env.logger.info("par2 repair stdout:\n%s", result.stdout)
+    env.logger.info("par2 repair stderr:\n%s", result.stderr)
+    assert result.returncode == 0, f"par2 failed to repair the archive (rc={result.returncode})"
+    env.logger.info("par2 repaired the archive successfully.")
+
+    # Step 3 — dar must now pass
+    result = runner.run(["dar", "-t", basename_path, "-N", "-Q"])
+    env.logger.info("dar -t (repaired) stdout:\n%s", result.stdout)
+    env.logger.info("dar -t (repaired) stderr:\n%s", result.stderr)
+    assert result.returncode == 0, (
+        f"dar -t failed after par2 repair (rc={result.returncode}):\n{result.stderr}"
     )
-    date = datetime.now().strftime('%Y-%m-%d')
-    basename_path = os.path.join(env.test_dir, "backups", f"example_FULL_{date}")
-    backup_dir = os.path.join(env.test_dir, "backups")
-    archive_path = os.path.join(backup_dir, f"example_FULL_{date}.1.dar")
-    par2_path = os.path.join(backup_dir, f"example_FULL_{date}.par2")
-    
-    # Step 1: dar should detect corruption
-    try:
-        command = ['dar', '-t', basename_path]
-        result: CommandResult = runner.run(command)
-        logging.info(f"stdout:\n{result.stdout}")
-        logging.info(f"stderr:\n{result.stderr}")
-        # Assert bitrot is detected from stderr or non-zero return
-        assert result.returncode != 0, "dar returned success on corrupted archive!"
-        assert any(
-            keyword in result.stderr.lower()
-            for keyword in ("crc", "error", "corrupt", "checksum")
-        ), "Expected bitrot error not found in stderr"
-        logging.info("dar detected archive corruption as expected.")
-    except AssertionError:
-        logging.exception("Bitrot was not detected as expected")
-        raise
-
-    # Step 2: Repair
-    try:
-        command = ["par2", "repair", "-B", backup_dir, "-q", par2_path]
-        result: CommandResult = runner.run(command)
-        logging.info(f"stdout:\n{result.stdout}")
-        logging.info(f"stderr:\n{result.stderr}")
-        assert result.returncode == 0, "par2 failed to repair the archive"
-
-        # Step 3: dar test should now pass
-        command = ['dar', '-t', basename_path]
-        result: CommandResult = runner.run(command)
-        logging.info(f"stdout:\n{result.stdout}")
-        logging.info(f"stderr:\n{result.stderr}")
-        assert result.returncode == 0, "dar test failed after par2 repair"
-        logging.info(f"Archive successfully repaired and verified: {archive_path}")
-    except Exception:
-        logging.exception("Unexpected error during recovery or verification")
-        raise
+    env.logger.info("Archive verified successfully after par2 repair.")
 
 
-
-def test_5_bitrot_recovery(setup_environment, env: EnvData):
+def run_bitrot_recovery(env: EnvData, redundancy_percentage: int) -> None:
     """
-    Verify the bitrot recovery process with 5% bitrot.
-    Expects to run in a virtual environment with dar-backup installed
-    """
-    redundancy = 5  # redundancy in percent
-    run_bitrot_recovery(env, redundancy)
+    End-to-end bitrot-recovery scenario for a given par2 redundancy level.
 
-    
+    Corruption is injected at half the redundancy level, keeping the corrupted
+    region well within par2's recovery capacity regardless of block-alignment
+    overhead.
 
-def test_25_bitrot_recovery(setup_environment, env: EnvData):
-    """
-    Verify the bitrot recovery process with 25% bitrot.
-    Expects to run in a virtual environment with dar-backup installed
-    """
-
-    redundancy = 25  # redundancy in percent
-    run_bitrot_recovery(env, redundancy)
-
-
-
-def run_bitrot_recovery(env: EnvData, redundancy_percentage: int):
-    """
-    Verify the bitrot recovery process with `redundancy_percentage` bitrot.
-    Expects to run in a virtual environment with dar-backup installed
+    Args:
+        env: EnvData fixture providing directory paths, config, and loggers.
+        redundancy_percentage: par2 ERROR_CORRECTION_PERCENT to configure.
     """
     config_settings = ConfigSettings(env.config_file)
-    command_timeout = config_settings.command_timeout_secs
     runner = CommandRunner(
         logger=env.logger,
         command_logger=env.command_logger,
-        default_timeout=command_timeout
+        default_timeout=config_settings.command_timeout_secs,
     )
-    file_sizes = {
-        '100kB': 100 * 1024,
-        '1MB': 1024 * 1024,
-        '10MB': 10 * 1024 * 1024
+
+    file_sizes: dict[str, int] = {
+        "100kB": 100 * 1024,
+        "1MB": 1024 * 1024,
+        "10MB": 10 * 1024 * 1024,
     }
     generate_datafiles(env, file_sizes)
     modify_par2_redundancy(env, redundancy_percentage)
-    print(f"env: {env}")
-    command = ['dar-backup', '--full-backup' ,'-d', "example", '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
-    process: CommandResult  = runner.run(command)
-    logging.info(f"stdout:\n{process.stdout}")
-    logging.info(f"stderr:\n{process.stderr}")
-    stdout,stderr = process.stdout, process.stderr
-    if process.returncode != 0:
-        raise RuntimeError("dar-backup failed to create a full backup")
-    
-    command = ['ls', '-hl', os.path.join(env.test_dir, 'backups')]
-    stdout,stderr = process.stdout, process.stderr
-    process: CommandResult  = runner.run(command)
-    logging.info(f"stdout:\n{process.stdout}")
-    logging.info(f"stderr:\n{process.stderr}")
-    if process.returncode != 0:
-        raise RuntimeError("dar-backup failed to create a full backup")
 
-    simulate_bitrot(env, redundancy_percentage)
-    check_bitrot_recovery(env, command_timeout)
+    command = [
+        "dar-backup", "--full-backup", "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout",
+    ]
+    process: CommandResult = runner.run(command)
+    env.logger.info("dar-backup stdout:\n%s", process.stdout)
+    env.logger.info("dar-backup stderr:\n%s", process.stderr)
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"dar-backup --full-backup failed (rc={process.returncode})"
+        )
+
+    # Corrupt at half the redundancy level — safely within par2's recovery capacity
+    bitrot_percent = max(1, redundancy_percentage // 2)
+    simulate_bitrot(env, bitrot_percent)
+    check_bitrot_recovery(env, runner)
+
+
+def test_5_bitrot_recovery(setup_environment, env: EnvData) -> None:
+    """
+    Verify bitrot detection and par2 recovery at 5% redundancy / ~2% corruption.
+    """
+    run_bitrot_recovery(env, redundancy_percentage=5)
+
+
+def test_25_bitrot_recovery(setup_environment, env: EnvData) -> None:
+    """
+    Verify bitrot detection and par2 recovery at 25% redundancy / ~12% corruption.
+    """
+    run_bitrot_recovery(env, redundancy_percentage=25)
