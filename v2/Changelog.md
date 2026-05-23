@@ -15,6 +15,10 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - **`release.sh` — duplicate release guard**: aborts with a clear error before the test suite runs if `build-history.json` already contains an entry for the current version — preventing accidental re-releases.
 - **`release.sh` — release log**: all script output (stdout + stderr) is captured via `tee` to `v2/doc/releases/release-<tag>.log` from the point the tag is parsed, preserving the full audit trail on disk even if the release fails partway through.
 
+### Added (tests)
+
+- **`test_real_verify_and_backup.py`** (10 real integration tests): replaces mock-heavy unit tests with end-to-end runs against genuine dar archives — `verify()` detects real file corruption and corrupt archive slices, stale restore files are replaced, `get_backed_up_files()` lists real archive contents, `list_contents()` raises on nonexistent archive, par2 verify detects corrupt dar slices, full backup pipeline runs verify and leaves restored files on disk, unreadable files cause dar exit-code 5 (CLI exits 0), and catalog-add fails when the dar_manager DB is read-only.
+
 ### Changed
 
 - **Dashboard** — timestamps now shown in the browser's local timezone and wall-clock time instead of UTC.
