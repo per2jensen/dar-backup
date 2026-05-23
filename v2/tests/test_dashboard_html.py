@@ -294,3 +294,61 @@ class TestTwoDatasetDesign:
         assert js.count("label:") >= 2 or js.count("'FULL'") >= 1, (
             "Chart config appears to have fewer than two datasets"
         )
+
+
+# ---------------------------------------------------------------------------
+# Timezone-aware timestamp display
+# ---------------------------------------------------------------------------
+
+class TestTimezoneDisplay:
+    """
+    Timestamps stored as UTC ISO 8601 must be converted to the browser's local
+    timezone before display, and the active timezone must be shown in the UI.
+    """
+
+    def test_fmt_ts_uses_date_constructor(self, dom: _AttrCollector) -> None:
+        """fmtTs must parse timestamps via new Date() for correct UTC→local conversion."""
+        assert "new Date(ts)" in dom.inline_js, (
+            "fmtTs does not use new Date(ts) — UTC timestamps will display as-is "
+            "instead of being converted to the browser's local timezone"
+        )
+
+    def test_fmt_ts_does_not_use_naive_slice_as_primary_path(self, dom: _AttrCollector) -> None:
+        """The naive .replace('T',' ').substring(0,16) must be a fallback, not the main path."""
+        js = dom.inline_js
+        # The naive slice is still present as an isNaN() fallback — acceptable.
+        # What must NOT happen is fmtTs returning it unconditionally (i.e. without
+        # an isNaN guard).  Verify the guard exists alongside the slice.
+        assert "isNaN(d)" in js, (
+            "fmtTs has no isNaN guard — naive string slice may execute on valid "
+            "UTC timestamps, bypassing timezone conversion"
+        )
+
+    def test_local_tz_abbr_function_defined(self, dom: _AttrCollector) -> None:
+        """localTzAbbr() must be defined so callers can obtain the short tz name."""
+        assert "function localTzAbbr" in dom.inline_js, (
+            "function localTzAbbr not found — timezone label cannot be shown in the UI"
+        )
+
+    def test_local_tz_abbr_uses_intl(self, dom: _AttrCollector) -> None:
+        """localTzAbbr must use Intl.DateTimeFormat for standards-compliant tz names."""
+        assert "Intl.DateTimeFormat" in dom.inline_js, (
+            "Intl.DateTimeFormat not found in JS — localTzAbbr cannot resolve "
+            "the browser timezone abbreviation"
+        )
+
+    def test_started_header_shows_timezone(self, dom: _AttrCollector) -> None:
+        """The 'Started' column header must call localTzAbbr() to display the active zone."""
+        assert "localTzAbbr()" in dom.inline_js, (
+            "localTzAbbr() is never called — timezone abbreviation will not appear "
+            "in the 'Started' column header or the last-updated timestamp"
+        )
+
+    def test_last_updated_includes_timezone(self, dom: _AttrCollector) -> None:
+        """The last-updated header must append the timezone abbreviation."""
+        js = dom.inline_js
+        # Both toLocaleTimeString() and localTzAbbr() must appear near last-updated
+        assert "toLocaleTimeString()" in js and "localTzAbbr()" in js, (
+            "last-updated display does not include both toLocaleTimeString() and "
+            "localTzAbbr() — the active timezone will not be shown"
+        )

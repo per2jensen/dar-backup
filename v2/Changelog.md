@@ -3,6 +3,22 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
+## v2-1.1.6 - not released
+
+### Added
+
+- **`release.sh` — `--dry-run` mode**: runs all read-only pre-flight checks (tag existence, HEAD at tag, clean tree, version/tag match, duplicate release guard) and prints what each step would do, without making any commits, moving the tag, building, signing, or uploading. Output is captured to `doc/releases/release-<tag>-dryrun.log`.
+- **`release.sh` — release audit trail**: on successful PyPI upload the script now runs three post-release steps, each in its own commit beyond the release tag:
+  1. Appends a structured entry to `v2/build-history.json` (version, git tag, git revision, UTC timestamp, PyPI URL, wheel and sdist SHA-256 hashes, GPG key fingerprint).
+  2. Stamps a clone-pulse annotation in `clonepulse/fetch_clones.json` via `clonepulse/add_release_annotation.py`.
+  3. Commits the full release log to `doc/releases/release-<tag>.log`.
+- **`release.sh` — duplicate release guard**: aborts with a clear error before the test suite runs if `build-history.json` already contains an entry for the current version — preventing accidental re-releases.
+- **`release.sh` — release log**: all script output (stdout + stderr) is captured via `tee` to `v2/doc/releases/release-<tag>.log` from the point the tag is parsed, preserving the full audit trail on disk even if the release fails partway through.
+
+### Changed
+
+- **Dashboard** — timestamps now shown in the browser's local timezone and wall-clock time instead of UTC.
+
 ## v2-1.1.5 - 2026-05-17
 
 ### Added

@@ -611,7 +611,16 @@ function fmtDuration(secs) {
 
 function fmtTs(ts) {
   if (!ts) return '—';
-  return ts.replace('T', ' ').substring(0, 16);
+  const d = new Date(ts);
+  if (isNaN(d)) return ts.replace('T', ' ').substring(0, 16);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localTzAbbr() {
+  return new Intl.DateTimeFormat('default', { timeZoneName: 'short' })
+    .formatToParts(new Date())
+    .find(p => p.type === 'timeZoneName')?.value || 'local';
 }
 
 function chk(val, naVal) {
@@ -1032,7 +1041,7 @@ function buildDefSection(defName, runs) {
       </div>
       <table>
         <thead><tr>
-          <th>Started</th>
+          <th>Started (${localTzAbbr()})</th>
           <th>Type</th>
           <th>Status</th>
           <th title="Total · hover for breakdown">Duration</th>
@@ -1172,7 +1181,7 @@ async function loadAll() {
       `Recent runs (${limitLabel}${defLabel}${fromLabel}${toLabel})`;
 
     document.getElementById('last-updated').textContent =
-      'updated ' + new Date().toLocaleTimeString();
+      'updated ' + new Date().toLocaleTimeString() + ' ' + localTzAbbr();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
