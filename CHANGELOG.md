@@ -3,6 +3,13 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.6 - not released
+
+- **Config range validation** with accepted ranges. Consult the [v2/Changelog.md](v2/Changelog.md) file for details
+- Many fixes to test cases and docs found in a review
+- More integration tests
+- CI workflow now uses a subset of the full test suite, in order to conserve Github resources.
+
 ## v2-1.1.5 - 2026-05-17
 
 - More PITR test cases

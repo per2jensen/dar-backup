@@ -36,7 +36,6 @@ Available options:
 --list-contents <archive>            List the contents of a specified archive.
 --list-definitions                   List backup definitions from BACKUP.D_DIR.
 --selection <params>                 Define file selection for listing/restoring.
---restore <archive>                  Restore a specified archive.
 -r, --restore <archive>              Restore archive.
 --restore-dir                        Directory on which to restore
 --verbose                            Enable verbose output.
@@ -99,6 +98,7 @@ Available options:
 --relocate-archive-path-dry-run      Show archive path changes without applying them (use with --relocate-archive-path).
 --verbose                            Enable verbose output.
 --log-level <level>                  Set log level (`debug` or `trace`, default is `info`).
+--log-stdout                         Also print log messages to stdout.
 ```
 
 ### Manager env vars

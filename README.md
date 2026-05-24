@@ -135,7 +135,7 @@ on hardware they don't own yet.
   size-capped; `clean-log` strips verbose `dar` output when not needed
 - **No lock-in** — standard `dar` archives, standard PAR2 files; restore with just the `dar`
   binary, no `dar-backup` installation required on the restore machine
-- **750+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
+- **1000+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
   restore chains, PITR verification, and edge cases; CI on every commit
 
 ✅ The author has used `dar-backup` ~5 years and has been saved by it multiple times.

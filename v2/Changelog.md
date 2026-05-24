@@ -7,6 +7,37 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
+- **Config range validation** — `ConfigSettings` now enforces ranges at startup and raises `ConfigSettingsError` immediately rather than silently accepting bad values:
+  - `ERROR_CORRECTION_PERCENT` must be 1–90 (0 gives no redundancy; >90 is rejected by par2)
+  - `NO_FILES_VERIFICATION` must be ≥ 1 (0 makes restore tests vacuously pass)
+  - `DIFF_AGE` and `INCR_AGE` must be ≥ 1; values above 365 / 31 days respectively are logged as a warning
+
+### Fixed
+
+- **`is_safe_arg` security** — `\r` (terminal-overwrite attack) and `\x00` (C string truncation) are now rejected alongside the existing shell metacharacters.
+- **`requirements()` reliability** — removed a PYTEST_CURRENT_TEST branch that silently changed execution path in tests; now always uses `Popen` with streaming threads. Adds a configurable timeout via `command_timeout_secs`; exceeding it kills the script and raises `RuntimeError` with a clear message. `shell=True` is intentional — PREREQ/POSTREQ entries are arbitrary shell expressions from a trusted config file.
+- **Subprocess timeout coverage** — `get_binary_info()` and the two `dar_manager` tab-completion calls now pass `timeout=10` to `subprocess.run`, preventing silent hangs in shell-completion contexts.
+- **`show_scriptname()`** — bare `except:` tightened to `except Exception:`.
+
+### Added (tests)
+
+- **`test_metrics_smoke.py`** — smoke-tier integration test: runs a real FULL backup with `METRICS_DB_PATH` configured and asserts that the metrics row has correct values for `archive_name` (format regex), `archive_size_bytes > 0`, `dar_exit_code ∈ {0, 5}`, and `hostname` — fields not checked at smoke level in any existing test.
+- **`test_dashboard_smoke.py`** — smoke-tier integration test (skipped when `datasette` is not installed): runs a real FULL backup, starts `dar-backup-dashboard --no-browser` in a new process group, polls `/-/versions` via `urllib` until HTTP 200, queries `/{db}.json?sql=SELECT COUNT(*)...` to confirm rows are served, then terminates the process group cleanly.
+- **`test_metrics_smoke.py` / `test_dashboard_smoke.py`** — no mocks; real subprocess, real SQLite, real HTTP.
+- **`test_command_runner.py`** — parametrized `sanitize_cmd` tests for `\r` and `\x00` (rejected) and a set of safe arguments (accepted).
+- **`test_config_settings.py`** — parametrized edge-case tests for `ERROR_CORRECTION_PERCENT` (`[-1, 0, 91, 100]` raise; `[1, 5, 50, 90]` load cleanly) and `NO_FILES_VERIFICATION` (`[0, -1]` raise; `[1, 5, 100]` load cleanly).
+- **`test_util.py`** — `test_requirements_timeout_kills_hanging_script`: runs `sleep 60` with `command_timeout_secs=1` and asserts `RuntimeError` containing "timed out". `test_patch_config_file_unwritable_directory_leaves_original_intact`: asserts `OSError` is raised and the original file is unchanged when the target directory is not writable. Three Discord tests converted from `MagicMock(util.logger)` to `caplog` (the mock patched the wrong object and tested nothing).
+- **`test_par2.py`** — added `test_par2_files_created_for_full_backup` and `test_par2_verify_passes_on_intact_backup` (both real runs, no mocks).
+- **`test_prereq.py` / `test_postreq.py`** — full rewrites: each now contains a `_success_` / `_failure_` pair using real shell commands (`ls /tmp` / `command-does-not-exist`); removed subprocess mocks and `SimpleNamespace` stubs entirely.
+
+### Documentation
+
+- **`troubleshooting.md`** — corrected the blocked-characters table: removed `#`, `"`, `'` (not blocked by `is_safe_arg`); added `\r` and `\x00` with their threat rationale. Added a `ConfigSettingsError on startup` section with a full cause/fix table and warning-only conditions.
+- **`config-reference.md`** — added inline range comments to `NO_FILES_VERIFICATION`, `DIFF_AGE`, `INCR_AGE`, and `ERROR_CORRECTION_PERCENT`.
+- **`cli-reference.md`** — removed duplicate `--restore` entry (the one without the `-r` short form); added `--log-stdout` to the manager options block.
+- **`dev.md`** — corrected `./build.py` to `./build.sh` (the Python script does not exist).
+- **`troubleshooting.md` / `systemd-setup.md`** — `en_US.UTF8` → `en_US.UTF-8` throughout (matches the locale string the code and systemd units actually set).
+
 - **`release.sh` — `--dry-run` mode**: runs all read-only pre-flight checks (tag existence, HEAD at tag, clean tree, version/tag match, duplicate release guard) and prints what each step would do, without making any commits, moving the tag, building, signing, or uploading. Output is captured to `doc/releases/release-<tag>-dryrun.log`.
 - **`release.sh` — release audit trail**: on successful PyPI upload the script now runs three post-release steps, each in its own commit beyond the release tag:
   1. Appends a structured entry to `v2/build-history.json` (version, git tag, git revision, UTC timestamp, PyPI URL, wheel and sdist SHA-256 hashes, GPG key fingerprint).

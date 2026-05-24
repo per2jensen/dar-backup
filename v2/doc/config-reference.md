@@ -18,7 +18,7 @@ LOGFILE_LOCATION=~/.dar-backup.log
 # LOGFILE_BACKUP_COUNT = 5      # 5 backup log files is default, change as needed
 MAX_SIZE_VERIFICATION_MB = 20
 MIN_SIZE_VERIFICATION_MB = 1
-NO_FILES_VERIFICATION = 5
+NO_FILES_VERIFICATION = 5        # must be >= 1; 0 makes restore tests vacuously pass
 # timeout in seconds for backup, test, restore and par2 operations
 # The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
 # If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
@@ -37,11 +37,11 @@ TEST_RESTORE_DIR = /tmp/dar-backup/restore/
 # age settings are in days
 # `cleanup` script removes archives and their .par redundancy files if older than configured.
 # `cleanup` does not remove FULL archives, unless specifically told to and a "y" is answered to "are you sure?".
-DIFF_AGE = 100
-INCR_AGE = 40
+DIFF_AGE = 100   # must be >= 1; values > 365 are accepted but logged as a warning
+INCR_AGE = 40    # must be >= 1; values > 31 are accepted but logged as a warning
 
 [PAR2]
-ERROR_CORRECTION_PERCENT = 5
+ERROR_CORRECTION_PERCENT = 5   # must be 1–90; 0 gives no redundancy, >90 is rejected
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /path/to/par2-store

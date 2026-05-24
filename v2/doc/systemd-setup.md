@@ -90,9 +90,9 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-## LANG=en_US.UTF8
+## LANG=en_US.UTF-8
 
-LANG is set to `en_US.UTF8` in the environment setup by systemd.
+LANG is set to `en_US.UTF-8` in the environment setup by systemd.
 
 This is to ensure that `dar-backup` can read the metadata `dar` emits after a backup.
 

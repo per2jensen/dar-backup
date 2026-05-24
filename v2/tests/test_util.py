@@ -527,7 +527,7 @@ def test_requirements_success_runs_real_command():
     """A zero-exit PREREQ command must complete without raising."""
     config = configparser.ConfigParser()
     config["PREREQ"] = {"001": "echo ok"}
-    config_setting = SimpleNamespace(config=config)
+    config_setting = SimpleNamespace(config=config, command_timeout_secs=30)
     util.requirements("PREREQ", config_setting)
 
 
@@ -535,8 +535,17 @@ def test_requirements_failure_raises_on_nonzero_exit():
     """A non-zero-exit PREREQ command must raise RuntimeError."""
     config = configparser.ConfigParser()
     config["PREREQ"] = {"001": "exit 1"}
-    config_setting = SimpleNamespace(config=config)
+    config_setting = SimpleNamespace(config=config, command_timeout_secs=30)
     with pytest.raises(RuntimeError):
+        util.requirements("PREREQ", config_setting)
+
+
+def test_requirements_timeout_kills_hanging_script():
+    """A PREREQ script that exceeds command_timeout_secs must be killed and raise RuntimeError."""
+    config = configparser.ConfigParser()
+    config["PREREQ"] = {"001": "sleep 60"}
+    config_setting = SimpleNamespace(config=config, command_timeout_secs=1)
+    with pytest.raises(RuntimeError, match="timed out"):
         util.requirements("PREREQ", config_setting)
 
 

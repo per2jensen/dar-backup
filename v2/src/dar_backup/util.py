@@ -347,7 +347,7 @@ def show_scriptname()  -> str:
     """
     try:
         scriptname = os.path.basename(sys.argv[0])
-    except:
+    except Exception:
         scriptname = "unknown"
     return scriptname
 
@@ -506,7 +506,8 @@ def get_binary_info(command):
             [path, '--version'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            timeout=10
         )
 
         # Combine output regardless of return code
@@ -559,11 +560,18 @@ def requirements(
     if type not in allowed_types:
         raise RuntimeError(f"requirements: {type} not in: {allowed_types}")
 
+    # -1 means no timeout (same convention as COMMAND_TIMEOUT_SECS elsewhere)
+    timeout_secs = getattr(config_setting, 'command_timeout_secs', 30)
+    timeout = None if timeout_secs == -1 else timeout_secs
+
     logger.debug(f"Performing  {type}")
     if type in config_setting.config:
         for key in sorted(config_setting.config[type].keys()):
             script = config_setting.config[type][key]
             try:
+                # shell=True is intentional: PREREQ/POSTREQ scripts are arbitrary shell
+                # expressions from a trusted config file and may use pipes, redirects,
+                # or compound commands that require a shell to interpret.
                 process = subprocess.Popen(
                     script,
                     stdout=subprocess.PIPE,
@@ -592,7 +600,16 @@ def requirements(
                 stdout_thread.start()
                 stderr_thread.start()
 
-                process.wait()
+                try:
+                    process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout_thread.join()
+                    stderr_thread.join()
+                    raise RuntimeError(
+                        f"{type} {key}: '{script}' timed out after {timeout_secs}s"
+                    )
+
                 stdout_thread.join()
                 stderr_thread.join()
 
@@ -913,9 +930,10 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True,
-                    check=True
+                    check=True,
+                    timeout=10
                 )
-            except subprocess.CalledProcessError:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 continue
 
             for line in result.stdout.splitlines():
@@ -976,13 +994,14 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True,
-                    check=True
+                    check=True,
+                    timeout=10
                 )
                 for line in result.stdout.splitlines():
                     parts = line.strip().split("\t")
                     if len(parts) >= 3:
                         existing.add(parts[2].strip())
-            except subprocess.CalledProcessError:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 pass
 
         # Step 3: return filtered list

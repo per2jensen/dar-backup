@@ -419,16 +419,13 @@ def test_missing_cleanup_specific_archives_argument(setup_environment, env):
     
 
 
-def test_prereq_script_success(monkeypatch):
-    config_settings = MagicMock()
-    config_settings.config = {'PREREQ': {'check': 'echo "ok"'}}
-
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = "all good"
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-
-    # If no exception is raised, it's a pass
+def test_prereq_script_success(logger):
+    from types import SimpleNamespace
+    config_settings = SimpleNamespace(
+        config={'PREREQ': {'check': 'echo "ok"'}},
+        command_timeout_secs=30,
+    )
+    # If no exception is raised, the PREREQ command ran successfully
     requirements("PREREQ", config_settings)
 
 

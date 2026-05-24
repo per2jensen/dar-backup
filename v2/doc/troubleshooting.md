@@ -9,7 +9,7 @@ Back to [README](../../README.md)
 Disallowed characters include:
 
 ```text
-\$ & ; | > < ` \n
+; & | > < ` $ \n \r \x00
 ```
 
 ### Why this matters
@@ -21,15 +21,17 @@ When restoring specific files using the --selection argument or similar mechanis
 
 ### Blocked characters
 
-| Character | Reason Blocked                  |
-|----------:|---------------------------------|
-| `;`       | Shell command separator         |
-| `&`       | Background execution operator   |
-| `\|`      | Pipe operator                   |
-| `<` / `>` | Redirection operators           |
-| `#`       | Shell comment                   |
-| `` ` ``   | Command substitution            |
-| `"` / `'` | Quoting that may be unbalanced  |
+| Character | Reason Blocked                                              |
+|----------:|-------------------------------------------------------------|
+| `;`       | Shell command separator                                     |
+| `&`       | Background execution / command chaining operator            |
+| `\|`      | Pipe operator                                               |
+| `<` / `>` | Redirection operators                                       |
+| `` ` ``   | Command substitution                                        |
+| `$`       | Variable expansion                                          |
+| `\n`      | Newline — can inject additional shell commands              |
+| `\r`      | Carriage return — enables terminal-overwrite attacks        |
+| `\x00`    | Null byte — truncates strings in C-based programs           |
 
 ### Workaround: restore the parent directory
 
@@ -57,7 +59,7 @@ You may need to quote the argument or escape characters depending on your shell.
 To search for such files inside the archive:
 
 ```bash
-    dar -l /path/to/backup/example | grep '[#;<>|&]'
+    dar -l /path/to/backup/example | grep '[;&|><`$]'
 ```
 
 This will help you identify files that require manual restoration.
@@ -67,6 +69,33 @@ This will help you identify files that require manual restoration.
 - Forbidden characters are blocked **only** in CLI arguments to maintain safety.
 - Files containing these characters are **still archived and restorable**.
 - Use `dar` directly for full manual control when restoring such files.
+
+---
+
+## ConfigSettingsError on startup
+
+`dar-backup` validates your configuration file when it starts. If a required key is missing, a value is out of the allowed range, or a value cannot be parsed, it raises a `ConfigSettingsError` and exits immediately.
+
+### Common causes and fixes
+
+| Error message contains | Cause | Fix |
+| --- | --- | --- |
+| `missing mandatory configuration key` | A required key is absent from the config file | Add the missing key — check the [config reference](config-reference.md) for the full template |
+| `diff_age must be >= 1` | `DIFF_AGE = 0` or negative | Set `DIFF_AGE` to a positive integer (e.g. `30`) |
+| `incr_age must be >= 1` | `INCR_AGE = 0` or negative | Set `INCR_AGE` to a positive integer (e.g. `7`) |
+| `no_files_verification must be >= 1` | `NO_FILES_VERIFICATION = 0` or negative | Set `NO_FILES_VERIFICATION` to a positive integer (e.g. `5`) |
+| `error_correction_percent must be between 1 and 90` | `ERROR_CORRECTION_PERCENT` is 0 or above 90 | Set a value in the range 1–90 (e.g. `5`) |
+| `invalid boolean value for 'enabled'` | `ENABLED` in `[PAR2]` is not `true/false/yes/no/1/0` | Correct the value (e.g. `ENABLED = true`) |
+| `invalid dar_backup_command_timeout_secs` | The environment variable is set to an invalid value | Unset it or set it to `-1` (no timeout) or a positive integer |
+| `invalid regex` | `RESTORETEST_EXCLUDE_REGEX` contains a malformed regex | Fix or remove the regex pattern |
+| `configuration file not found` | The config file path does not exist | Check `--config-file` or the default path `~/.config/dar-backup/dar-backup.conf` |
+
+### Warning-only conditions (config still loads)
+
+These do not cause an error but produce a warning in the log:
+
+- `DIFF_AGE > 365` — unusually long; cleanup will keep DIFF archives for over a year
+- `INCR_AGE > 31` — unusually long; cleanup will keep INCR archives for over a month
 
 ---
 
@@ -207,9 +236,9 @@ If you need to use this option, un-comment it in the [.darrc](config-reference.m
 
 ---
 
-## LANG=en_US.UTF8
+## LANG=en_US.UTF-8
 
-LANG should be set to `en_US.UTF8` in the environment in which `dar-backup` runs.
+LANG should be set to `en_US.UTF-8` in the environment in which `dar-backup` runs.
 
 This is to ensure that `dar-backup` can read the metadata `dar` emits after a backup.
 

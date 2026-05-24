@@ -7,7 +7,7 @@ Back to [README](../../README.md)
 ```bash
 git clone https://github.com/per2jensen/dar-backup.git
 cd dar-backup/v2
-./build.py
+./build.sh
 ```
 
 This script:
