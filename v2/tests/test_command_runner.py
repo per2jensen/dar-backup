@@ -5,7 +5,7 @@ import re
 import subprocess
 import time
 
-from dar_backup.command_runner import CommandRunner, CommandResult
+from dar_backup.command_runner import CommandRunner, CommandResult, sanitize_cmd
 from dar_backup.util import parse_dar_stats
 from io import StringIO
 from unittest.mock import patch, MagicMock
@@ -386,6 +386,35 @@ def test_command_runner_unsafe_arg_returns_error(tmp_path):
     result = runner.run(["echo", "bad;rm -rf /"])
     assert result.returncode == -1
     assert "Unsafe argument detected" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# sanitize_cmd — dangerous control characters
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_char,label", [
+    ("\r", "carriage-return"),
+    ("\x00", "null-byte"),
+])
+def test_sanitize_cmd_rejects_control_characters(bad_char, label):
+    """
+    \\r enables terminal-overwrite attacks; \\x00 truncates strings in C-based
+    programs. Both must be rejected by sanitize_cmd regardless of surrounding text.
+    """
+    with pytest.raises(ValueError, match="Unsafe argument detected"):
+        sanitize_cmd(["echo", f"hello{bad_char}world"])
+
+
+@pytest.mark.parametrize("safe_arg", [
+    "hello",
+    "/tmp/backup_dir",
+    "example_FULL_2024-01-01",
+    "--config-file",
+])
+def test_sanitize_cmd_accepts_safe_args(safe_arg):
+    """Ordinary arguments used in real dar-backup invocations must be accepted."""
+    result = sanitize_cmd(["dar-backup", safe_arg])
+    assert result == ["dar-backup", safe_arg]
 
 
 def test_command_runner_log_output_false_logs_only_command_line(tmp_path):

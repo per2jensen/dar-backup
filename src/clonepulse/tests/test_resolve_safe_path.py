@@ -19,6 +19,8 @@ import tempfile
 
 import pytest
 
+pytestmark = pytest.mark.smoke
+
 from clonepulse.generate_clone_dashboard import (
     _BLOCKED_PATH_PREFIXES,
     _BlockedPathError,

@@ -11,10 +11,20 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    types: [ opened, synchronize, reopened, closed ]
   workflow_dispatch:
 
+# Shared setup steps extracted as a reusable anchor is not supported in GHA,
+# so both jobs duplicate the install/build steps intentionally.
+
 jobs:
-  python3-unit-tests:
+  smoke-tests:
+    # Run on direct commits to main, on PR updates, and on manual dispatch.
+    # Skip when a PR is merged (full-tests handles that).
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-24.04
 
     steps:
@@ -47,17 +57,86 @@ jobs:
           fi
           ./build.sh
 
-      - name: Run pytest report (full) and generate artifacts
+      - name: Run pytest smoke suite
         working-directory: v2
         run: |
           set -euo pipefail
           . venv*/bin/activate
           export COVERAGE_PROCESS_START="$PWD/pyproject.toml"
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
-
           mkdir -p doc/test-report
+          scripts/pytest_report.sh smoke
 
-          # Run the report script (must produce JSON + TXT + collect output)
+      - name: Upload pytest reports as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report-smoke-${{ github.sha }}
+          path: |
+            ./v2/doc/test-report/*.json
+            ./v2/doc/test-report/*.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Ensure coverage.xml exists
+        run: |
+          if [[ ! -f "./v2/doc/test-report/coverage.xml" ]]; then
+            echo "coverage.xml not found at ./v2/doc/test-report/coverage.xml"
+            exit 1
+          fi
+
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./v2/doc/test-report/coverage.xml
+          verbose: true
+
+  full-tests:
+    # Run only when a PR is actually merged into main.
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+
+      - name: Install required system packages
+        run: |
+          sudo apt update
+          sudo apt install -y dar dar-static par2 git python3 python3-venv libguestfs-tools
+
+      - name: Make kernel readable for libguestfs
+        run: |
+          version=$(uname -r)
+          sudo dpkg-statoverride --update --add root root 0644 /boot/vmlinuz-${version}
+
+      - name: Copy README into v2 for build
+        run: cp README.md v2/README.md
+
+      - name: Create and prepare Python virtual environment
+        run: |
+          cd $GITHUB_WORKSPACE/v2
+          if [[ -d venv* ]]; then
+            rm -rf venv*
+          fi
+          ./build.sh
+
+      - name: Run pytest full suite
+        working-directory: v2
+        run: |
+          set -euo pipefail
+          . venv*/bin/activate
+          export COVERAGE_PROCESS_START="$PWD/pyproject.toml"
+          export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+          mkdir -p doc/test-report
           scripts/pytest_report.sh full
 
       - name: Upload pytest reports as workflow artifacts
@@ -80,6 +159,6 @@ jobs:
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./v2/doc/test-report/coverage.xml
           verbose: true

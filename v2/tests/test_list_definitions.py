@@ -5,7 +5,7 @@ import os
 from dar_backup.command_runner import CommandRunner
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 
 

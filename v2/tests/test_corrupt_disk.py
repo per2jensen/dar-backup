@@ -220,7 +220,7 @@ def guest_unmount(env: EnvData, pid, img_path):
         command = ['cat', script_path]
         result: CommandResult =  runner.run(command)
            
-    except:
+    except Exception:
         assert False, "guest unmount failed"
     finally:
         command = ['bash', '-c', script_path]

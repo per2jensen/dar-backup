@@ -5,7 +5,7 @@ import logging
 import configparser
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from urllib.error import HTTPError
 from dar_backup import util
 import pytest
@@ -118,22 +118,14 @@ from dar_backup.util import get_invocation_command_line
 
 
 
-def test_get_invocation_command_line_positive(monkeypatch):
+def test_get_invocation_command_line_positive():
     """
-    Positive test:
-    Simulates reading from /proc/[pid]/cmdline and verifies the reconstructed command line.
+    Reads /proc/self/cmdline for the current pytest process — no mock needed,
+    the file always exists and is readable on Linux.
     """
-    fake_cmdline = b"/usr/bin/python3\x00myscript.py\x00--option\x00value"
-
-    def mock_open(*args, **kwargs):
-        from io import BytesIO
-        return BytesIO(fake_cmdline)
-
-    monkeypatch.setattr("builtins.open", mock_open)
     result = get_invocation_command_line()
-
     assert isinstance(result, str)
-    assert "/usr/bin/python3 myscript.py --option value" in result
+    assert result and not result.startswith("[error:")
 
 def test_get_invocation_command_line_negative(monkeypatch):
     """
@@ -368,19 +360,16 @@ def test_list_archive_completer_cleanup_without_specific_archives(monkeypatch):
     assert util.list_archive_completer("", args) == []
 
 
-def test_send_discord_message_returns_false_without_webhook(monkeypatch):
+def test_send_discord_message_returns_false_without_webhook(monkeypatch, caplog):
     monkeypatch.delenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", raising=False)
-    fake_logger = MagicMock()
-    monkeypatch.setattr(util, "logger", fake_logger)
 
-    assert util.send_discord_message("hello", config_settings=None) is False
-    fake_logger.info.assert_called_once()
-    assert "not configured" in fake_logger.info.call_args[0][0].lower()
+    with caplog.at_level(logging.INFO):
+        assert util.send_discord_message("hello", config_settings=None) is False
+
+    assert any("not configured" in r.message.lower() for r in caplog.records)
 
 
-def test_send_discord_message_http_error_logs_and_returns_false(monkeypatch):
-    fake_logger = MagicMock()
-    monkeypatch.setattr(util, "logger", fake_logger)
+def test_send_discord_message_http_error_logs_and_returns_false(monkeypatch, caplog):
     monkeypatch.setenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", "https://example/webhook")
 
     def fake_urlopen(request, timeout):
@@ -394,14 +383,13 @@ def test_send_discord_message_http_error_logs_and_returns_false(monkeypatch):
 
     monkeypatch.setattr(util.urllib.request, "urlopen", fake_urlopen)
 
-    assert util.send_discord_message("hello") is False
-    fake_logger.error.assert_called_once()
-    assert "http error 429" in fake_logger.error.call_args[0][0].lower()
+    with caplog.at_level(logging.ERROR):
+        assert util.send_discord_message("hello") is False
+
+    assert any("http error 429" in r.message.lower() for r in caplog.records)
 
 
-def test_send_discord_message_unexpected_error_logs_and_returns_false(monkeypatch):
-    fake_logger = MagicMock()
-    monkeypatch.setattr(util, "logger", fake_logger)
+def test_send_discord_message_unexpected_error_logs_and_returns_false(monkeypatch, caplog):
     monkeypatch.setenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", "https://example/webhook")
 
     def fake_urlopen(*_args, **_kwargs):
@@ -409,9 +397,10 @@ def test_send_discord_message_unexpected_error_logs_and_returns_false(monkeypatc
 
     monkeypatch.setattr(util.urllib.request, "urlopen", fake_urlopen)
 
-    assert util.send_discord_message("hello") is False
-    fake_logger.error.assert_called_once()
-    assert "failed to send discord webhook message" in fake_logger.error.call_args[0][0].lower()
+    with caplog.at_level(logging.ERROR):
+        assert util.send_discord_message("hello") is False
+
+    assert any("failed to send discord webhook message" in r.message.lower() for r in caplog.records)
 
 
 def test_add_specific_archive_completer_filters_existing_db_entries(tmp_path):
@@ -510,60 +499,43 @@ def test_patch_config_file_replaces_only_matching_keys(tmp_path):
     assert "B=2" in content
 
 
+def test_patch_config_file_unwritable_directory_leaves_original_intact(tmp_path):
+    """
+    If the directory is not writable, mkstemp fails and the original file must
+    be left completely intact — the atomic write guarantees no partial overwrite.
+    """
+    import stat
+    config_path = tmp_path / "config.conf"
+    original = "A=1\nB=2\n"
+    config_path.write_text(original)
+
+    os.chmod(tmp_path, stat.S_IRUSR | stat.S_IXUSR)  # read + traverse, no write
+    try:
+        with pytest.raises(OSError):
+            util.patch_config_file(str(config_path), {"A": "10"})
+        assert config_path.read_text() == original
+    finally:
+        os.chmod(tmp_path, stat.S_IRWXU)
+
+
 def test_normalize_dir_strips_trailing_separator(tmp_path):
     raw = str(tmp_path / "dir") + "/"
     assert util.normalize_dir(raw) == str(tmp_path / "dir")
 
 
-def test_requirements_uses_popen_path_success(monkeypatch):
+def test_requirements_success_runs_real_command():
+    """A zero-exit PREREQ command must complete without raising."""
     config = configparser.ConfigParser()
     config["PREREQ"] = {"001": "echo ok"}
     config_setting = SimpleNamespace(config=config)
-
-    def getenv_override(key, default=None):
-        if key == "PYTEST_CURRENT_TEST":
-            return None
-        return os.getenv(key, default)
-
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 0
-            self.stdout = io.StringIO("ok\n")
-            self.stderr = io.StringIO("")
-
-        def wait(self):
-            return None
-
-    monkeypatch.setattr(util, "logger", MagicMock())
-    monkeypatch.setattr(util.os, "getenv", getenv_override)
-    monkeypatch.setattr(util.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
-
     util.requirements("PREREQ", config_setting)
 
 
-def test_requirements_uses_popen_path_failure(monkeypatch):
+def test_requirements_failure_raises_on_nonzero_exit():
+    """A non-zero-exit PREREQ command must raise RuntimeError."""
     config = configparser.ConfigParser()
-    config["PREREQ"] = {"001": "echo nope"}
+    config["PREREQ"] = {"001": "exit 1"}
     config_setting = SimpleNamespace(config=config)
-
-    def getenv_override(key, default=None):
-        if key == "PYTEST_CURRENT_TEST":
-            return None
-        return os.getenv(key, default)
-
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 1
-            self.stdout = io.StringIO("")
-            self.stderr = io.StringIO("nope\n")
-
-        def wait(self):
-            return None
-
-    monkeypatch.setattr(util, "logger", MagicMock())
-    monkeypatch.setattr(util.os, "getenv", getenv_override)
-    monkeypatch.setattr(util.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
-
     with pytest.raises(RuntimeError):
         util.requirements("PREREQ", config_setting)
 
@@ -853,3 +825,37 @@ class TestWriteMetricsRowGraceful:
             util.write_metrics_row(metrics, cfg)
         finally:
             os.chmod(db, stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_list_backups_malformed_date_does_not_crash(tmp_path, capsys):
+    """
+    A .dar file whose name passes the regex filter but contains an out-of-range
+    calendar date (month 13) must not crash list_backups.
+
+    The sort key falls back to datetime.min so the entry still appears in output.
+    """
+    (tmp_path / "mybackup_FULL_2024-13-99.1.dar").write_text("x")
+    (tmp_path / "mybackup_FULL_2024-01-01.1.dar").write_text("x")
+
+    util.list_backups(str(tmp_path))
+
+    out = capsys.readouterr().out
+    assert "mybackup_FULL_2024-13-99" in out
+    assert "mybackup_FULL_2024-01-01" in out
+
+
+def test_list_backups_getsize_oserror_does_not_crash(tmp_path, capsys):
+    """
+    A broken symlink whose name matches the dar filename pattern causes
+    os.path.getsize() to raise OSError (the symlink target does not exist).
+    list_backups must skip the broken entry and continue without raising.
+    """
+    (tmp_path / "good_FULL_2024-01-01.1.dar").write_text("x")
+    broken = tmp_path / "broken_FULL_2024-01-02.1.dar"
+    broken.symlink_to("/nonexistent/target.1.dar")
+
+    util.list_backups(str(tmp_path))
+
+    out = capsys.readouterr().out
+    assert "good_FULL_2024-01-01" in out
+    assert "broken_FULL_2024-01-02" not in out

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import configparser
+import logging
 import os
 import re
 from dataclasses import dataclass, field, fields
@@ -8,6 +9,8 @@ from os.path import expandvars, expanduser
 from typing import Optional, Pattern
 
 from dar_backup.exceptions import ConfigSettingsError
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ConfigSettings:
@@ -147,6 +150,25 @@ class ConfigSettings:
             self.diff_age = int(self.config['AGE']['DIFF_AGE'])
             self.incr_age = int(self.config['AGE']['INCR_AGE'])
             self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
+
+            if self.no_files_verification < 1:
+                raise ConfigSettingsError(
+                    f"NO_FILES_VERIFICATION must be >= 1, got: {self.no_files_verification}"
+                )
+
+            if self.diff_age < 1:
+                raise ConfigSettingsError(f"DIFF_AGE must be >= 1, got: {self.diff_age}")
+            if self.diff_age > 365:
+                logger.warning("DIFF_AGE is %d days — this is unusually high (> 365)", self.diff_age)
+
+            if self.incr_age < 1:
+                raise ConfigSettingsError(f"INCR_AGE must be >= 1, got: {self.incr_age}")
+            if self.incr_age > 31:
+                logger.warning("INCR_AGE is %d days — this is unusually high (> 31)", self.incr_age)
+            if not 1 <= self.error_correction_percent <= 90:
+                raise ConfigSettingsError(
+                    f"ERROR_CORRECTION_PERCENT must be between 1 and 90, got: {self.error_correction_percent}"
+                )
 
             val = self.config['PAR2']['ENABLED'].strip().lower()
             if val in ('true', '1', 'yes'):

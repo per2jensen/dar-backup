@@ -148,6 +148,7 @@ def test_manager_command_capture_max_bytes_1k_captures_stdout_stderr(tmp_path, m
     assert "err" in result.stderr
 
 
+@pytest.mark.smoke
 def test_manager_create_dbs(setup_environment: None, env: EnvData):
     """
     test that generated catalogs are created
@@ -213,10 +214,11 @@ def is_catalog(generated_definition: Dict, config_settings: ConfigSettings, env:
 
 
 
+@pytest.mark.smoke
 def test_manager_version(setup_environment: None, env: envdata.EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
- 
+
     command = ['manager', '--version']
     process = runner.run(command)
     if process.returncode != 0:
@@ -226,6 +228,7 @@ def test_manager_version(setup_environment: None, env: envdata.EnvData):
         raise Exception(f"Command failed: {command}")
 
 
+@pytest.mark.smoke
 def test_manager_help(setup_environment: None, env: envdata.EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
 
@@ -238,6 +241,7 @@ def test_manager_help(setup_environment: None, env: envdata.EnvData):
         raise Exception(f"Command failed: {command}")
 
 
+@pytest.mark.smoke
 def test_list_catalog(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then list catalogs
@@ -288,6 +292,7 @@ def test_list_catalog_short_option(setup_environment: None, env: EnvData):
 
 
 
+@pytest.mark.smoke
 def test_find_file(setup_environment: None, env: EnvData):
     """
     Add a backup to it's catalog database, then find some files in the catalog
@@ -349,6 +354,7 @@ def test_find_file(setup_environment: None, env: EnvData):
 
 
 
+@pytest.mark.smoke
 def test_remove_specific_archive(setup_environment: None, env: EnvData):
     """
     verify deletion of catalog
@@ -390,6 +396,7 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
 
 
 
+@pytest.mark.smoke
 def test_list_archive_contents(setup_environment: None, env: EnvData):
     """
     verify listing the contents of an archive, given the archive name
@@ -417,6 +424,7 @@ def test_list_archive_contents(setup_environment: None, env: EnvData):
 
 
 
+@pytest.mark.smoke
 def test_add_directory_to_catalog_db(setup_environment: None, env: EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ['manager', '--add-dir' , env.backup_dir, '--config-file', env.config_file, '--log-level', 'debug', '--log-stdout']
@@ -435,6 +443,7 @@ def test_add_empty_directory_to_catalog_db(setup_environment: None, env: EnvData
 
 
 
+@pytest.mark.smoke
 def test_add_archive_to_catalog_db(setup_environment: None, env: EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     today_date = date.today().strftime("%Y-%m-%d")
@@ -875,6 +884,7 @@ def test_add_specific_archive_dar_not_found(tmp_path):
     assert result == 1
 
 #====================
+@pytest.mark.smoke
 def test_add_specific_archive_success(tmp_path):
     from dar_backup.manager import add_specific_archive
 
@@ -1102,6 +1112,7 @@ def test_catalog_file_not_found(env, setup_environment, caplog):
     assert 'Catalog database not found' in caplog.text
 
 
+@pytest.mark.smoke
 def test_catalog_command_success(env, setup_environment, capsys):
     mock_process = MagicMock()
     mock_process.stdout = "catalog contents"
@@ -1141,6 +1152,7 @@ def test_catalog_command_failure(env, setup_environment, caplog):
 
 
 
+@pytest.mark.smoke
 def test_manager_db_dir_respected_by_dar_backup(env, setup_environment, tmp_path):
     """
     Verify that if MANAGER_DB_DIR is specified, the catalog database is created there by dar-backup during full backup.
@@ -1639,6 +1651,7 @@ def test_manager_db_dir_invalid_path_without_backup_def(env, setup_environment, 
 
 
 
+@pytest.mark.smoke
 def test_manager_creates_all_catalogs(env, setup_environment, tmp_path):
     """
     Positive test: When MANAGER_DB_DIR is valid, and multiple backup definitions exist,
@@ -1735,6 +1748,7 @@ def test_manager_skips_existing_catalogs(env, setup_environment, tmp_path):
     env.logger.info(f"✅ Pre-existing DB '{pre_existing_db}' was preserved as expected")
 
 
+@pytest.mark.smoke
 def test_manager_recreates_corrupted_db(env, setup_environment, tmp_path):
     """
     Test that --create-db detects a corrupted (non-empty but invalid) database,
@@ -1792,6 +1806,7 @@ def test_manager_recreates_corrupted_db(env, setup_environment, tmp_path):
     env.logger.info(f"✅ New db created: {corrupt_db} ({new_size} bytes)")
 
 
+@pytest.mark.smoke
 def test_manager_does_not_overwrite_healthy_db(env, setup_environment, tmp_path):
     """
     Test that --create-db does NOT overwrite a healthy, non-empty database.

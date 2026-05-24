@@ -23,7 +23,8 @@ def is_safe_arg(arg: str) -> bool:
     """
     Check if the argument is safe by rejecting dangerous shell characters.
     """
-    return not re.search(r'[;&|><`$\n]', arg)
+    # \r enables terminal-overwrite attacks; \x00 truncates strings in C-based programs
+    return not re.search(r'[;&|><`$\n\r\x00]', arg)
 
 
 def sanitize_cmd(cmd: List[str]) -> List[str]:

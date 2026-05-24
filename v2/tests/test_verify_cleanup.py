@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from dar_backup.dar_backup import verify
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 
 

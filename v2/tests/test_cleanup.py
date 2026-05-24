@@ -54,6 +54,7 @@ def run_cleanup_script(env):
     return result.returncode
 
 
+@pytest.mark.smoke
 def test_cleanup_functionality(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
@@ -79,6 +80,7 @@ def test_cleanup_functionality(setup_environment, env):
     assert (os.path.exists(os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar'))), f"File {os.path.join(env.test_dir, 'backups', f'example_INCR_{date_10_days_ago}.1.dar')} does not exist"
 
 
+@pytest.mark.smoke
 def test_cleanup_specific_archives(setup_environment, env, monkeypatch):
     """
     Verify that the cleanup script can delete multiple specific archives
@@ -200,6 +202,7 @@ def test_cleanup_multiple_specific_archives(setup_environment, env, monkeypatch)
     assert (not os.path.exists(os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2'))), f"File {os.path.join(env.test_dir, 'backups', f'specific_FULL_{date_100_days_ago}.1.dar.par2')} still exists"
 
 
+@pytest.mark.smoke
 def test_cleanup_specific_archives_dry_run(setup_environment, env):
     archive_name = f"dry_INCR_{date_10_days_ago}"
     archive_path = os.path.join(env.test_dir, 'backups', f'{archive_name}.1.dar')
@@ -323,6 +326,7 @@ def _test_confirmation_no_stops_deleting_full(setup_environment, env, monkeypatc
     assert os.path.exists(os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')), f"File {os.path.join(env.test_dir, 'backups', 'example_FULL_1970-01-01.1.dar')} was deleted"
 
 
+@pytest.mark.smoke
 def test_confirmation_yes_deletes_full(setup_environment, env, monkeypatch):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     test_files = {
@@ -375,6 +379,7 @@ def test_logs_warning_when_no_matching_archives(setup_environment, env, monkeypa
 
 
 
+@pytest.mark.smoke
 def test_age_based_cleanup_runs_when_no_specific_archives_given(setup_environment, env):
     """
     Ensure the script doesn’t break and logs appropriately when --cleanup-specific-archives is not given.
@@ -663,28 +668,19 @@ def test_postreq_script_success(monkeypatch, env, caplog):
     assert "post check ok" in caplog.text or "POSTREQ" in caplog.text
 
 
-def test_postreq_script_failure(monkeypatch, env, caplog):
-    config_settings = MagicMock()
-    config_settings.config = {'POSTREQ': {'check': 'exit 1'}}
-
-    mock_result = MagicMock()
-    mock_result.returncode = 1
-    mock_result.stdout = ""
-    mock_result.stderr = "mocked failure"
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-
-    import dar_backup.util
-    monkeypatch.setattr(dar_backup.util, "logger", env.logger)
+def test_postreq_script_failure(logger, caplog):
+    config_settings = SimpleNamespace(
+        config={'POSTREQ': {'check': 'echo "failure output" >&2; exit 1'}}
+    )
 
     caplog.set_level(logging.DEBUG)
-
-    from dar_backup.util import requirements
 
     with pytest.raises(RuntimeError) as exc_info:
         requirements("POSTREQ", config_settings)
 
-    assert "POSTREQ check: 'exit 1' failed" in str(exc_info.value)
-    assert "mocked failure" in caplog.text
+    assert "POSTREQ check:" in str(exc_info.value)
+    assert "failed" in str(exc_info.value)
+    assert "failure output" in caplog.text
 
 
 from types import SimpleNamespace
@@ -1044,6 +1040,7 @@ def _make_real_archive(runner, env, backup_type: str, date_str: str, base_archiv
     return base
 
 
+@pytest.mark.smoke
 def test_cleanup_delete_old_diff_in_process(setup_environment, env):
     """
     Call delete_old_backups() directly (in-process) with a real old-dated DIFF
@@ -1081,6 +1078,7 @@ def test_cleanup_delete_old_diff_in_process(setup_environment, env):
     env.logger.info("delete_old_backups() removed old DIFF slice ✓")
 
 
+@pytest.mark.smoke
 def test_cleanup_delete_old_incr_in_process(setup_environment, env):
     """
     Call delete_old_backups() directly (in-process) with a real old-dated INCR
@@ -1147,6 +1145,7 @@ def test_cleanup_delete_old_dry_run_in_process(setup_environment, env):
     env.logger.info("delete_old_backups(dry_run=True) preserved old DIFF slice ✓")
 
 
+@pytest.mark.smoke
 def test_cleanup_delete_archive_in_process(setup_environment, env):
     """
     Call delete_archive() directly (in-process) with a real dar archive.
@@ -1316,6 +1315,7 @@ def test_cleanup_delete_archive_skips_nonfile_in_process(setup_environment, env)
     env.logger.info("delete_archive() skipped subdir correctly ✓")
 
 
+@pytest.mark.smoke
 def test_cleanup_main_specific_archive_in_process(setup_environment, env):
     """
     Call main() in-process with --cleanup-specific-archives pointing to a real
@@ -1358,6 +1358,7 @@ def test_cleanup_main_specific_archive_in_process(setup_environment, env):
     env.logger.info("main() --cleanup-specific-archives deleted real DIFF archive ✓")
 
 
+@pytest.mark.smoke
 def test_cleanup_main_age_based_in_process(setup_environment, env):
     """
     Call main() in-process without --cleanup-specific-archives so the age-based

@@ -1,6 +1,6 @@
+import logging
 import os
 from configparser import ConfigParser
-
 
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.exceptions import ConfigSettingsError
@@ -271,3 +271,171 @@ def test_config_settings_invalid_optional_ints_raise(tmp_path, section, key, val
         assert "not-an-int" in message
     else:
         assert key.lower() in message
+
+
+# ---------------------------------------------------------------------------
+# Range validation — DIFF_AGE, INCR_AGE, ERROR_CORRECTION_PERCENT
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("diff_age", [0, -1])
+def test_config_settings_diff_age_out_of_range_raises(tmp_path, diff_age):
+    """
+    DIFF_AGE = 0 would delete every DIFF backup immediately;
+    negative values silently disable cleanup. Both must be rejected.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        age_overrides={"DIFF_AGE": str(diff_age)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "diff_age" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("incr_age", [0, -1])
+def test_config_settings_incr_age_out_of_range_raises(tmp_path, incr_age):
+    """
+    INCR_AGE = 0 would delete every INCR backup immediately;
+    negative values silently disable cleanup. Both must be rejected.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        age_overrides={"INCR_AGE": str(incr_age)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "incr_age" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("percent", [-1, 0, 91, 100])
+def test_config_settings_error_correction_percent_out_of_range_raises(tmp_path, percent):
+    """
+    ERROR_CORRECTION_PERCENT = 0 produces PAR2 files with no redundancy;
+    values above 90 are capped at our policy limit. All must be caught at
+    config load time.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        par2_overrides={"ERROR_CORRECTION_PERCENT": str(percent)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "error_correction_percent" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("diff_age,incr_age", [(1, 1), (30, 15), (365, 180)])
+def test_config_settings_valid_age_values_load_cleanly(tmp_path, diff_age, incr_age):
+    """Boundary and typical values for DIFF_AGE and INCR_AGE must be accepted."""
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        age_overrides={"DIFF_AGE": str(diff_age), "INCR_AGE": str(incr_age)},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.diff_age == diff_age
+    assert cfg.incr_age == incr_age
+
+
+@pytest.mark.parametrize("percent", [1, 5, 50, 90])
+def test_config_settings_valid_error_correction_percent_loads_cleanly(tmp_path, percent):
+    """Boundary and typical values for ERROR_CORRECTION_PERCENT must be accepted."""
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        par2_overrides={"ERROR_CORRECTION_PERCENT": str(percent)},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.error_correction_percent == percent
+
+
+# ---------------------------------------------------------------------------
+# NO_FILES_VERIFICATION range validation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("count", [0, -1])
+def test_config_settings_no_files_verification_out_of_range_raises(tmp_path, count):
+    """
+    NO_FILES_VERIFICATION = 0 or negative means the restore test selects no files
+    and passes vacuously — silently wrong, so it must be rejected at config load time.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides={"NO_FILES_VERIFICATION": str(count)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "no_files_verification" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("count", [1, 5, 100])
+def test_config_settings_no_files_verification_valid_values_load_cleanly(tmp_path, count):
+    """Boundary and typical values for NO_FILES_VERIFICATION must be accepted."""
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        misc_overrides={"NO_FILES_VERIFICATION": str(count)},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.no_files_verification == count
+
+
+# ---------------------------------------------------------------------------
+# Age warning thresholds
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("diff_age", [366, 500])
+def test_config_settings_diff_age_over_365_issues_warning(tmp_path, diff_age, caplog):
+    """
+    DIFF_AGE above 365 is unusual enough to warrant a warning, but the config
+    must still load so the user can proceed with the value they set.
+    """
+    config_path = write_config(
+        tmp_path / "warn.conf",
+        tmp_path,
+        age_overrides={"DIFF_AGE": str(diff_age)},
+    )
+    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
+        cfg = ConfigSettings(str(config_path))
+
+    assert cfg.diff_age == diff_age
+    assert any("diff_age" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.parametrize("incr_age", [32, 90])
+def test_config_settings_incr_age_over_31_issues_warning(tmp_path, incr_age, caplog):
+    """
+    INCR_AGE above 31 is unusual enough to warrant a warning, but the config
+    must still load so the user can proceed with the value they set.
+    """
+    config_path = write_config(
+        tmp_path / "warn.conf",
+        tmp_path,
+        age_overrides={"INCR_AGE": str(incr_age)},
+    )
+    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
+        cfg = ConfigSettings(str(config_path))
+
+    assert cfg.incr_age == incr_age
+    assert any("incr_age" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.parametrize("diff_age,incr_age", [(365, 31), (1, 1)])
+def test_config_settings_age_at_threshold_no_warning(tmp_path, diff_age, incr_age, caplog):
+    """
+    Values exactly at the thresholds (365, 31) must load cleanly with no warning.
+    """
+    config_path = write_config(
+        tmp_path / "ok.conf",
+        tmp_path,
+        age_overrides={"DIFF_AGE": str(diff_age), "INCR_AGE": str(incr_age)},
+    )
+    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
+        cfg = ConfigSettings(str(config_path))
+
+    assert cfg.diff_age == diff_age
+    assert cfg.incr_age == incr_age
+    assert not caplog.records

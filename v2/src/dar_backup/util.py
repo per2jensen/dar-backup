@@ -563,64 +563,45 @@ def requirements(
     if type in config_setting.config:
         for key in sorted(config_setting.config[type].keys()):
             script = config_setting.config[type][key]
-            use_run_fallback = (
-                os.getenv("PYTEST_CURRENT_TEST") is not None
-                or getattr(subprocess.run, "__module__", "") != "subprocess"
-            )
             try:
-                if use_run_fallback:
-                    result = subprocess.run(
-                        script,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        shell=True,
-                        check=True
-                    )
-                    logger.debug(f"{type} {key}: '{script}' run, return code: {result.returncode}")
-                    logger.debug(f"{type} stdout:\n{result.stdout}")
-                    if result.returncode != 0:
-                        logger.error(f"{type} stderr:\n{result.stderr}")
-                        raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {result.returncode}")
-                else:
-                    process = subprocess.Popen(
-                        script,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        shell=True
-                    )
-                    stdout_lines = []
-                    stderr_lines = []
+                process = subprocess.Popen(
+                    script,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    shell=True
+                )
+                stdout_lines = []
+                stderr_lines = []
 
-                    def read_stream(stream, lines, level):
-                        if stream is None:
-                            return
-                        for line in stream:
-                            logger.log(level, line.rstrip())
-                            lines.append(line)
+                def read_stream(stream, lines, level):
+                    if stream is None:
+                        return
+                    for line in stream:
+                        logger.log(level, line.rstrip())
+                        lines.append(line)
 
-                    stdout_thread = threading.Thread(
-                        target=read_stream,
-                        args=(process.stdout, stdout_lines, logging.DEBUG)
-                    )
-                    stderr_thread = threading.Thread(
-                        target=read_stream,
-                        args=(process.stderr, stderr_lines, logging.ERROR)
-                    )
-                    stdout_thread.start()
-                    stderr_thread.start()
+                stdout_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stdout, stdout_lines, logging.DEBUG)
+                )
+                stderr_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stderr, stderr_lines, logging.ERROR)
+                )
+                stdout_thread.start()
+                stderr_thread.start()
 
-                    process.wait()
-                    stdout_thread.join()
-                    stderr_thread.join()
+                process.wait()
+                stdout_thread.join()
+                stderr_thread.join()
 
-                    logger.debug(f"{type} {key}: '{script}' run, return code: {process.returncode}")
-                    if process.returncode != 0:
-                        stderr_text = "".join(stderr_lines)
-                        if stderr_text:
-                            logger.error(f"{type} stderr:\n{stderr_text}")
-                        raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {process.returncode}")
+                logger.debug(f"{type} {key}: '{script}' run, return code: {process.returncode}")
+                if process.returncode != 0:
+                    stderr_text = "".join(stderr_lines)
+                    if stderr_text:
+                        logger.error(f"{type} stderr:\n{stderr_text}")
+                    raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {process.returncode}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error executing {key}: '{script}': {e}")
                 if report_out is not None:
@@ -720,7 +701,11 @@ def list_backups(backup_dir, backup_definition=None):
 
             # Calculate the file size in megabytes
             file_path = os.path.join(backup_dir, f)
-            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            try:
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            except OSError as e:
+                get_logger().warning("Skipping %s: could not read file size: %s", file_path, e)
+                continue
             
             # Accumulate the size for each base backup name
             if base_name in backup_sizes:
@@ -738,8 +723,19 @@ def list_backups(backup_dir, backup_definition=None):
     formatted_sizes = [locale.format_string("%d", int(size), grouping=True) for size in backup_sizes.values()]
     max_size_length = max(len(size) for size in formatted_sizes)
 
+    def _sort_key(item: tuple) -> tuple:
+        """Return (prefix, date) sort key; fall back to datetime.min for unparseable dates."""
+        name = item[0]
+        parts = name.split('_')
+        prefix = parts[0]
+        try:
+            date = datetime.strptime(parts[-1], '%Y-%m-%d')
+        except ValueError:
+            date = datetime.min
+        return (prefix, date)
+
     # Sort backups by name and possibly by date if included in the name
-    sorted_backups = sorted(backup_sizes.items(), key=lambda x: (x[0].split('_')[0], datetime.strptime(x[0].split('_')[-1], '%Y-%m-%d')))
+    sorted_backups = sorted(backup_sizes.items(), key=_sort_key)
     
     # Print the backups and their sizes with aligned sizes
     for backup, size in sorted_backups:
@@ -1001,7 +997,11 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
 
 def patch_config_file(path: str, replacements: dict) -> None:
     """
-    Replace specific key values in a config file in-place.
+    Replace specific key values in a config file atomically.
+
+    Writes to a temporary file in the same directory, then uses os.replace()
+    to swap it in — the original is never partially overwritten if the process
+    is interrupted mid-write.
 
     Args:
         path: Path to the config file.
@@ -1010,13 +1010,22 @@ def patch_config_file(path: str, replacements: dict) -> None:
     with open(path, 'r') as f:
         lines = f.readlines()
 
-    with open(path, 'w') as f:
-        for line in lines:
-            key = line.split('=')[0].strip()
-            if key in replacements:
-                f.write(f"{key} = {replacements[key]}\n")
-            else:
-                f.write(line)
+    dir_name = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name)
+    replaced = False
+    try:
+        with os.fdopen(fd, 'w') as f:
+            for line in lines:
+                key = line.split('=')[0].strip()
+                if key in replacements:
+                    f.write(f"{key} = {replacements[key]}\n")
+                else:
+                    f.write(line)
+        os.replace(tmp_path, path)
+        replaced = True
+    finally:
+        if not replaced:
+            os.unlink(tmp_path)
 
 
 

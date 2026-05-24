@@ -298,8 +298,8 @@ def teardown_environment(env: EnvData):
 def copy_dar_rc(env : EnvData):
     try:
         shutil.copy(env.template_dar_rc, os.path.join(env.test_dir, env.dar_rc))
-    except:
-        env.logger.exception("Failed to copy {env.template_dar_rc} to " + os.path.join(env.test_dir, env.dar_rc))
+    except OSError:
+        env.logger.exception(f"Failed to copy {env.template_dar_rc} to {os.path.join(env.test_dir, env.dar_rc)}")
         raise
 
 

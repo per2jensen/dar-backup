@@ -1,7 +1,7 @@
 ""
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 """
 modified: 2021-07-25 to be a pytest test

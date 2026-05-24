@@ -26,6 +26,9 @@ case "$MODE" in
   fast)
     MARKS='unit or component'
     ;;
+  smoke)
+    MARKS='unit or component or smoke'
+    ;;
   integration)
     MARKS='integration and not slow and not live_discord'
     ;;
@@ -34,7 +37,7 @@ case "$MODE" in
     ;;
   *)
     echo "Unknown mode: $MODE"
-    echo "Valid modes: fast | integration | full"
+    echo "Valid modes: fast | smoke | integration | full"
     exit 2
     ;;
 esac

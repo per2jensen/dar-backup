@@ -5,7 +5,7 @@ import sys
 import os
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -98,7 +98,7 @@ def test_verify_filtering(setup_environment, env):
                 if any(option in line for option in options_to_remove):
                     assert False, f"'{line}' filtered option found in filtered .darrc '{path_filtered_darrc}'"
 
-    except:
+    except Exception:
         env.logger.error("Failed to filter out options", exc_info=True)
         assert False
     finally:

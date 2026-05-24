@@ -3,7 +3,7 @@ import re
 import sys
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -116,6 +116,30 @@ def test_ordered_by_slicenumber(setup_environment, env):
 
     env.logger.info(f"OK: slices processed in order: {slice_numbers}")
 
-    assert True, "OK: Slices are processed in the correct order" 
 
-    
+def test_par2_files_created_for_full_backup(setup_environment, env):
+    """A full backup with PAR2 enabled must produce .par2 files in the backup directory."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['dar-backup', '--full-backup', '-d', 'example', '--config-file', env.config_file]
+    process = runner.run(command)
+    assert process.returncode == 0, f"Backup failed: {process.stderr}"
+
+    archive_base = f"example_FULL_{env.datestamp}"
+    par2_files = [f for f in os.listdir(env.backup_dir) if f.startswith(archive_base) and f.endswith('.par2')]
+    assert par2_files, f"No .par2 files found in {env.backup_dir} after FULL backup"
+
+
+def test_par2_verify_passes_on_intact_backup(setup_environment, env):
+    """par2 verify must succeed on an intact backup (no corruption)."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    command = ['dar-backup', '--full-backup', '-d', 'example', '--config-file', env.config_file]
+    process = runner.run(command)
+    assert process.returncode == 0, f"Backup failed: {process.stderr}"
+
+    archive_base = f"example_FULL_{env.datestamp}"
+    par2_index = os.path.join(env.backup_dir, f"{archive_base}.par2")
+    assert os.path.exists(par2_index), f"par2 index not found: {par2_index}"
+
+    verify = runner.run(['par2', 'verify', '-B', env.backup_dir, par2_index])
+    assert verify.returncode == 0, f"par2 verify failed on intact backup: {verify.stderr}"
+
