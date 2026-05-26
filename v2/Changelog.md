@@ -12,6 +12,10 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   - `NO_FILES_VERIFICATION` must be ≥ 1 (0 makes restore tests vacuously pass)
   - `DIFF_AGE` and `INCR_AGE` must be ≥ 1; values above 365 / 31 days respectively are logged as a warning
 
+### Added
+
+- **Metadata verification after restore** — `verify()` in `dar_backup.py` and `verify_restored_matches_source()` in the test helper now check file metadata after the byte-for-byte content comparison. Permissions (`st_mode`) and modification time (`st_mtime_ns`) are always checked; uid/gid (`st_uid`/`st_gid`) are checked only when running as root, since dar can only restore ownership as root. Any mismatch is reported as a failure. The logic lives in a new `compare_metadata(source, restored)` function in `util.py`, shared by both callers.
+
 ### Fixed
 
 - **`is_safe_arg` security** — `\r` (terminal-overwrite attack) and `\x00` (C string truncation) are now rejected alongside the existing shell metacharacters.
@@ -20,6 +24,9 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - **`show_scriptname()`** — bare `except:` tightened to `except Exception:`.
 
 ### Added (tests)
+
+- **`test_util.py` — `compare_metadata` unit tests** — four new unit tests cover all three metadata kinds: `test_compare_metadata_permissions_mismatch_detected`, `test_compare_metadata_mtime_mismatch_detected`, `test_compare_metadata_uid_gid_mismatch_detected_as_root` (monkeypatches `os.getuid` to 0; documented why that is acceptable), and `test_compare_metadata_all_match_returns_empty`.
+- **`test_restore_content_verification.py` — `test_metadata_mismatch_detected`** — integration test: runs a real FULL backup, restores it, forces a permission change on one restored file, and asserts `verify_restored_matches_source()` raises `RuntimeError` with a `Metadata mismatch` message.
 
 - **`test_metrics_smoke.py`** — smoke-tier integration test: runs a real FULL backup with `METRICS_DB_PATH` configured and asserts that the metrics row has correct values for `archive_name` (format regex), `archive_size_bytes > 0`, `dar_exit_code ∈ {0, 5}`, and `hostname` — fields not checked at smoke level in any existing test.
 - **`test_dashboard_smoke.py`** — smoke-tier integration test (skipped when `datasette` is not installed): runs a real FULL backup, starts `dar-backup-dashboard --no-browser` in a new process group, polls `/-/versions` via `urllib` until HTTP 200, queries `/{db}.json?sql=SELECT COUNT(*)...` to confirm rows are served, then terminates the process group cleanly.

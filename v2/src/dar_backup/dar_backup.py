@@ -61,6 +61,7 @@ from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message, render_discord_report
 from dar_backup.util import write_metrics_row, update_postreq_status
 from dar_backup.util import parse_dar_stats
+from dar_backup.util import compare_metadata
 
 from dar_backup.command_runner import CommandRunner
 
@@ -560,11 +561,17 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             if process.returncode != 0:
                 raise Exception(str(process))
 
-            if filecmp.cmp(restore_path, source_path, shallow=False):
-                args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
-            else:
+            if not filecmp.cmp(restore_path, source_path, shallow=False):
                 result = False
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
+            else:
+                mismatches = compare_metadata(source_path, restore_path)
+                if mismatches:
+                    result = False
+                    for m in mismatches:
+                        logger.error(f"Metadata failure for '{restored_file_path}': {m}")
+                else:
+                    args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
         except KeyboardInterrupt:
             msg = (
                 f"Verification interrupted (Ctrl-C or SIGTERM) during restore-test of "

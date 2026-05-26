@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from envdata import EnvData
 from dar_backup.command_runner import CommandRunner, CommandResult
+from dar_backup.util import compare_metadata
 
 
 def run_backup_script(type: str, env: EnvData) -> CommandResult:
@@ -143,4 +144,12 @@ def verify_restored_matches_source(filenames: List[str], env: EnvData, restore_d
                 f"Content mismatch after restore: '{filename}' differs from source"
             )
 
-        env.logger.info(f"OK byte-for-byte match: '{filename}'")
+        mismatches = compare_metadata(source_path, restored_path)
+        if mismatches:
+            for m in mismatches:
+                env.logger.error(f"Metadata mismatch for '{filename}': {m}")
+            raise RuntimeError(
+                f"Metadata mismatch after restore: '{filename}': {'; '.join(mismatches)}"
+            )
+
+        env.logger.info(f"OK byte-for-byte and metadata match: '{filename}'")

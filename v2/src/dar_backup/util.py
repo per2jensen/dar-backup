@@ -1118,9 +1118,55 @@ def print_aligned_settings(
 
 
 
+def compare_metadata(source: str, restored: str) -> list[str]:
+    """
+    Compare file metadata between a source file and its restored counterpart.
+
+    Always checks permissions (st_mode) and modification time (st_mtime_ns).
+    Checks uid and gid only when the process runs as root, because dar can only
+    restore ownership as root.
+
+    Args:
+        source: Absolute path to the original source file.
+        restored: Absolute path to the restored file.
+
+    Returns:
+        List of human-readable mismatch descriptions.  Empty list means all
+        checked attributes match.
+
+    Raises:
+        OSError: If either path cannot be stat'd.
+    """
+    mismatches: list[str] = []
+    src = os.stat(source)
+    rst = os.stat(restored)
+
+    if src.st_mode != rst.st_mode:
+        mismatches.append(
+            f"permission mismatch: source={oct(src.st_mode)} restored={oct(rst.st_mode)}"
+        )
+
+    if src.st_mtime_ns != rst.st_mtime_ns:
+        mismatches.append(
+            f"mtime mismatch: source={src.st_mtime_ns} restored={rst.st_mtime_ns}"
+        )
+
+    if os.getuid() == 0:
+        if src.st_uid != rst.st_uid:
+            mismatches.append(
+                f"uid mismatch: source={src.st_uid} restored={rst.st_uid}"
+            )
+        if src.st_gid != rst.st_gid:
+            mismatches.append(
+                f"gid mismatch: source={src.st_gid} restored={rst.st_gid}"
+            )
+
+    return mismatches
+
+
 def normalize_dir(path: str) -> str:
     """
-    Strip any trailing slash/backslash but leave root (“/” or “C:\\”) intact.
+    Strip any trailing slash/backslash but leave root ("/" or "C:\\") intact.
     """
     p = Path(path)
     # Path(__str__) drops any trailing separators

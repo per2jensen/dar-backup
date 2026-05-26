@@ -868,3 +868,84 @@ def test_list_backups_getsize_oserror_does_not_crash(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "good_FULL_2024-01-01" in out
     assert "broken_FULL_2024-01-02" not in out
+
+
+# ---------------------------------------------------------------------------
+# compare_metadata unit tests
+# ---------------------------------------------------------------------------
+
+def _make_pair(tmp_path):
+    """Return (source_path, restored_path) with identical content, mode, mtime."""
+    src = tmp_path / "source.txt"
+    rst = tmp_path / "restored.txt"
+    src.write_text("data")
+    rst.write_text("data")
+    os.chmod(str(src), 0o644)
+    os.chmod(str(rst), 0o644)
+    src_stat = os.stat(str(src))
+    os.utime(str(rst), ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
+    return str(src), str(rst)
+
+
+def test_compare_metadata_permissions_mismatch_detected(tmp_path):
+    """A permission difference between source and restored is reported."""
+    src, rst = _make_pair(tmp_path)
+    os.chmod(rst, 0o600)
+
+    mismatches = util.compare_metadata(src, rst)
+
+    assert len(mismatches) == 1
+    assert "permission mismatch" in mismatches[0]
+
+
+def test_compare_metadata_mtime_mismatch_detected(tmp_path):
+    """An mtime difference between source and restored is reported."""
+    src, rst = _make_pair(tmp_path)
+    # nudge mtime by 1 second
+    rst_stat = os.stat(rst)
+    os.utime(rst, ns=(rst_stat.st_atime_ns, rst_stat.st_mtime_ns + 1_000_000_000))
+
+    mismatches = util.compare_metadata(src, rst)
+
+    assert len(mismatches) == 1
+    assert "mtime mismatch" in mismatches[0]
+
+
+def test_compare_metadata_uid_gid_mismatch_detected_as_root(tmp_path, monkeypatch):
+    """uid and gid mismatches are reported when the process runs as root.
+
+    os.getuid is monkeypatched because uid/gid restoration requires root and
+    cannot be triggered reliably on standard test hardware.
+    """
+    src, rst = _make_pair(tmp_path)
+
+    src_stat = os.stat(src)
+    fake_rst_stat = os.stat_result((
+        src_stat.st_mode,
+        src_stat.st_ino,
+        src_stat.st_dev,
+        src_stat.st_nlink,
+        src_stat.st_uid + 1,   # uid differs
+        src_stat.st_gid + 1,   # gid differs
+        src_stat.st_size,
+        src_stat.st_atime_ns,
+        src_stat.st_mtime_ns,
+        src_stat.st_ctime_ns,
+    ))
+
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(os, "stat", lambda path, **kw: src_stat if path == src else fake_rst_stat)
+
+    mismatches = util.compare_metadata(src, rst)
+
+    assert any("uid mismatch" in m for m in mismatches)
+    assert any("gid mismatch" in m for m in mismatches)
+
+
+def test_compare_metadata_all_match_returns_empty(tmp_path):
+    """No mismatches returns an empty list."""
+    src, rst = _make_pair(tmp_path)
+
+    mismatches = util.compare_metadata(src, rst)
+
+    assert mismatches == []

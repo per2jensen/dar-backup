@@ -166,44 +166,37 @@ def test_verify_do_not_compare_skips_verification(env):
 
 
 
-def test_verify_success_path_with_verbose_logging(env):
-    """Test full successful verification flow with verbose logging enabled."""
-    args = SimpleNamespace(
-        verbose=True,
-        do_not_compare=False,
-        darrc=env.dar_rc
-    )
+@pytest.mark.integration
+@pytest.mark.slow
+def test_verify_success_path_with_verbose_logging(setup_environment, env, monkeypatch):
+    """Full verify() round-trip: real backup, real dar restore, real file comparison."""
+    from testdata_verification import run_backup_script
+    from dar_backup.command_runner import CommandRunner
 
+    run_backup_script("--full-backup", env)
+    archive = f"example_FULL_{env.datestamp}"
+    backup_file = os.path.join(env.backup_dir, archive)
+    backup_definition = os.path.join(env.backup_d_dir, "example")
+
+    args = SimpleNamespace(verbose=True, do_not_compare=False, darrc=env.dar_rc)
     config = SimpleNamespace(
         test_restore_dir=env.restore_dir,
         logfile_location=env.log_file,
-        verify_files=["/some/file.txt"],
         command_timeout_secs=86400,
         backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=1
+        no_files_verification=1,
     )
 
-    mock_runner = MagicMock()
-    mock_runner.run.return_value.returncode = 0
+    monkeypatch.setattr(db, "runner", CommandRunner(logger=env.logger, command_logger=env.command_logger))
+    monkeypatch.setattr(db, "logger", env.logger)
 
-    mock_file = "/some/file.txt"
-    mock_definition_content = "-R /\n-s 10G\n"
+    result = verify(args, backup_file, backup_definition, config)
 
-    with patch("dar_backup.dar_backup.runner", mock_runner), \
-         patch("dar_backup.dar_backup.filecmp.cmp", return_value=True) as mock_cmp, \
-         patch("dar_backup.dar_backup.get_backed_up_files", return_value=[(mock_file, "10 Mio")]), \
-         patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("builtins.open", mock_open(read_data=mock_definition_content)):
-
-        result = verify(args, "mock-backup", env.config_file, config)
-
-        assert result
-        assert result.restore_test_passed is True
-        assert result.files_verified == 1
-        mock_cmp.assert_called_once()
-        mock_logger.info.assert_any_call(f"Success: file '{mock_file}' matches the original")
+    assert result
+    assert result.restore_test_passed is True
+    assert result.files_verified == 1
 
 
 
@@ -1001,33 +994,20 @@ def test_filter_restoretest_candidates_case_insensitive():
     assert "dir/Cache/file.tmp" not in result
 
 
-def test_restoretest_filters_and_verifies_all_good_files(env):
+def test_restoretest_filters_and_verifies_all_good_files(monkeypatch, caplog):
+    """select_restoretest_samples excludes files matching prefix/suffix/regex filters."""
     import re
-    from dar_backup.dar_backup import verify
-
-    args = SimpleNamespace(
-        verbose=True,
-        do_not_compare=False,
-        darrc=env.dar_rc
-    )
+    import logging
+    from dar_backup.dar_backup import select_restoretest_samples
 
     config = SimpleNamespace(
-        test_restore_dir=env.restore_dir,
-        logfile_location=env.log_file,
-        command_timeout_secs=86400,
-        backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=2,
         restoretest_exclude_prefixes=[".cache/"],
         restoretest_exclude_suffixes=[".log", ".tmp"],
         restoretest_exclude_regex=re.compile(r"(^|/)(Cache|cache)/", re.IGNORECASE),
     )
 
-    good_files = [
-        "/good/dir1/file1.txt",
-        "/good/dir3/file3.txt",
-    ]
     backed_up_files = [
         ("/.cache/skip1.txt", "10 Mio"),
         ("/good/dir1/file1.txt", "10 Mio"),
@@ -1037,34 +1017,14 @@ def test_restoretest_filters_and_verifies_all_good_files(env):
         ("/var/tmp/skip.tmp", "10 Mio"),
     ]
 
-    mock_runner = MagicMock()
-    mock_runner.run.return_value.returncode = 0
+    test_logger = logging.getLogger("test_restoretest_filter")
+    monkeypatch.setattr(db, "logger", test_logger)
 
-    mock_definition_content = "-R /\n-s 10G\n"
+    with caplog.at_level(logging.DEBUG, logger="test_restoretest_filter"):
+        result = select_restoretest_samples(backed_up_files, config, 2)
 
-    with patch("dar_backup.dar_backup.runner", mock_runner), \
-         patch("dar_backup.dar_backup.filecmp.cmp", return_value=True), \
-         patch("dar_backup.dar_backup.get_backed_up_files", return_value=backed_up_files), \
-         patch("dar_backup.dar_backup.logger") as mock_logger, \
-         patch("dar_backup.dar_backup.random.sample", side_effect=lambda files, n: list(files)), \
-         patch("builtins.open", mock_open(read_data=mock_definition_content)):
-
-        result = verify(args, "mock-backup", env.config_file, config)
-
-    assert result
-
-    restore_calls = [
-        call for call in mock_runner.run.call_args_list
-        if "-x" in call.args[0]
-    ]
-    assert len(restore_calls) == len(good_files)
-    for path in good_files:
-        expected_token = path.lstrip("/")
-        assert any(expected_token in call.args[0] for call in restore_calls)
-
-    mock_logger.debug.assert_any_call(
-        "Restore test filter excluded 4 of 6 candidates"
-    )
+    assert sorted(result) == ["/good/dir1/file1.txt", "/good/dir3/file3.txt"]
+    assert any("excluded 4 of 6" in r.message for r in caplog.records)
 
 
 

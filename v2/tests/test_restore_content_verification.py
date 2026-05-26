@@ -68,3 +68,28 @@ def test_corrupt_restore_detected(setup_environment, env: EnvData):
 
     with pytest.raises(RuntimeError, match="Content mismatch after restore"):
         verify_restored_matches_source(["file1.txt"], env)
+
+
+def test_metadata_mismatch_detected(setup_environment, env: EnvData):
+    """
+    A restored file whose permissions differ from the source is caught by
+    verify_restored_matches_source().
+
+    This guards against dar failing to restore the original mode bits.
+    """
+    run_backup_script("--full-backup", env)
+    archive = f"example_FULL_{env.datestamp}"
+
+    verify_restore_contents(test_files, archive, env)
+
+    # Change permissions on one restored file so they no longer match the source
+    restored_dir = os.path.join(env.restore_dir, env.data_dir.lstrip("/"))
+    restored_file = os.path.join(restored_dir, "file1.txt")
+    os.chmod(restored_file, 0o600)
+
+    source_file = os.path.join(env.data_dir, "file1.txt")
+    src_mode = oct(os.stat(source_file).st_mode)
+    env.logger.info(f"Source mode: {src_mode}, restored now forced to 0o600")
+
+    with pytest.raises(RuntimeError, match="Metadata mismatch after restore"):
+        verify_restored_matches_source(["file1.txt"], env)
