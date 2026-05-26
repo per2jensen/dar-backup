@@ -911,11 +911,12 @@ def test_compare_metadata_mtime_mismatch_detected(tmp_path):
     assert "mtime mismatch" in mismatches[0]
 
 
-def test_compare_metadata_uid_gid_mismatch_detected_as_root(tmp_path, monkeypatch):
-    """uid and gid mismatches are reported when the process runs as root.
+def test_compare_metadata_uid_gid_not_checked(tmp_path, monkeypatch):
+    """uid and gid differences are not reported regardless of who runs the process.
 
-    os.getuid is monkeypatched because uid/gid restoration requires root and
-    cannot be triggered reliably on standard test hardware.
+    The darrc ships with --comparison-field=ignore-owner in restore-options so
+    that non-root users can restore without permission errors.  As a result dar
+    never restores ownership, so compare_metadata intentionally omits uid/gid.
     """
     src, rst = _make_pair(tmp_path)
 
@@ -925,21 +926,20 @@ def test_compare_metadata_uid_gid_mismatch_detected_as_root(tmp_path, monkeypatc
         src_stat.st_ino,
         src_stat.st_dev,
         src_stat.st_nlink,
-        src_stat.st_uid + 1,   # uid differs
-        src_stat.st_gid + 1,   # gid differs
+        src_stat.st_uid + 1,   # uid differs — must be ignored
+        src_stat.st_gid + 1,   # gid differs — must be ignored
         src_stat.st_size,
         src_stat.st_atime_ns,
         src_stat.st_mtime_ns,
         src_stat.st_ctime_ns,
     ))
 
-    monkeypatch.setattr(os, "getuid", lambda: 0)
     monkeypatch.setattr(os, "stat", lambda path, **kw: src_stat if path == src else fake_rst_stat)
 
     mismatches = util.compare_metadata(src, rst)
 
-    assert any("uid mismatch" in m for m in mismatches)
-    assert any("gid mismatch" in m for m in mismatches)
+    assert not any("uid" in m for m in mismatches), "uid must not be checked"
+    assert not any("gid" in m for m in mismatches), "gid must not be checked"
 
 
 def test_compare_metadata_all_match_returns_empty(tmp_path):

@@ -62,6 +62,15 @@ from dar_backup.util import send_discord_message, render_discord_report
 from dar_backup.util import write_metrics_row, update_postreq_status
 from dar_backup.util import parse_dar_stats
 from dar_backup.util import compare_metadata
+from dar_backup.util import write_restore_test_samples
+from dar_backup.util import (
+    RESTORE_FAIL_CONTENT_MISMATCH,
+    RESTORE_FAIL_METADATA_MISMATCH,
+    RESTORE_FAIL_SOURCE_MISSING,
+    RESTORE_FAIL_RESTORED_MISSING,
+    RESTORE_FAIL_PERMISSION_ERROR,
+    RESTORE_FAIL_UNKNOWN_ERROR,
+)
 
 from dar_backup.command_runner import CommandRunner
 
@@ -393,6 +402,33 @@ def filter_restoretest_candidates(files: List[str], config_settings: ConfigSetti
     return filtered
 
 
+_DAR_SIZE_UNITS: dict[str, int] = {
+    "o"  : 1,
+    "kio": 1024,
+    "Mio": 1024 * 1024,
+    "Gio": 1024 * 1024 * 1024,
+    "Tio": 1024 * 1024 * 1024 * 1024,
+}
+
+
+def _parse_size_bytes(size_text: str) -> Optional[int]:
+    """Parse a dar size string (e.g. '10 Mio') to bytes.
+
+    Args:
+        size_text: Size string as returned by dar's file listing.
+
+    Returns:
+        Size in bytes, or None if the string cannot be parsed.
+    """
+    match = re.match(r'(\d+)\s*(\w+)', size_text or "")
+    if not match:
+        return None
+    unit = match.group(2).strip()
+    if unit not in _DAR_SIZE_UNITS:
+        return None
+    return int(match.group(1)) * _DAR_SIZE_UNITS[unit]
+
+
 def _size_in_verification_range(size_text: str, config_settings: ConfigSettings) -> bool:
     dar_sizes = {
         "o"   : 1,
@@ -457,25 +493,37 @@ def select_restoretest_samples(
     return reservoir
 
 
-def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, config_settings: ConfigSettings):
+def verify(
+    args: argparse.Namespace,
+    backup_file: str,
+    backup_definition: str,
+    config_settings: ConfigSettings,
+    run_id: Optional[str] = None,
+):
     """
     Verify the integrity of a DAR backup by performing the following steps:
     1. Run an archive integrity test on the backup file.
     2. Retrieve the list of backed up files.
-    3. Find files within def perform_backup(args, ConfigSettings config_settings, backup_d, backup_dir, test_restore_dir, backup_type, min_size_verification_mb, max_size_verification_mb, no_files_verification):file and compare it with the original file.
+    3. Restore a sample of files and compare content and metadata against the originals.
+    4. Write per-file results to the metrics DB (no-op when metrics_db_path is unset).
 
     Args:
-        args (object): Command-line arguments.
-        backup_file (str): Path to the DAR backup file.
-        backup_definition (str): Path to the backup definition file.
-        ConfigSettings (object): An instance of the ConfigSettings class.
+        args: Command-line arguments.
+        backup_file: Path to the DAR backup file (no slice suffix).
+        backup_definition: Path to the backup definition file.
+        config_settings: An instance of the ConfigSettings class.
+        run_id: UUID from the enclosing perform_backup() call; used to link
+                restore_test_samples rows to the backup_runs row.  None when
+                verify() is called standalone (samples are still collected but
+                not written to the DB).
 
     Returns:
-        True if the verification process completes successfully, False otherwise.
+        VerifyResult with passed, restore_test_passed, and files_verified fields.
 
     Raises:
-        Exception: If an error occurs during the verification process.
-        PermissionError: If a permission error occurs while comparing files.
+        BackupError: If the backup definition has no -R root path, or the
+                     restore directory cannot be created.
+        Exception: If the dar archive integrity test fails.
     """
     result = True
     command = ['dar', '-t', backup_file, '-N', '-Q']
@@ -503,11 +551,23 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     if args.do_not_compare:
         return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
-    backed_up_files = get_backed_up_files(
+    # Materialise the generator so it can be iterated twice: once for the size
+    # lookup dict and once by select_restoretest_samples.
+    backed_up_files: list[tuple[str, str]] = list(get_backed_up_files(
         backup_file,
         config_settings.backup_dir,
         timeout=config_settings.command_timeout_secs
-    )
+    ))
+
+    # Build size lookup before sampling so we can record file_size_bytes per sample.
+    # Wrapped so a metrics failure here cannot abort the backup.
+    try:
+        size_lookup: dict[str, str] = {
+            path: size for path, size in backed_up_files if path and size
+        }
+    except Exception as exc:
+        logger.warning(f"Failed to build size lookup for metrics; file_size_bytes will be NULL: {exc}")
+        size_lookup = {}
 
     files = select_restoretest_samples(
         backed_up_files,
@@ -535,8 +595,6 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
         msg = f"No Root (-R) path found in the backup definition file: '{backup_definition}', restore verification skipped"
         raise BackupError(msg)
 
-
-
     random_files = files
 
     # Ensure restore directory exists for verification restores
@@ -545,9 +603,33 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
     except OSError as exc:
         raise BackupError(f"Cannot create restore directory '{config_settings.test_restore_dir}': {exc}") from exc
 
+    samples: list[dict] = []
+    tested_at = datetime.now(timezone.utc).isoformat()
+
     for restored_file_path in random_files:
         restore_path = os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/"))
         source_path = os.path.join(root_path, restored_file_path.lstrip("/"))
+
+        try:
+            sample: dict = {
+                "file_path":       restored_file_path,
+                "file_size_bytes": _parse_size_bytes(size_lookup.get(restored_file_path, "")),
+                "result":          "PASS",
+                "fail_reason_id":  None,
+                "fail_detail":     None,
+                "tested_at":       tested_at,
+            }
+        except Exception as exc:
+            logger.warning(f"Failed to initialise metrics sample for '{restored_file_path}': {exc}")
+            sample = {
+                "file_path":       restored_file_path,
+                "file_size_bytes": None,
+                "result":          "PASS",
+                "fail_reason_id":  None,
+                "fail_detail":     None,
+                "tested_at":       tested_at,
+            }
+
         try:
             if os.path.exists(restore_path):
                 try:
@@ -557,21 +639,27 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
             command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf',  '-Q', '-B', args.darrc, 'restore-options']
             args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            process = runner.run(command, timeout = config_settings.command_timeout_secs)    
+            process = runner.run(command, timeout = config_settings.command_timeout_secs)
             if process.returncode != 0:
                 raise Exception(str(process))
 
             if not filecmp.cmp(restore_path, source_path, shallow=False):
                 result = False
+                sample["result"] = "FAIL"
+                sample["fail_reason_id"] = RESTORE_FAIL_CONTENT_MISMATCH
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
             else:
                 mismatches = compare_metadata(source_path, restore_path)
                 if mismatches:
                     result = False
+                    sample["result"] = "FAIL"
+                    sample["fail_reason_id"] = RESTORE_FAIL_METADATA_MISMATCH
+                    sample["fail_detail"] = "; ".join(mismatches)[:500]
                     for m in mismatches:
                         logger.error(f"Metadata failure for '{restored_file_path}': {m}")
                 else:
                     args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
+
         except KeyboardInterrupt:
             msg = (
                 f"Verification interrupted (Ctrl-C or SIGTERM) during restore-test of "
@@ -579,25 +667,57 @@ def verify(args: argparse.Namespace, backup_file: str, backup_definition: str, c
             )
             logger.error(msg)
             raise
-        except PermissionError:
+        except PermissionError as exc:
             result = False
+            sample["result"] = "FAIL"
+            sample["fail_reason_id"] = RESTORE_FAIL_PERMISSION_ERROR
+            sample["fail_detail"] = str(exc)[:500]
             logger.exception("Permission error while comparing files, continuing....")
             logger.error("Exception details:", exc_info=True)
         except FileNotFoundError as exc:
             result = False
+            sample["result"] = "SKIP"
             missing_path = exc.filename or "unknown path"
             if missing_path == source_path:
+                sample["fail_reason_id"] = RESTORE_FAIL_SOURCE_MISSING
                 logger.warning(
                     f"Restore verification skipped for '{restored_file_path}': source file missing: '{source_path}'"
                 )
             elif missing_path == restore_path:
+                sample["fail_reason_id"] = RESTORE_FAIL_RESTORED_MISSING
                 logger.warning(
                     f"Restore verification skipped for '{restored_file_path}': restored file missing: '{restore_path}'"
                 )
             else:
+                sample["fail_reason_id"] = RESTORE_FAIL_UNKNOWN_ERROR
+                sample["fail_detail"] = f"file not found: {missing_path}"[:500]
                 logger.warning(
                     f"Restore verification skipped for '{restored_file_path}': file not found: '{missing_path}'"
                 )
+        except Exception as exc:
+            result = False
+            sample["result"] = "FAIL"
+            sample["fail_reason_id"] = RESTORE_FAIL_UNKNOWN_ERROR
+            sample["fail_detail"] = str(exc)[:500]
+            logger.error(f"Unexpected error verifying '{restored_file_path}': {exc}")
+
+        try:
+            samples.append(sample)
+        except Exception as exc:
+            logger.warning(f"Failed to record metrics sample for '{restored_file_path}': {exc}")
+
+    if run_id:
+        try:
+            write_restore_test_samples(
+                run_id=run_id,
+                backup_definition=os.path.basename(backup_definition),
+                archive_name=os.path.basename(backup_file),
+                samples=samples,
+                config_settings=config_settings,
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to write restore-test samples to metrics DB: {exc}")
+
     return VerifyResult(passed=result, restore_test_passed=result, files_verified=len(random_files))
 
 
@@ -1401,7 +1521,7 @@ def perform_backup(
             _current_phase = "VERIFY"
             logger.info("Starting verification...")
             _t1 = datetime.now(timezone.utc)
-            verify_result = verify(args, backup_file, backup_definition_path, config_settings)
+            verify_result = verify(args, backup_file, backup_definition_path, config_settings, run_id=run_id)
             metrics["verify_duration_secs"] = (datetime.now(timezone.utc) - _t1).total_seconds()
             metrics["verify_passed"] = 1  # archive integrity passed (no exception raised)
             metrics["restore_test_passed"] = (

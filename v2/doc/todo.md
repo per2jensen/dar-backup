@@ -20,6 +20,30 @@
        ON restore_test_samples (run_id);
   ```
 
+## Ownership restoration on real restores
+
+The darrc ships with `--comparison-field=ignore-owner` in the `restore-options`
+section so non-root users can restore without permission errors. As a side effect,
+uid/gid is never restored even when running as root.
+
+For a **real production restore** (not the restore test) a root user would typically
+want original ownership preserved. `dar-backup --restore` and `manager` PITR should
+gain a way to override this.
+
+Before implementing, verify dar's option precedence: does passing
+`--comparison-field=owner` on the command line after `-B darrc restore-options`
+actually override the darrc setting, or does dar merge/reject it? A quick manual
+`dar` test is needed first.
+
+Design options to evaluate:
+
+- CLI flag `--preserve-ownership` on `dar-backup` and `manager`
+- Config setting `RESTORE_OWNERSHIP = yes` (default `no`)
+- Automatic override when `os.getuid() == 0`
+
+If the override is added, `compare_metadata()` in `util.py` must also be updated
+to conditionally check uid/gid when ownership restoration is active.
+
 
 
 

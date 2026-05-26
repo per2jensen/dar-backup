@@ -356,8 +356,10 @@ def test_verify_restore_command_nonzero_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "logger", MagicMock())
     monkeypatch.setattr(db, "get_backed_up_files", lambda *a, **k: [("/file.txt", "1 Mio")])
 
-    with pytest.raises(Exception):
-        db.verify(args, "archive", str(backup_definition), config)
+    # verify() catches per-file exceptions internally and returns passed=False;
+    # it does not propagate the exception out of the function.
+    result = db.verify(args, "archive", str(backup_definition), config)
+    assert result.passed is False
 
 
 def test_get_backed_up_files_subprocess_success(monkeypatch, tmp_path):

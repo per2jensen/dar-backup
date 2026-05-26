@@ -264,6 +264,43 @@ ln -s $HOME/.local/dar-${DAR_VERSION} $HOME/.local/dar
 
 ---
 
+## SQLite metrics DB
+
+The metrics database (configured via `METRICS_DB_PATH`) uses WAL journal mode,
+so Datasette, DB Browser for SQLite, and the `sqlite3` CLI can all read it
+concurrently without blocking backup writes.
+
+### Display restore-test results after a backup
+
+```bash
+sqlite3 /path/to/metrics.db ".mode box" ".headers on" "
+SELECT s.archive_name,
+       s.file_path,
+       s.file_size_bytes,
+       s.result,
+       COALESCE(r.code, '')        AS fail_reason,
+       COALESCE(s.fail_detail, '') AS detail,
+       s.tested_at
+FROM   restore_test_samples s
+LEFT JOIN restore_test_fail_reasons r ON s.fail_reason_id = r.id
+ORDER BY s.tested_at DESC;
+"
+```
+
+### Display backup run summary
+
+```bash
+sqlite3 /path/to/metrics.db ".mode box" ".headers on" "
+SELECT archive_name, backup_type, status, dar_exit_code,
+       started_at, finished_at
+FROM   backup_runs
+ORDER BY started_at DESC
+LIMIT  20;
+"
+```
+
+---
+
 ## Git log
 
 ```` bash

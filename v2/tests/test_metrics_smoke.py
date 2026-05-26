@@ -140,3 +140,40 @@ def test_full_backup_metrics_row_has_key_fields_populated(
     assert row["archive_size_bytes"] > 0, (
         f"archive_size_bytes must be positive, got {row['archive_size_bytes']}"
     )
+
+
+def test_full_backup_writes_restore_test_samples(
+    setup_environment, env: EnvData
+) -> None:
+    """A FULL backup must write at least one restore_test_samples row with
+    run_id matching backup_runs, result='PASS', and non-null file_size_bytes.
+    """
+    metrics_db = _inject_metrics_db(env)
+    _create_backup_def(env)
+    _run_full_backup(env)
+
+    with sqlite3.connect(metrics_db) as conn:
+        conn.row_factory = sqlite3.Row
+
+        run_row = dict(conn.execute("SELECT run_id FROM backup_runs").fetchone())
+        run_id = run_row["run_id"]
+
+        samples = conn.execute(
+            "SELECT * FROM restore_test_samples WHERE run_id = ?", (run_id,)
+        ).fetchall()
+
+    assert len(samples) >= 1, "Expected at least one restore_test_samples row"
+
+    for s in samples:
+        row = dict(s)
+        assert row["run_id"]            == run_id
+        assert row["backup_definition"] == _BACKUP_DEF
+        assert re.match(r"metrics-smoke_FULL_\d{4}-\d{2}-\d{2}$", row["archive_name"]), (
+            f"Unexpected archive_name: {row['archive_name']}"
+        )
+        assert row["file_path"],                    "file_path must not be empty"
+        assert row["file_size_bytes"] is not None,  "file_size_bytes must not be NULL"
+        assert row["file_size_bytes"] >= 0,         f"file_size_bytes negative: {row['file_size_bytes']}"
+        assert row["result"] == "PASS",             f"Expected PASS, got {row['result']}"
+        assert row["fail_reason_id"] is None,       "PASS row must have null fail_reason_id"
+        assert row["tested_at"],                    "tested_at must not be empty"

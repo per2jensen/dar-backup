@@ -646,12 +646,9 @@ def test_invalid_backup_type(monkeypatch, tmp_path):
 def test_postreq_script_success(monkeypatch, env, caplog):
     config_settings = MagicMock()
     config_settings.config = {'POSTREQ': {'check': 'echo "post check ok"'}}
-
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = "post check ok"
-    mock_result.stderr = ""
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
+    # requirements() reads command_timeout_secs via getattr; MagicMock auto-attributes
+    # are Mock objects, not ints, so Popen.wait(timeout=Mock()) raises TypeError.
+    config_settings.command_timeout_secs = 30
 
     # Use the env's logger to patch util.logger
     import dar_backup.util

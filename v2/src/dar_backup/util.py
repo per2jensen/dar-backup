@@ -1122,9 +1122,11 @@ def compare_metadata(source: str, restored: str) -> list[str]:
     """
     Compare file metadata between a source file and its restored counterpart.
 
-    Always checks permissions (st_mode) and modification time (st_mtime_ns).
-    Checks uid and gid only when the process runs as root, because dar can only
-    restore ownership as root.
+    Checks permissions (st_mode) and modification time (st_mtime_ns).
+    uid/gid are intentionally not checked: the darrc ships with
+    --comparison-field=ignore-owner in the restore-options section so that
+    non-root users can restore without permission errors.  As a result dar
+    never restores ownership, making uid/gid comparison meaningless.
 
     Args:
         source: Absolute path to the original source file.
@@ -1150,16 +1152,6 @@ def compare_metadata(source: str, restored: str) -> list[str]:
         mismatches.append(
             f"mtime mismatch: source={src.st_mtime_ns} restored={rst.st_mtime_ns}"
         )
-
-    if os.getuid() == 0:
-        if src.st_uid != rst.st_uid:
-            mismatches.append(
-                f"uid mismatch: source={src.st_uid} restored={rst.st_uid}"
-            )
-        if src.st_gid != rst.st_gid:
-            mismatches.append(
-                f"gid mismatch: source={src.st_gid} restored={rst.st_gid}"
-            )
 
     return mismatches
 
@@ -1337,6 +1329,33 @@ CREATE INDEX IF NOT EXISTS idx_runs_status
     ON backup_runs (status, run_started_at);
 CREATE INDEX IF NOT EXISTS idx_runs_dar_exit_code
     ON backup_runs (dar_exit_code, run_started_at);
+
+CREATE TABLE IF NOT EXISTS restore_test_fail_reasons (
+    id    INTEGER PRIMARY KEY,
+    code  TEXT    NOT NULL UNIQUE
+);
+INSERT OR IGNORE INTO restore_test_fail_reasons (id, code) VALUES
+    (1, 'CONTENT_MISMATCH'),
+    (2, 'METADATA_MISMATCH'),
+    (3, 'SOURCE_MISSING'),
+    (4, 'RESTORED_MISSING'),
+    (5, 'PERMISSION_ERROR'),
+    (6, 'UNKNOWN_ERROR');
+
+CREATE TABLE IF NOT EXISTS restore_test_samples (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id            TEXT    NOT NULL,
+    backup_definition TEXT    NOT NULL,
+    archive_name      TEXT    NOT NULL,
+    file_path         TEXT    NOT NULL,
+    file_size_bytes   INTEGER,
+    result            TEXT    NOT NULL CHECK (result IN ('PASS', 'FAIL', 'SKIP')),
+    fail_reason_id    INTEGER REFERENCES restore_test_fail_reasons(id),
+    fail_detail       TEXT,
+    tested_at         TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_samples_run_id
+    ON restore_test_samples (run_id);
 """
 
 
@@ -1415,6 +1434,15 @@ _METRICS_MIGRATIONS: list[tuple[str, str]] = [
 ]
 
 
+# Stable IDs matching the seeds in restore_test_fail_reasons.
+RESTORE_FAIL_CONTENT_MISMATCH: int = 1
+RESTORE_FAIL_METADATA_MISMATCH: int = 2
+RESTORE_FAIL_SOURCE_MISSING: int = 3
+RESTORE_FAIL_RESTORED_MISSING: int = 4
+RESTORE_FAIL_PERMISSION_ERROR: int = 5
+RESTORE_FAIL_UNKNOWN_ERROR: int = 6
+
+
 def ensure_metrics_db(db_path: str) -> None:
     """Create the metrics DB schema if it does not already exist, and migrate older DBs.
 
@@ -1425,6 +1453,9 @@ def ensure_metrics_db(db_path: str) -> None:
         initial release are silently appended without touching existing data.
     """
     with sqlite3.connect(db_path) as conn:
+        # WAL mode lets Datasette/sqlite3-CLI read without blocking backup writes.
+        # Stored in the DB file — only needs to be set once.
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_METRICS_DDL)
         existing = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
         for col_name, col_type in _METRICS_MIGRATIONS:
@@ -1488,6 +1519,64 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
         log = get_logger()
         if log:
             log.warning("Failed to write metrics row: %s", exc)
+
+
+def write_restore_test_samples(
+    run_id: str,
+    backup_definition: str,
+    archive_name: str,
+    samples: list[dict],
+    config_settings,
+) -> None:
+    """Write per-file restore-test results to the metrics DB in one transaction.
+
+    Errors are caught and logged — metrics must never abort a backup run.
+    If config_settings.metrics_db_path is None/empty, or samples is empty,
+    this is a silent no-op.
+
+    Args:
+        run_id: UUID shared with the backup_runs row for this invocation.
+        backup_definition: Name of the backup definition (e.g. 'homedir').
+        archive_name: Base name of the archive (e.g. 'homedir_FULL_2026-05-26').
+        samples: List of dicts with keys: file_path, file_size_bytes, result,
+                 fail_reason_id, fail_detail, tested_at.
+        config_settings: Configuration object; metrics_db_path must be set.
+    """
+    db_path = getattr(config_settings, "metrics_db_path", None)
+    if not db_path or not samples:
+        return
+    try:
+        db_path = os.path.expanduser(os.path.expandvars(db_path))
+        ensure_metrics_db(db_path)
+        rows = [
+            (
+                run_id,
+                backup_definition,
+                archive_name,
+                s["file_path"],
+                s.get("file_size_bytes"),
+                s["result"],
+                s.get("fail_reason_id"),
+                s.get("fail_detail"),
+                s["tested_at"],
+            )
+            for s in samples
+        ]
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO restore_test_samples
+                    (run_id, backup_definition, archive_name, file_path,
+                     file_size_bytes, result, fail_reason_id, fail_detail, tested_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+            conn.commit()
+    except Exception as exc:
+        log = get_logger()
+        if log:
+            log.warning("Failed to write restore_test_samples: %s", exc)
 
 
 def update_postreq_status(run_id: str, status: str, config_settings) -> None:
