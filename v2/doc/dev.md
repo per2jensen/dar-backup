@@ -312,10 +312,9 @@ git log --pretty=format:"%ad - %an: %s %d" --date=short
 
 ```bash
 tar --exclude='*/__pycache__' \
-  -cvf dar-backup.tar \
+  -czvf dar-backup.tgz \
   tests/ \
-  doc/dev.md \
-  doc/doc.md \
+  doc/ \
   src/  \
   README.md \
   Changelog.md \
@@ -325,7 +324,5 @@ tar --exclude='*/__pycache__' \
   release.sh \
   pytest.ini  \
   MANIFEST.in \
-  pytest-cov.sh \
-  pytest.ini \
-  requirements-dev.txt
+  pytest.ini 
 ```
