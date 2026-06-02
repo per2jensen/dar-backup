@@ -7,6 +7,7 @@ Back to [README](../../README.md)
 ```bash
 git clone https://github.com/per2jensen/dar-backup.git
 cd dar-backup/v2
+ln ../README.md README.md # ignored by git, is here to put README in package
 ./build.sh
 ```
 
