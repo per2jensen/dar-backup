@@ -91,21 +91,21 @@ dev = [
   "ruff",
   "mypy",
   "wheel>=0.45.1",
-  "requests>=2.32.2",
+  "requests>=2.34.2",
   "coverage>=7.13.5",
   "psutil>=7.0.0",
   "httpcore>=0.17.3",
   "h11>=0.16.0",
-  "zipp>=3.19.1",
-  "anyio>=4.4.0",
+  "zipp>=4.1.0",
+  "anyio>=4.13.0",
   "pandas>=3.0.2",
-  "matplotlib>=3.10.3",
+  "matplotlib>=3.10.9",
 ]
 
 packaging = [
  "build>=1.2.2",
  "hatchling>=1.27.0",
- "hatch>=1.14.1",
+ "hatch>=1.17.0",
  "twine>=6.1.0",
 ]
 
