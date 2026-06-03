@@ -568,7 +568,7 @@ def test_metrics_db_row_written_after_real_backup(setup_environment, env: EnvDat
         f"Metrics DB was not created at: {metrics_db}"
     )
 
-    with sqlite3.connect(metrics_db) as conn:
+    with contextlib.closing(sqlite3.connect(metrics_db)) as conn:
         rows = conn.execute(
             "SELECT backup_type, status FROM backup_runs WHERE backup_type = 'FULL'"
         ).fetchall()

@@ -55,6 +55,7 @@ def run_cleanup_script(env):
 
 
 @pytest.mark.smoke
+@pytest.mark.debug
 def test_cleanup_functionality(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     env.logger.info(f"--> Start running test: {sys._getframe().f_code.co_name}")
@@ -275,6 +276,7 @@ def test_cleanup_alternate_dir(setup_environment, env):
 
 
 
+@pytest.mark.debug
 def test_confirmation_no_stops_deleting_full(monkeypatch, capsys):
     os.environ["CLEANUP_TEST_DELETE_FULL"] = "no"
 
@@ -1392,6 +1394,7 @@ def test_cleanup_main_age_based_in_process(setup_environment, env):
     env.logger.info("main() age-based cleanup deleted old DIFF archive ✓")
 
 
+@pytest.mark.debug
 def test_cleanup_main_list_in_process(setup_environment, env):
     """
     Call main() in-process with --list so the list_backups() branch runs.
@@ -1419,6 +1422,7 @@ def test_cleanup_main_list_in_process(setup_environment, env):
     env.logger.info("main() --list path reached ✓")
 
 
+@pytest.mark.debug
 def test_cleanup_main_all_definitions_no_dash_d_in_process(setup_environment, env):
     """
     Call main() in-process without -d so main() walks backup.d to discover all
@@ -1449,6 +1453,7 @@ def test_cleanup_main_all_definitions_no_dash_d_in_process(setup_environment, en
     env.logger.info("main() walk-all-definitions (no -d) path reached ✓")
 
 
+@pytest.mark.debug
 def test_cleanup_main_test_mode_no_specific_archives_in_process(setup_environment, env):
     """
     Call main() in-process with --test-mode and no --cleanup-specific-archives so the
@@ -1481,6 +1486,7 @@ def test_cleanup_main_test_mode_no_specific_archives_in_process(setup_environmen
     env.logger.info("main() --test-mode no-specific-archives log reached ✓")
 
 
+@pytest.mark.debug
 def test_cleanup_main_alternate_archive_dir_in_process(setup_environment, env):
     """
     Call main() in-process with --alternate-archive-dir pointing to a real

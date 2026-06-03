@@ -5,6 +5,26 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.6 - not released
 
+### Fixed (Python 3.14 / Ubuntu 26.04 compatibility)
+
+- **`continue` in `finally` block** — `dar_backup.py`: Python 3.14 raises `SyntaxWarning` for `continue` inside a `finally` block because it silently suppresses pending exceptions. Replaced with an `if/else` guard that wraps the rest of the `finally` body; identical behaviour, no warning.
+
+- **Unclosed SQLite connections** — Python 3.14's GC is stricter about warning on unclosed file/db handles. Every `with sqlite3.connect(...) as conn:` block only handles transactions, not resource cleanup. Fixed in `util.py` (4 sites) and all 10 test files by switching to `with closing(sqlite3.connect(...)) as conn:`. `test_import_archive_metrics.py`'s `_open_minimal_db` helper wraps setup in `try/except` so the connection is closed on error; all callers now use `with closing(_open_minimal_db(...)) as conn:`.
+
+- **UTF-8 stdout encoding in `setup_logging()`** — on systems without a UTF-8 locale (or when a subprocess is started under `LC_ALL=C`), `sys.stdout.encoding` is ASCII. Log messages containing em-dashes, checkmarks, or other non-ASCII characters raised `UnicodeEncodeError` when the stdout `StreamHandler` tried to write them. Fixed by calling `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` before attaching the handler when the stream is not already UTF-8. An earlier attempt wrapped `sys.stdout.buffer` in a new `io.TextIOWrapper`, but that introduced a GC bug: when the handler was later removed by a subsequent `setup_logging` call, the wrapper was garbage-collected, closing the shared `sys.stdout.buffer` and permanently breaking `sys.stdout` for the rest of the test process. `reconfigure()` modifies the existing wrapper in-place — no new object, nothing to GC.
+
+- **`locale.setlocale(LC_ALL, 'C')` global side-effect in `list_backups()`** — `util.py`'s `list_backups()` called `locale.setlocale(LC_ALL, '')` to enable thousands-separator formatting, falling back to `locale.setlocale(LC_ALL, 'C')` when the preferred locale (e.g. `en_US.UTF-8`) was not installed on the system. This permanently changed the process-wide locale to C (ASCII), causing all subsequent `open()` calls without an explicit `encoding=` to default to ASCII. Any write of non-ASCII content (`æøå`, `✓`, …) then raised `UnicodeEncodeError`. Fixed by replacing `locale.format_string("%d", n, grouping=True)` with Python's built-in `f"{int(n):,}"` and removing the `locale` import entirely. This also means the function now produces consistent comma-separated output regardless of the system locale.
+
+- **`PYTHONUTF8=1` in test suite** — `tests/conftest.py` now sets `os.environ["PYTHONUTF8"] = "1"` at collection time so every subprocess spawned during the test run (including `dar-backup`, `cleanup`, and `manager`) starts in Python UTF-8 mode. This is independent of the `LC_ALL=C` that `CommandRunner` sets for `dar`'s locale-sensitive stat output, which is unaffected by the Python-specific `PYTHONUTF8` variable.
+
+- **`closing()` does not commit — `_make_old_db` in `test_metrics_db.py`** — switching from `with sqlite3.connect() as conn:` to `with closing(sqlite3.connect()) as conn:` provides resource cleanup but removes the auto-commit on exit that the connection context manager previously provided. An `INSERT` in `_make_old_db` was being silently rolled back, causing two migration tests to fail with `TypeError: 'NoneType' object is not subscriptable`. Fixed by adding an explicit `conn.commit()`.
+
+- **`scripts/import-archive-metrics.py` — two unclosed connections** — both `with sqlite3.connect(...) as conn:` blocks in the script were resource-managed by the transaction context manager (commit/rollback) but not closed. The connections leaked until GC, which happened to fire during `test_pitr.py::test_restore_at_basic_success` and produced 13 `ResourceWarning: unclosed database` warnings. Fixed with `closing()`.
+
+### Added (tests)
+
+- **`test_util.py` — `list_backups()` locale-robustness tests** — `test_list_backups_formats_sizes_correctly` verifies the function lists archives and formats sizes correctly; `test_list_backups_does_not_corrupt_process_locale` asserts that `locale.getpreferredencoding()` is unchanged after the call and that writing `æøå ✓` to a file with no explicit encoding does not raise — the regression test for the `locale.setlocale` bug above.
+
 ### Added
 
 - **Config range validation** — `ConfigSettings` now enforces ranges at startup and raises `ConfigSettingsError` immediately rather than silently accepting bad values:

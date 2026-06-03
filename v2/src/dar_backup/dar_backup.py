@@ -1586,46 +1586,45 @@ def perform_backup(
             # Avoid spamming from example/demo backup definitions — skip both stats and metrics
             if backup_definition.lower() == "example":
                 logger.debug("Skipping stats/metrics collection for example backup definition.")
-                continue
-
-            slices_written = bool(glob.glob(f"{backup_file}.*.dar"))
-
-            if not success or has_error or not slices_written:
-                status = "FAILURE"
-                if not slices_written and not has_error:
-                    msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
-                    logger.error(msg)
-                    results.append((msg, 1))
-                    metrics["error_summary"] = msg
-                    metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
-            elif has_warning:
-                status = "WARNING"
             else:
-                status = "SUCCESS"
+                slices_written = bool(glob.glob(f"{backup_file}.*.dar"))
 
-            # Finalise and write metrics row
-            run_finished_at = datetime.now(timezone.utc)
-            metrics["run_finished_at"] = run_finished_at.isoformat()
-            metrics["duration_secs"]   = (run_finished_at - def_start).total_seconds()
-            metrics["status"]          = status
-            if metrics["error_summary"] is None:
-                first_error = next(((msg, code) for msg, code in new_results if code != 0), None)
-                if first_error:
-                    metrics["error_summary"] = first_error[0][:500]
-            try:
-                write_metrics_row(metrics, config_settings)
-            except Exception as metrics_exc:
-                logger.warning(f"Metrics write failed (backup unaffected): {metrics_exc}")
+                if not success or has_error or not slices_written:
+                    status = "FAILURE"
+                    if not slices_written and not has_error:
+                        msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
+                        logger.error(msg)
+                        results.append((msg, 1))
+                        metrics["error_summary"] = msg
+                        metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
+                elif has_warning:
+                    status = "WARNING"
+                else:
+                    status = "SUCCESS"
 
-            # Aggregate stats instead of sending immediately
-            stats_accumulator.append({
-                "definition": backup_definition,
-                "status": status,
-                "type": backup_type,
-                "end_time": run_finished_at.astimezone().isoformat(timespec='seconds'),
-                "warning_count": sum(1 for _, code in new_results if code == 2),
-                "error_count": sum(1 for _, code in new_results if code == 1),
-            })
+                # Finalise and write metrics row
+                run_finished_at = datetime.now(timezone.utc)
+                metrics["run_finished_at"] = run_finished_at.isoformat()
+                metrics["duration_secs"]   = (run_finished_at - def_start).total_seconds()
+                metrics["status"]          = status
+                if metrics["error_summary"] is None:
+                    first_error = next(((msg, code) for msg, code in new_results if code != 0), None)
+                    if first_error:
+                        metrics["error_summary"] = first_error[0][:500]
+                try:
+                    write_metrics_row(metrics, config_settings)
+                except Exception as metrics_exc:
+                    logger.warning(f"Metrics write failed (backup unaffected): {metrics_exc}")
+
+                # Aggregate stats instead of sending immediately
+                stats_accumulator.append({
+                    "definition": backup_definition,
+                    "status": status,
+                    "type": backup_type,
+                    "end_time": run_finished_at.astimezone().isoformat(timespec='seconds'),
+                    "warning_count": sum(1 for _, code in new_results if code == 2),
+                    "error_count": sum(1 for _, code in new_results if code == 1),
+                })
 
     logger.trace(f"perform_backup() results[]: {results}")
     return results

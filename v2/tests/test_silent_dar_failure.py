@@ -19,6 +19,7 @@ any .dar slices, yet the metrics DB recorded SUCCESS.
 import os
 import sqlite3
 import sys
+from contextlib import closing
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.smoke]
@@ -40,12 +41,12 @@ _BACKUP_DEF_NAME = "test-backup"
 
 
 def _row_count(db: str) -> int:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         return conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
 
 
 def _latest_row(db: str) -> sqlite3.Row:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         return conn.execute(
             "SELECT * FROM backup_runs ORDER BY id DESC LIMIT 1"

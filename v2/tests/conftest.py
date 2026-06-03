@@ -15,6 +15,16 @@ project_dir = os.path.abspath(os.path.join(tests_dir, ".."))
 # This mirrors what the generated systemd units do via Environment=LANG=en_US.UTF-8.
 os.environ["LANG"] = "en_US.UTF-8"
 
+# Force Python UTF-8 mode for all Python I/O in this process and every
+# subprocess it spawns.  CommandRunner intentionally sets LC_ALL=C so that
+# dar's stat output is in a parseable format; that is a C-stdlib locale
+# setting and is NOT overridden by PYTHONUTF8.  What PYTHONUTF8 does fix is
+# sys.stdout/sys.stderr encoding on Python 3.14 when the process is started
+# in a C-locale environment — without it, logging to stdout raises
+# UnicodeEncodeError for em-dashes, checkmarks, and other non-ASCII characters
+# in log messages.
+os.environ["PYTHONUTF8"] = "1"
+
 # Ensure subprocess coverage matches CI by default.
 # Opt out with DAR_BACKUP_NO_SUBPROCESS_COVERAGE=1.
 _coverage_config = Path(project_dir) / "pyproject.toml"

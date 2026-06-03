@@ -9,6 +9,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 - Many fixes to test cases and docs found in a review
 - More integration tests
 - CI workflow now uses a subset of the full test suite, in order to conserve Github resources.
+- **Python 3.14 / Ubuntu 26.04 compatibility** — fixed `continue`-in-`finally` SyntaxWarning, SQLite ResourceWarnings, UTF-8 stdout encoding, and a global locale-corruption bug in `list_backups()` that caused `UnicodeEncodeError` on systems without `en_US.UTF-8` installed.
 
 ## v2-1.1.5 - 2026-05-17
 

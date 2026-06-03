@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import configparser
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -795,7 +796,7 @@ class TestWriteMetricsRowGraceful:
         util.write_metrics_row(metrics, cfg)
 
         import sqlite3
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM backup_runs").fetchone()
         assert row is not None, "Row must be written even when all inode stats are NULL"
@@ -949,3 +950,50 @@ def test_compare_metadata_all_match_returns_empty(tmp_path):
     mismatches = util.compare_metadata(src, rst)
 
     assert mismatches == []
+
+
+# ---------------------------------------------------------------------------
+# list_backups — locale robustness
+# ---------------------------------------------------------------------------
+
+def test_list_backups_formats_sizes_correctly(tmp_path, capsys):
+    """list_backups() formats archive sizes with thousands separators."""
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    (backup_dir / "homedir_FULL_2025-01-01.1.dar").write_bytes(b"x" * 1024 * 1024)
+    (backup_dir / "homedir_DIFF_2025-02-01.1.dar").write_bytes(b"x" * 512 * 1024)
+
+    util.list_backups(str(backup_dir))
+
+    out = capsys.readouterr().out
+    assert "homedir_FULL_2025-01-01" in out
+    assert "homedir_DIFF_2025-02-01" in out
+
+
+def test_list_backups_does_not_corrupt_process_locale(tmp_path, capsys):
+    """Regression: after list_backups() returns, open() must still handle non-ASCII
+    content with the default encoding.
+
+    Previously list_backups() called locale.setlocale(LC_ALL, 'C') without restoring
+    it, which permanently changed the process locale to ASCII on systems where the
+    preferred locale (e.g. en_US.UTF-8) is not installed — causing all subsequent
+    open() calls without an explicit encoding to raise UnicodeEncodeError on æøå, ✓
+    and similar characters."""
+    import locale as _locale
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    (backup_dir / "homedir_FULL_2025-01-01.1.dar").write_bytes(b"x" * 1024)
+
+    preferred_before = _locale.getpreferredencoding(False)
+    util.list_backups(str(backup_dir))
+    preferred_after = _locale.getpreferredencoding(False)
+
+    assert preferred_after == preferred_before, (
+        f"list_backups() changed locale.getpreferredencoding from "
+        f"{preferred_before!r} to {preferred_after!r}"
+    )
+
+    # If the locale were corrupted to ASCII this would raise UnicodeEncodeError
+    with open(str(tmp_path / "danish_æøå.txt"), 'w') as f:
+        f.write("This is file with danish chars æøå and checkmark ✓")

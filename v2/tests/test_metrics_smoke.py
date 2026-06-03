@@ -14,6 +14,7 @@ import re
 import socket
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -119,7 +120,7 @@ def test_full_backup_metrics_row_has_key_fields_populated(
 
     assert os.path.exists(metrics_db), f"Metrics DB not created at {metrics_db}"
 
-    with sqlite3.connect(metrics_db) as conn:
+    with closing(sqlite3.connect(metrics_db)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM backup_runs").fetchall()
 
@@ -152,7 +153,7 @@ def test_full_backup_writes_restore_test_samples(
     _create_backup_def(env)
     _run_full_backup(env)
 
-    with sqlite3.connect(metrics_db) as conn:
+    with closing(sqlite3.connect(metrics_db)) as conn:
         conn.row_factory = sqlite3.Row
 
         run_row = dict(conn.execute("SELECT run_id FROM backup_runs").fetchone())

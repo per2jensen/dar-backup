@@ -14,6 +14,7 @@ import shutil
 import socket
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 from typing import Optional
 
@@ -73,7 +74,7 @@ def _query_backup_rows(db_path: str, backup_type: Optional[str] = None) -> list[
     Returns:
         List of row dicts ordered by rowid ascending.
     """
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         if backup_type:
             rows = conn.execute(
@@ -380,7 +381,7 @@ class TestMetricsInodeCounts:
         _run_backup("--full-backup", env)
 
         assert os.path.exists(metrics_db), f"Metrics DB not created at {metrics_db}"
-        with sqlite3.connect(metrics_db) as conn:
+        with closing(sqlite3.connect(metrics_db)) as conn:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
 
         expected = {

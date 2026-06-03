@@ -13,6 +13,7 @@ Covers:
 import os
 import sqlite3
 import sys
+from contextlib import closing
 from types import SimpleNamespace
 
 import pytest
@@ -67,7 +68,7 @@ def _sample(result: str = "PASS", fail_reason_id=None, fail_detail=None) -> dict
 def test_ensure_metrics_db_creates_restore_test_tables(tmp_path):
     """Both new tables must exist after ensure_metrics_db."""
     db_path = _db(tmp_path)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "restore_test_fail_reasons" in tables
     assert "restore_test_samples" in tables
@@ -76,7 +77,7 @@ def test_ensure_metrics_db_creates_restore_test_tables(tmp_path):
 def test_ensure_metrics_db_seeds_all_fail_reasons(tmp_path):
     """All six fail reason rows must be present with correct codes."""
     db_path = _db(tmp_path)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         rows = {r[0]: r[1] for r in conn.execute("SELECT id, code FROM restore_test_fail_reasons")}
     assert rows[RESTORE_FAIL_CONTENT_MISMATCH] == "CONTENT_MISMATCH"
     assert rows[RESTORE_FAIL_METADATA_MISMATCH] == "METADATA_MISMATCH"
@@ -91,7 +92,7 @@ def test_ensure_metrics_db_seeds_are_idempotent(tmp_path):
     """Calling ensure_metrics_db twice must not duplicate seed rows."""
     db_path = _db(tmp_path)
     ensure_metrics_db(db_path)  # second call
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         count = conn.execute("SELECT COUNT(*) FROM restore_test_fail_reasons").fetchone()[0]
     assert count == 6
 
@@ -105,7 +106,7 @@ def test_write_restore_test_samples_pass_row(tmp_path):
     db_path = _db(tmp_path)
     write_restore_test_samples("run-1", "mydef", "mydef_FULL_2026-05-26", [_sample()], _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM restore_test_samples").fetchall()
 
@@ -127,7 +128,7 @@ def test_write_restore_test_samples_fail_content_mismatch(tmp_path):
     s = _sample("FAIL", RESTORE_FAIL_CONTENT_MISMATCH)
     write_restore_test_samples("run-2", "mydef", "mydef_FULL_2026-05-26", [s], _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         row = dict(conn.execute("SELECT * FROM restore_test_samples").fetchone())
 
@@ -143,7 +144,7 @@ def test_write_restore_test_samples_fail_metadata_mismatch_with_detail(tmp_path)
     s = _sample("FAIL", RESTORE_FAIL_METADATA_MISMATCH, detail)
     write_restore_test_samples("run-3", "mydef", "mydef_FULL_2026-05-26", [s], _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         row = dict(conn.execute("SELECT * FROM restore_test_samples").fetchone())
 
@@ -158,7 +159,7 @@ def test_write_restore_test_samples_skip_source_missing(tmp_path):
     s = _sample("SKIP", RESTORE_FAIL_SOURCE_MISSING)
     write_restore_test_samples("run-4", "mydef", "mydef_FULL_2026-05-26", [s], _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         row = dict(conn.execute("SELECT * FROM restore_test_samples").fetchone())
 
@@ -176,7 +177,7 @@ def test_write_restore_test_samples_multiple_rows_one_commit(tmp_path):
     ]
     write_restore_test_samples("run-5", "mydef", "mydef_FULL_2026-05-26", samples, _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         rows = conn.execute(
             "SELECT file_path, result FROM restore_test_samples ORDER BY file_path"
         ).fetchall()
@@ -196,7 +197,7 @@ def test_write_restore_test_samples_noop_when_samples_empty(tmp_path):
     db_path = _db(tmp_path)
     write_restore_test_samples("run-x", "d", "d_FULL_2026-05-26", [], _config(db_path))
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         count = conn.execute("SELECT COUNT(*) FROM restore_test_samples").fetchone()[0]
     assert count == 0
 

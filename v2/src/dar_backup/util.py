@@ -10,11 +10,11 @@ not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 """
 import typing
-import locale
 import inspect
 import logging
 import json
 import sqlite3
+from contextlib import closing
 
 import os
 import re
@@ -246,7 +246,14 @@ def setup_logging(
         secondary_logger.addHandler(trace_handler)
 
         if log_to_stdout:
-            stdout_handler = logging.StreamHandler(sys.stdout)
+            _out = sys.stdout
+            enc = (getattr(_out, 'encoding', None) or 'utf-8').lower().replace('-', '')
+            if enc not in ('utf8', 'utf16', 'utf32') and hasattr(_out, 'reconfigure'):
+                try:
+                    _out.reconfigure(encoding='utf-8', errors='replace')
+                except Exception:
+                    pass
+            stdout_handler = logging.StreamHandler(_out)
             stdout_handler.setFormatter(clean_formatter)
             stdout_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
             logger.addHandler(stdout_handler)
@@ -666,10 +673,7 @@ def list_backups(backup_dir, backup_definition=None):
         backup_dir (str): The directory containing the backup files.
         backup_definition (str, optional): A prefix to filter backups by their base name. Only backups 
                                            starting with this prefix will be included. Defaults to None.
-    Raises:
-        locale.Error: If setting the locale fails and the fallback to the 'C' locale is unsuccessful.
     Behavior:
-        - Attempts to set the locale based on the environment for proper formatting of numbers.
         - Filters `.dar` files in the specified directory based on the following criteria:
             - The file name must contain one of the substrings: "_FULL_", "_DIFF_", or "_INCR_".
             - The file name must include a date in the format "_YYYY-MM-DD".
@@ -683,14 +687,6 @@ def list_backups(backup_dir, backup_definition=None):
 
     List the available backups in the specified directory and their sizes in megabytes, with aligned sizes.
     """
-    # Attempt to set locale from the environment or fall back to the default locale
-    try:
-        # Try to get the locale from the environment
-        locale.setlocale(locale.LC_ALL, '')
-    except locale.Error:
-        # If setting locale fails, fall back to the default 'C' locale
-        locale.setlocale(locale.LC_ALL, 'C')
-    
     # Create a dictionary to hold backup names and their total sizes
     backup_sizes = {}
 
@@ -737,7 +733,7 @@ def list_backups(backup_dir, backup_definition=None):
     # Determine the maximum length of the archive names
     max_name_length = max(len(name) for name in backup_sizes.keys())
 
-    formatted_sizes = [locale.format_string("%d", int(size), grouping=True) for size in backup_sizes.values()]
+    formatted_sizes = [f"{int(size):,}" for size in backup_sizes.values()]
     max_size_length = max(len(size) for size in formatted_sizes)
 
     def _sort_key(item: tuple) -> tuple:
@@ -756,7 +752,7 @@ def list_backups(backup_dir, backup_definition=None):
     
     # Print the backups and their sizes with aligned sizes
     for backup, size in sorted_backups:
-        formatted_size = locale.format_string("%d", int(size), grouping=True)
+        formatted_size = f"{int(size):,}"
         print(f"{backup.ljust(max_name_length)} : {formatted_size.rjust(max_size_length)} MB")
 
 
@@ -1452,7 +1448,7 @@ def ensure_metrics_db(db_path: str) -> None:
         column listed in _METRICS_MIGRATIONS, so columns added after the
         initial release are silently appended without touching existing data.
     """
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         # WAL mode lets Datasette/sqlite3-CLI read without blocking backup writes.
         # Stored in the DB file — only needs to be set once.
         conn.execute("PRAGMA journal_mode=WAL")
@@ -1477,7 +1473,7 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
     try:
         db_path = os.path.expanduser(os.path.expandvars(db_path))
         ensure_metrics_db(db_path)
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.execute(
                 """
                 INSERT INTO backup_runs (
@@ -1562,7 +1558,7 @@ def write_restore_test_samples(
             )
             for s in samples
         ]
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.executemany(
                 """
                 INSERT INTO restore_test_samples
@@ -1599,7 +1595,7 @@ def update_postreq_status(run_id: str, status: str, config_settings) -> None:
         return
     try:
         db_path = os.path.expanduser(os.path.expandvars(db_path))
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             conn.execute(
                 "UPDATE backup_runs SET postreq_status = ? WHERE run_id = ?",
                 (status, run_id),

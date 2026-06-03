@@ -10,6 +10,7 @@ Covers:
 
 import os
 import sqlite3
+from contextlib import closing
 from configparser import ConfigParser
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -178,7 +179,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
 
 def _make_old_db(db_path: str) -> None:
     """Create a DB with the pre-migration schema and one existing data row."""
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.executescript(_OLD_SCHEMA_DDL)
         conn.execute(
             """
@@ -187,6 +188,7 @@ def _make_old_db(db_path: str) -> None:
             ) VALUES ('legacy-def', 'FULL', '2025-01-01T00:00:00Z', 'SUCCESS')
             """
         )
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +198,7 @@ def _make_old_db(db_path: str) -> None:
 def test_ensure_metrics_db_creates_schema(tmp_path):
     db = str(tmp_path / "metrics.db")
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
@@ -206,7 +208,7 @@ def test_ensure_metrics_db_creates_schema(tmp_path):
 def test_ensure_metrics_db_creates_indexes(tmp_path):
     db = str(tmp_path / "metrics.db")
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         indexes = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index'"
         )}
@@ -220,7 +222,7 @@ def test_ensure_metrics_db_is_idempotent(tmp_path):
     db = str(tmp_path / "metrics.db")
     ensure_metrics_db(db)
     ensure_metrics_db(db)   # second call — must not raise
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         count = conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
     assert count == 0
 
@@ -234,7 +236,7 @@ def test_ensure_metrics_db_migrates_old_db_adds_new_columns(tmp_path):
     db = str(tmp_path / "metrics.db")
     _make_old_db(db)
     ensure_metrics_db(db)   # must migrate, not raise
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
     for col_name, _ in _METRICS_MIGRATIONS:
         assert col_name in cols, f"Migration column missing: {col_name}"
@@ -245,7 +247,7 @@ def test_ensure_metrics_db_migration_preserves_existing_rows(tmp_path):
     db = str(tmp_path / "metrics.db")
     _make_old_db(db)
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM backup_runs").fetchone()
     assert row["backup_definition"] == "legacy-def"
@@ -257,7 +259,7 @@ def test_ensure_metrics_db_migration_new_columns_are_null_for_old_rows(tmp_path)
     db = str(tmp_path / "metrics.db")
     _make_old_db(db)
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM backup_runs").fetchone()
     for col_name, _ in _METRICS_MIGRATIONS:
@@ -300,7 +302,7 @@ def test_write_metrics_row_creates_db_file_if_missing(tmp_path):
 def test_write_metrics_row_inserts_one_row(tmp_path):
     db = str(tmp_path / "metrics.db")
     write_metrics_row(_FULL_METRICS, _cfg(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         rows = conn.execute("SELECT * FROM backup_runs").fetchall()
     assert len(rows) == 1
 
@@ -308,7 +310,7 @@ def test_write_metrics_row_inserts_one_row(tmp_path):
 def test_write_metrics_row_values_round_trip(tmp_path):
     db = str(tmp_path / "metrics.db")
     write_metrics_row(_FULL_METRICS, _cfg(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM backup_runs").fetchone()
     assert row["backup_definition"]  == "test-def"
@@ -326,7 +328,7 @@ def test_write_metrics_row_multiple_rows_accumulate(tmp_path):
     write_metrics_row(_FULL_METRICS, cfg)
     write_metrics_row({**_FULL_METRICS, "backup_type": "DIFF"}, cfg)
     write_metrics_row({**_FULL_METRICS, "backup_type": "INCR"}, cfg)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         count = conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
     assert count == 3
 
@@ -335,7 +337,7 @@ def test_write_metrics_row_null_optional_fields(tmp_path):
     """All optional fields set to None must still insert cleanly."""
     db = str(tmp_path / "metrics.db")
     write_metrics_row(_SPARSE_METRICS, _cfg(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM backup_runs").fetchone()
     assert row["status"]        == "FAILURE"
@@ -397,7 +399,7 @@ def test_config_settings_metrics_db_path_absent_is_none(tmp_path):
 
 def _row_count(db: str) -> int:
     """Return number of rows in backup_runs for the given DB file."""
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         return conn.execute("SELECT count(*) FROM backup_runs").fetchone()[0]
 
 
@@ -444,7 +446,7 @@ def test_write_metrics_row_warning_status_round_trip(tmp_path):
     """status='WARNING' must insert and read back correctly."""
     db = str(tmp_path / "metrics.db")
     write_metrics_row({**_FULL_METRICS, "status": "WARNING"}, _cfg(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT status FROM backup_runs").fetchone()
     assert row["status"] == "WARNING"
@@ -460,7 +462,7 @@ def test_write_metrics_row_failed_phase_round_trip(tmp_path, phase):
     db = str(tmp_path / "metrics.db")
     row_data = {**_FULL_METRICS, "status": "FAILURE", "failed_phase": phase}
     write_metrics_row(row_data, _cfg(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT failed_phase FROM backup_runs").fetchone()
     assert row["failed_phase"] == phase
@@ -539,7 +541,7 @@ def test_ensure_metrics_db_all_columns_present(tmp_path):
     from dar_backup.util import ensure_metrics_db
     db = str(tmp_path / "metrics.db")
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")}
     assert _EXPECTED_COLUMNS == cols
 
@@ -549,7 +551,7 @@ def test_ensure_metrics_db_not_null_constraints(tmp_path):
     from dar_backup.util import ensure_metrics_db
     db = str(tmp_path / "metrics.db")
     ensure_metrics_db(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         not_null_cols = {
             row[1]
             for row in conn.execute("PRAGMA table_info(backup_runs)")

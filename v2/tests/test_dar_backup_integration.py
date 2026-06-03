@@ -14,7 +14,7 @@ import os
 import sqlite3
 import stat
 import sys
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import closing, redirect_stdout, redirect_stderr
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -525,7 +525,7 @@ def test_record_prereq_failure_single_definition(setup_environment, env):
 
     # The metrics DB must not have been written for 'example' either.
     if os.path.exists(metrics_db):
-        with sqlite3.connect(metrics_db) as conn:
+        with closing(sqlite3.connect(metrics_db)) as conn:
             rows = conn.execute("SELECT * FROM backup_runs").fetchall()
         assert rows == [], f"'example' rows must not be written to DB; got {rows}"
 
@@ -584,7 +584,7 @@ def test_record_prereq_failure_all_definitions(setup_environment, env):
 
         # Verify DB rows
         assert os.path.exists(metrics_db), "metrics DB must be created by write_metrics_row()"
-        with sqlite3.connect(metrics_db) as conn:
+        with closing(sqlite3.connect(metrics_db)) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT backup_definition, status, failed_phase FROM backup_runs ORDER BY rowid"
@@ -651,7 +651,7 @@ def test_record_prereq_failure_sets_prereq_status_in_db(setup_environment, env):
             dar_backup_mod.logger = saved_logger
 
         assert os.path.exists(metrics_db), "metrics DB must be created"
-        with sqlite3.connect(metrics_db) as conn:
+        with closing(sqlite3.connect(metrics_db)) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT backup_definition, prereq_status, run_id FROM backup_runs ORDER BY rowid"
@@ -749,7 +749,7 @@ def test_update_postreq_status_sets_column_in_db(setup_environment, env):
     # Back-fill postreq for run_id_a only
     update_postreq_status(run_id_a, "SUCCESS", config_settings)
 
-    with sqlite3.connect(metrics_db) as conn:
+    with closing(sqlite3.connect(metrics_db)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT backup_definition, postreq_status FROM backup_runs ORDER BY rowid"

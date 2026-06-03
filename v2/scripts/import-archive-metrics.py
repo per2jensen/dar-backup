@@ -55,6 +55,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -211,7 +212,7 @@ def _ensure_db(db_path: str) -> None:
         fsa_saved                     INTEGER
     );
     """
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.executescript(minimal_ddl)
 
 
@@ -461,7 +462,7 @@ def main() -> int:
     skipped  = 0
     errors   = 0
 
-    with sqlite3.connect(args.metrics_db) as conn:
+    with closing(sqlite3.connect(args.metrics_db)) as conn:
         for fname, m in archives:
             archive_name = fname[:-len('.1.dar')]
             definition   = m.group('definition')

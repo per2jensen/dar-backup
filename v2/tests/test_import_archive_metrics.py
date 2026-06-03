@@ -12,6 +12,7 @@ import logging
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock, patch
@@ -55,31 +56,35 @@ def _open_minimal_db(db_path: str) -> sqlite3.Connection:
     fallback DDL and return an open connection.
     """
     conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS backup_runs (
-            id                            INTEGER PRIMARY KEY AUTOINCREMENT,
-            backup_definition             TEXT    NOT NULL,
-            backup_type                   TEXT    NOT NULL,
-            archive_name                  TEXT,
-            run_started_at                TEXT    NOT NULL,
-            status                        TEXT    NOT NULL,
-            archive_size_bytes            INTEGER,
-            num_slices                    INTEGER,
-            inodes_saved                  INTEGER,
-            hard_links_treated            INTEGER,
-            inodes_changed_during_backup  INTEGER,
-            bytes_wasted                  INTEGER,
-            inodes_metadata_only          INTEGER,
-            inodes_not_saved              INTEGER,
-            inodes_failed                 INTEGER,
-            inodes_excluded               INTEGER,
-            inodes_deleted                INTEGER,
-            inodes_total                  INTEGER,
-            ea_saved                      INTEGER,
-            fsa_saved                     INTEGER
-        )
-    """)
-    conn.commit()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS backup_runs (
+                id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_definition             TEXT    NOT NULL,
+                backup_type                   TEXT    NOT NULL,
+                archive_name                  TEXT,
+                run_started_at                TEXT    NOT NULL,
+                status                        TEXT    NOT NULL,
+                archive_size_bytes            INTEGER,
+                num_slices                    INTEGER,
+                inodes_saved                  INTEGER,
+                hard_links_treated            INTEGER,
+                inodes_changed_during_backup  INTEGER,
+                bytes_wasted                  INTEGER,
+                inodes_metadata_only          INTEGER,
+                inodes_not_saved              INTEGER,
+                inodes_failed                 INTEGER,
+                inodes_excluded               INTEGER,
+                inodes_deleted                INTEGER,
+                inodes_total                  INTEGER,
+                ea_saved                      INTEGER,
+                fsa_saved                     INTEGER
+            )
+        """)
+        conn.commit()
+    except:
+        conn.close()
+        raise
     return conn
 
 
@@ -358,33 +363,30 @@ class TestAlreadyImported:
     """Tests for _already_imported(conn, archive_name)."""
 
     def test_returns_false_when_archive_not_in_db(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        assert _already_imported(conn, "homedir_FULL_2025-01-15") is False
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            assert _already_imported(conn, "homedir_FULL_2025-01-15") is False
 
     def test_returns_true_when_archive_in_db(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        conn.execute(
-            "INSERT INTO backup_runs "
-            "(backup_definition, backup_type, archive_name, run_started_at, status) "
-            "VALUES (?, ?, ?, ?, ?)",
-            ("homedir", "FULL", "homedir_FULL_2025-01-15", "2025-01-15T00:00:00", "SUCCESS"),
-        )
-        conn.commit()
-        assert _already_imported(conn, "homedir_FULL_2025-01-15") is True
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            conn.execute(
+                "INSERT INTO backup_runs "
+                "(backup_definition, backup_type, archive_name, run_started_at, status) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("homedir", "FULL", "homedir_FULL_2025-01-15", "2025-01-15T00:00:00", "SUCCESS"),
+            )
+            conn.commit()
+            assert _already_imported(conn, "homedir_FULL_2025-01-15") is True
 
     def test_different_archive_name_returns_false(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        conn.execute(
-            "INSERT INTO backup_runs "
-            "(backup_definition, backup_type, archive_name, run_started_at, status) "
-            "VALUES (?, ?, ?, ?, ?)",
-            ("homedir", "FULL", "homedir_FULL_2025-01-15", "2025-01-15T00:00:00", "SUCCESS"),
-        )
-        conn.commit()
-        assert _already_imported(conn, "homedir_FULL_2025-02-01") is False
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            conn.execute(
+                "INSERT INTO backup_runs "
+                "(backup_definition, backup_type, archive_name, run_started_at, status) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("homedir", "FULL", "homedir_FULL_2025-01-15", "2025-01-15T00:00:00", "SUCCESS"),
+            )
+            conn.commit()
+            assert _already_imported(conn, "homedir_FULL_2025-02-01") is False
 
 
 # ---------------------------------------------------------------------------
@@ -395,44 +397,40 @@ class TestInsertRow:
     """Tests for _insert_row(conn, row)."""
 
     def test_row_inserted_successfully(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        _insert_row(conn, _full_row())
-        conn.commit()
-        row = conn.execute(
-            "SELECT backup_definition, backup_type, status FROM backup_runs"
-        ).fetchone()
-        assert row == ("homedir", "FULL", "SUCCESS")
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            _insert_row(conn, _full_row())
+            conn.commit()
+            row = conn.execute(
+                "SELECT backup_definition, backup_type, status FROM backup_runs"
+            ).fetchone()
+            assert row == ("homedir", "FULL", "SUCCESS")
 
     def test_null_inode_stats_accepted(self, tmp_path: Path) -> None:
         """Rows where dar -l produced no stats (all NULLs) insert without error."""
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        row = _full_row()
-        for key in ["inodes_saved", "inodes_total", "ea_saved", "fsa_saved"]:
-            row[key] = None
-        _insert_row(conn, row)
-        conn.commit()
-        count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
-        assert count == 1
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            row = _full_row()
+            for key in ["inodes_saved", "inodes_total", "ea_saved", "fsa_saved"]:
+                row[key] = None
+            _insert_row(conn, row)
+            conn.commit()
+            count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
+            assert count == 1
 
     def test_archive_size_bytes_stored_correctly(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        row = _full_row()
-        row["archive_size_bytes"] = 987_654_321
-        _insert_row(conn, row)
-        conn.commit()
-        stored = conn.execute("SELECT archive_size_bytes FROM backup_runs").fetchone()[0]
-        assert stored == 987_654_321
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            row = _full_row()
+            row["archive_size_bytes"] = 987_654_321
+            _insert_row(conn, row)
+            conn.commit()
+            stored = conn.execute("SELECT archive_size_bytes FROM backup_runs").fetchone()[0]
+            assert stored == 987_654_321
 
     def test_run_started_at_stored_correctly(self, tmp_path: Path) -> None:
-        conn = _open_minimal_db(str(tmp_path / "test.db"))
-        _insert_row(conn, _full_row())
-        conn.commit()
-        stored = conn.execute("SELECT run_started_at FROM backup_runs").fetchone()[0]
-        assert stored == "2025-01-15T00:00:00"
-        conn.close()
+        with closing(_open_minimal_db(str(tmp_path / "test.db"))) as conn:
+            _insert_row(conn, _full_row())
+            conn.commit()
+            stored = conn.execute("SELECT run_started_at FROM backup_runs").fetchone()[0]
+            assert stored == "2025-01-15T00:00:00"
 
 
 # ---------------------------------------------------------------------------
@@ -474,11 +472,10 @@ class TestEnsureDb:
             # Force ImportError so the fallback DDL is used
             with patch("builtins.__import__", side_effect=_raise_on_dar_backup_util):
                 _ensure_db(db_path)
-        conn = sqlite3.connect(db_path)
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()]
         assert "backup_runs" in tables
 
     def test_idempotent_when_table_already_exists(self, tmp_path: Path) -> None:
@@ -532,11 +529,10 @@ class TestMain:
                 "--metrics-db", db_path,
             ])
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT backup_definition, backup_type, status FROM backup_runs"
-        ).fetchone()
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute(
+                "SELECT backup_definition, backup_type, status FROM backup_runs"
+            ).fetchone()
         assert row == ("homedir", "FULL", "SUCCESS")
 
     def test_imports_legacy_filename_correctly(
@@ -551,9 +547,8 @@ class TestMain:
                 "--metrics-db", db_path,
             ])
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        row = conn.execute("SELECT run_started_at, backup_type FROM backup_runs").fetchone()
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("SELECT run_started_at, backup_type FROM backup_runs").fetchone()
         assert row[0] == "2025-12-20T00:00:00"
         assert row[1] == "DIFF"
 
@@ -569,9 +564,8 @@ class TestMain:
                 "--metrics-db", db_path,
             ])
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        ts = conn.execute("SELECT run_started_at FROM backup_runs").fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            ts = conn.execute("SELECT run_started_at FROM backup_runs").fetchone()[0]
         assert ts == "2025-01-15T14:30:00"
 
     def test_status_always_success(
@@ -583,9 +577,8 @@ class TestMain:
             self._run(monkeypatch, [
                 "--archive-dir", str(tmp_path), "--metrics-db", db_path,
             ])
-        conn = sqlite3.connect(db_path)
-        status = conn.execute("SELECT status FROM backup_runs").fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            status = conn.execute("SELECT status FROM backup_runs").fetchone()[0]
         assert status == "SUCCESS"
 
     # --- idempotency --------------------------------------------------------
@@ -600,9 +593,8 @@ class TestMain:
             self._run(monkeypatch, argv)
             rc = self._run(monkeypatch, argv)
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
         assert count == 1  # only one row, not two
 
     # --- filtering ----------------------------------------------------------
@@ -620,11 +612,10 @@ class TestMain:
                 "--backup-definition", "homedir",
             ])
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        defs = [r[0] for r in conn.execute(
-            "SELECT backup_definition FROM backup_runs"
-        ).fetchall()]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            defs = [r[0] for r in conn.execute(
+                "SELECT backup_definition FROM backup_runs"
+            ).fetchall()]
         assert defs == ["homedir"]
 
     # --- dry-run ------------------------------------------------------------
@@ -685,9 +676,8 @@ class TestMain:
                 "--metrics-db", db_path,
             ])
         assert rc == 0
-        conn = sqlite3.connect(db_path)
-        count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0]
         assert count == 3
 
     def test_archive_size_bytes_stored_as_sum_of_slices(
@@ -701,7 +691,6 @@ class TestMain:
                 "--archive-dir", str(tmp_path),
                 "--metrics-db", db_path,
             ])
-        conn = sqlite3.connect(db_path)
-        stored = conn.execute("SELECT archive_size_bytes FROM backup_runs").fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(db_path)) as conn:
+            stored = conn.execute("SELECT archive_size_bytes FROM backup_runs").fetchone()[0]
         assert stored == 3000

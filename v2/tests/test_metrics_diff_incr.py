@@ -29,6 +29,7 @@ import re
 import sqlite3
 import sys
 from configparser import ConfigParser
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -104,7 +105,7 @@ def _run_backup(env: EnvData, backup_type_flag: str) -> None:
 
 def _rows_for_def(metrics_db: str, backup_definition: str) -> list[dict]:
     """Return all backup_runs rows for the given definition, ordered by rowid."""
-    with sqlite3.connect(metrics_db) as conn:
+    with closing(sqlite3.connect(metrics_db)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM backup_runs WHERE backup_definition = ? ORDER BY rowid",
