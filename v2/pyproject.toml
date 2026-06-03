@@ -97,7 +97,7 @@ dev = [
   "httpcore>=0.17.3",
   "h11>=0.16.0",
   "zipp>=3.19.1",
-  "anyio>=4.4.0",
+  "anyio>=4.13.0",
   "pandas>=3.0.2",
   "matplotlib>=3.10.3",
 ]
