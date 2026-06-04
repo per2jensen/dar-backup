@@ -912,12 +912,12 @@ def test_compare_metadata_mtime_mismatch_detected(tmp_path):
     assert "mtime mismatch" in mismatches[0]
 
 
-def test_compare_metadata_uid_gid_not_checked(tmp_path, monkeypatch):
-    """uid and gid differences are not reported regardless of who runs the process.
+def test_compare_metadata_uid_gid_not_checked_by_default(tmp_path, monkeypatch):
+    """uid and gid differences are not reported when check_ownership=False (default).
 
-    The darrc ships with --comparison-field=ignore-owner in restore-options so
-    that non-root users can restore without permission errors.  As a result dar
-    never restores ownership, so compare_metadata intentionally omits uid/gid.
+    RESTORE_OWNERSHIP = no (the default) causes dar-backup to inject
+    --comparison-field=ignore-owner so uid/gid are not restored.
+    compare_metadata must not flag them as mismatches in that mode.
     """
     src, rst = _make_pair(tmp_path)
 
@@ -937,10 +937,54 @@ def test_compare_metadata_uid_gid_not_checked(tmp_path, monkeypatch):
 
     monkeypatch.setattr(os, "stat", lambda path, **kw: src_stat if path == src else fake_rst_stat)
 
-    mismatches = util.compare_metadata(src, rst)
+    mismatches = util.compare_metadata(src, rst)  # check_ownership defaults to False
 
-    assert not any("uid" in m for m in mismatches), "uid must not be checked"
-    assert not any("gid" in m for m in mismatches), "gid must not be checked"
+    assert not any("uid" in m for m in mismatches), "uid must not be checked when check_ownership=False"
+    assert not any("gid" in m for m in mismatches), "gid must not be checked when check_ownership=False"
+
+
+def test_compare_metadata_uid_gid_checked_when_ownership_preserved(tmp_path, monkeypatch):
+    """uid and gid mismatches ARE reported when check_ownership=True.
+
+    RESTORE_OWNERSHIP = yes causes dar to restore original uid/gid.
+    compare_metadata must verify they were actually restored correctly.
+    """
+    src, rst = _make_pair(tmp_path)
+
+    src_stat = os.stat(src)
+    fake_rst_stat = os.stat_result((
+        src_stat.st_mode,
+        src_stat.st_ino,
+        src_stat.st_dev,
+        src_stat.st_nlink,
+        src_stat.st_uid + 1,   # uid differs — must be detected
+        src_stat.st_gid + 1,   # gid differs — must be detected
+        src_stat.st_size,
+        src_stat.st_atime_ns,
+        src_stat.st_mtime_ns,
+        src_stat.st_ctime_ns,
+    ))
+
+    monkeypatch.setattr(os, "stat", lambda path, **kw: src_stat if path == src else fake_rst_stat)
+
+    mismatches = util.compare_metadata(src, rst, check_ownership=True)
+
+    assert any("uid" in m for m in mismatches), "uid mismatch must be reported when check_ownership=True"
+    assert any("gid" in m for m in mismatches), "gid mismatch must be reported when check_ownership=True"
+
+
+def test_compare_metadata_uid_gid_match_no_false_positive(tmp_path, monkeypatch):
+    """No uid/gid mismatch is reported when ownership matches, even with check_ownership=True."""
+    src, rst = _make_pair(tmp_path)
+
+    src_stat = os.stat(src)
+    # Same uid/gid — no ownership mismatch
+    monkeypatch.setattr(os, "stat", lambda path, **kw: src_stat)
+
+    mismatches = util.compare_metadata(src, rst, check_ownership=True)
+
+    assert not any("uid" in m for m in mismatches), "no uid mismatch expected when uid matches"
+    assert not any("gid" in m for m in mismatches), "no gid mismatch expected when gid matches"
 
 
 def test_compare_metadata_all_match_returns_empty(tmp_path):

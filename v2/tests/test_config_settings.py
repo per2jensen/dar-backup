@@ -439,3 +439,51 @@ def test_config_settings_age_at_threshold_no_warning(tmp_path, diff_age, incr_ag
     assert cfg.diff_age == diff_age
     assert cfg.incr_age == incr_age
     assert not caplog.records
+
+
+# ---------------------------------------------------------------------------
+# RESTORE_OWNERSHIP config setting
+# ---------------------------------------------------------------------------
+
+def test_config_settings_restore_ownership_yes(tmp_path):
+    """RESTORE_OWNERSHIP = yes is parsed as True."""
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"RESTORE_OWNERSHIP": "yes"},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.restore_ownership is True
+
+
+def test_config_settings_restore_ownership_no(tmp_path):
+    """RESTORE_OWNERSHIP = no is parsed as False."""
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"RESTORE_OWNERSHIP": "no"},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.restore_ownership is False
+
+
+def test_config_settings_restore_ownership_missing_defaults_false(tmp_path):
+    """When RESTORE_OWNERSHIP is absent from the config, it defaults to False.
+
+    This preserves backward-compatible behaviour for existing users who do not
+    have the key in their config file.
+    """
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path)
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.restore_ownership is False
+
+
+def test_config_settings_restore_ownership_invalid_value_raises(tmp_path):
+    """An invalid value for RESTORE_OWNERSHIP raises ConfigSettingsError."""
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"RESTORE_OWNERSHIP": "maybe"},
+    )
+    with pytest.raises(ConfigSettingsError):
+        ConfigSettings(str(config_path))

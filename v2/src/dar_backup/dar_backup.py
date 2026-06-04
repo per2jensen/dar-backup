@@ -637,7 +637,16 @@ def verify(
                 except OSError:
                     pass
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf',  '-Q', '-B', args.darrc, 'restore-options']
+            if getattr(args, 'preserve_ownership', False):
+                ignore_ownership = False
+            elif getattr(args, 'ignore_ownership', False):
+                ignore_ownership = True
+            else:
+                ignore_ownership = not getattr(config_settings, 'restore_ownership', False)
+            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
+            if ignore_ownership:
+                command.append('--comparison-field=ignore-owner')
+            command.extend(['-B', args.darrc, 'restore-options'])
             args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
             process = runner.run(command, timeout = config_settings.command_timeout_secs)
             if process.returncode != 0:
@@ -649,7 +658,7 @@ def verify(
                 sample["fail_reason_id"] = RESTORE_FAIL_CONTENT_MISMATCH
                 logger.error(f"Failure: file '{restored_file_path}' did not match the original")
             else:
-                mismatches = compare_metadata(source_path, restore_path)
+                mismatches = compare_metadata(source_path, restore_path, check_ownership=not ignore_ownership)
                 if mismatches:
                     result = False
                     sample["result"] = "FAIL"
@@ -722,18 +731,33 @@ def verify(
 
 
 
-def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str, selection: str =None):
+def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
+                   selection: str = None, ignore_ownership: bool = True):
     """
     Restores a backup file to a specified directory.
 
     Args:
         backup_name (str): The base name of the backup file, without the "slice number.dar"
-        backup_dir (str): The directory where the backup file is located.
+        config_settings (ConfigSettings): Parsed configuration.
         restore_dir (str): The directory where the backup should be restored to.
+        darrc (str): Path to the .darrc file.
         selection (str, optional): A selection criteria to restore specific files or directories. Defaults to None.
+        ignore_ownership (bool): When True, passes --comparison-field=ignore-owner to dar so uid/gid
+            are not restored.  Defaults to True (safe for non-root).  Set to False only when running
+            as root and RESTORE_OWNERSHIP = yes is configured.
+
+    Raises:
+        RestoreError: If the restore command fails or the restore directory cannot be created.
     """
     results: List[tuple] = []
     try:
+        if ignore_ownership and os.getuid() == 0:
+            logger.warning(
+                "Running as root but ownership restoration is disabled. "
+                "uid/gid will NOT be preserved. "
+                "Set RESTORE_OWNERSHIP = yes in the config file to restore original ownership, "
+                "or remove --ignore-ownership from the command line if you passed it explicitly."
+            )
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
         command = ['dar', '-x', backup_file, '-wa', '-/ Oo', '--noconf', '-Q']
         if "_FULL_" in backup_name:
@@ -747,7 +771,9 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         if selection:
             selection_criteria = shlex.split(selection)
             command.extend(selection_criteria)
-        command.extend(['-B', darrc,  'restore-options'])  # the .darrc `restore-options` section
+        if ignore_ownership:
+            command.append('--comparison-field=ignore-owner')
+        command.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
         logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
         process = runner.run(command, timeout = config_settings.command_timeout_secs)
         if process.returncode == 0:
@@ -2106,6 +2132,15 @@ def main():
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--do-not-compare', action='store_true', help="do not compare restores to file system")
+    ownership_group = parser.add_mutually_exclusive_group()
+    ownership_group.add_argument(
+        '--preserve-ownership', action='store_true',
+        help="Force uid/gid restoration for this run (root only). Overrides RESTORE_OWNERSHIP = no in the config file.",
+    )
+    ownership_group.add_argument(
+        '--ignore-ownership', action='store_true',
+        help="Force --comparison-field=ignore-owner for this run. Overrides RESTORE_OWNERSHIP = yes in the config file.",
+    )
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument("--readme", action="store_true", help="Print README.md to stdout and exit.")
     parser.add_argument("--readme-pretty", action="store_true", help="Print README.md to stdout with Markdown styling and exit.")
@@ -2122,6 +2157,10 @@ def main():
         args.list_definitions = False
     if not hasattr(args, "allow_unsafe_definition_names"):
         args.allow_unsafe_definition_names = False
+    if not hasattr(args, "ignore_ownership"):
+        args.ignore_ownership = False
+    if not hasattr(args, "preserve_ownership"):
+        args.preserve_ownership = False
 
     if args.version:
         show_version()
@@ -2338,7 +2377,14 @@ def main():
             list_contents(args.list_contents, config_settings.backup_dir, args.selection)
         elif args.restore:
             logger.debug(f"Restoring {args.restore} to {restore_dir}")
-            results.extend(restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection))
+            if args.preserve_ownership:
+                ignore_ownership = False
+            elif args.ignore_ownership:
+                ignore_ownership = True
+            else:
+                ignore_ownership = not config_settings.restore_ownership
+            results.extend(restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection,
+                                          ignore_ownership=ignore_ownership))
         else:
             parser.print_help()
 

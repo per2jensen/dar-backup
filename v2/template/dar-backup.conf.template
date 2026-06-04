@@ -16,6 +16,15 @@ COMMAND_TIMEOUT_SECS = 86400
 # size is still logged but not kept in memory. Use 0 to avoid buffering entirely.
 # Default is 102400.
 # COMMAND_CAPTURE_MAX_BYTES = 102400
+#
+# Ownership restoration during restores.
+# no  (default) — dar-backup injects --comparison-field=ignore-owner so that
+#     non-root users can restore without permission errors.  uid/gid are NOT
+#     restored.  Safe for everyone.
+# yes — original uid/gid are restored by dar.  Only works correctly when
+#     running as root; non-root restores will fail if any file is owned by a
+#     different user.  Use --ignore-ownership on the CLI to override per-run.
+RESTORE_OWNERSHIP = no
 
 [DIRECTORIES]
 BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/

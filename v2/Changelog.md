@@ -5,91 +5,198 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.6 - not released
 
-### Fixed (Python 3.14 / Ubuntu 26.04 compatibility)
-
-- **`continue` in `finally` block** — `dar_backup.py`: Python 3.14 raises `SyntaxWarning` for `continue` inside a `finally` block because it silently suppresses pending exceptions. Replaced with an `if/else` guard that wraps the rest of the `finally` body; identical behaviour, no warning.
-
-- **Unclosed SQLite connections** — Python 3.14's GC is stricter about warning on unclosed file/db handles. Every `with sqlite3.connect(...) as conn:` block only handles transactions, not resource cleanup. Fixed in `util.py` (4 sites) and all 10 test files by switching to `with closing(sqlite3.connect(...)) as conn:`. `test_import_archive_metrics.py`'s `_open_minimal_db` helper wraps setup in `try/except` so the connection is closed on error; all callers now use `with closing(_open_minimal_db(...)) as conn:`.
-
-- **UTF-8 stdout encoding in `setup_logging()`** — on systems without a UTF-8 locale (or when a subprocess is started under `LC_ALL=C`), `sys.stdout.encoding` is ASCII. Log messages containing em-dashes, checkmarks, or other non-ASCII characters raised `UnicodeEncodeError` when the stdout `StreamHandler` tried to write them. Fixed by calling `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` before attaching the handler when the stream is not already UTF-8. An earlier attempt wrapped `sys.stdout.buffer` in a new `io.TextIOWrapper`, but that introduced a GC bug: when the handler was later removed by a subsequent `setup_logging` call, the wrapper was garbage-collected, closing the shared `sys.stdout.buffer` and permanently breaking `sys.stdout` for the rest of the test process. `reconfigure()` modifies the existing wrapper in-place — no new object, nothing to GC.
-
-- **`locale.setlocale(LC_ALL, 'C')` global side-effect in `list_backups()`** — `util.py`'s `list_backups()` called `locale.setlocale(LC_ALL, '')` to enable thousands-separator formatting, falling back to `locale.setlocale(LC_ALL, 'C')` when the preferred locale (e.g. `en_US.UTF-8`) was not installed on the system. This permanently changed the process-wide locale to C (ASCII), causing all subsequent `open()` calls without an explicit `encoding=` to default to ASCII. Any write of non-ASCII content (`æøå`, `✓`, …) then raised `UnicodeEncodeError`. Fixed by replacing `locale.format_string("%d", n, grouping=True)` with Python's built-in `f"{int(n):,}"` and removing the `locale` import entirely. This also means the function now produces consistent comma-separated output regardless of the system locale.
-
-- **`PYTHONUTF8=1` in test suite** — `tests/conftest.py` now sets `os.environ["PYTHONUTF8"] = "1"` at collection time so every subprocess spawned during the test run (including `dar-backup`, `cleanup`, and `manager`) starts in Python UTF-8 mode. This is independent of the `LC_ALL=C` that `CommandRunner` sets for `dar`'s locale-sensitive stat output, which is unaffected by the Python-specific `PYTHONUTF8` variable.
-
-- **`closing()` does not commit — `_make_old_db` in `test_metrics_db.py`** — switching from `with sqlite3.connect() as conn:` to `with closing(sqlite3.connect()) as conn:` provides resource cleanup but removes the auto-commit on exit that the connection context manager previously provided. An `INSERT` in `_make_old_db` was being silently rolled back, causing two migration tests to fail with `TypeError: 'NoneType' object is not subscriptable`. Fixed by adding an explicit `conn.commit()`.
-
-- **`scripts/import-archive-metrics.py` — two unclosed connections** — both `with sqlite3.connect(...) as conn:` blocks in the script were resource-managed by the transaction context manager (commit/rollback) but not closed. The connections leaked until GC, which happened to fire during `test_pitr.py::test_restore_at_basic_success` and produced 13 `ResourceWarning: unclosed database` warnings. Fixed with `closing()`.
-
-### Added (tests)
-
-- **`test_util.py` — `list_backups()` locale-robustness tests** — `test_list_backups_formats_sizes_correctly` verifies the function lists archives and formats sizes correctly; `test_list_backups_does_not_corrupt_process_locale` asserts that `locale.getpreferredencoding()` is unchanged after the call and that writing `æøå ✓` to a file with no explicit encoding does not raise — the regression test for the `locale.setlocale` bug above.
-
 ### Added
 
-- **Config range validation** — `ConfigSettings` now enforces ranges at startup and raises `ConfigSettingsError` immediately rather than silently accepting bad values:
+- **`RESTORE_OWNERSHIP` config setting and `--preserve-ownership` / `--ignore-ownership` CLI flags** —
+  ownership restoration during restores is now configurable.  The `.darrc` entry
+  `--comparison-field=ignore-owner` has been commented out; dar-backup now injects the flag
+  programmatically based on config and CLI.
+  - `RESTORE_OWNERSHIP = no` (default, shipped in all config templates) — injects
+    `--comparison-field=ignore-owner` on the dar CLI so non-root restores cannot fail due to ownership
+    errors.  uid/gid are not restored.  Behaviour is identical to all previous releases.
+  - `RESTORE_OWNERSHIP = yes` — omits the flag; dar restores original uid/gid.  Intended for root-run
+    production restores only.  Non-root restores will fail when files are owned by a different user.
+  - `--preserve-ownership` CLI flag on `dar-backup` and `manager` — forces uid/gid restoration for a
+    single run without editing the config file (root only).  Intended for one-off production restores.
+  - `--ignore-ownership` CLI flag on `dar-backup` and `manager` — forces ignore-owner for a single run,
+    overriding `RESTORE_OWNERSHIP = yes` in the config.
+  - The two flags are mutually exclusive; passing both is rejected by argparse.
+  - Root warning: when running as root with `RESTORE_OWNERSHIP = no`, a `WARNING` is emitted to the log
+    and stderr reminding the operator that ownership is not being preserved.
+  - `compare_metadata()` in `util.py` gains a `check_ownership: bool = False` parameter; uid/gid are
+    now compared after restore when ownership restoration is active.
+  - **Existing users**: no action required.  When `RESTORE_OWNERSHIP` is absent from the config the
+    default is `no`, preserving the previous behaviour exactly.
+
+- **Config range validation** — `ConfigSettings` now enforces ranges at startup and raises
+  `ConfigSettingsError` immediately rather than silently accepting bad values:
   - `ERROR_CORRECTION_PERCENT` must be 1–90 (0 gives no redundancy; >90 is rejected by par2)
-  - `NO_FILES_VERIFICATION` must be ≥ 1 (0 makes restore tests vacuously pass)
-  - `DIFF_AGE` and `INCR_AGE` must be ≥ 1; values above 365 / 31 days respectively are logged as a warning
+  - `NO_FILES_VERIFICATION` must be >= 1 (0 makes restore tests vacuously pass)
+  - `DIFF_AGE` and `INCR_AGE` must be >= 1; values above 365 / 31 days respectively are logged as a warning
 
-### Added
+- **Metadata verification after restore** — `verify()` in `dar_backup.py` now checks file metadata after
+  the byte-for-byte content comparison. Permissions (`st_mode`) and modification time (`st_mtime_ns`) are
+  always checked; uid/gid are checked when `RESTORE_OWNERSHIP = yes` is active. Any mismatch is reported
+  as a failure. The logic lives in `compare_metadata()` in `util.py`.
 
-- **Metadata verification after restore** — `verify()` in `dar_backup.py` and `verify_restored_matches_source()` in the test helper now check file metadata after the byte-for-byte content comparison. Permissions (`st_mode`) and modification time (`st_mtime_ns`) are always checked; uid/gid (`st_uid`/`st_gid`) are checked only when running as root, since dar can only restore ownership as root. Any mismatch is reported as a failure. The logic lives in a new `compare_metadata(source, restored)` function in `util.py`, shared by both callers.
-- **Per-file restore-test metrics** — `verify()` now records the result of every file it exercises into a new `restore_test_samples` SQLite table (linked to `backup_runs` via `run_id`). Each row stores `file_path`, `file_size_bytes`, `result` (`PASS`/`FAIL`/`SKIP`), a foreign-key `fail_reason_id` into a seeded `restore_test_fail_reasons` lookup table (six stable codes: `CONTENT_MISMATCH`, `METADATA_MISMATCH`, `SOURCE_MISSING`, `RESTORED_MISSING`, `PERMISSION_ERROR`, `UNKNOWN_ERROR`), a `fail_detail` text field, and a `tested_at` timestamp. All rows for a run are written in one transaction. No-op when `METRICS_DB_PATH` is unset; existing databases are upgraded automatically on the next run via `ensure_metrics_db`.
-- **SQLite WAL mode** — `ensure_metrics_db` now sets `PRAGMA journal_mode=WAL` on every metrics DB. WAL allows Datasette, DB Browser, and the `sqlite3` CLI to read the database concurrently without blocking backup writes. The setting is stored in the DB file and only needs to be applied once; existing databases are upgraded automatically on the next backup run.
-- **Metrics isolation in `verify()`** — all four metrics code paths inside `verify()` are individually guarded with `try/except` so that any failure (broken DB, unexpected exception, etc.) is logged as a `WARNING` and the backup result is completely unaffected. Guards cover: `size_lookup` dict construction, per-file `sample` dict initialisation, `samples.append`, and the `write_restore_test_samples` call site.
-- **CI path filter** — `.github/workflows/py-tests.yml` now ignores pushes that only touch `clonepulse/**`, preventing daily bot commits (clone/download stats) from consuming CI compute.
+- **Per-file restore-test metrics** — `verify()` now records the result of every file it exercises into a
+  new `restore_test_samples` SQLite table (linked to `backup_runs` via `run_id`). Each row stores
+  `file_path`, `file_size_bytes`, `result` (`PASS`/`FAIL`/`SKIP`), a foreign-key `fail_reason_id` into a
+  seeded `restore_test_fail_reasons` lookup table (six stable codes: `CONTENT_MISMATCH`,
+  `METADATA_MISMATCH`, `SOURCE_MISSING`, `RESTORED_MISSING`, `PERMISSION_ERROR`, `UNKNOWN_ERROR`), a
+  `fail_detail` text field, and a `tested_at` timestamp. All rows for a run are written in one
+  transaction. No-op when `METRICS_DB_PATH` is unset; existing databases are upgraded automatically on
+  the next run via `ensure_metrics_db`.
+
+- **SQLite WAL mode** — `ensure_metrics_db` now sets `PRAGMA journal_mode=WAL` on every metrics DB.
+  WAL allows Datasette, DB Browser, and the `sqlite3` CLI to read the database concurrently without
+  blocking backup writes. Existing databases are upgraded automatically on the next backup run.
+
+- **Metrics isolation in `verify()`** — all four metrics code paths inside `verify()` are individually
+  guarded with `try/except` so that any failure is logged as a `WARNING` and the backup result is
+  completely unaffected.
+
+- **CI path filter** — `.github/workflows/py-tests.yml` now ignores pushes that only touch
+  `clonepulse/**`, preventing daily bot commits from consuming CI compute.
 
 ### Fixed
 
-- **`is_safe_arg` security** — `\r` (terminal-overwrite attack) and `\x00` (C string truncation) are now rejected alongside the existing shell metacharacters.
-- **`requirements()` reliability** — removed a PYTEST_CURRENT_TEST branch that silently changed execution path in tests; now always uses `Popen` with streaming threads. Adds a configurable timeout via `command_timeout_secs`; exceeding it kills the script and raises `RuntimeError` with a clear message. `shell=True` is intentional — PREREQ/POSTREQ entries are arbitrary shell expressions from a trusted config file.
-- **Subprocess timeout coverage** — `get_binary_info()` and the two `dar_manager` tab-completion calls now pass `timeout=10` to `subprocess.run`, preventing silent hangs in shell-completion contexts.
+- **`continue` in `finally` block** — `dar_backup.py`: Python 3.14 raises `SyntaxWarning` for
+  `continue` inside a `finally` block. Replaced with an `if/else` guard; identical behaviour, no warning.
+
+- **Unclosed SQLite connections** — Python 3.14's GC is stricter about unclosed db handles. Fixed in
+  `util.py` (4 sites) and all 10 test files by switching to `with closing(sqlite3.connect(...)) as conn:`.
+  `test_import_archive_metrics.py`'s `_open_minimal_db` helper wraps setup in `try/except` so the
+  connection is closed on error.
+
+- **UTF-8 stdout encoding in `setup_logging()`** — on systems without a UTF-8 locale (or when a
+  subprocess is started under `LC_ALL=C`), log messages containing non-ASCII characters raised
+  `UnicodeEncodeError`. Fixed by calling `sys.stdout.reconfigure(encoding='utf-8', errors='replace')`
+  before attaching the handler when the stream is not already UTF-8.
+
+- **`locale.setlocale(LC_ALL, 'C')` global side-effect in `list_backups()`** — the fallback to
+  `LC_ALL=C` permanently changed the process-wide locale to ASCII, breaking all subsequent `open()`
+  calls using non-ASCII content. Fixed by replacing `locale.format_string()` with `f"{int(n):,}"`.
+
+- **`PYTHONUTF8=1` in test suite** — `tests/conftest.py` now sets `os.environ["PYTHONUTF8"] = "1"` at
+  collection time so every subprocess spawned during the test run starts in Python UTF-8 mode.
+
+- **`closing()` does not commit** — `_make_old_db` in `test_metrics_db.py`: switching to
+  `closing(sqlite3.connect())` removed the auto-commit, silently rolling back an `INSERT` and causing two
+  migration tests to fail. Fixed with an explicit `conn.commit()`.
+
+- **`scripts/import-archive-metrics.py` — two unclosed connections** — connections leaked until GC,
+  producing 13 `ResourceWarning: unclosed database` warnings. Fixed with `closing()`.
+
+- **`is_safe_arg` security** — `\r` (terminal-overwrite attack) and `\x00` (C string truncation) are now
+  rejected alongside the existing shell metacharacters.
+
+- **`requirements()` reliability** — removed a PYTEST_CURRENT_TEST branch that silently changed execution
+  path in tests; now always uses `Popen` with streaming threads. Adds a configurable timeout;
+  exceeding it kills the script and raises `RuntimeError` with a clear message.
+
+- **Subprocess timeout coverage** — `get_binary_info()` and the two `dar_manager` tab-completion calls
+  now pass `timeout=10` to `subprocess.run`, preventing silent hangs in shell-completion contexts.
+
 - **`show_scriptname()`** — bare `except:` tightened to `except Exception:`.
 
 ### Added (tests)
 
-- **`test_util.py` — `compare_metadata` unit tests** — four new unit tests cover all three metadata kinds: `test_compare_metadata_permissions_mismatch_detected`, `test_compare_metadata_mtime_mismatch_detected`, `test_compare_metadata_uid_gid_mismatch_detected_as_root` (monkeypatches `os.getuid` to 0; documented why that is acceptable), and `test_compare_metadata_all_match_returns_empty`.
-- **`test_restore_content_verification.py` — `test_metadata_mismatch_detected`** — integration test: runs a real FULL backup, restores it, forces a permission change on one restored file, and asserts `verify_restored_matches_source()` raises `RuntimeError` with a `Metadata mismatch` message.
-- **`test_restore_test_samples.py`** (17 unit tests) — covers `ensure_metrics_db` schema creation and seed idempotency, `write_restore_test_samples` for all result types (`PASS`/`FAIL`/`SKIP`), no-op behaviour when `metrics_db_path` is absent or `samples` is empty, and `_parse_size_bytes` for all dar size units and edge cases.
-- **`test_metrics_smoke.py` / `test_full_backup_writes_restore_test_samples`** — smoke integration test: runs a real FULL backup and asserts at least one `restore_test_samples` row is written with `result='PASS'`, correct `run_id` linkage, non-null `file_size_bytes`, and the expected `archive_name` format.
-- **`test_verify_metrics_isolation.py`** (4 integration tests) — one test per guard in `verify()`: `_ExplodingHashStr` triggers the `size_lookup` dict-comprehension guard; unconditional `RuntimeError` from monkeypatched `_parse_size_bytes` triggers the sample-init guard; a capture function confirms the `samples.append` guard does not drop samples (`len(samples) == files_verified`); unconditional `RuntimeError` from monkeypatched `write_restore_test_samples` triggers the call-site guard. All four assert `result.passed is True` despite the injected failure.
+- **`test_dar_ownership_precedence.py`** (4 integration tests) — invoke `dar` directly to document and
+  lock down `--comparison-field` flag behaviour: CLI-only injection works without a darrc entry; darrc
+  and CLI carrying the same flag coexist without error; CLI `--comparison-field=owner` alongside darrc
+  `ignore-owner` is accepted by dar; and restore succeeds with no `--comparison-field` at all.
 
-- **`test_metrics_smoke.py`** — smoke-tier integration test: runs a real FULL backup with `METRICS_DB_PATH` configured and asserts that the metrics row has correct values for `archive_name` (format regex), `archive_size_bytes > 0`, `dar_exit_code ∈ {0, 5}`, and `hostname` — fields not checked at smoke level in any existing test.
-- **`test_dashboard_smoke.py`** — smoke-tier integration test (skipped when `datasette` is not installed): runs a real FULL backup, starts `dar-backup-dashboard --no-browser` in a new process group, polls `/-/versions` via `urllib` until HTTP 200, queries `/{db}.json?sql=SELECT COUNT(*)...` to confirm rows are served, then terminates the process group cleanly.
-- **`test_metrics_smoke.py` / `test_dashboard_smoke.py`** — no mocks; real subprocess, real SQLite, real HTTP.
-- **`test_command_runner.py`** — parametrized `sanitize_cmd` tests for `\r` and `\x00` (rejected) and a set of safe arguments (accepted).
-- **`test_config_settings.py`** — parametrized edge-case tests for `ERROR_CORRECTION_PERCENT` (`[-1, 0, 91, 100]` raise; `[1, 5, 50, 90]` load cleanly) and `NO_FILES_VERIFICATION` (`[0, -1]` raise; `[1, 5, 100]` load cleanly).
-- **`test_util.py`** — `test_requirements_timeout_kills_hanging_script`: runs `sleep 60` with `command_timeout_secs=1` and asserts `RuntimeError` containing "timed out". `test_patch_config_file_unwritable_directory_leaves_original_intact`: asserts `OSError` is raised and the original file is unchanged when the target directory is not writable. Three Discord tests converted from `MagicMock(util.logger)` to `caplog` (the mock patched the wrong object and tested nothing).
-- **`test_par2.py`** — added `test_par2_files_created_for_full_backup` and `test_par2_verify_passes_on_intact_backup` (both real runs, no mocks).
-- **`test_prereq.py` / `test_postreq.py`** — full rewrites: each now contains a `_success_` / `_failure_` pair using real shell commands (`ls /tmp` / `command-does-not-exist`); removed subprocess mocks and `SimpleNamespace` stubs entirely.
+- **`test_dar_backup.py` — ownership warning and flag tests** — five unit tests using `os.getuid`
+  monkeypatch: WARNING fires when root + `ignore_ownership=True`; no warning when root +
+  `ignore_ownership=False`; no warning when non-root + `ignore_ownership=True`; dar command contains
+  `--comparison-field=ignore-owner` when `ignore_ownership=True`; dar command omits it when
+  `ignore_ownership=False` (`--preserve-ownership` path).
+
+- **`test_config_settings.py` — `RESTORE_OWNERSHIP` parsing** — four tests: `yes` parses as `True`;
+  `no` parses as `False`; key absent defaults to `False` (backward compat); invalid value raises
+  `ConfigSettingsError`.
+
+- **`test_util.py` — `compare_metadata` ownership tests** — `check_ownership=False` (default) ignores
+  uid/gid differences; `check_ownership=True` detects uid/gid mismatches; identical uid/gid produce no
+  false positive with `check_ownership=True`.
+
+- **`test_util.py` — `list_backups()` locale-robustness tests** — verifies sizes are formatted correctly
+  and `locale.getpreferredencoding()` is unchanged after the call.
+
+- **`test_util.py`** — `test_requirements_timeout_kills_hanging_script`: runs `sleep 60` with
+  `command_timeout_secs=1` and asserts `RuntimeError` containing "timed out".
+
+- **`test_restore_content_verification.py` — `test_metadata_mismatch_detected`** — integration test: runs
+  a real FULL backup, restores it, forces a permission change on one restored file, and asserts
+  `verify_restored_matches_source()` raises `RuntimeError` with a `Metadata mismatch` message.
+
+- **`test_restore_test_samples.py`** (17 unit tests) — covers `ensure_metrics_db` schema creation and
+  seed idempotency, `write_restore_test_samples` for all result types, no-op behaviour when
+  `metrics_db_path` is absent or `samples` is empty, and `_parse_size_bytes` for all dar size units.
+
+- **`test_metrics_smoke.py`** — smoke integration tests: real FULL backup asserts `restore_test_samples`
+  rows are written with correct `run_id` linkage, `file_size_bytes`, and `archive_name` format; metrics
+  row has correct `archive_size_bytes`, `dar_exit_code`, and `hostname`.
+
+- **`test_dashboard_smoke.py`** — smoke test (skipped when `datasette` is not installed): starts
+  `dar-backup-dashboard --no-browser`, polls `/-/versions` via `urllib` until HTTP 200, queries the DB
+  to confirm rows are served, then terminates the process group cleanly.
+
+- **`test_verify_metrics_isolation.py`** (4 integration tests) — one test per guard in `verify()`; all
+  four assert `result.passed is True` despite the injected failure.
+
+- **`test_command_runner.py`** — parametrized `sanitize_cmd` tests for `\r` and `\x00` (rejected) and
+  safe arguments (accepted).
+
+- **`test_config_settings.py`** — parametrized edge-case tests for `ERROR_CORRECTION_PERCENT` and
+  `NO_FILES_VERIFICATION` ranges.
+
+- **`test_par2.py`** — added `test_par2_files_created_for_full_backup` and
+  `test_par2_verify_passes_on_intact_backup` (both real runs, no mocks).
+
+- **`test_prereq.py` / `test_postreq.py`** — full rewrites using real shell commands; removed subprocess
+  mocks and `SimpleNamespace` stubs.
+
+- **`test_real_verify_and_backup.py`** (10 real integration tests) — end-to-end runs against genuine dar
+  archives covering corruption detection, stale restore replacement, archive listing, par2 verify, and
+  catalog-add failure on a read-only DB.
+
+- **`test_real_pitr_and_pipeline.py`** (10 real integration tests) — PITR file/directory restore,
+  `--pitr-report-first`, verify-before-par2 ordering, backup with unwritable metrics DB,
+  `--alternate-archive-dir`, and cleanup path-traversal rejection.
+
+- **`test_real_manager_and_generic_backup.py`** (10 real integration tests) — `generic_backup()` direct
+  call, manager catalog operations (`--add-specific-archive`, `--add-dir`, `--list-catalogs`,
+  `--find-file`, `--list-archive-contents`), `verify()` error paths, and metrics DB pipeline.
+
+- **`test_par2_multi_definitions.py`** — extended to 8 real integration tests covering all PAR2
+  configuration permutations (global disable, per-definition disable, `PAR2_RUN_VERIFY`, `PAR2_DIR`
+  manifest, FULL/DIFF/INCR sets, isolated definitions, ratio comparison).
 
 ### Documentation
 
-- **`troubleshooting.md`** — corrected the blocked-characters table: removed `#`, `"`, `'` (not blocked by `is_safe_arg`); added `\r` and `\x00` with their threat rationale. Added a `ConfigSettingsError on startup` section with a full cause/fix table and warning-only conditions.
-- **`config-reference.md`** — added inline range comments to `NO_FILES_VERIFICATION`, `DIFF_AGE`, `INCR_AGE`, and `ERROR_CORRECTION_PERCENT`.
-- **`cli-reference.md`** — removed duplicate `--restore` entry (the one without the `-r` short form); added `--log-stdout` to the manager options block.
-- **`dev.md`** — corrected `./build.py` to `./build.sh` (the Python script does not exist).
-- **`troubleshooting.md` / `systemd-setup.md`** — `en_US.UTF8` → `en_US.UTF-8` throughout (matches the locale string the code and systemd units actually set).
-
-- **`release.sh` — `--dry-run` mode**: runs all read-only pre-flight checks (tag existence, HEAD at tag, clean tree, version/tag match, duplicate release guard) and prints what each step would do, without making any commits, moving the tag, building, signing, or uploading. Output is captured to `doc/releases/release-<tag>-dryrun.log`.
-- **`release.sh` — release audit trail**: on successful PyPI upload the script now runs three post-release steps, each in its own commit beyond the release tag:
-  1. Appends a structured entry to `v2/build-history.json` (version, git tag, git revision, UTC timestamp, PyPI URL, wheel and sdist SHA-256 hashes, GPG key fingerprint).
-  2. Stamps a clone-pulse annotation in `clonepulse/fetch_clones.json` via `clonepulse/add_release_annotation.py`.
-  3. Commits the full release log to `doc/releases/release-<tag>.log`.
-- **`release.sh` — duplicate release guard**: aborts with a clear error before the test suite runs if `build-history.json` already contains an entry for the current version — preventing accidental re-releases.
-- **`release.sh` — release log**: all script output (stdout + stderr) is captured via `tee` to `v2/doc/releases/release-<tag>.log` from the point the tag is parsed, preserving the full audit trail on disk even if the release fails partway through.
-
-### Added (tests)
-
-- **`test_real_verify_and_backup.py`** (10 real integration tests): replaces mock-heavy unit tests with end-to-end runs against genuine dar archives — `verify()` detects real file corruption and corrupt archive slices, stale restore files are replaced, `get_backed_up_files()` lists real archive contents, `list_contents()` raises on nonexistent archive, par2 verify detects corrupt dar slices, full backup pipeline runs verify and leaves restored files on disk, unreadable files cause dar exit-code 5 (CLI exits 0), and catalog-add fails when the dar_manager DB is read-only.
-- **`test_real_pitr_and_pipeline.py`** (10 real integration tests): replaces the most mock-heavy tests across PITR, backup pipeline, CLI startup, and cleanup — PITR file restore selects the correct archive before `--when`, directory restore applies FULL→DIFF chain, `--pitr-report-first` aborts on missing slice and succeeds with intact archives, verify-before-par2 ordering is confirmed in log output, backup completes when metrics DB is unwritable, `--restore` cleans TEST_RESTORE_DIR while `--list-contents` does not, `--alternate-archive-dir` redirects both catalog DB lookup and archive path resolution after a backup is moved, and `cleanup` refuses path-traversal archive names without touching real slices.
-- **`test_real_manager_and_generic_backup.py`** (10 real integration tests): replaces mock-heavy tests for `generic_backup()`, manager catalog operations, `verify()` error paths, and the metrics DB pipeline — `generic_backup()` called directly creates a real `.dar` slice and sets `catalog_updated=True`; `parse_dar_stats()` extracts non-negative `inodes_saved` from real dar output; `manager --add-specific-archive` re-registers an archive after removal; `manager --add-dir` repopulates an empty catalog from the backup directory; `manager --list-catalogs` prints the real archive name; `manager --find-file` locates a real file in the catalog; `manager --list-archive-contents` shows `[ Saved ]` entries; `verify()` raises `BackupError("Cannot create restore directory …")` when the path is occupied by a file; `dar-backup --differential-backup --alternate-reference-archive nonexistent` exits non-zero with the expected error; and a real FULL backup writes a `SUCCESS` row to the SQLite metrics DB.
-- **`test_par2_multi_definitions.py`** — extended from 1 to 8 real integration tests covering all PAR2 configuration permutations: global PAR2 disable (`PAR2_ENABLED=False`) produces no `.par2` files; per-definition disable while global is enabled suppresses par2 for that definition only; `PAR2_RUN_VERIFY=True` triggers inline par2 verify at backup creation and prints a confirmation line in stdout; `PAR2_DIR` produces a manifest file (`{base}.par2.manifest.ini`) with correct `[MANIFEST]` and `[ARCHIVE_FILES]` sections; FULL/DIFF/INCR backups each produce their own par2 set (verified by presence of `_FULL_`, `_DIFF_`, `_INCR_` filenames in the par2 directory); two isolated definitions with separate `PAR2_DIR`s survive corruption in one without affecting par2 verify on the other; and a 5% vs 25% `PAR2_RATIO_FULL` comparison confirms that higher redundancy produces a proportionally larger par2 set (≥1.5×, robust against par2's fixed per-archive overhead).
+- **`troubleshooting.md`** — corrected the blocked-characters table; added a `ConfigSettingsError on
+  startup` section with a full cause/fix table and warning-only conditions.
+- **`config-reference.md`** — added inline range comments to `NO_FILES_VERIFICATION`, `DIFF_AGE`,
+  `INCR_AGE`, and `ERROR_CORRECTION_PERCENT`; added `RESTORE_OWNERSHIP` entry.
+- **`cli-reference.md`** — removed duplicate `--restore` entry; added `--log-stdout` to the manager
+  options block; added `--preserve-ownership` and `--ignore-ownership` to both `dar-backup` and
+  `manager` option tables.
+- **`dev.md`** — corrected `./build.py` to `./build.sh`.
+- **`troubleshooting.md` / `systemd-setup.md`** — `en_US.UTF8` -> `en_US.UTF-8` throughout.
+- **`release.sh` -- `--dry-run` mode**: runs all read-only pre-flight checks and prints what each step
+  would do, without making any commits, moving the tag, building, signing, or uploading.
+- **`release.sh` -- release audit trail**: on successful PyPI upload appends a structured entry to
+  `v2/build-history.json`, stamps a clone-pulse annotation, and commits the full release log.
+- **`release.sh` -- duplicate release guard**: aborts before the test suite runs if `build-history.json`
+  already contains an entry for the current version.
+- **`release.sh` -- release log**: all script output is captured via `tee` to
+  `v2/doc/releases/release-<tag>.log`.
 
 ### Changed
 
-- **Dashboard** — timestamps now shown in the browser's local timezone and wall-clock time instead of UTC.
+- **Dashboard** — timestamps now shown in the browser's local timezone instead of UTC.
 
 ## v2-1.1.5 - 2026-05-17
 
@@ -147,7 +254,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - PITR integration test `test_pitr_symlinks_and_hardlinks`: verifies that relative symlinks, dangling symlinks, and hard-link pairs are all preserved correctly after PITR restore (symlink targets checked with `os.readlink`; hard links verified via inode equality `os.stat().st_ino`).
 - PITR integration test `test_pitr_special_char_filenames`: verifies PITR restore of files whose names contain spaces, Danish characters (æøå / ÆØÅ), colons, hashes, currency symbols, parentheses, `+`, `!`, and brackets; `&` excluded as a known `sanitize_cmd()` limitation (subprocess safety guard rejects `&` even without `shell=True`).
 - New doc `v2/doc/pitr-archive-date-vs-file-mtime.md`: explains why dar-backup implements its own archive-creation-date PITR selection instead of delegating to `dar_manager -w`, with a concrete rename/mtime counter-example and a reference to the torture test that validates the design choice.
-- New doc section in `v2/doc/restoring.md` — **"Restore a file by its mtime (file-version restore)"**: step-by-step guide for `dar_manager -w` direct use (find `.db`, run `-f` to list versions, restore with `-w -r -e`), date format `YYYY/MM/DD-HH:MM:SS`, caveats (deletions not handled per Denis's own man page; rename/mtime trap; bypasses dar-backup target safety checks). Requires dar ≥ 2.7.21 (DST `tm_isdst=1` bug fixed in `line_tools_convert_date()`).
+- New doc section in `v2/doc/restoring.md` — **"Restore a file by its mtime (file-version restore)"**: step-by-step guide for `dar_manager -w` direct use (find `.db`, run `-f` to list versions, restore with `-w -r -e`), date format `YYYY/MM/DD-HH:MM:SS`, caveats (deletions not handled per Denis's own man page; rename/mtime trap; bypasses dar-backup target safety checks). Requires dar >= 2.7.21 (DST `tm_isdst=1` bug fixed in `line_tools_convert_date()`).
 - **PITR contract** prominently stated at the top of the PITR section in `v2/doc/restoring.md`: selection is by archive creation date, not file mtime; cross-referenced to the new design-decision doc.
 
 ### Changed
@@ -225,12 +332,12 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - The release.sh script is more strict and runs the full pytest suite and commits test reports to doc/test-report
 - Github `pytest` workflow uploads test reports in .json and .txt formats
 - [Snyk] An XML parsing function now strips DTD to avoid a class of XXE vulnerabilities
-- PITR fallback now restores via the latest FULL → DIFF → INCR chain and fails fast when required archives are missing.
+- PITR fallback now restores via the latest FULL -> DIFF -> INCR chain and fails fast when required archives are missing.
 - PITR restore now requires `--target` and blocks unsafe restore targets by default.
 - Filtered `.darrc` temp files are created in a writable location and cleaned up reliably after runs.
 - PITR fallback now validates chain completeness instead of skipping missing archives.
 - `COMMAND_TIMEOUT_SECS = -1` disables timeouts for long-running operations.
-- Catalog rebuild (`manager --add-dir`) now adds archives in FULL → DIFF → INCR order for the same date to avoid dar_manager prompts.
+- Catalog rebuild (`manager --add-dir`) now adds archives in FULL -> DIFF -> INCR order for the same date to avoid dar_manager prompts.
 - PITR restores now always use direct `dar` chain application (skipping `dar_manager -w` restores) to avoid interactive prompts on non-monotonic mtimes.
 
 ## v2-1.0.2 - 2026-01-25
@@ -380,7 +487,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### v2-beta-0.6.14 - 2025-03-02
 
-- DAR XML catalog parsing fixed (recursive → iterative). Test case added.
+- DAR XML catalog parsing fixed (recursive -> iterative). Test case added.
 - Error handling improved; `--verbose` prints terse error list on exit.
 - Manager no longer passes `-ai` when adding catalogs.
 

@@ -31,7 +31,10 @@ restore-options:
 #--fsa-scope none
 
 # ignore owner, useful when used by a non-privileged user
---comparison-field=ignore-owner
+# Commented out: dar-backup now injects --comparison-field=ignore-owner on the
+# CLI when RESTORE_OWNERSHIP = no (the default).  Set RESTORE_OWNERSHIP = yes
+# in dar-backup.conf to preserve uid/gid (root only; see config comments).
+#--comparison-field=ignore-owner
 
 
 

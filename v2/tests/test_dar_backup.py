@@ -1483,3 +1483,155 @@ def test_get_par2_ratio_prefers_specific_ratio():
     assert _get_par2_ratio("FULL", par2_config, 3) == 12
     assert _get_par2_ratio("DIFF", par2_config, 3) == 6
     assert _get_par2_ratio("INCR", par2_config, 3) == 3
+
+
+# ---------------------------------------------------------------------------
+# Root-ownership warning tests for restore_backup()
+# ---------------------------------------------------------------------------
+
+def _make_restore_config(backup_dir: str) -> SimpleNamespace:
+    """Minimal config for restore_backup() tests."""
+    return SimpleNamespace(
+        backup_dir=backup_dir,
+        command_timeout_secs=30,
+    )
+
+
+def test_restore_backup_root_warning_when_ignore_ownership(tmp_path):
+    """
+    When running as root with ignore_ownership=True, restore_backup() must log
+    a WARNING that uid/gid will not be preserved.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=0), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),          # already exists, os.makedirs not called
+            "/fake/.darrc",
+            ignore_ownership=True,
+        )
+
+    assert mock_logger.warning.called, "Expected a WARNING to be logged for root + ignore_ownership"
+    warning_text = " ".join(str(c) for c in mock_logger.warning.call_args_list)
+    assert "RESTORE_OWNERSHIP" in warning_text, (
+        f"WARNING should mention RESTORE_OWNERSHIP. Got: {warning_text}"
+    )
+    assert "uid/gid" in warning_text, (
+        f"WARNING should mention uid/gid. Got: {warning_text}"
+    )
+
+
+def test_restore_backup_no_warning_when_ownership_preserved(tmp_path):
+    """
+    When running as root with ignore_ownership=False (RESTORE_OWNERSHIP = yes),
+    no ownership WARNING should be logged — ownership is being preserved as expected.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=0), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=False,
+        )
+
+    assert not mock_logger.warning.called, (
+        "No WARNING should be logged when ignore_ownership=False (ownership is preserved)"
+    )
+
+
+def test_restore_backup_no_warning_when_non_root(tmp_path):
+    """
+    When running as a non-root user with ignore_ownership=True, no WARNING
+    should be logged — ignoring ownership is safe and expected for non-root.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=True,
+        )
+
+    assert not mock_logger.warning.called, (
+        "No WARNING should be logged for non-root + ignore_ownership=True"
+    )
+
+
+def test_restore_backup_preserve_ownership_overrides_config(tmp_path):
+    """
+    --preserve-ownership (ignore_ownership=False) must win over
+    RESTORE_OWNERSHIP = no in the config, enabling uid/gid restoration
+    for a single run without editing the config file.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=0), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=False,   # --preserve-ownership path
+        )
+
+    # No warning — ownership is being preserved as the operator intended
+    assert not mock_logger.warning.called, (
+        "No WARNING expected when ignore_ownership=False (--preserve-ownership)"
+    )
+    # dar command must NOT contain --comparison-field=ignore-owner
+    call_args = mock_runner.run.call_args[0][0]
+    assert "--comparison-field=ignore-owner" not in call_args, (
+        f"--comparison-field=ignore-owner must not appear when preserving ownership. "
+        f"Command: {call_args}"
+    )
+
+
+def test_restore_backup_ignore_ownership_flag_injects_comparison_field(tmp_path):
+    """
+    --ignore-ownership (ignore_ownership=True) must inject
+    --comparison-field=ignore-owner into the dar command regardless of config.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=True,
+        )
+
+    call_args = mock_runner.run.call_args[0][0]
+    assert "--comparison-field=ignore-owner" in call_args, (
+        f"--comparison-field=ignore-owner must be present when ignore_ownership=True. "
+        f"Command: {call_args}"
+    )

@@ -69,7 +69,7 @@ def test_restore_at_basic_success(mock_config, mock_logger):
         ret = restore_at(backup_def, paths, when, target, mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config)
+        mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config, ignore_ownership=True)
 
 
 def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
@@ -94,7 +94,7 @@ def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
         ret = restore_at("def", ["file"], "2026-01-01 00:00Z", "/tmp", mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config)
+        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config, ignore_ownership=True)
 
 
 def test_restore_at_invalid_date(mock_config, mock_runner, mock_logger):
@@ -234,7 +234,7 @@ def test_restore_at_multiple_paths_all_restored(mock_config, mock_logger):
 
         assert ret == 0
         # All three paths must be forwarded together in a single call
-        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config)
+        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config, ignore_ownership=True)
 
 
 def test_restore_at_multiple_paths_and_no_target(mock_config, mock_runner, mock_logger):
@@ -443,7 +443,7 @@ def test_restore_at_default_when_uses_now(mock_config, mock_logger):
         ret = restore_at("def", ["tmp/file.txt"], None, "/tmp/restore", mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, "/tmp/restore", mock_config)
+        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, "/tmp/restore", mock_config, ignore_ownership=True)
 
 
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):

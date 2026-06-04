@@ -64,6 +64,7 @@ class ConfigSettings:
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
+    restore_ownership: bool = field(init=False, default=False)
 
 
     OPTIONAL_CONFIG_FIELDS = [
@@ -197,6 +198,9 @@ class ConfigSettings:
                 "MISC",
                 "RESTORETEST_EXCLUDE_REGEX",
                 default=None
+            )
+            self.restore_ownership = self._get_optional_bool(
+                "MISC", "RESTORE_OWNERSHIP", default=False
             )
 
             # Load optional fields

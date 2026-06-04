@@ -482,7 +482,8 @@ def find_file(file, backup_def, config_settings):
     return process.returncode
 
 
-def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings, verbose: bool = False) -> int:
+def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings,
+               verbose: bool = False, ignore_ownership: bool = True) -> int:
     """
     Perform a Point-in-Time Recovery (PITR) by selecting the correct archive
     chain from the dar_manager catalog and restoring directly with dar.
@@ -507,6 +508,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
         config_settings: Loaded ConfigSettings used to locate backup dirs/DB and
             timeouts.
         verbose: Unused; kept for API compatibility.
+        ignore_ownership: When True, passes --comparison-field=ignore-owner to dar so
+            uid/gid are not restored.  Defaults to True (safe for non-root).
 
     Returns:
         Process return code (0 on success, non-zero on failure).
@@ -590,7 +593,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     # PITR restore: select archives by creation date and restore with dar directly.
     # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
     try:
-        return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings)
+        return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings,
+                                 ignore_ownership=ignore_ownership)
     except KeyboardInterrupt:
         msg = (
             f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
@@ -1110,7 +1114,8 @@ def _guess_darrc_path(config_settings: ConfigSettings) -> Optional[str]:
     return None
 
 
-def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, target: str, config_settings: ConfigSettings) -> int:
+def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, target: str,
+                      config_settings: ConfigSettings, ignore_ownership: bool = True) -> int:
     """
     Restore specific paths by selecting the best matching archive (<= when_dt)
     using dar_manager metadata, then invoking dar directly.
@@ -1118,6 +1123,14 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     This is a fallback for PITR when dar_manager reports that nothing could be
     restored for a dated request. It inspects the catalog to choose an archive
     for each path and restores into the provided target directory.
+
+    Args:
+        backup_def: Backup definition name.
+        paths: Paths to restore from the catalog.
+        when_dt: Restore to the state at this point in time.
+        target: Destination directory.
+        config_settings: Loaded configuration.
+        ignore_ownership: When True, passes --comparison-field=ignore-owner to dar.
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -1174,6 +1187,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
                     if target:
                         cmd.extend(['-R', target])
+                    if ignore_ownership:
+                        cmd.append('--comparison-field=ignore-owner')
                     if darrc_path:
                         cmd.extend(['-B', darrc_path, 'restore-options'])
                     logger.info(
@@ -1227,6 +1242,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
                 if target:
                     cmd.extend(['-R', target])
+                if ignore_ownership:
+                    cmd.append('--comparison-field=ignore-owner')
                 if darrc_path:
                     cmd.extend(['-B', darrc_path, 'restore-options'])
                 logger.info(
@@ -1525,6 +1542,15 @@ def build_arg_parser():
         help="Show archive path changes without applying them (use with --relocate-archive-path).",
     )
     parser.add_argument('--verbose', action='store_true', help='Be more verbose')
+    ownership_group = parser.add_mutually_exclusive_group()
+    ownership_group.add_argument(
+        '--preserve-ownership', action='store_true',
+        help="Force uid/gid restoration for this run (root only). Overrides RESTORE_OWNERSHIP = no in the config file.",
+    )
+    ownership_group.add_argument(
+        '--ignore-ownership', action='store_true',
+        help="Force --comparison-field=ignore-owner for this run. Overrides RESTORE_OWNERSHIP = yes in the config file.",
+    )
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--more-help', action='store_true', help='Show extended help message')
@@ -1795,7 +1821,14 @@ def main():
                 if result != 0:
                     sys.exit(result)
                     return
-            result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings, verbose=args.verbose)
+            if getattr(args, "preserve_ownership", False):
+                ignore_ownership = False
+            elif getattr(args, "ignore_ownership", False):
+                ignore_ownership = True
+            else:
+                ignore_ownership = not config_settings.restore_ownership
+            result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings,
+                                verbose=args.verbose, ignore_ownership=ignore_ownership)
             sys.exit(result)
             return
 

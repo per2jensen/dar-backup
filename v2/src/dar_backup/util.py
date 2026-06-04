@@ -1114,19 +1114,20 @@ def print_aligned_settings(
 
 
 
-def compare_metadata(source: str, restored: str) -> list[str]:
+def compare_metadata(source: str, restored: str, check_ownership: bool = False) -> list[str]:
     """
     Compare file metadata between a source file and its restored counterpart.
 
-    Checks permissions (st_mode) and modification time (st_mtime_ns).
-    uid/gid are intentionally not checked: the darrc ships with
-    --comparison-field=ignore-owner in the restore-options section so that
-    non-root users can restore without permission errors.  As a result dar
-    never restores ownership, making uid/gid comparison meaningless.
+    Always checks permissions (st_mode) and modification time (st_mtime_ns).
+    uid/gid are only checked when check_ownership=True, which corresponds to
+    RESTORE_OWNERSHIP = yes: dar was asked to restore ownership and the
+    comparison should verify it did so correctly.
 
     Args:
         source: Absolute path to the original source file.
         restored: Absolute path to the restored file.
+        check_ownership: When True, also compare uid and gid.  Defaults to
+            False (safe for non-root restores where uid/gid are not restored).
 
     Returns:
         List of human-readable mismatch descriptions.  Empty list means all
@@ -1148,6 +1149,16 @@ def compare_metadata(source: str, restored: str) -> list[str]:
         mismatches.append(
             f"mtime mismatch: source={src.st_mtime_ns} restored={rst.st_mtime_ns}"
         )
+
+    if check_ownership:
+        if src.st_uid != rst.st_uid:
+            mismatches.append(
+                f"uid mismatch: source={src.st_uid} restored={rst.st_uid}"
+            )
+        if src.st_gid != rst.st_gid:
+            mismatches.append(
+                f"gid mismatch: source={src.st_gid} restored={rst.st_gid}"
+            )
 
     return mismatches
 
