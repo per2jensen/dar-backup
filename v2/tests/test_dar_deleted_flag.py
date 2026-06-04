@@ -24,9 +24,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 
 
 def _write_darrc(path: str) -> None:
-    """Write a minimal darrc with an empty restore-options section."""
+    """Write a minimal darrc that suppresses the ownership prompt on non-root runs.
+
+    --comparison-field=ignore-owner mirrors dar-backup's default (RESTORE_OWNERSHIP=no)
+    and prevents dar 2.7.13 from prompting when stdin is closed (rc=4 on EOF).
+    """
     with open(path, "w") as fh:
-        fh.write("restore-options:\n")
+        fh.write("restore-options:\n--comparison-field=ignore-owner\n")
 
 
 def _create_full(archive: str, source: str) -> None:
