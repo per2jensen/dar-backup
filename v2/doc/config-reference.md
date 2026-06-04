@@ -427,3 +427,26 @@ The database is created automatically on first use. If an older database exists 
 Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / FAILURE).
 
 A metrics write failure never aborts or affects the backup — errors are logged at WARNING level and swallowed.
+
+### 1.1.6
+
+#### RESTORE_OWNERSHIP
+
+Optional. Controls whether dar restores the original uid/gid of files during a restore operation.
+
+- `no` (default) — dar ignores uid/gid. Safe for non-root users and preserves backward compatibility.
+- `yes` — dar restores the original uid/gid. Only meaningful when running as root; non-root restores will fail or prompt.
+
+```ini
+[MISC]
+RESTORE_OWNERSHIP = no
+```
+
+When `RESTORE_OWNERSHIP = no` and dar-backup is run as root, a warning is logged reminding you that ownership will not be restored.
+
+The setting can be overridden per-run on the command line (both `dar-backup` and `manager`):
+
+- `--preserve-ownership` — force uid/gid restoration for this run (equivalent to `RESTORE_OWNERSHIP = yes`).
+- `--ignore-ownership` — force uid/gid to be ignored for this run (overrides `RESTORE_OWNERSHIP = yes`).
+
+The two flags are mutually exclusive.

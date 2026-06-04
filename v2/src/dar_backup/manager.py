@@ -483,7 +483,7 @@ def find_file(file, backup_def, config_settings):
 
 
 def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings,
-               verbose: bool = False, ignore_ownership: bool = True) -> int:
+               verbose: bool = False, ignore_ownership: bool = True, no_deleted: bool = False) -> int:
     """
     Perform a Point-in-Time Recovery (PITR) by selecting the correct archive
     chain from the dar_manager catalog and restoring directly with dar.
@@ -510,6 +510,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
         verbose: Unused; kept for API compatibility.
         ignore_ownership: When True, passes --comparison-field=ignore-owner to dar so
             uid/gid are not restored.  Defaults to True (safe for non-root).
+        no_deleted: When True, passes --deleted=ignore to dar so deletion records in
+            DIFF/INCR archives do not cause errors when restoring to an empty directory.
 
     Returns:
         Process return code (0 on success, non-zero on failure).
@@ -594,7 +596,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
     try:
         return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings,
-                                 ignore_ownership=ignore_ownership)
+                                 ignore_ownership=ignore_ownership, no_deleted=no_deleted)
     except KeyboardInterrupt:
         msg = (
             f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
@@ -1115,7 +1117,8 @@ def _guess_darrc_path(config_settings: ConfigSettings) -> Optional[str]:
 
 
 def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, target: str,
-                      config_settings: ConfigSettings, ignore_ownership: bool = True) -> int:
+                      config_settings: ConfigSettings, ignore_ownership: bool = True,
+                      no_deleted: bool = False) -> int:
     """
     Restore specific paths by selecting the best matching archive (<= when_dt)
     using dar_manager metadata, then invoking dar directly.
@@ -1131,6 +1134,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         target: Destination directory.
         config_settings: Loaded configuration.
         ignore_ownership: When True, passes --comparison-field=ignore-owner to dar.
+        no_deleted: When True, passes --deleted=ignore to dar so deletion records
+            in DIFF/INCR archives do not cause errors.
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -1189,6 +1194,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         cmd.extend(['-R', target])
                     if ignore_ownership:
                         cmd.append('--comparison-field=ignore-owner')
+                    if no_deleted:
+                        cmd.append('--deleted=ignore')
                     if darrc_path:
                         cmd.extend(['-B', darrc_path, 'restore-options'])
                     logger.info(
@@ -1244,6 +1251,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     cmd.extend(['-R', target])
                 if ignore_ownership:
                     cmd.append('--comparison-field=ignore-owner')
+                if no_deleted:
+                    cmd.append('--deleted=ignore')
                 if darrc_path:
                     cmd.extend(['-B', darrc_path, 'restore-options'])
                 logger.info(
@@ -1551,6 +1560,11 @@ def build_arg_parser():
         '--ignore-ownership', action='store_true',
         help="Force --comparison-field=ignore-owner for this run. Overrides RESTORE_OWNERSHIP = yes in the config file.",
     )
+    parser.add_argument(
+        '--no-deleted', action='store_true',
+        help="Do not process deletion records from DIFF/INCR archives (passes --deleted=ignore to dar). "
+             "Useful when restoring a DIFF or INCR archive directly to an empty directory.",
+    )
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
     parser.add_argument('--log-stdout', action='store_true', help='also print log messages to stdout')
     parser.add_argument('--more-help', action='store_true', help='Show extended help message')
@@ -1827,8 +1841,10 @@ def main():
                 ignore_ownership = True
             else:
                 ignore_ownership = not config_settings.restore_ownership
+            no_deleted = getattr(args, 'no_deleted', False)
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings,
-                                verbose=args.verbose, ignore_ownership=ignore_ownership)
+                                verbose=args.verbose, ignore_ownership=ignore_ownership,
+                                no_deleted=no_deleted)
             sys.exit(result)
             return
 

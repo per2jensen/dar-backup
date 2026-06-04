@@ -1,24 +1,13 @@
 # TODO
 
-## Verifying
+## ~~Verifying~~ DONE (v2-1.1.6)
 
-- log file verifications in the metrics db, perhaps for the 10 first restores.
-  
-  ```sql  
-    CREATE TABLE IF NOT EXISTS restore_test_samples (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id          TEXT NOT NULL,          -- FK to backup_runs.run_id
-    backup_definition TEXT NOT NULL,
-    archive_name    TEXT NOT NULL,
-    file_path       TEXT NOT NULL,
-    file_size_bytes INTEGER,
-    result          TEXT NOT NULL CHECK (result IN ('PASS', 'FAIL', 'SKIP')),
-    fail_reason     TEXT,                   -- NULL on PASS, message on FAIL/SKIP
-    tested_at       TEXT NOT NULL
-  );
-    CREATE INDEX IF NOT EXISTS idx_samples_run_id
-       ON restore_test_samples (run_id);
-  ```
+~~log file verifications in the metrics db, perhaps for the 10 first restores.~~
+
+Implemented in v2-1.1.6 — `verify()` records every restore-test result into a
+`restore_test_samples` SQLite table (linked to `backup_runs` via `run_id`), with a
+`restore_test_fail_reasons` lookup table for stable failure codes. See
+`util.py:write_restore_test_samples()` and the Changelog for details.
 
 ## ~~Ownership restoration on real restores~~ DONE (v2-1.1.6)
 

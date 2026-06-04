@@ -38,6 +38,9 @@ Available options:
 --selection <params>                 Define file selection for listing/restoring.
 -r, --restore <archive>              Restore archive.
 --restore-dir                        Directory on which to restore
+--preserve-ownership                 Force uid/gid restoration for this run (overrides config; root only; mutually exclusive with --ignore-ownership).
+--ignore-ownership                   Force uid/gid to be ignored for this run (overrides RESTORE_OWNERSHIP = yes in config; mutually exclusive with --preserve-ownership).
+--no-deleted                         Do not process deletion records from DIFF/INCR archives (passes --deleted=ignore to dar). Useful when restoring a DIFF or INCR archive directly to an empty directory without first restoring the FULL.
 --verbose                            Enable verbose output.
 --suppress-dar-msg                   Filter out this from the darrc: "-vt", "-vs", "-vd", "-vf", "-va"
 --log-level <level>                  `debug` or `trace`, default is `info`.
@@ -92,6 +95,9 @@ Available options:
 --restore-path <path> [<path> ...]   Restore specific path(s) (Point-in-Time Recovery).
 --when <timestamp>                   Date/time for restoration (used with --restore-path).
 --target <path>                      Target directory for restoration (default: current dir).
+--preserve-ownership                 Force uid/gid restoration for this run (overrides config; root only; mutually exclusive with --ignore-ownership).
+--ignore-ownership                   Force uid/gid to be ignored for this run (overrides RESTORE_OWNERSHIP = yes in config; mutually exclusive with --preserve-ownership).
+--no-deleted                         Do not process deletion records from DIFF/INCR archives (passes --deleted=ignore to dar). Useful when restoring a DIFF or INCR archive directly to an empty directory.
 --pitr-report                        Report PITR archive chain for --restore-path/--when without restoring.
 --pitr-report-first                  Run PITR chain report before restore and abort if missing archives.
 --relocate-archive-path <old> <new>  Rewrite archive path prefix in the catalog DB (requires --backup-def).

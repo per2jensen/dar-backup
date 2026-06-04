@@ -230,6 +230,114 @@ A backup has been taken using this backup definition:
 
 When restoring and using `/tmp` for --restore-dir, the restored files can be found in `/tmp/home/user/Documents`
 
+## Inspecting a DIFF or INCR archive directly
+
+### DIFF vs INCR — what each archive contains
+
+- **DIFF** — always taken against the FULL. Every DIFF contains *all* changes since
+  the last FULL, regardless of how many DIFFs exist. Multiple DIFFs are therefore
+  overlapping (space is traded for simplicity and redundancy — more copies means more
+  chances of a successful restore in the future).
+- **INCR** — always taken against the latest DIFF. If no DIFF exists, no INCR backups
+  are taken. Each INCR contains only the changes since that DIFF, making them
+  space-efficient. Restoring requires the full chain (FULL → DIFF → INCR) to
+  reconstruct the filesystem.
+
+### Restoring a single archive to a temporary directory
+
+Sometimes you just want to peek at what a particular archive contains — for example
+to fish out a file that was modified that day — without restoring the entire chain
+first.
+
+Restoring a DIFF or INCR archive directly to an empty directory fails by default
+because the archive contains **deletion records** (files removed since the reference
+backup). When dar tries to delete those files from the empty restore target they do
+not exist, causing a non-zero exit code.
+
+The `--no-deleted` flag tells dar to skip deletion records entirely, so only the
+files that were **saved** in that archive are extracted.
+
+**INCR example** — only files new or changed since the previous backup:
+
+```bash
+. <the virtual env>/bin/activate
+dar-backup --restore my-backup_INCR_2026-06-01 \
+  --restore-dir /tmp/incr-look \
+  --no-deleted \
+  --log-stdout --verbose
+deactivate
+```
+
+**DIFF example** — all files changed since the last FULL:
+
+```bash
+. <the virtual env>/bin/activate
+dar-backup --restore my-backup_DIFF_2026-05-27 \
+  --restore-dir /tmp/diff-look \
+  --no-deleted \
+  --log-stdout --verbose
+deactivate
+```
+
+Files that were unchanged since the reference backup will not be present in the
+restore target — they were not saved in this archive. This is expected and correct
+for a single-archive restore.
+
+> **Note:** `--no-deleted` is also available on `manager --restore-path` for PITR
+> restores, though it is rarely needed there since PITR restores an archive chain to
+> a fresh target in the correct order.
+
+---
+
+## Birth time (btime) and FSA restoration
+
+dar can optionally restore **Filesystem Specific Attributes (FSA)**, which on Linux
+includes:
+
+- **btime** — the file's birth/creation time
+- **Linux inode flags** (set via `chattr`, read via `lsattr`):
+  - `i` — immutable: file cannot be modified, deleted, renamed, or hard-linked
+  - `a` — append-only: file can only be opened for appending, not overwriting
+  - `s` — secure deletion: blocks are zeroed on delete
+  - `u` — undeletable: content saved on delete to allow recovery
+  - `A` — no atime updates
+  - `S` — synchronous writes
+  - `j` — data journaling (ext3/ext4)
+
+### The btrfs btime problem
+
+btrfs can internally store a btime whose nanosecond component is ≥ 1,000,000,000
+(POSIX allows 0–999,999,999 only). dar faithfully records that value during backup.
+When restoring, dar calls `utimensat` to set the btime — the kernel rejects the
+out-of-range value and the restore fails with:
+
+```text
+cannot set birth time of file, value too high for the system integer type
+```
+
+This is commonly triggered by browser profile SQLite files under snap confinement
+(e.g. `snap/firefox/common/.mozilla/firefox/.../idb/*.sqlite`).
+
+### Fix: uncomment `--fsa-scope none` in `.darrc`
+
+The shipped `.darrc` contains a commented-out `--fsa-scope none` in the
+`restore-options` section. Uncommenting it tells dar to skip all FSA restoration:
+
+- Birth times are **not** restored (the restored file gets the current time as btime)
+- Linux inode flags are **not** restored — this includes security-relevant flags:
+  - `i` — immutable (cannot be modified, deleted, renamed, or hard-linked)
+  - `a` — append-only
+
+File content, ownership (when `--preserve-ownership` is used), permissions, and
+standard timestamps (mtime, atime) are fully restored — FSA is separate from these.
+
+If you rely on inode flags being restored (e.g. you use `chattr +i` on files in your
+backup set), do **not** enable `--fsa-scope none`. For most home and desktop setups
+the trade-off is acceptable: btime is rarely used by applications, and inode flags
+on regular user files are uncommon.
+
+---
+
 ## Restore a single file
 
 ```bash

@@ -732,7 +732,7 @@ def verify(
 
 
 def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
-                   selection: str = None, ignore_ownership: bool = True):
+                   selection: str = None, ignore_ownership: bool = True, no_deleted: bool = False):
     """
     Restores a backup file to a specified directory.
 
@@ -745,6 +745,8 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         ignore_ownership (bool): When True, passes --comparison-field=ignore-owner to dar so uid/gid
             are not restored.  Defaults to True (safe for non-root).  Set to False only when running
             as root and RESTORE_OWNERSHIP = yes is configured.
+        no_deleted (bool): When True, passes --deleted=ignore to dar so deletion records in DIFF/INCR
+            archives do not cause errors when restoring to an empty directory.  Defaults to False.
 
     Raises:
         RestoreError: If the restore command fails or the restore directory cannot be created.
@@ -759,7 +761,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
                 "or remove --ignore-ownership from the command line if you passed it explicitly."
             )
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
-        command = ['dar', '-x', backup_file, '-wa', '-/ Oo', '--noconf', '-Q']
+        command = ['dar', '-x', backup_file, '-wa', '--noconf', '-Q']
         if "_FULL_" in backup_name:
             command.append('-D')
         if restore_dir:
@@ -773,6 +775,8 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             command.extend(selection_criteria)
         if ignore_ownership:
             command.append('--comparison-field=ignore-owner')
+        if no_deleted:
+            command.append('--deleted=ignore')
         command.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
         logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
         process = runner.run(command, timeout = config_settings.command_timeout_secs)
@@ -2141,6 +2145,11 @@ def main():
         '--ignore-ownership', action='store_true',
         help="Force --comparison-field=ignore-owner for this run. Overrides RESTORE_OWNERSHIP = yes in the config file.",
     )
+    parser.add_argument(
+        '--no-deleted', action='store_true',
+        help="Do not process deletion records from DIFF/INCR archives (passes --deleted=ignore to dar). "
+             "Useful when restoring a DIFF or INCR archive directly to an empty directory.",
+    )
     parser.add_argument('--examples', action="store_true", help="Examples of using dar-backup.py.")
     parser.add_argument("--readme", action="store_true", help="Print README.md to stdout and exit.")
     parser.add_argument("--readme-pretty", action="store_true", help="Print README.md to stdout with Markdown styling and exit.")
@@ -2161,6 +2170,8 @@ def main():
         args.ignore_ownership = False
     if not hasattr(args, "preserve_ownership"):
         args.preserve_ownership = False
+    if not hasattr(args, "no_deleted"):
+        args.no_deleted = False
 
     if args.version:
         show_version()
@@ -2384,7 +2395,8 @@ def main():
             else:
                 ignore_ownership = not config_settings.restore_ownership
             results.extend(restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection,
-                                          ignore_ownership=ignore_ownership))
+                                          ignore_ownership=ignore_ownership,
+                                          no_deleted=args.no_deleted))
         else:
             parser.print_help()
 

@@ -59,6 +59,30 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - **CI path filter** — `.github/workflows/py-tests.yml` now ignores pushes that only touch
   `clonepulse/**`, preventing daily bot commits from consuming CI compute.
 
+- **`--no-deleted` CLI flag on `dar-backup` and `manager`** — passes `--deleted=ignore` to dar so that
+  deletion records in DIFF/INCR archives do not cause errors when restoring directly to an empty directory
+  (i.e. without first restoring the FULL archive).  Without this flag, dar exits rc≠0 when a deletion
+  record references a file that does not exist in the restore target.
+  - The redundant `-/ Oo` overwriting policy has been removed from all restore commands; it was verified
+    to be identical to dar's default behaviour on both dar 2.7.13 (Ubuntu 24.04 / CI) and 2.7.21.
+    Its removal is what enables `--deleted=ignore` to work (dar ignores `--deleted=ignore` when `-/` is
+    present).
+
+- **`--fsa-scope none` documented in `.darrc`** — the `restore-options` section now contains a
+  commented-out `--fsa-scope none` with an explanation of when to enable it. FSA covers birth time
+  (btime) and Linux inode flags: immutable (`i`), append-only (`a`), secure-delete (`s`),
+  undeletable (`u`), no-atime (`A`), synchronous writes (`S`), data journaling (`j`).
+  - **When to enable:** btrfs can store a btime whose nanosecond component is ≥ 1,000,000,000
+    (technically invalid per POSIX, but btrfs allows it internally). When dar tries to restore such a
+    value via `utimensat`, the kernel rejects it and the restore fails with
+    `cannot set birth time of file, value too high for the system integer type`.
+    This is reproducibly triggered by browser-profile SQLite files under snap confinement
+    (e.g. Firefox on btrfs). Uncommenting `--fsa-scope none` suppresses the error.
+  - **Impact when enabled:** birth times are not restored; inode flags (including immutable `i` and
+    append-only `a`) are not restored. File content, ownership, permissions, mtime, and atime are
+    unaffected.
+  - **Existing users:** no action required — the line ships commented out.
+
 ### Fixed
 
 - **`continue` in `finally` block** — `dar_backup.py`: Python 3.14 raises `SyntaxWarning` for

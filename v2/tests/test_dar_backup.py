@@ -1635,3 +1635,85 @@ def test_restore_backup_ignore_ownership_flag_injects_comparison_field(tmp_path)
         f"--comparison-field=ignore-owner must be present when ignore_ownership=True. "
         f"Command: {call_args}"
     )
+
+
+def test_restore_backup_no_deleted_injects_deleted_ignore(tmp_path):
+    """
+    --no-deleted (no_deleted=True) must inject --deleted=ignore into the dar
+    command so deletion records in DIFF/INCR archives do not cause errors when
+    restoring to an empty directory.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_DIFF_2026-01-02",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=True,
+            no_deleted=True,
+        )
+
+    call_args = mock_runner.run.call_args[0][0]
+    assert "--deleted=ignore" in call_args, (
+        f"--deleted=ignore must be present when no_deleted=True. Command: {call_args}"
+    )
+
+
+def test_restore_backup_no_deleted_false_omits_deleted_ignore(tmp_path):
+    """
+    When no_deleted=False (the default), --deleted=ignore must NOT appear in
+    the dar command — deletion records are processed normally.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_DIFF_2026-01-02",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=True,
+            no_deleted=False,
+        )
+
+    call_args = mock_runner.run.call_args[0][0]
+    assert "--deleted=ignore" not in call_args, (
+        f"--deleted=ignore must NOT be present when no_deleted=False. Command: {call_args}"
+    )
+
+
+def test_restore_backup_overwriting_policy_removed(tmp_path):
+    """
+    The -/ Oo overwriting policy must NOT appear in the dar restore command.
+    It was verified to be redundant with dar's default behaviour and its
+    presence prevents --deleted=ignore from working.
+    """
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(tmp_path),
+            "/fake/.darrc",
+            ignore_ownership=True,
+        )
+
+    call_args = mock_runner.run.call_args[0][0]
+    assert "-/ Oo" not in call_args and "-/Oo" not in " ".join(call_args), (
+        f"-/ Oo must not appear in the dar restore command. Command: {call_args}"
+    )

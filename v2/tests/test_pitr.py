@@ -69,7 +69,7 @@ def test_restore_at_basic_success(mock_config, mock_logger):
         ret = restore_at(backup_def, paths, when, target, mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config, ignore_ownership=True)
+        mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config, ignore_ownership=True, no_deleted=False)
 
 
 def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
@@ -94,7 +94,7 @@ def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
         ret = restore_at("def", ["file"], "2026-01-01 00:00Z", "/tmp", mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config, ignore_ownership=True)
+        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config, ignore_ownership=True, no_deleted=False)
 
 
 def test_restore_at_invalid_date(mock_config, mock_runner, mock_logger):
@@ -234,7 +234,7 @@ def test_restore_at_multiple_paths_all_restored(mock_config, mock_logger):
 
         assert ret == 0
         # All three paths must be forwarded together in a single call
-        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config, ignore_ownership=True)
+        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config, ignore_ownership=True, no_deleted=False)
 
 
 def test_restore_at_multiple_paths_and_no_target(mock_config, mock_runner, mock_logger):
@@ -443,7 +443,7 @@ def test_restore_at_default_when_uses_now(mock_config, mock_logger):
         ret = restore_at("def", ["tmp/file.txt"], None, "/tmp/restore", mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, "/tmp/restore", mock_config, ignore_ownership=True)
+        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, "/tmp/restore", mock_config, ignore_ownership=True, no_deleted=False)
 
 
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):
@@ -1384,4 +1384,85 @@ class TestParseWhenTimezones:
              patch("dar_backup.manager.logger", MagicMock()):
             mock_dp.parse.return_value = None
             result = _parse_when("not-a-date-at-all")
-        assert result is None
+            assert result is None
+
+
+def test_restore_with_dar_no_deleted_injects_deleted_ignore(mock_config, mock_runner, mock_logger):
+    """
+    When no_deleted=True, _restore_with_dar must pass --deleted=ignore to the
+    dar command so deletion records in DIFF/INCR archives do not cause errors
+    when restoring to an empty directory.
+    """
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "2 /tmp/backups example_DIFF_2026-01-29\n"
+    )
+    file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),
+        CommandResult(0, file_output, "", note=None),
+        CommandResult(0, "ok", "", note=None),
+    ]
+    mock_config.command_timeout_secs = 30
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
+         patch("dar_backup.manager.send_discord_message"), \
+         patch("os.path.exists", return_value=True), \
+         patch("dar_backup.manager._guess_darrc_path", return_value=None):
+
+        _restore_with_dar(
+            "def", ["tmp/file.txt"],
+            datetime.datetime(2026, 1, 29, 16, 0, 0),
+            "/tmp/restore", mock_config,
+            no_deleted=True,
+        )
+
+    dar_cmd = mock_runner.run.call_args_list[-1][0][0]
+    assert "--deleted=ignore" in dar_cmd, (
+        f"--deleted=ignore must be in the dar command when no_deleted=True. Command: {dar_cmd}"
+    )
+
+
+def test_restore_with_dar_no_deleted_false_omits_deleted_ignore(mock_config, mock_runner, mock_logger):
+    """
+    When no_deleted=False (the default), --deleted=ignore must NOT appear in
+    the dar command so deletion records are processed normally.
+    """
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "2 /tmp/backups example_DIFF_2026-01-29\n"
+    )
+    file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),
+        CommandResult(0, file_output, "", note=None),
+        CommandResult(0, "ok", "", note=None),
+    ]
+    mock_config.command_timeout_secs = 30
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
+         patch("dar_backup.manager.send_discord_message"), \
+         patch("os.path.exists", return_value=True), \
+         patch("dar_backup.manager._guess_darrc_path", return_value=None):
+
+        _restore_with_dar(
+            "def", ["tmp/file.txt"],
+            datetime.datetime(2026, 1, 29, 16, 0, 0),
+            "/tmp/restore", mock_config,
+            no_deleted=False,
+        )
+
+    dar_cmd = mock_runner.run.call_args_list[-1][0][0]
+    assert "--deleted=ignore" not in dar_cmd, (
+        f"--deleted=ignore must NOT be in the dar command when no_deleted=False. Command: {dar_cmd}"
+    )

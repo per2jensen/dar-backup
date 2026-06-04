@@ -27,7 +27,9 @@ verbose:
 
 
 restore-options:
-# don't restore File Specific Attributes
+# don't restore File Specific Attributes (btime + Linux inode flags)
+# btrfs can store btime with nanoseconds >= 1e9 which utimensat rejects on restore
+# Uncomment if you hit: "cannot set birth time of file, value too high for the system integer type"
 #--fsa-scope none
 
 # ignore owner, useful when used by a non-privileged user
