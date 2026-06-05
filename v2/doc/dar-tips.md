@@ -14,6 +14,11 @@ Back to [README](../../README.md)
   - [Separate log file for command output](#separate-log-file-for-command-output)
   - [Trace Logging (Debug details)](#trace-logging-debug-details)
   - [Skipping cache directories](#skipping-cache-directories)
+  - [Protecting long backups from systemd-oomd](#protecting-long-backups-from-systemd-oomd)
+    - [Solution: run dar-backup as a systemd service](#solution-run-dar-backup-as-a-systemd-service)
+    - [Timer example](#timer-example)
+    - [Timer vs service enabling](#timer-vs-service-enabling)
+    - [Example script run by service](#example-script-run-by-service)
 
 ## List contents of an archive
 
@@ -177,3 +182,157 @@ The author uses the `--cache-directory-tagging` option in his backup definitions
 The effect is that directories with the [CACHEDIR.TAG](https://bford.info/cachedir/) file are not backed up. Those directories contain content fetched from the net, which is of an ephemeral nature and probably not what you want to back up.
 
 If the option is not in the backup definition, the cache directories are backed up as any other.
+
+---
+
+## Protecting long backups from systemd-oomd
+
+Large backups — especially media collections — cause the Linux kernel to fill the page cache with file data. On desktop systems running `systemd-oomd`, this can trigger an unexpected kill: `systemd-oomd` monitors memory pressure in your user session cgroup (`/user.slice/user-1000.slice/…`) and will sacrifice the largest cgroup in the session — often your terminal emulator — when pressure exceeds its threshold for more than 20 seconds. The backup process dies with it, leaving a corrupt archive and no trace in `dmesg`.
+
+You can confirm this happened with:
+
+```bash
+journalctl -u systemd-oomd --since "yesterday" | grep -i killed
+```
+
+A line like this is the smoking gun:
+
+```text
+Killed …/app-org.gnome.Terminal.slice/vte-spawn-….scope due to memory pressure for
+/user.slice/… being 78.16% > 50.00% for > 20s with reclaim activity
+```
+
+### Solution: run dar-backup as a systemd service
+
+A systemd service runs under `/system.slice`, completely outside the user session that `systemd-oomd` monitors. The service is immune to user-session OOM kills regardless of memory pressure.
+
+Use `OOMScoreAdjust=-300` to make the kernel's own OOM killer also deprioritise the backup process as a kill candidate (lower is more protected; -1000 would make it unkillable).
+
+Example service file template ( /etc/systemd/system/dar-diff-backups.service ):
+
+```ini
+[Unit]
+Description=DAR DIFF backups
+Wants=network-online.target
+After=network-online.target
+OnFailure=dar-backup-notify@%n
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root
+UMask=0002
+
+# Runs in system.slice — outside the user session systemd-oomd watches
+Slice=backup.slice
+
+# Warm up automounts before starting
+ExecStartPre=/usr/bin/mkdir -p /var/log/dar-backup
+ExecStartPre=/usr/bin/touch /mnt/dar/warmup
+ExecStartPre=/usr/bin/touch /mnt/par2/warmup
+ExecStartPre=/usr/bin/touch /mnt/manager/warmup
+ExecStartPre=/usr/local/bin/dar --version
+
+ExecStart=/usr/local/sbin/dar-diff-backups.sh
+
+StandardOutput=journal+console
+StandardError=journal+console
+
+# Prefer "resistant", not "unkillable" — lower score = less likely to be killed
+OOMScoreAdjust=-300
+
+# Lower priority so the desktop stays responsive
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=4
+
+CPUAccounting=yes
+MemoryAccounting=yes
+IOAccounting=yes
+
+TimeoutStartSec=0
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/opt/dar-backup/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/dar-backup /mnt/dar /mnt/par2 /mnt/manager /data/tmp/restore /opt/dar-backup
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Timer example
+
+```bash
+/etc/systemd/system# cat dar-diff-backups.timer 
+[Unit]
+Description=dar-backup DIFF timer
+
+[Timer]
+OnCalendar=*-*-01 20:03:00
+OnBootSec=5min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+### Timer vs service enabling
+
+Only enable the **timer** — not the service. The timer owns the schedule; enabling the service would cause it to start independently at boot.
+
+```bash
+systemctl daemon-reload
+systemctl enable dar-diff-backups.timer   # correct
+# systemctl enable dar-diff-backups.service  # do NOT enable
+```
+
+Monitor a running backup with:
+
+```bash
+journalctl -u dar-diff-backups.service -f
+```
+
+### Example script run by service
+
+```bash
+$ cat /usr/local/sbin/dar-diff-backups.sh 
+
+#!/bin/bash
+#
+#  Run backup definitions in separate processes, try to minimize memory usage
+#  Observe the --preserve-ownership option, because this is run by root
+#
+set -euo pipefail
+
+CONF="/opt/dar-backup/dar-backup.conf"
+
+# Put your definitions here in order.
+# (You can generate this list if dar-backup has a "list definitions" command.)
+mapfile -t DEFS < <(/opt/dar-backup/venv/bin/dar-backup -c "$CONF" --list-definitions)
+
+result=0
+
+for d in "${DEFS[@]}"; do
+  [[ -z "$d" ]] && continue
+  echo "==> running: $d"
+  set +e
+  /opt/dar-backup/venv/bin/dar-backup -D -d "$d" -c "$CONF" --preserve-ownership  --log-stdout  --verbose
+  rc=$?
+  set -e
+
+  case "$rc" in
+    0) ;;
+    2) echo "==> soft failure (ignored): $d" ;;
+    *) echo "==> HARD FAILURE (rc=$rc): $d" >&2; result=1;;
+  esac
+done
+
+exit "$result"
+```
