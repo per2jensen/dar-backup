@@ -2,6 +2,29 @@
 
 Back to [README](../../README.md)
 
+- [Development](#development)
+  - [Easy development setup](#easy-development-setup)
+  - [Alternative: setup\_environment.py](#alternative-setup_environmentpy)
+  - [Howto activate the venv](#howto-activate-the-venv)
+  - [Howto build \& deploy to dev venv](#howto-build--deploy-to-dev-venv)
+  - [Test coverage](#test-coverage)
+    - [Test selection with markers](#test-selection-with-markers)
+    - [Common runs](#common-runs)
+    - [Run all tests](#run-all-tests)
+    - [Howto use pytest in venv](#howto-use-pytest-in-venv)
+    - [Subprocess coverage (local == CI)](#subprocess-coverage-local--ci)
+  - [PyPI download stats](#pypi-download-stats)
+  - [Release to PyPI](#release-to-pypi)
+  - [Build dar from source](#build-dar-from-source)
+    - [Check signature](#check-signature)
+    - [Build](#build)
+  - [SQLite metrics DB](#sqlite-metrics-db)
+    - [Display restore-test results after a backup](#display-restore-test-results-after-a-backup)
+    - [Display backup run summary](#display-backup-run-summary)
+    - [Datasette view](#datasette-view)
+  - [Git log](#git-log)
+  - [Tarball for ChatGPT](#tarball-for-chatgpt)
+
 ## Easy development setup
 
 ```bash
@@ -16,6 +39,8 @@ This script:
 - Creates a Python virtual environment called `venv`
 - pip install `hatch`
 - pip install the development environment as setup in pyproject.toml
+
+Example: 
 
   ```text
   dev = [
@@ -86,6 +111,8 @@ The test suite is annotated with these markers:
 - `integration` (end-to-end workflows; external tools)
 - `slow` (long-running/heavier integration)
 - `live_discord` (sends real webhook messages; opt-in only)
+- `smoke` critical integration tests that must pass on every commit (used with unit+component as the fast'ish (!) CI gate)
+- `debug`: temporary mark for focused local debugging runs (never used in CI)
 
 ### Common runs
 
@@ -299,6 +326,24 @@ ORDER BY started_at DESC
 LIMIT  20;
 "
 ```
+
+### Datasette view
+
+```bash
+cd ~/git/dar-backup/v2
+source venv/bin/activate
+datasette <path-to-metrics.db>
+```
+
+That starts it on the default port 8001 at http://127.0.0.1:8001.
+
+Common flags you might want:
+
+Open browser automatically
+datasette ~/dar-backup/dar-backup-metrics.db -o
+
+With CORS enabled (same as what dashboard.py uses)
+datasette ~/dar-backup/dar-backup-metrics.db --cors -p 8001
 
 ---
 
