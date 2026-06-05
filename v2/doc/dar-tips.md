@@ -2,6 +2,19 @@
 
 Back to [README](../../README.md)
 
+- [dar Tips and Techniques](#dar-tips-and-techniques)
+  - [List contents of an archive](#list-contents-of-an-archive)
+  - [dar file selection examples](#dar-file-selection-examples)
+    - [Select a directory](#select-a-directory)
+    - [Select files with "Z50" in the file name and exclude .xmp files](#select-files-with-z50-in-the-file-name-and-exclude-xmp-files)
+  - [Your restore tests fail with `METADATA_MISMATCH`](#your-restore-tests-fail-with-metadata_mismatch)
+  - [Merge FULL with DIFF, creating new FULL](#merge-full-with-diff-creating-new-full)
+  - [dar manager databases](#dar-manager-databases)
+  - [.darrc sets -vd -vf (since v0.6.4)](#darrc-sets--vd--vf-since-v064)
+  - [Separate log file for command output](#separate-log-file-for-command-output)
+  - [Trace Logging (Debug details)](#trace-logging-debug-details)
+  - [Skipping cache directories](#skipping-cache-directories)
+
 ## List contents of an archive
 
 ```bash
@@ -64,6 +77,26 @@ dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-g 'home/use
 
 ```bash
 dar-backup --list-contents media-files_INCR_2025-05-10 --selection="-I '*Z50*' -X '*.xmp'"
+```
+
+---
+
+## Your restore tests fail with `METADATA_MISMATCH`
+
+You are probably running `dar-backup` as root. Dar-backup injects `--comparison-field=ignore-owner` to `dar` on restores to make life easy for non-root users.
+
+As root is it advised to add the `dar-backup` option `--preserve-ownership` as this makes `dar` restore files with the recorded uid:gid.
+
+From `dar's` [manual page](http://dar.linux.free.fr/doc/man/dar.html):
+
+```test
+
+`--comparison-field=ignore-owner`:
+
+all fields are considered except ownership.
+
+This is useful when dar is used by a non-privileged user. It will not consider a file has changed just because of a uid or gid mismatch and at restoration dar will not even try to set the file ownership.
+
 ```
 
 ---
