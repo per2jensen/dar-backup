@@ -3,13 +3,20 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.6 - not released
+## v2-1.1.6 - 2026-06-05
 
-- **Config range validation** with accepted ranges. Consult the [v2/Changelog.md](v2/Changelog.md) file for details
+- Config range validation with accepted ranges. Consult the [v2/Changelog.md](v2/Changelog.md) file for details
 - Many fixes to test cases and docs found in a review
 - More integration tests
 - CI workflow now uses a subset of the full test suite, in order to conserve Github resources.
-- **Python 3.14 / Ubuntu 26.04 compatibility** — fixed `continue`-in-`finally` SyntaxWarning, SQLite ResourceWarnings, UTF-8 stdout encoding, and a global locale-corruption bug in `list_backups()` that caused `UnicodeEncodeError` on systems without `en_US.UTF-8` installed.
+- Python 3.14 / Ubuntu 26.04 compatibility — fixed `continue`-in-`finally` SyntaxWarning, SQLite ResourceWarnings
+- UTF-8 stdout encoding
+- BUGFIX: global locale-corruption bug in `list_backups()` that caused `UnicodeEncodeError` on systems without `en_US.UTF-8` installed.
+- New options `--no-deleted`, `--preserve-ownership`, `--ignore-ownership`
+- New config var `RESTORE_OWNERSHIP`
+- Results of restore tests after a backup now kept in metrics DB
+- Root now a first class user of dar-backup :-)
+- 1128 test cases passed
 
 ## v2-1.1.5 - 2026-05-17
 
