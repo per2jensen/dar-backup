@@ -2289,6 +2289,14 @@ def main():
         run_start = datetime.now().astimezone()
         run_id = str(uuid.uuid4())
         start_msgs.append((f"{show_scriptname()}:", about.__version__))
+        backup_type = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
+        run_start_str = run_start.strftime("%Y-%m-%d %H:%M:%S")
+        banner_text = f"  dar-backup {backup_type}  {run_start_str}  "
+        banner_bar = "#" * (len(banner_text) + 4)
+        logger.info("")
+        logger.info(banner_bar)
+        logger.info(f"##{banner_text}##")
+        logger.info(banner_bar)
         logger.info(f"START TIME: {start_time}")
         logger.debug(f"Command line:\n{get_invocation_command_line()}")
         logger.debug(f"`Args`:\n{args}")
