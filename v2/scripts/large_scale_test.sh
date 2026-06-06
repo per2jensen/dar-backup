@@ -179,7 +179,7 @@ preflight() {
     # Capture version and commit for the summary
     DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
     GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-    DAR_VERSION=$(dar --version 2>/dev/null | head -1 || echo "unknown")
+    DAR_VERSION=$(dar --version 2>&1 | head -1 || echo "unknown")
     PAR2_VERSION=$(par2 --version 2>/dev/null | head -1 || echo "unknown")
     PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
     OS_DESC=$(lsb_release -d 2>/dev/null | awk -F':	' '{print $2}' || echo "unknown")
