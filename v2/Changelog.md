@@ -3,7 +3,130 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.6 - not released
+## v2-1.1.7 - not released
+
+### Fixed
+
+- **OOM on large archives — par2 now runs per-slice** (`dar_backup.py: generate_par2_files()`) —
+  commit `998906f` (January 2026) changed par2 generation to pass all dar slices in a single command,
+  causing par2 to build the full recovery matrix across the entire archive in RAM simultaneously.
+  For a 124 GB archive at 5% redundancy this produced a ~6.2 GB recovery matrix, triggering OOM kills.
+  Restored the original per-slice loop: each slice is processed individually, capping par2's peak RAM
+  to one slice's worth of redundancy (e.g. ~500 MB for a 10 GB slice at 5%).
+  The `-B` portability flag is preserved so par2 files remain relocatable across mount points.
+  The manifest (`.par2.manifest.ini`) is still written once per archive after all slices succeed.
+  Par2 verify (when `PAR2_RUN_VERIFY = true`) is also run per-slice.
+
+- **`list_contents()` — unbounded stdout buffer** (`dar_backup.py`) — the stdout-reading loop used
+  `buffer += chunk` which accumulated the full `dar -l` output in RAM before processing any lines.
+  Replaced with an incremental partial-line pattern that carries only an incomplete trailing fragment
+  between chunks; peak RAM is now O(1) regardless of archive size.
+
+- **`list_contents()` — `bytes`/`str` `TypeError` on dar failure** — `stderr_lines` was typed
+  `List[str]` but the subprocess ran in binary mode (`text=False`), so `read_stderr()` appended
+  `bytes` chunks. The subsequent `"".join(stderr_lines)` would raise `TypeError` whenever dar exited
+  non-zero. Fixed: `stderr_lines: List[bytes]` and `b"".join(...).decode(...)` at the join site.
+
+- **`list_contents()` — `log_file` resource leak on exception** — the log file handle was only
+  closed on the normal code path. Any exception during stdout reading left it open. Fixed with
+  `try/finally` around the Popen block.
+
+- **`list_contents()` — missing timeout on `process.wait()`** — unlike every other subprocess call
+  in the codebase, `list_contents()` called `process.wait()` with no timeout, allowing a hung `dar`
+  to block indefinitely. Added a `timeout` parameter (wired to `config_settings.command_timeout_secs`
+  at the call site) with a `TimeoutExpired` handler that kills the process and raises `RuntimeError`.
+
+- **`list_contents()` — `selection` tokens not sanitised** — `--selection` arguments were split with
+  `shlex.split()` but not checked against `is_safe_arg()`. Added a per-token check consistent with
+  the `sanitize_cmd()` validation used everywhere else via `CommandRunner`.
+
+- **`verify()` — full archive listing materialised in RAM** (`dar_backup.py`) — `list(get_backed_up_files(...))`
+  materialised the entire XML listing as a Python list of tuples before sampling. For a large archive
+  this held all `(path, size)` tuples in memory simultaneously. Fixed by passing the generator directly
+  into `select_restoretest_samples()` (single pass, reservoir sampler) and building `size_lookup` from
+  the small sample only (at most `NO_FILES_VERIFICATION` entries).
+
+- **`select_restoretest_samples()` return type** (`dar_backup.py`) — changed from `List[str]` to
+  `List[Tuple[str, str]]` so size information travels with the sample, eliminating the need to
+  materialise the full listing to build `size_lookup`.
+
+- **`DoctypeStripper.read(n=-1)` — unbounded read path** (`dar_backup.py`) — the `n < 0` branch
+  read the entire XML file into a list and joined it into one string. `ET.iterparse` never calls
+  `read()` without a positive size limit, so this path was dead in production but a latent OOM trap.
+  Replaced with `raise NotImplementedError` to make any future accidental call visible immediately.
+
+- **`ConfigSettings` — `logfile_no_count` / `logfile_backup_count` name mismatch** (`config_settings.py`) —
+  the dataclass declared `logfile_no_count` but `OPTIONAL_CONFIG_FIELDS` wrote to `logfile_backup_count`
+  via `setattr()`. The declared field was never populated; the written attribute was a ghost invisible
+  to type checkers and `__repr__`. Renamed the dataclass field to `logfile_backup_count` with
+  `default=5` matching `OPTIONAL_CONFIG_FIELDS`.
+
+- **`ConfigSettings` — `manager_db_dir` not declared in dataclass** (`config_settings.py`) —
+  `OPTIONAL_CONFIG_FIELDS` set `manager_db_dir` via `setattr()` but it was never declared as a
+  dataclass field, making it invisible to type checkers, IDE completion, and `__repr__`. Added as
+  `Optional[str] = field(init=False, default=None)`. Path expansion now applies to it correctly.
+
+- **`ConfigSettings` — `command_capture_max_bytes` wrong default** (`config_settings.py`) —
+  the dataclass field defaulted to `None` (unbounded capture) while `OPTIONAL_CONFIG_FIELDS` defaulted
+  to `102400`. An early exception in `__post_init__` before the optional-fields loop would leave the
+  field as `None`, silently removing the capture cap and allowing unbounded RAM accumulation in
+  `CommandRunner`. Fixed: dataclass default aligned to `102400`.
+
+- **`ConfigSettings` — missing defaults on log-rotation fields** (`config_settings.py`) —
+  `logfile_max_bytes`, `trace_log_max_bytes`, and `trace_log_backup_count` were declared as
+  `field(init=False)` with no default. An early exception before the optional-fields loop left them
+  uninitialised, causing `AttributeError` on access. Added defaults matching `OPTIONAL_CONFIG_FIELDS`:
+  `26214400`, `10485760`, and `1` respectively.
+
+### Added
+
+- **`large_scale_test.sh`** — pre-release torture test script. Runs a FULL and DIFF backup against a
+  real source tree supplied by the caller as a heredoc (keeping personal paths out of version control),
+  verifies par2 files are named per-slice, checks `dar -t` integrity, runs `par2 verify` on every slice,
+  optionally injects bitrot into slice 1 and verifies par2 repair, monitors peak RSS for `dar-backup`,
+  `dar`, and `par2` throughout, and writes a timestamped summary report and metrics DB entry. The
+  metrics DB accumulates across runs for cross-release comparison. Nothing touches the production
+  environment; the run directory is cleaned up on exit unless `--keep` is passed.
+
+### Fixed (tests)
+
+- **`test_bitrot.py`** — `check_bitrot_recovery()` updated to discover and repair per-slice par2 files
+  (`{slice}.par2`) instead of the old archive-level `{archive_base}.par2`. `import re` added.
+
+- **`test_par2.py`** — `test_ordered_by_slicenumber` updated: now collects one slice number per par2
+  command (N commands, one per slice) and verifies they are issued in ascending order.
+  `test_par2_verify_passes_on_intact_backup` loops over all per-slice par2 files.
+  `_find_slice_par2_files()` helper added.
+
+- **`test_par2_manifest.py`** — manifest path built from `archive_base` directly; verify and repair
+  loop over per-slice files.
+
+- **`test_par2_multi_definitions.py`** — `test_par2_multi_definition_repair_flow` and
+  `test_par2_definition_isolation` use per-slice discovery and repair loops.
+  `test_par2_run_verify_triggers_on_creation` log message updated from `"Verifying par2 set"` to
+  `"Verifying par2 for"`.
+
+- **`test_par2_repair_restore_verification.py`** — `_find_par2_file()` replaced with
+  `_find_slice_par2_files()`; both test functions loop par2 repair over all slices.
+
+- **`test_config_settings.py`** — two assertions updated to reflect correct declared-field behaviour
+  for `manager_db_dir`: path expansion now applies (assert expanded value); non-`None` value now
+  appears in `__repr__` (assert present, not absent).
+
+- **`test_dar_backup.py`** — `test_generate_par2_files_success_invokes_par2` updated:
+  `call_count == 1` → `call_count == 2` (one call per slice); assertions verify each slice appears
+  in its own command and the two slices are never mixed into one command.
+
+- **`test_dar_backup_additional_coverage.py`** — `FakeProcess.wait()` in both list-contents tests
+  gains `timeout=None` parameter to match the new `process.wait(timeout=timeout)` call.
+
+- **`test_real_verify_and_backup.py`** — `test_par2_verify_detects_corrupt_dar_slice` discovers
+  per-slice par2 files and uses slice 1's par2 file for the corrupt-and-verify step.
+
+- **`test_real_pitr_and_pipeline.py`** — `test_full_backup_verify_runs_before_par2_and_both_complete`
+  confirms par2 ran by checking for any per-slice par2 file rather than the old archive-level index.
+
+## v2-1.1.6 - 2026-06-05
 
 ### Added
 

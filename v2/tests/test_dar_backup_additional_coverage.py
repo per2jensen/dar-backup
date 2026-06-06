@@ -452,7 +452,7 @@ def test_list_contents_subprocess_success(monkeypatch, tmp_path, capsys):
             self.stderr = io.BytesIO(stderr_bytes)
             self.returncode = returncode
 
-        def wait(self):
+        def wait(self, timeout=None):
             return None
 
     stdout_bytes = b"[Saved] file1\n[--- REMOVED ENTRY ----] file2\n"
@@ -490,7 +490,7 @@ def test_list_contents_subprocess_error(monkeypatch, tmp_path):
             self.stderr = None
             self.returncode = returncode
 
-        def wait(self):
+        def wait(self, timeout=None):
             return None
 
     monkeypatch.setattr(db, "runner", SimpleNamespace(default_capture_limit_bytes="bad"))

@@ -12,6 +12,21 @@ from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
 
 
+def _find_slice_par2_files(backup_dir: str, archive_base: str) -> list:
+    """Return sorted list of per-slice .par2 index paths for archive_base.
+
+    With per-slice par2 generation each slice produces its own par2 set named
+    {slice_file}.par2  (e.g. example_FULL_2026-06-06.1.dar.par2).
+    """
+    import re as _re
+    pattern = _re.compile(rf"{_re.escape(archive_base)}\.([0-9]+)\.dar\.par2$")
+    slices = sorted(
+        [f for f in os.listdir(backup_dir) if pattern.match(f)],
+        key=lambda x: int(pattern.match(x).group(1))
+    )
+    return [os.path.join(backup_dir, f) for f in slices]
+
+
 
 
 
@@ -100,19 +115,25 @@ def test_ordered_by_slicenumber(setup_environment, env):
         env.logger.error(f"stderr: {stderr}")
         raise Exception(f"Error running backup command: {command}")
 
-    # Extract slice numbers from the par2 create command logged to stdout
+    # With per-slice par2 generation there is one par2 create command per slice.
+    # Extract the slice number from each command and verify they are emitted in
+    # ascending order.
     par2_command_lines = [
         line for line in stdout.splitlines()
         if "Executing command:" in line and "par2 create" in line
     ]
-    assert par2_command_lines, f"No par2 create command found in stdout: {stdout}"
-    slice_pattern = re.compile(r'\.(\d+)\.dar(?:\s|$)')
-    slice_numbers = [int(num) for num in slice_pattern.findall(par2_command_lines[0])]
-    assert slice_numbers, f"No slice numbers found in par2 command: {par2_command_lines[0]}"
-    assert len(slice_numbers) > 0, "There must at least be 1 dar slice, got 0"
+    assert par2_command_lines, f"No par2 create commands found in stdout: {stdout}"
+    slice_pattern = re.compile(r'\.(\d+)\.dar')
+    slice_numbers = []
+    for cmd_line in par2_command_lines:
+        m = slice_pattern.search(cmd_line)
+        if m:
+            slice_numbers.append(int(m.group(1)))
+    assert slice_numbers, f"No slice numbers found in par2 commands: {par2_command_lines}"
+    assert len(slice_numbers) > 0, "There must be at least 1 dar slice, got 0"
 
-    # Verify that slice numbers are in increasing order
-    assert slice_numbers == sorted(slice_numbers), f"Slices are not processed in order: {slice_numbers}"
+    # Verify that commands are issued in ascending slice-number order
+    assert slice_numbers == sorted(slice_numbers), f"Slices not processed in order: {slice_numbers}"
 
     env.logger.info(f"OK: slices processed in order: {slice_numbers}")
 
@@ -137,9 +158,13 @@ def test_par2_verify_passes_on_intact_backup(setup_environment, env):
     assert process.returncode == 0, f"Backup failed: {process.stderr}"
 
     archive_base = f"example_FULL_{env.datestamp}"
-    par2_index = os.path.join(env.backup_dir, f"{archive_base}.par2")
-    assert os.path.exists(par2_index), f"par2 index not found: {par2_index}"
-
-    verify = runner.run(['par2', 'verify', '-B', env.backup_dir, par2_index])
-    assert verify.returncode == 0, f"par2 verify failed on intact backup: {verify.stderr}"
+    # Per-slice par2: verify every slice's par2 set individually.
+    slice_par2_files = _find_slice_par2_files(env.backup_dir, archive_base)
+    assert slice_par2_files, f"No per-slice par2 index files found for {archive_base}"
+    for par2_index in slice_par2_files:
+        verify = runner.run(['par2', 'verify', '-B', env.backup_dir, par2_index])
+        assert verify.returncode == 0, (
+            f"par2 verify failed on intact backup ({os.path.basename(par2_index)}): "
+            f"{verify.stderr}"
+        )
 

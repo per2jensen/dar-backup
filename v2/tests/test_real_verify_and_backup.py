@@ -310,10 +310,19 @@ def test_par2_verify_detects_corrupt_dar_slice(
     run_backup_script("--full-backup", env)
     archive_name = _find_archive_name(env.backup_dir, "FULL", "example")
 
-    par2_path = os.path.join(env.backup_dir, f"{archive_name}.par2")
-    assert os.path.exists(par2_path), (
-        f"Expected par2 index at '{par2_path}' — is PAR2.ENABLED = True in config?"
+    # Per-slice par2: index file is named {slice_file}.par2, e.g. example_FULL_…1.dar.par2
+    import re as _re
+    sp = _re.compile(rf"{_re.escape(archive_name)}\.([0-9]+)\.dar\.par2$")
+    slice_par2_files = sorted(
+        [f for f in os.listdir(env.backup_dir) if sp.match(f)],
+        key=lambda x: int(sp.match(x).group(1))
     )
+    assert slice_par2_files, (
+        f"No per-slice par2 index files found for '{archive_name}' in "
+        f"'{env.backup_dir}' — is PAR2.ENABLED = True in config?"
+    )
+    # Corrupt and verify slice 1
+    par2_path = os.path.join(env.backup_dir, slice_par2_files[0])
 
     slice_path = os.path.join(env.backup_dir, f"{archive_name}.1.dar")
     assert os.path.exists(slice_path), f"Expected dar slice at '{slice_path}'"

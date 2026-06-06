@@ -58,12 +58,21 @@ def test_par2_dir_manifest_and_repair(setup_environment, env: EnvData):
     if result.returncode != 0:
         raise RuntimeError(f"dar-backup failed: {result.stderr}")
 
+    import re as _re
     date = datetime.now().strftime("%Y-%m-%d")
     archive_base = f"example_FULL_{date}"
-    par2_path = os.path.join(par2_dir, f"{archive_base}.par2")
-    manifest_path = f"{par2_path}.manifest.ini"
-    assert os.path.exists(par2_path), f"Expected par2 set at: {par2_path}"
+
+    # Per-slice par2: index files are named {slice_file}.par2.
+    # The manifest is still one file per archive, named {archive_base}.par2.manifest.ini.
+    manifest_path = os.path.join(par2_dir, f"{archive_base}.par2.manifest.ini")
     assert os.path.exists(manifest_path), f"Expected manifest at: {manifest_path}"
+
+    slice_pattern = _re.compile(rf"{_re.escape(archive_base)}\.([0-9]+)\.dar\.par2$")
+    slice_par2_files = sorted(
+        [f for f in os.listdir(par2_dir) if slice_pattern.match(f)],
+        key=lambda x: int(slice_pattern.match(x).group(1))
+    )
+    assert slice_par2_files, f"No per-slice par2 files found in {par2_dir} for {archive_base}"
 
     backup_par2_matches = [f for f in os.listdir(env.backup_dir) if f.startswith(archive_base) and f.endswith(".par2")]
     assert not backup_par2_matches, f"Found par2 files in archive dir: {backup_par2_matches}"
@@ -77,13 +86,18 @@ def test_par2_dir_manifest_and_repair(setup_environment, env: EnvData):
         flipped = bytes([original[0] ^ 0xFF])
         f.write(flipped)
 
-    verify_command = ["par2", "verify", "-B", env.backup_dir, par2_path]
-    verify_result = runner.run(verify_command)
-    assert verify_result.returncode != 0, "Expected par2 verify to fail after corruption"
-
-    repair_command = ["par2", "repair", "-B", env.backup_dir, par2_path]
-    repair_result = runner.run(repair_command)
-    assert repair_result.returncode == 0, f"par2 repair failed: {repair_result.stderr}"
-
-    verify_result = runner.run(verify_command)
-    assert verify_result.returncode == 0, "Expected par2 verify to succeed after repair"
+    # Verify and repair each slice individually.
+    for slice_par2 in slice_par2_files:
+        par2_path = os.path.join(par2_dir, slice_par2)
+        verify_result = runner.run(["par2", "verify", "-B", env.backup_dir, par2_path])
+        assert verify_result.returncode != 0, (
+            f"Expected par2 verify to fail after corruption ({slice_par2})"
+        )
+        repair_result = runner.run(["par2", "repair", "-B", env.backup_dir, par2_path])
+        assert repair_result.returncode == 0, (
+            f"par2 repair failed for {slice_par2}: {repair_result.stderr}"
+        )
+        verify_result = runner.run(["par2", "verify", "-B", env.backup_dir, par2_path])
+        assert verify_result.returncode == 0, (
+            f"Expected par2 verify to succeed after repair ({slice_par2})"
+        )

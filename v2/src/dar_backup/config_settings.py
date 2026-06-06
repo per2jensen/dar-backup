@@ -18,21 +18,14 @@ class ConfigSettings:
     Parses and holds configuration values from a dar-backup.conf file.
 
     Required fields are defined as dataclass attributes and must be present in the config file.
-    Optional fields can be declared in the OPTIONAL_CONFIG_FIELDS list. If a key is present in the
-    config file, the field is set to its parsed value; otherwise, it defaults to None.
+    Optional fields must be declared as dataclass fields with appropriate defaults AND listed in
+    OPTIONAL_CONFIG_FIELDS, which maps config-file keys to field names and supplies the fallback
+    value when the key is absent from the config file.  Both places must be kept in sync:
+    - The dataclass field is the source of truth for type annotations and IDE visibility.
+    - OPTIONAL_CONFIG_FIELDS drives the config-file-to-attribute mapping at runtime.
 
-    The __repr__ method will only include optional fields if their value is not None,
+    The __repr__ method will only include fields whose value is not None,
     keeping debug output clean and focused on explicitly configured values.
-
-    OPTIONAL_CONFIG_FIELDS = [
-        {
-            "section": "DIRECTORIES",
-            "key": "MANAGER_DB_DIR",
-            "attr": "manager_db_dir",
-            "type": str,
-            "default": None,
-        }
-    ]
     """
 
     config_file: str
@@ -42,7 +35,7 @@ class ConfigSettings:
     min_size_verification_mb: int = field(init=False)
     no_files_verification: int = field(init=False)
     command_timeout_secs: int = field(init=False)
-    command_capture_max_bytes: Optional[int] = field(init=False, default=None)
+    command_capture_max_bytes: Optional[int] = field(init=False, default=102400)  # 100 KiB; matches OPTIONAL_CONFIG_FIELDS default
     backup_dir: str = field(init=False)
     test_restore_dir: str = field(init=False)
     backup_d_dir: str = field(init=False)
@@ -55,12 +48,13 @@ class ConfigSettings:
     par2_ratio_diff: Optional[int] = field(init=False, default=None)
     par2_ratio_incr: Optional[int] = field(init=False, default=None)
     par2_run_verify: Optional[bool] = field(init=False, default=None)
-    logfile_max_bytes: int = field(init=False)
-    logfile_no_count: int = field(init=False)    
-    trace_log_max_bytes: int = field(init=False)
-    trace_log_backup_count: int = field(init=False)
+    logfile_max_bytes: int = field(init=False, default=26214400)  # 25 MB; matches OPTIONAL_CONFIG_FIELDS default
+    logfile_backup_count: int = field(init=False, default=5)      # was logfile_no_count (wrong name, never populated)
+    trace_log_max_bytes: int = field(init=False, default=10485760)  # 10 MB; matches OPTIONAL_CONFIG_FIELDS default
+    trace_log_backup_count: int = field(init=False, default=1)    # matches OPTIONAL_CONFIG_FIELDS default
     dar_backup_discord_webhook_url: Optional[str] = field(init=False, default=None)
     metrics_db_path: Optional[str] = field(init=False, default=None)
+    manager_db_dir: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)

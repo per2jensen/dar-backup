@@ -150,7 +150,7 @@ def test_config_settings_expands_paths_and_defaults(tmp_path, monkeypatch):
     settings = ConfigSettings(str(config_path))
     assert settings.backup_dir == os.path.expandvars("$TEST_BASE/backups")
     assert settings.logfile_location == os.path.expandvars("$TEST_BASE/logs/dar-backup.log")
-    assert settings.manager_db_dir == "~/manager-db"
+    assert settings.manager_db_dir == os.path.expanduser("~/manager-db")  # path expansion now applies to declared fields
     assert settings.par2_ratio_full == 12
     assert settings.logfile_max_bytes == 26214400
     assert settings.command_capture_max_bytes == 102400
@@ -197,8 +197,8 @@ def test_config_settings_repr_omits_none_fields(tmp_path):
     settings = ConfigSettings(str(config_path))
     output = repr(settings)
     assert "config_file=" in output
-    assert "manager_db_dir" not in output
-    assert "par2_dir" not in output
+    assert "manager_db_dir='/tmp/db'" in output  # declared field with non-None value appears in repr
+    assert "par2_dir" not in output               # par2_dir is None so still absent
 
 
 def test_config_settings_env_timeout_overrides_config(tmp_path, monkeypatch):

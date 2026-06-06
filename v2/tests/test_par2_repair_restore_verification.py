@@ -119,26 +119,19 @@ def _inject_bitrot(slice_path: str, corrupt_percent: float) -> None:
         fh.write(payload)
 
 
-def _find_par2_file(env: EnvData) -> str:
-    """Return the .par2 index file for the FULL archive."""
-    date = datetime.now().strftime("%Y-%m-%d")
-    name = f"{_BACKUP_DEF}_FULL_{date}.par2"
-    candidates = [
-        os.path.join(env.backup_dir, name),
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    # Also look in any PAR2_DIR if configured
-    all_par2 = [
-        os.path.join(env.backup_dir, f)
-        for f in os.listdir(env.backup_dir)
-        if f.startswith(f"{_BACKUP_DEF}_FULL_") and f.endswith(".par2")
-        and ".vol" not in f
-    ]
-    if all_par2:
-        return all_par2[0]
-    raise FileNotFoundError("No .par2 index file found for the FULL archive")
+def _find_slice_par2_files(backup_dir: str, archive_base: str) -> list:
+    """Return sorted list of per-slice .par2 index paths for archive_base."""
+    import re as _re
+    pattern = _re.compile(rf"{_re.escape(archive_base)}\.([0-9]+)\.dar\.par2$")
+    slices = sorted(
+        [f for f in os.listdir(backup_dir) if pattern.match(f)],
+        key=lambda x: int(pattern.match(x).group(1))
+    )
+    if not slices:
+        raise FileNotFoundError(
+            f"No per-slice .par2 index files found for {archive_base} in {backup_dir}"
+        )
+    return [os.path.join(backup_dir, f) for f in slices]
 
 
 # ---------------------------------------------------------------------------
@@ -163,35 +156,38 @@ def test_par2_repair_then_extract_matches_source(
     _run_full_backup(env, runner)
 
     slice_path = _archive_slice_path(env)
-    archive_base = _archive_base(env)
-    par2_file = _find_par2_file(env)
+    archive_base_path = _archive_base(env)
+    archive_base_name = os.path.basename(archive_base_path)
+    par2_files = _find_slice_par2_files(env.backup_dir, archive_base_name)
 
     env.logger.info("Archive slice: %s (%d bytes)", slice_path, os.path.getsize(slice_path))
-    env.logger.info("PAR2 index: %s", par2_file)
+    env.logger.info("PAR2 index files: %s", par2_files)
 
     # --- Step 1: inject corruption (3% — well within 5% default redundancy)
     _inject_bitrot(slice_path, corrupt_percent=3.0)
     env.logger.info("Injected ~3%% bitrot into %s", slice_path)
 
     # --- Step 2: dar -t must detect corruption
-    check_before = runner.run(["dar", "-t", archive_base, "-N", "-Q"])
+    check_before = runner.run(["dar", "-t", archive_base_path, "-N", "-Q"])
     assert check_before.returncode != 0, (
         "dar -t did not detect corruption after bitrot injection"
     )
     env.logger.info("dar -t correctly detected corruption (rc=%d)", check_before.returncode)
 
-    # --- Step 3: par2 repair
-    repair = runner.run(
-        ["par2", "repair", "-B", env.backup_dir, "-q", par2_file],
-        timeout=120,
-    )
-    assert repair.returncode == 0, (
-        f"par2 repair failed (rc={repair.returncode}):\n{repair.stderr}"
-    )
+    # --- Step 3: par2 repair — one invocation per slice
+    for par2_file in par2_files:
+        repair = runner.run(
+            ["par2", "repair", "-B", env.backup_dir, "-q", par2_file],
+            timeout=120,
+        )
+        assert repair.returncode == 0, (
+            f"par2 repair failed for {os.path.basename(par2_file)} "
+            f"(rc={repair.returncode}):\n{repair.stderr}"
+        )
     env.logger.info("par2 repaired the archive")
 
     # --- Step 4: dar -t must pass after repair
-    check_after = runner.run(["dar", "-t", archive_base, "-N", "-Q"])
+    check_after = runner.run(["dar", "-t", archive_base_path, "-N", "-Q"])
     assert check_after.returncode == 0, (
         f"dar -t still fails after par2 repair (rc={check_after.returncode}):\n"
         f"{check_after.stderr}"
@@ -203,7 +199,7 @@ def test_par2_repair_then_extract_matches_source(
     os.makedirs(extract_dir, exist_ok=True)
 
     extract = runner.run(
-        ["dar", "-x", archive_base, "-R", extract_dir, "-Q", "-N",
+        ["dar", "-x", archive_base_path, "-R", extract_dir, "-Q", "-N",
          "-B", env.dar_rc, "restore-options"],
         timeout=120,
     )
@@ -245,17 +241,19 @@ def test_par2_repair_does_not_produce_truncated_files(
     _run_full_backup(env, runner)
 
     slice_path = _archive_slice_path(env)
-    archive_base = _archive_base(env)
-    par2_file = _find_par2_file(env)
+    archive_base_path = _archive_base(env)
+    archive_base_name = os.path.basename(archive_base_path)
+    par2_files = _find_slice_par2_files(env.backup_dir, archive_base_name)
 
     _inject_bitrot(slice_path, corrupt_percent=2.5)
 
-    runner.run(["par2", "repair", "-B", env.backup_dir, "-q", par2_file], timeout=120)
+    for par2_file in par2_files:
+        runner.run(["par2", "repair", "-B", env.backup_dir, "-q", par2_file], timeout=120)
 
     extract_dir = os.path.join(env.test_dir, "size_check_extract")
     os.makedirs(extract_dir, exist_ok=True)
     runner.run(
-        ["dar", "-x", archive_base, "-R", extract_dir, "-Q", "-N",
+        ["dar", "-x", archive_base_path, "-R", extract_dir, "-Q", "-N",
          "-B", env.dar_rc, "restore-options"],
         timeout=120,
     )

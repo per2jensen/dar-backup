@@ -906,7 +906,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
         raise RuntimeError(f"Unexpected error listing backed up files from DAR archive: '{backup_name}'") from e
 
 
-def list_contents(backup_name, backup_dir, selection=None):
+def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int] = None):
     """
     Lists the contents of a backup.
 
@@ -914,6 +914,7 @@ def list_contents(backup_name, backup_dir, selection=None):
         backup_name (str): The name of the backup.
         backup_dir (str): The directory where the backup is located.
         selection (str, optional): The selection criteria for listing specific contents. Defaults to None.
+        timeout (int, optional): Seconds before the dar process is killed. None means no timeout.
 
     Returns:
         None
@@ -924,10 +925,17 @@ def list_contents(backup_name, backup_dir, selection=None):
         command = ['dar', '-l', backup_path, '--noconf',  '-am', '-as', '-Q']
         if selection:
             selection_criteria = shlex.split(selection)
+            # Issue 5: reject tokens containing shell metacharacters.  shell=False means
+            # there is no shell injection risk per se, but keeping this consistent with
+            # the sanitize_cmd() check used everywhere else via CommandRunner is prudent.
+            from dar_backup.command_runner import is_safe_arg
+            for token in selection_criteria:
+                if not is_safe_arg(token):
+                    raise ValueError(f"Unsafe token in --selection argument: {token!r}")
             command.extend(selection_criteria)
         if runner is not None and getattr(runner, "_is_mock_object", False):
             process = runner.run(command)
-            stdout,stderr = process.stdout, process.stderr
+            stdout, stderr = process.stdout, process.stderr
             if process.returncode != 0:
                 (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
                 raise RuntimeError(str(process))
@@ -935,7 +943,7 @@ def list_contents(backup_name, backup_dir, selection=None):
                 if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
                     print(line)
         else:
-            stderr_lines: List[str] = []
+            stderr_lines: List[bytes] = []   # Issue 2: bytes, not str — process runs text=False
             stderr_bytes = 0
             cap = None
             if runner is not None:
@@ -959,6 +967,7 @@ def list_contents(backup_name, backup_dir, selection=None):
                 log_file.write(header)
                 log_file.flush()
 
+            (logger or get_logger()).debug(f"list_contents: timeout={timeout}s for '{backup_name}'")
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -994,37 +1003,60 @@ def list_contents(backup_name, backup_dir, selection=None):
             stderr_thread = threading.Thread(target=read_stderr)
             stderr_thread.start()
 
-            if process.stdout is not None:
-                buffer = b""
-                while True:
-                    chunk = process.stdout.read(1024)
-                    if not chunk:
-                        break
-                    if log_file:
-                        with log_lock:
-                            log_file.write(chunk)
-                    buffer += chunk
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        if b"[--- REMOVED ENTRY ----]" in line or b"[Saved]" in line:
-                            print(line.decode("utf-8", errors="replace"))
-                process.stdout.close()
+            # Issue 3: use try/finally so log_file is always closed, even if an
+            # exception is raised inside the stdout-reading loop.
+            try:
+                if process.stdout is not None:
+                    # Issue 1: carry only the incomplete trailing fragment between
+                    # chunks; never accumulate the full output in memory.
+                    partial = b""
+                    while True:
+                        chunk = process.stdout.read(1024)
+                        if not chunk:
+                            # flush any final line that had no trailing newline
+                            if partial:
+                                if log_file:
+                                    with log_lock:
+                                        log_file.write(partial + b"\n")
+                                if b"[--- REMOVED ENTRY ----]" in partial or b"[Saved]" in partial:
+                                    print(partial.decode("utf-8", errors="replace"))
+                            break
+                        if log_file:
+                            with log_lock:
+                                log_file.write(chunk)
+                        partial += chunk
+                        while b"\n" in partial:
+                            line, partial = partial.split(b"\n", 1)
+                            if b"[--- REMOVED ENTRY ----]" in line or b"[Saved]" in line:
+                                print(line.decode("utf-8", errors="replace"))
+                    process.stdout.close()
 
-            process.wait()
-            stderr_thread.join()
-            if log_file:
-                log_file.close()
+                # Issue 4: honour the timeout so a hung dar does not block forever.
+                try:
+                    process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stderr_thread.join()
+                    raise RuntimeError(
+                        f"list_contents timed out after {timeout}s for '{backup_name}'"
+                    )
+            finally:
+                # Issue 3: guaranteed close regardless of how the block above exits.
+                stderr_thread.join()
+                if log_file:
+                    log_file.close()
 
             if process.returncode != 0:
                 (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
-                stderr_text = "".join(stderr_lines)
+                # Issue 2: stderr_lines holds bytes chunks; join as bytes then decode.
+                stderr_text = b"".join(stderr_lines).decode("utf-8", errors="replace")
                 raise RuntimeError(
                     f"Error listing contents of backup: '{backup_name}'"
                     f"\nStderr: {stderr_text}"
                 )
     except subprocess.CalledProcessError as e:
         (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
-        raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e  
+        raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e
     except RuntimeError:
         raise
     except BackupError:
@@ -1038,7 +1070,7 @@ def list_contents(backup_name, backup_dir, selection=None):
                 e,
                 exc_info=True,
             )
-        raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e  
+        raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e
 
 
 
@@ -1778,18 +1810,44 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
     number_of_slices = len(dar_slices)
 
     par2_output_dir = par2_dir or archive_dir
-    par2_path = os.path.join(par2_output_dir, f"{archive_base}.par2")
-    dar_slice_paths = [os.path.join(archive_dir, slice_file) for slice_file in dar_slices]
-    logger.info(f"Generating par2 set for archive: {archive_base}")
-    command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path] + dar_slice_paths
-    process = runner.run(command, timeout=config_settings.command_timeout_secs)
-    if process.returncode != 0:
-        logger.error(f"Error generating par2 files for {archive_base}")
-        raise subprocess.CalledProcessError(process.returncode, command)
 
+    # Run par2 per-slice so that each invocation sees only one ~slice-sized input.
+    # Previously (commit 998906f, Jan 2026) this was changed to pass all slices in
+    # one command, which caused par2 to hold a recovery matrix proportional to the
+    # full archive size in RAM — OOM on large archives.  Per-slice preserves the
+    # -B portability flag: paths stored inside each par2 set are still relative to
+    # archive_dir, so the files remain relocatable across mount points.
+    for counter, slice_file in enumerate(dar_slices, start=1):
+        slice_path = os.path.join(archive_dir, slice_file)
+        par2_path = os.path.join(par2_output_dir, f"{slice_file}.par2")
+        logger.info(f"{counter}/{number_of_slices}: Generating par2 for {slice_file}")
+        if par2_dir:
+            command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
+        else:
+            command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
+        process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        if process.returncode != 0:
+            logger.error(f"Error generating par2 files for {slice_file}")
+            raise subprocess.CalledProcessError(process.returncode, command)
+        logger.info(f"{counter}/{number_of_slices}: Done")
+
+        if par2_config.get("par2_run_verify"):
+            logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
+            verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
+            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+            if verify_process.returncode != 0:
+                logger.error(
+                    "par2 verify failed for slice: %s (returncode=%s)",
+                    slice_file,
+                    verify_process.returncode,
+                )
+                raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
+
+    # One manifest for the whole archive — records all slices and their owning archive.
+    # Written after all slices succeed so a partial run leaves no manifest behind.
     if par2_dir:
         archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
-        manifest_path = f"{par2_path}.manifest.ini"
+        manifest_path = os.path.join(par2_output_dir, f"{archive_base}.par2.manifest.ini")
         _write_par2_manifest(
             manifest_path=manifest_path,
             archive_dir_relative=archive_dir_relative,
@@ -1799,18 +1857,6 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
             dar_version=getattr(args, "dar_version", "unknown")
         )
         logger.info(f"Wrote par2 manifest: {manifest_path}")
-
-    if par2_config.get("par2_run_verify"):
-        logger.info(f"Verifying par2 set for archive: {archive_base}")
-        verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
-        verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
-        if verify_process.returncode != 0:
-            logger.error(
-                "par2 verify failed for archive: %s (returncode=%s)",
-                archive_base,
-                verify_process.returncode,
-            )
-            raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
     return
 
 
@@ -2393,7 +2439,7 @@ def main():
             results.extend(perform_backup(args, config_settings, "INCR", stats, run_id=run_id, prereq_status=prereq_status))
             logger.debug(f"results from perform_backup(): {results}")
         elif args.list_contents:
-            list_contents(args.list_contents, config_settings.backup_dir, args.selection)
+            list_contents(args.list_contents, config_settings.backup_dir, args.selection, timeout=config_settings.command_timeout_secs)
         elif args.restore:
             logger.debug(f"Restoring {args.restore} to {restore_dir}")
             if args.preserve_ownership:

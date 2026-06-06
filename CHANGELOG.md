@@ -3,6 +3,15 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.7 - 2026-06-06
+
+### BUXFIX
+
+- OOM tracked down to a bad code change in January 2026. Now par2 files are (again) performed per
+  dar slice which keeps memory usage at reasonably sizes.
+- Excessive memory usage in list_contents() and verify() also fixed.
+- `large_scale_test.sh` to run real world FULL and DIFF work loads added to v2/scripts/
+
 ## v2-1.1.6 - 2026-06-05
 
 - Config range validation with accepted ranges. Consult the [v2/Changelog.md](v2/Changelog.md) file for details

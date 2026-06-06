@@ -7,6 +7,7 @@ dar passes again.
 """
 
 import os
+import re
 import random
 import sys
 
@@ -135,8 +136,8 @@ def check_bitrot_recovery(env: EnvData, runner: CommandRunner) -> None:
         AssertionError: If any of the three steps produces unexpected results.
     """
     date = datetime.now().strftime("%Y-%m-%d")
-    basename_path = os.path.join(env.backup_dir, f"example_FULL_{date}")
-    par2_path = os.path.join(env.backup_dir, f"example_FULL_{date}.par2")
+    archive_base = f"example_FULL_{date}"
+    basename_path = os.path.join(env.backup_dir, archive_base)
 
     # Step 1 — dar must detect corruption
     result: CommandResult = runner.run(["dar", "-t", basename_path, "-N", "-Q"])
@@ -150,11 +151,22 @@ def check_bitrot_recovery(env: EnvData, runner: CommandRunner) -> None:
     ), f"Expected a corruption keyword in dar stderr:\n{result.stderr}"
     env.logger.info("dar correctly detected archive corruption.")
 
-    # Step 2 — par2 repair
-    result = runner.run(["par2", "repair", "-B", env.backup_dir, "-q", par2_path])
-    env.logger.info("par2 repair stdout:\n%s", result.stdout)
-    env.logger.info("par2 repair stderr:\n%s", result.stderr)
-    assert result.returncode == 0, f"par2 failed to repair the archive (rc={result.returncode})"
+    # Step 2 — par2 repair, per-slice.
+    # generate_par2_files now creates one par2 set per slice, named {slice}.par2.
+    # Repair each slice individually; the test archive is typically single-slice.
+    slice_pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
+    dar_slices = sorted(
+        [f for f in os.listdir(env.backup_dir) if slice_pattern.match(f)],
+        key=lambda x: int(slice_pattern.match(x).group(1))
+    )
+    assert dar_slices, f"No dar slices found for {archive_base} in {env.backup_dir}"
+    for slice_file in dar_slices:
+        par2_path = os.path.join(env.backup_dir, f"{slice_file}.par2")
+        env.logger.info("Repairing slice %s with %s", slice_file, par2_path)
+        result = runner.run(["par2", "repair", "-B", env.backup_dir, "-q", par2_path])
+        env.logger.info("par2 repair stdout:\n%s", result.stdout)
+        env.logger.info("par2 repair stderr:\n%s", result.stderr)
+        assert result.returncode == 0, f"par2 failed to repair {slice_file} (rc={result.returncode})"
     env.logger.info("par2 repaired the archive successfully.")
 
     # Step 3 — dar must now pass

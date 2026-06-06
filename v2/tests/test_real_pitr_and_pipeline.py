@@ -284,8 +284,13 @@ def test_full_backup_verify_runs_before_par2_and_both_complete(setup_environment
     )
 
     archive_name = _find_archive_name(env.backup_dir, "FULL", "example")
-    par2_path = os.path.join(env.backup_dir, f"{archive_name}.par2")
-    assert os.path.isfile(par2_path), f"par2 index file not found: {par2_path}"
+    # Per-slice par2: any {archive_name}.N.dar.par2 file confirms par2 ran
+    import re as _re
+    sp = _re.compile(rf"{_re.escape(archive_name)}\.([0-9]+)\.dar\.par2$")
+    slice_par2_files = [f for f in os.listdir(env.backup_dir) if sp.match(f)]
+    assert slice_par2_files, (
+        f"No per-slice par2 index files found for '{archive_name}' — par2 did not run"
+    )
 
     verify_pos = output.find("Archive integrity test passed")
     par2_pos = output.find("Generate par2 redundancy files", verify_pos)

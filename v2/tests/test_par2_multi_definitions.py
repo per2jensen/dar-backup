@@ -290,20 +290,22 @@ def test_par2_multi_definition_repair_flow(setup_environment, env: EnvData) -> N
     for name, cfg in definitions.items():
         archive_base = _find_archive_base(env.backup_dir, name, date)
         slice_path = os.path.join(env.backup_dir, f"{archive_base}.1.dar")
-        par2_index = os.path.join(cfg["par2_dir"], f"{archive_base}.par2")
-
-        # par2 files must be in the per-definition directory
-        assert os.path.exists(par2_index), (
-            f"Expected par2 index in {cfg['par2_dir']}: {par2_index}"
+        # Per-slice par2: index files are named {slice_file}.par2.
+        import re as _re
+        sp = _re.compile(rf"{_re.escape(archive_base)}\.([0-9]+)\.dar\.par2$")
+        slice_par2_files = sorted(
+            [f for f in os.listdir(cfg["par2_dir"]) if sp.match(f)],
+            key=lambda x: int(sp.match(x).group(1))
         )
-        # and NOT in another definition's directory
-        other_dirs = [
-            c["par2_dir"] for n, c in definitions.items() if n != name
-        ]
+        assert slice_par2_files, (
+            f"No per-slice par2 files found in {cfg['par2_dir']} for '{name}'"
+        )
+        # None of them must appear in another definition's directory
+        other_dirs = [c["par2_dir"] for n, c in definitions.items() if n != name]
         for other_dir in other_dirs:
-            cross = os.path.join(other_dir, f"{archive_base}.par2")
-            assert not os.path.exists(cross), (
-                f"par2 index for '{name}' must not appear in '{other_dir}'"
+            cross = [f for f in os.listdir(other_dir) if f.startswith(archive_base)]
+            assert not cross, (
+                f"par2 files for '{name}' must not appear in '{other_dir}': {cross}"
             )
 
         _flip_first_byte(slice_path)
@@ -315,19 +317,16 @@ def test_par2_multi_definition_repair_flow(setup_environment, env: EnvData) -> N
             f"dar -t must fail on the corrupted archive for '{name}'"
         )
 
-        verify = runner.run([
-            "par2", "verify", "-B", env.backup_dir, par2_index
-        ])
-        assert verify.returncode != 0, (
-            f"par2 verify must fail before repair for '{name}'"
-        )
-
-        repair = runner.run([
-            "par2", "repair", "-B", env.backup_dir, par2_index
-        ])
-        assert repair.returncode == 0, (
-            f"par2 repair failed for '{name}': {repair.stderr}"
-        )
+        for slice_par2 in slice_par2_files:
+            par2_path = os.path.join(cfg["par2_dir"], slice_par2)
+            verify = runner.run(["par2", "verify", "-B", env.backup_dir, par2_path])
+            assert verify.returncode != 0, (
+                f"par2 verify must fail before repair for '{name}' ({slice_par2})"
+            )
+            repair = runner.run(["par2", "repair", "-B", env.backup_dir, par2_path])
+            assert repair.returncode == 0, (
+                f"par2 repair failed for '{name}' ({slice_par2}): {repair.stderr}"
+            )
 
         dar_ok = runner.run([
             "dar", "-t", os.path.join(env.backup_dir, archive_base), "-N", "-Q"
@@ -443,8 +442,8 @@ def test_par2_run_verify_triggers_on_creation(setup_environment, env: EnvData) -
 
     stdout = _run_backup(runner, env, "example")
 
-    assert "Verifying par2 set" in stdout, (
-        f"Expected 'Verifying par2 set' in dar-backup output when "
+    assert "Verifying par2 for" in stdout, (
+        f"Expected 'Verifying par2 for' in dar-backup output when "
         f"PAR2_RUN_VERIFY=True:\n{stdout}"
     )
 
@@ -629,22 +628,33 @@ def test_par2_definition_isolation(setup_environment, env: EnvData) -> None:
     # Corrupt alpha's archive
     _flip_first_byte(os.path.join(env.backup_dir, f"{alpha_base}.1.dar"))
 
-    alpha_par2 = os.path.join(alpha_par2_dir, f"{alpha_base}.par2")
-    beta_par2 = os.path.join(beta_par2_dir, f"{beta_base}.par2")
+    import re as _re
 
-    alpha_verify = runner.run([
-        "par2", "verify", "-B", env.backup_dir, alpha_par2
-    ])
-    assert alpha_verify.returncode != 0, (
-        "par2 verify must fail for the corrupted alpha archive"
-    )
+    def _slice_par2s(par2_dir, archive_base):
+        sp = _re.compile(rf"{_re.escape(archive_base)}\.([0-9]+)\.dar\.par2$")
+        return sorted(
+            [os.path.join(par2_dir, f) for f in os.listdir(par2_dir) if sp.match(f)],
+            key=lambda x: int(_re.search(r"\.(\d+)\.dar\.par2$", x).group(1))
+        )
 
-    beta_verify = runner.run([
-        "par2", "verify", "-B", env.backup_dir, beta_par2
-    ])
-    assert beta_verify.returncode == 0, (
-        f"par2 verify must still pass for the untouched beta archive: {beta_verify.stderr}"
-    )
+    alpha_par2_files = _slice_par2s(alpha_par2_dir, alpha_base)
+    beta_par2_files  = _slice_par2s(beta_par2_dir,  beta_base)
+
+    assert alpha_par2_files, f"No par2 files for alpha in {alpha_par2_dir}"
+    assert beta_par2_files,  f"No par2 files for beta in {beta_par2_dir}"
+
+    for p in alpha_par2_files:
+        alpha_verify = runner.run(["par2", "verify", "-B", env.backup_dir, p])
+        assert alpha_verify.returncode != 0, (
+            f"par2 verify must fail for the corrupted alpha archive ({os.path.basename(p)})"
+        )
+
+    for p in beta_par2_files:
+        beta_verify = runner.run(["par2", "verify", "-B", env.backup_dir, p])
+        assert beta_verify.returncode == 0, (
+            f"par2 verify must still pass for the untouched beta archive "
+            f"({os.path.basename(p)}): {beta_verify.stderr}"
+        )
 
 
 def test_par2_ratio_size_ordering(setup_environment, env: EnvData) -> None:

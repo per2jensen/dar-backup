@@ -1223,14 +1223,18 @@ def test_generate_par2_files_success_invokes_par2(tmp_path):
 
         db.generate_par2_files(backup_file, cfg, args)
 
-        # Per-archive mode issues a single par2 create call with all slices
-        assert mock_runner.run.call_count == 1
-        called_cmd = mock_runner.run.call_args_list[0][0][0]
-        called_cmd_str = " ".join(map(str, called_cmd))
-        # Command should include -r10 and both slice paths
-        assert "-r10" in called_cmd_str
-        assert "example_FULL_2025-01-01.1.dar" in called_cmd_str
-        assert "example_FULL_2025-01-01.2.dar" in called_cmd_str
+        # Per-slice mode issues one par2 create call per slice
+        assert mock_runner.run.call_count == 2
+        cmds = [" ".join(map(str, call[0][0])) for call in mock_runner.run.call_args_list]
+        # Each command must include -r10 and exactly its own slice
+        assert all("-r10" in cmd for cmd in cmds)
+        assert any("example_FULL_2025-01-01.1.dar" in cmd for cmd in cmds)
+        assert any("example_FULL_2025-01-01.2.dar" in cmd for cmd in cmds)
+        # Slices must not be mixed into each other's command
+        assert not any(
+            "example_FULL_2025-01-01.1.dar" in cmd and "example_FULL_2025-01-01.2.dar" in cmd
+            for cmd in cmds
+        )
 
 
 def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):
