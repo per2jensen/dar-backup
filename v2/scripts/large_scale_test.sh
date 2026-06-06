@@ -82,6 +82,7 @@ KEEP=0
 TIMEOUT=86400
 DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
+SCRIPT_VERSION="2"          # increment when the script changes
 # diff-primer lives outside the run dir so it persists across runs
 DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
 DAR_BACKUP_VERSION=""
@@ -179,7 +180,7 @@ preflight() {
     # Capture version and commit for the summary
     DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
     GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-    DAR_VERSION=$(dar --version 2>&1 | head -1 || echo "unknown")
+    DAR_VERSION=$(dar --version 2>&1 | grep "dar version" | head -1 || echo "unknown")
     PAR2_VERSION=$(par2 --version 2>/dev/null | head -1 || echo "unknown")
     PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
     OS_DESC=$(lsb_release -d 2>/dev/null | awk -F':	' '{print $2}' || echo "unknown")
@@ -603,6 +604,7 @@ trap cleanup EXIT
 # ════════════════════════════════════════════════════════════════════════════════
 
 banner "dar-backup large-scale test  ${DATESTAMP}"
+info "Script version: ${SCRIPT_VERSION}"
 info "Base dir:   ${BASE_DIR}"
 info "Slice size: ${SLICE_SIZE}  (used only if -s absent from definition)"
 info "PAR2 ratio: ${PAR2_RATIO}%"
@@ -679,6 +681,7 @@ done
 banner "Summary"
 {
     echo "dar-backup large-scale test"
+    echo "Script version: ${SCRIPT_VERSION}"
     echo "Run:           ${DATESTAMP}"
     echo "dar-backup:    ${DAR_BACKUP_VERSION:-unknown}"
     echo "git commit:    ${GIT_COMMIT:-unknown}"
