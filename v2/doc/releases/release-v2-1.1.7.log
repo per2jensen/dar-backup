@@ -1246,3 +1246,7 @@ Added release annotation: 2026-06-06 → Rel. 1.1.7
  1 file changed, 22 insertions(+), 18 deletions(-)
 [1;32m✅ Clone annotation committed[0m
 [1;32mCommitting release log...[0m
+[main d73a91d] post-release: dar-backup 1.1.7 — release log
+ 1 file changed, 1248 insertions(+)
+ create mode 100644 v2/doc/releases/release-v2-1.1.7.log
+[1;32m✅ Release log committed: doc/releases/release-v2-1.1.7.log[0m
