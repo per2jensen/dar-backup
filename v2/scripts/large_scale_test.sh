@@ -82,7 +82,7 @@ KEEP=0
 TIMEOUT=86400
 DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
-SCRIPT_VERSION="2"          # increment when the script changes
+SCRIPT_VERSION="3"          # increment when the script changes
 # diff-primer lives outside the run dir so it persists across runs
 DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
 DAR_BACKUP_VERSION=""
@@ -180,7 +180,7 @@ preflight() {
     # Capture version and commit for the summary
     DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
     GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-    DAR_VERSION=$(dar --version 2>&1 | grep "dar version" | head -1 || echo "unknown")
+    DAR_VERSION=$(dar --version 2>&1 | grep "dar version" | head -1 | sed 's/^ *//' || echo "unknown")
     PAR2_VERSION=$(par2 --version 2>/dev/null | head -1 || echo "unknown")
     PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
     OS_DESC=$(lsb_release -d 2>/dev/null | awk -F':	' '{print $2}' || echo "unknown")
@@ -337,60 +337,47 @@ verify_diff_contents() {
 
     banner "Phase 2b — DIFF contents verification"
 
-    # Extract saved filenames from FULL archive that belong to the primer dir
+    # Count primer files saved in FULL (all new on first backup)
     info "Listing saved primer files in FULL archive..."
-    local full_primer_files
-    full_primer_files=$(dar -l "${BACKUP_DIR}/${full_base}" --noconf -am -as -Q 2>/dev/null \
-        | grep "\[Saved\]" \
-        | grep "${primer_rel}" \
-        | grep -oP '(?<=\] ).*' \
-        | sort) || true
-
     local full_count
-    full_count=$(echo "$full_primer_files" | grep -c . || echo 0)
+    full_count=$(dar -l "${BACKUP_DIR}/${full_base}" --noconf -am -as -Q 2>/dev/null \
+        | grep "\[Saved\]" \
+        | grep -c "${primer_rel}" 2>/dev/null) || full_count=0
     info "FULL archive contains ${full_count} primer file(s)"
 
-    # Extract saved filenames from DIFF archive that belong to the primer dir
+    # Get all saved primer lines from the DIFF archive
     info "Listing saved primer files in DIFF archive..."
-    local diff_primer_files
-    diff_primer_files=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null \
+    local diff_saved
+    diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null \
         | grep "\[Saved\]" \
-        | grep "${primer_rel}" \
-        | grep -oP '(?<=\] ).*' \
-        | sort) || true
+        | grep "${primer_rel}" || true)
 
     local diff_count
-    diff_count=$(echo "$diff_primer_files" | grep -c . || echo 0)
+    diff_count=$(echo "$diff_saved" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
     info "DIFF archive contains ${diff_count} primer file(s)"
 
-    # Modified files: present in both FULL and DIFF
+    # Modified: saved in DIFF, not the new diff_new_ file
     local modified_count
-    modified_count=$(comm -12 \
-        <(echo "$full_primer_files") \
-        <(echo "$diff_primer_files") \
-        | grep -c . || echo 0)
+    modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
 
-    # New files: present in DIFF but not in FULL
+    # New: the diff_new_* file added by update_diff_primer
     local new_count
-    new_count=$(comm -23 \
-        <(echo "$diff_primer_files") \
-        <(echo "$full_primer_files") \
-        | grep -c . || echo 0)
+    new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
 
-    info "Modified primer files (in FULL + DIFF):  ${modified_count}"
-    info "New primer files     (in DIFF only):     ${new_count}"
+    info "Modified primer files (refreshed in DIFF): ${modified_count}"
+    info "New primer files      (added before DIFF):  ${new_count}"
 
     # Expected: 115 modified (100 small + 10 medium + 5 large), 1 new (diff_new_*)
     local expected_modified=115
     local expected_new=1
 
-    if [[ "$modified_count" -ge "$expected_modified" ]]; then
+    if [[ "${modified_count}" -ge "${expected_modified}" ]]; then
         pass "Modified file count OK: ${modified_count} >= ${expected_modified}"
     else
         fail "Modified file count LOW: ${modified_count} < ${expected_modified} — some primer files may be missing from DIFF"
     fi
 
-    if [[ "$new_count" -ge "$expected_new" ]]; then
+    if [[ "${new_count}" -ge "${expected_new}" ]]; then
         pass "New file count OK: ${new_count} >= ${expected_new}"
     else
         fail "New file count LOW: ${new_count} < ${expected_new} — diff_new_* file missing from DIFF"
@@ -549,6 +536,7 @@ count_slices() {
 run_backup() {
     local flag="$1"
     local label="$2"
+    local elapsed_file; elapsed_file=$(mktemp)
     local t0; t0=$(date +%s)
     info "Starting ${label} backup..."
     if dar-backup "$flag" -d "$DEFINITION_NAME" \
@@ -558,12 +546,14 @@ run_backup() {
             >> "$LOGFILE" 2>&1; then
         local secs=$(( $(date +%s) - t0 ))
         pass "${label} backup completed in ${secs}s"
-        echo "$secs"
+        echo "$secs" > "$elapsed_file"
     else
         local secs=$(( $(date +%s) - t0 ))
         fail "${label} backup failed after ${secs}s"
-        echo "$secs"
+        echo "$secs" > "$elapsed_file"
     fi
+    cat "$elapsed_file"
+    rm -f "$elapsed_file"
 }
 
 # ── initialise manager DB ─────────────────────────────────────────────────────
