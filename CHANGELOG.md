@@ -5,7 +5,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 ## v2-1.1.7 - 2026-06-06
 
-### BUXFIX
+### BUGFIX
 
 - OOM tracked down to a bad code change in January 2026. Now par2 files are (again) performed per
   dar slice which keeps memory usage at reasonably sizes.

@@ -84,6 +84,14 @@ DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
 # diff-primer lives outside the run dir so it persists across runs
 DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
+DAR_BACKUP_VERSION=""
+GIT_COMMIT=""
+REPO_DIR=""
+DAR_VERSION=""
+PAR2_VERSION=""
+PYTHON_VERSION=""
+OS_DESC=""
+KERNEL=""
 
 # ── colours ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -124,6 +132,69 @@ done
     exit 1
 }
 
+# ── preflight checks ──────────────────────────────────────────────────────────
+preflight() {
+    local errors=0
+
+    # 1. Must be run from the v2/ directory
+    if [[ ! -f "pyproject.toml" || ! -d "src/dar_backup" ]]; then
+        echo "ERROR: must be run from the v2/ directory (pyproject.toml and src/dar_backup not found)"
+        errors=$((errors+1))
+    fi
+
+    # 2. Must be run inside the project venv
+    if [[ -z "${VIRTUAL_ENV:-}" || "${VIRTUAL_ENV}" != "$(realpath ./venv 2>/dev/null)" ]]; then
+        echo "ERROR: project venv not active — run: source ./venv/bin/activate"
+        errors=$((errors+1))
+    fi
+
+    # 3. dar-backup must be installed in editable mode (pip install -e .)
+    local editable_loc
+    editable_loc=$(pip show dar-backup 2>/dev/null \
+        | grep "Editable project location" | awk '{print $NF}')
+    if [[ -z "$editable_loc" ]]; then
+        echo "ERROR: dar-backup is not installed in editable mode"
+        echo "       Run: pip install -e .[dev]  (see build.sh)"
+        errors=$((errors+1))
+    else
+        echo "  INFO  Editable install: $editable_loc"
+        REPO_DIR="$editable_loc"
+    fi
+
+    # 4. Git repo must be clean — no uncommitted changes
+    if [[ -d "${REPO_DIR:-}/.git" ]] || git -C "${REPO_DIR:-.}" rev-parse --git-dir &>/dev/null; then
+        local dirty
+        dirty=$(git -C "${REPO_DIR:-.}" status --porcelain 2>/dev/null)
+        if [[ -n "$dirty" ]]; then
+            echo "ERROR: git repo has uncommitted changes — commit or stash before running:"
+            echo "$dirty" | sed "s/^/         /"
+            errors=$((errors+1))
+        fi
+    else
+        echo "WARNING: could not find git repo — skipping clean-commit check"
+    fi
+
+    [[ $errors -gt 0 ]] && { echo "Aborting: fix the errors above before running the test."; exit 1; }
+
+    # Capture version and commit for the summary
+    DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
+    GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    DAR_VERSION=$(dar --version 2>/dev/null | head -1 || echo "unknown")
+    PAR2_VERSION=$(par2 --version 2>/dev/null | head -1 || echo "unknown")
+    PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
+    OS_DESC=$(lsb_release -d 2>/dev/null | awk -F':	' '{print $2}' || echo "unknown")
+    KERNEL=$(uname -r)
+    echo "  INFO  dar-backup version: ${DAR_BACKUP_VERSION}"
+    echo "  INFO  git commit:         ${GIT_COMMIT}"
+    echo "  INFO  dar version:        ${DAR_VERSION}"
+    echo "  INFO  par2 version:       ${PAR2_VERSION}"
+    echo "  INFO  python version:     ${PYTHON_VERSION}"
+    echo "  INFO  OS:                 ${OS_DESC}"
+    echo "  INFO  kernel:             ${KERNEL}"
+}
+
+preflight
+
 # ── directory layout ─────────────────────────────────────────────────────────
 RUN_DIR="${BASE_DIR}/runs/${DATESTAMP}"
 BACKUP_DIR="${RUN_DIR}/backups"
@@ -148,7 +219,7 @@ start_rss_monitor() {
     (
         while true; do
             for name in dar-backup dar par2; do
-                pids=$(pgrep -f "$name" 2>/dev/null || true)
+                pids=$(pgrep -x "$name" 2>/dev/null || true)
                 for pid in $pids; do
                     rss=$(awk '/VmRSS/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
                     vsz=$(awk '/VmPeak/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
@@ -411,7 +482,11 @@ check_par2_verify() {
     local archive_base="$1"
     local label="$2"
     local all_ok=1
-    for par2_file in "${PAR2_DIR}/${archive_base}".*.dar.par2; do
+    # Sort by slice number numerically to get 1,2,...,10,11 not 1,10,11,2,...
+    local slice_count
+    slice_count=$(count_slices "$archive_base")
+    for i in $(seq 1 "$slice_count"); do
+        local par2_file="${PAR2_DIR}/${archive_base}.${i}.dar.par2"
         [[ -f "$par2_file" ]] || continue
         if par2 verify -B "$BACKUP_DIR" -q "$par2_file" >> "$LOGFILE" 2>&1; then
             info "par2 verify OK: $(basename "$par2_file")"
@@ -554,8 +629,8 @@ if [[ -z "$FULL_BASE" ]]; then
 fi
 
 FULL_SLICES=$(count_slices "$FULL_BASE")
-FULL_SIZE_HUMAN=$(du -sh "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null \
-    | awk '{s+=$1} END{printf "%.0f GB", s/1024/1024}' || echo "?")
+FULL_SIZE_HUMAN=$(du -sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null \
+    | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}' || echo "?")
 
 info "Archive:    ${FULL_BASE}"
 info "Slices:     ${FULL_SLICES}"
@@ -605,6 +680,13 @@ banner "Summary"
 {
     echo "dar-backup large-scale test"
     echo "Run:           ${DATESTAMP}"
+    echo "dar-backup:    ${DAR_BACKUP_VERSION:-unknown}"
+    echo "git commit:    ${GIT_COMMIT:-unknown}"
+    echo "dar:           ${DAR_VERSION:-unknown}"
+    echo "par2:          ${PAR2_VERSION:-unknown}"
+    echo "python:        ${PYTHON_VERSION:-unknown}"
+    echo "OS:            ${OS_DESC:-unknown}"
+    echo "kernel:        ${KERNEL:-unknown}"
     echo "Slice size:    ${SLICE_SIZE}"
     echo "PAR2 ratio:    ${PAR2_RATIO}%"
     echo ""
