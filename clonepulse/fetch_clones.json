@@ -43,10 +43,12 @@
     {
       "date": "2026-05-06",
       "label": "Daily max: 144"
+    },
+    {
+      "date": "2026-06-06",
+      "label": "Rel. 1.1.7"
     }
   ],
-  "total_clones": 11395,
-  "unique_clones": 5961,
   "daily": [
     {
       "count": 30,
@@ -1949,74 +1951,76 @@
       "uniques": 13
     },
     {
-      "timestamp": "2026-05-22T00:00:00Z",
       "count": 17,
+      "timestamp": "2026-05-22T00:00:00Z",
       "uniques": 9
     },
     {
-      "timestamp": "2026-05-23T00:00:00Z",
       "count": 67,
+      "timestamp": "2026-05-23T00:00:00Z",
       "uniques": 28
     },
     {
-      "timestamp": "2026-05-24T00:00:00Z",
       "count": 45,
+      "timestamp": "2026-05-24T00:00:00Z",
       "uniques": 23
     },
     {
-      "timestamp": "2026-05-25T00:00:00Z",
       "count": 25,
+      "timestamp": "2026-05-25T00:00:00Z",
       "uniques": 14
     },
     {
-      "timestamp": "2026-05-26T00:00:00Z",
       "count": 52,
+      "timestamp": "2026-05-26T00:00:00Z",
       "uniques": 22
     },
     {
-      "timestamp": "2026-05-27T00:00:00Z",
       "count": 28,
+      "timestamp": "2026-05-27T00:00:00Z",
       "uniques": 10
     },
     {
-      "timestamp": "2026-05-28T00:00:00Z",
       "count": 17,
+      "timestamp": "2026-05-28T00:00:00Z",
       "uniques": 11
     },
     {
-      "timestamp": "2026-05-29T00:00:00Z",
       "count": 22,
+      "timestamp": "2026-05-29T00:00:00Z",
       "uniques": 11
     },
     {
-      "timestamp": "2026-05-30T00:00:00Z",
       "count": 36,
+      "timestamp": "2026-05-30T00:00:00Z",
       "uniques": 24
     },
     {
-      "timestamp": "2026-05-31T00:00:00Z",
       "count": 41,
+      "timestamp": "2026-05-31T00:00:00Z",
       "uniques": 23
     },
     {
-      "timestamp": "2026-06-01T00:00:00Z",
       "count": 11,
+      "timestamp": "2026-06-01T00:00:00Z",
       "uniques": 9
     },
     {
-      "timestamp": "2026-06-02T00:00:00Z",
       "count": 33,
+      "timestamp": "2026-06-02T00:00:00Z",
       "uniques": 18
     },
     {
-      "timestamp": "2026-06-03T00:00:00Z",
       "count": 65,
+      "timestamp": "2026-06-03T00:00:00Z",
       "uniques": 36
     },
     {
-      "timestamp": "2026-06-04T00:00:00Z",
       "count": 107,
+      "timestamp": "2026-06-04T00:00:00Z",
       "uniques": 44
     }
-  ]
+  ],
+  "total_clones": 11395,
+  "unique_clones": 5961
 }
