@@ -322,6 +322,14 @@ else
     # - pytest_report.sh must have: set -euo pipefail
     scripts/pytest_report.sh full || { red "❌ Test suite failed; aborting release"; exit 1; }
 
+    # Gzip the JSON report — they grow ~20-60 MB per release but compress 20:1.
+    # The .txt and __collect.txt stay uncompressed for easy reading.
+    for json_report in doc/test-report/dar-backup-${VERSION}__pytest-full__*.json; do
+        [[ -f "$json_report" ]] || continue
+        gzip -f "$json_report"
+        green "Compressed test report: ${json_report}.gz (was $(basename "$json_report"))"
+    done
+
     REPORT_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- "${REPORT_PREFIX}")"
     RELEASE_META_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- \
         "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" 2>/dev/null || true)"
