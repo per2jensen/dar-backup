@@ -12,14 +12,14 @@
 [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png)  <sub>🎯 Stats powered by [ClonePulse](https://github.com/per2jensen/clonepulse)</sub>
 
 `dar-backup` is for Linux users who want **serious, long-term backups** — not just file copies.
-It automates FULL / DIFF / INCR archive cycles built on two exceptional open-source tools:
+It automates FULL / DIFF / INCR as independent archive types built on two exceptional open-source tools:
 
 - **[dar](https://github.com/Edrusb/DAR)** (Disk ARchiver) — a powerful, actively maintained
   archiver by Denis Corbin that handles differential and incremental archives, built-in
   verification, catalogue databases, and precise file selection. `dar` is the engine that makes
   long-term archival practical. It deserves to be far better known than it is.
 - **[par2cmdline](https://github.com/Parchive/par2cmdline)** — Parchive's
-  redundancy format can detect and repair corruption in any archive, as long as the .par2 files travels with the
+  redundancy format can detect and repair corruption in any archive, as long as the .par2 files travel with the
   dar archives. A quiet but remarkable piece of technology.
 
 `dar-backup` wires these two tools together into a fully automated backup system, with every
@@ -38,11 +38,10 @@ archive verified and a random set (configurable) of files restored to a test dir
 
 ✅ You want a transparent, no-lock-in tool built on proven Unix components
 
-✗ You need a GUI, Windows support, or just a quick incremental sync — `rsync` or `restic` may suit you better
+✗ You need a GUI or Windows support
 
 ✗ You need **multiple backups per day** — dar-backup is designed around one backup run per day
-   per definition (one FULL, one DIFF, one INCR). If you need hourly or continuous backups,
-   look at `restic` or `BorgBackup` instead
+   per definition (one FULL, one DIFF, one INCR)
 
 ---
 
@@ -76,42 +75,81 @@ Version **1.1.7** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGEL
 
 ---
 
-## Why not just use restic / BorgBackup / rsync?
+## A personal digital preservation system
 
-Those are excellent tools. `dar-backup` fills a different niche:
+Most backup tools are designed to survive hardware failure. `dar-backup` is designed to survive
+time.
 
-| Concern | dar-backup |
-|---|---|
-| Run as non-root on FUSE mounts | ✅ designed for this |
-| Bitrot repair without re-downloading | ✅ PAR2 travels with the archive |
-| Restore a single file to a specific date | ✅ PITR via dar_manager catalogs |
-| No dependency on original system to restore | ✅ one static `dar` binary is enough |
-| Archive integrity testable anywhere | ✅ `par2verify` + `dar -t` work offline |
-| Transparent, auditable backup content | ✅ `dar` archives are well-documented |
+That is a different problem.
 
-If your threat model is *"I need to recover a file I deleted three months ago, on a machine I
-no longer have, from a USB disk I kept offsite"* — `dar-backup` is built for exactly that.
+Hardware failures are acute — they happen on a known day, with the original system still
+understood, the software environment still intact, and recovery procedures still fresh. Time
+introduces a different class of failure:
+
+- **Format drift** — tools and expectations shift over years
+- **Software obsolescence** — the restore environment may no longer exist
+- **Silent corruption** — bitrot accumulates unnoticed on disks and media
+- **Forgotten procedures** — institutional knowledge degrades or disappears
+- **Loss of context** — future operators, family members, or administrators may need to recover
+  data without the original author present
+
+For personal archives — family photographs, home video, research, creative work — these are the
+real failure modes. The data often grows more valuable with age, not less. And it is
+irreplaceable.
+
+`dar-backup` is built around a single question: **will this archive be recoverable years from
+now, under conditions I cannot fully predict today?**
 
 ---
 
-## Why not just use tar?
+## Recovery confidence over storage efficiency
 
-`tar` is the tool almost every Linux user reaches for first — and for good reason. It is simple, universal, and ships on every system. `dar` was written as a deliberate improvement on `tar` for long-term archival, and the differences matter:
+Philosophy:
 
-| Capability | tar | dar-backup |
-|---|---|---|
-| FULL / DIFF / INCR backup cycles | ❌ workarounds only | ✅ native, first-class |
-| Archive integrity test | ❌ no built-in verify | ✅ `dar -t` after every backup |
-| Restore-test a random sample | ❌ manual | ✅ automatic after each run |
-| Repair a corrupt archive | ❌ not possible | ✅ PAR2 files travel with the archive |
-| Restore a single file to a specific date | ❌ no catalogue | ✅ PITR via `dar_manager` catalogs |
-| Sliced archives (fits onto fixed-size media) | ❌ | ✅ configurable slice size |
-| Extended attributes and ACLs | ⚠️ flag-dependent | ✅ handled correctly by default |
-| No dependency on original system to restore | ✅ | ✅ one static `dar` binary is enough |
+*"Every backup is validated not when it is created, but when it is successfully restored".*
 
-In short: `tar` is excellent for one-off archiving and moving files around.
-`dar-backup` is for people who want to know their data is intact and recoverable — years from now,
-on hardware they don't own yet.
+This principle drives the design choices behind `dar-backup`.
+
+`dar-backup` intentionally prioritizes recoverability over deduplication ratios or storage
+efficiency.
+
+Storage costs are typically lower than the cost of data loss or recovery failure. The cost of data loss can be in currency or perhaps even more important the sentimental value of your history.
+
+This priority is reflected throughout the design:
+
+- **Independent archives** — each backup is a discrete, self-contained artifact, not a node in
+  a shared repository. Archives can be copied, moved, and verified individually.
+- **Verification after every backup** — `dar -t` runs automatically. A backup that has never
+  been tested is an assumption, not a guarantee.
+- **Restore testing after every backup** — a random sample of files is extracted and compared
+  byte-for-byte against the source. Each restore test increases confidence in recoverability through repeated, physical verification of data integrity.
+- **PAR2 redundancy travels with the archive** — integrity protection and repair capability are
+  embedded in the archive set itself, not dependent on the original system.
+- **No dependency on the original machine** — a single static dar binary is sufficient. No installation, configuration, or version matching required.
+- **Documentation as part of the system** — long-term preservation requires preserving the
+  knowledge needed to use the archives, not just the archives themselves.
+
+---
+
+## Why independent archives matter
+
+Many modern backup systems maintain a single evolving repository — a shared pool of data that
+stores all snapshots efficiently. This works well for scenarios where the system is intact
+and trusted.
+
+Over long time horizons, the repository model carries risk. If the repository is damaged, all
+snapshots may be affected. Restore depends on the health of the entire system. The repository
+format may evolve. Tooling may change or disappear.
+
+`dar-backup` uses independent, self-contained archive files instead:
+
+- Each archive can be copied to independent media (USB, cloud, offsite)
+- Each archive can be verified in isolation, anywhere
+- Each archive can be repaired with its accompanying PAR2 files, without the original system
+- Point-in-Time Recovery operates through `dar_manager` catalogs — no database server required
+
+The result is that recovery confidence does not degrade with distance — in time, in location, or
+in technical context.
 
 ---
 
@@ -123,6 +161,7 @@ on hardware they don't own yet.
   configurable excludes for cache dirs, temp files, locks
 - **PAR2 redundancy** — configurable coverage per backup type (FULL/DIFF/INCR);
   optionally stored in a separate directory (different device or offsite mount)
+- **Reproducible restore environment (time capsule)** — optional [dar-backup-image](https://github.com/per2jensen/dar-backup-image) Docker image providing a fully packaged, known-working restore environment (dar, PAR2, and tooling), ensuring deterministic recovery even if host systems or package ecosystems evolve
 - **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file
   to any date across your full archive history
 - **Metrics and dashboard** - optional [detailed metrics](v2/doc/dashboard-and-metrics.md#metrics-database) and [dashboard](v2/doc/dashboard-and-metrics.md#dashboard)
@@ -137,7 +176,7 @@ on hardware they don't own yet.
 - **1000+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
   restore chains, PITR verification, and edge cases; CI on every commit
 
-✅ The author has used `dar-backup` ~5 years and has been saved by it multiple times.
+✅ The author has used `dar-backup` ~6 years and has been saved by it multiple times.
 
 > `dar-backup` stands on the shoulders of two projects that do the real work.
 > Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.
@@ -283,6 +322,7 @@ Step-by-step walkthrough using the built-in `demo` application — install, back
 There are 3 levels of backups, FULL, DIFF and INCR.
 
 - The author does a FULL yearly backup once a year. This includes all files in all directories as defined in the backup definition(s) (assuming `-d` was not given).
+
 - The author makes a DIFF once a month. The DIFF backs up new and changed files **compared** to the **FULL** backup.
 
   - No DIFF backups are taken until a FULL backup has been taken for a particular backup definition.
