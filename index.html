@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dar-backup — Long-term archival backups for Linux</title>
+<meta name="description" content="dar-backup automates FULL/DIFF/INCR archive cycles on Linux with built-in verification, restore testing, and PAR2 bitrot repair. Designed for recovery years from now.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy:       #0f1f38;
+    --navy-mid:   #1a3155;
+    --navy-light: #244270;
+    --paper:      #f5f2eb;
+    --paper-dark: #ede9df;
+    --paper-mid:  #ddd8cc;
+    --ink:        #1c1a16;
+    --ink-mid:    #3d3a33;
+    --ink-light:  #6b6760;
+    --rust:       #a34a1e;
+    --rust-light: #c25c26;
+    --gold:       #b8860b;
+    --green-ok:   #2d6a3f;
+    --red-no:     #8b2020;
+    --mono:       'JetBrains Mono', 'Courier New', monospace;
+    --serif:      'Source Serif 4', Georgia, serif;
+    --display:    'Playfair Display', Georgia, serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 17px;
+    line-height: 1.75;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--navy);
+    color: var(--paper);
+    padding: 4rem 2rem 3rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.03) 39px, rgba(255,255,255,0.03) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.03) 39px, rgba(255,255,255,0.03) 40px);
+    pointer-events: none;
+  }
+
+  .header-inner {
+    max-width: 860px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .header-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(245,242,235,0.5);
+    margin-bottom: 1.2rem;
+  }
+
+  header h1 {
+    font-family: var(--display);
+    font-size: clamp(2.2rem, 5vw, 3.4rem);
+    font-weight: 700;
+    color: var(--paper);
+    line-height: 1.15;
+    margin-bottom: 1rem;
+  }
+
+  header h1 code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    color: rgba(245,242,235,0.75);
+    font-weight: 400;
+    background: transparent;
+    padding: 0;
+  }
+
+  .header-sub {
+    font-size: 1.1rem;
+    font-weight: 300;
+    color: rgba(245,242,235,0.7);
+    max-width: 600px;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    font-style: italic;
+  }
+
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 2.5rem;
+  }
+
+  .badge-row img {
+    height: 20px;
+    opacity: 0.85;
+  }
+
+  .header-cta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 22px;
+    text-decoration: none;
+    border: 1.5px solid;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.04em;
+  }
+
+  .btn-primary {
+    background: var(--paper);
+    color: var(--navy);
+    border-color: var(--paper);
+  }
+  .btn-primary:hover { background: var(--paper-dark); border-color: var(--paper-dark); }
+
+  .btn-secondary {
+    background: transparent;
+    color: rgba(245,242,235,0.8);
+    border-color: rgba(245,242,235,0.3);
+  }
+  .btn-secondary:hover { border-color: rgba(245,242,235,0.7); color: var(--paper); }
+
+  /* ── RULE ── */
+  .rule {
+    border: none;
+    border-top: 1px solid var(--paper-mid);
+    margin: 0;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    padding: 3.5rem 0;
+    border-bottom: 1px solid var(--paper-mid);
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+
+  section.visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  section:last-child { border-bottom: none; }
+
+  h2 {
+    font-family: var(--display);
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 1.2rem;
+    line-height: 1.25;
+  }
+
+  h3 {
+    font-family: var(--display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--navy-mid);
+    margin: 2rem 0 0.6rem;
+  }
+
+  p { margin-bottom: 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  strong { font-weight: 600; }
+
+  /* ── LEAD QUOTE ── */
+  .lead-quote {
+    border-left: 3px solid var(--rust);
+    padding: 0.8rem 0 0.8rem 1.5rem;
+    margin: 1.5rem 0;
+    font-size: 1.1rem;
+    font-style: italic;
+    color: var(--ink-mid);
+  }
+
+  /* ── FAILURE LIST ── */
+  .failure-list {
+    list-style: none;
+    margin: 1.2rem 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+
+  .failure-list li {
+    background: var(--paper-dark);
+    border: 1px solid var(--paper-mid);
+    padding: 0.9rem 1rem 0.9rem 1.2rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    border-left: 3px solid var(--navy-light);
+  }
+
+  .failure-list li strong {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--navy-mid);
+    margin-bottom: 0.25rem;
+  }
+
+  /* ── FIT CHECK ── */
+  .fit-grid {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .fit-item {
+    display: flex;
+    gap: 12px;
+    padding: 0.7rem 1rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    border: 1px solid transparent;
+  }
+
+  .fit-item.yes {
+    background: #edf4f0;
+    border-color: #c2d9cb;
+  }
+
+  .fit-item.no {
+    background: var(--paper-dark);
+    border-color: var(--paper-mid);
+  }
+
+  .fit-icon {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    font-weight: 500;
+    flex-shrink: 0;
+    width: 1.4rem;
+    padding-top: 1px;
+  }
+
+  .fit-item.yes .fit-icon { color: var(--green-ok); }
+  .fit-item.no  .fit-icon { color: var(--red-no); }
+
+  /* ── DESIGN PRINCIPLES ── */
+  .principles {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .principle {
+    display: grid;
+    grid-template-columns: 1fr 2.5fr;
+    gap: 0;
+    border-bottom: 1px solid var(--paper-mid);
+  }
+
+  .principle:first-child { border-top: 1px solid var(--paper-mid); }
+
+  .p-label {
+    padding: 0.9rem 1rem 0.9rem 0;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-light);
+    border-right: 1px solid var(--paper-mid);
+    display: flex;
+    align-items: center;
+  }
+
+  .p-desc {
+    padding: 0.9rem 0 0.9rem 1.2rem;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: var(--ink-mid);
+  }
+
+  /* ── TL;DR / QUICKSTART ── */
+  .tldr-steps {
+    counter-reset: step;
+    list-style: none;
+    margin: 1.5rem 0;
+  }
+
+  .tldr-steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 16px;
+    margin-bottom: 1rem;
+    align-items: flex-start;
+  }
+
+  .tldr-steps li::before {
+    content: counter(step);
+    font-family: var(--display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--paper);
+    background: var(--navy);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .tldr-steps li .step-text { font-size: 0.95rem; line-height: 1.6; color: var(--ink-mid); }
+  .tldr-steps li .step-text strong { color: var(--ink); }
+
+  /* ── CODE BLOCK ── */
+  pre {
+    background: var(--navy);
+    color: #cdd6e0;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    padding: 1.4rem 1.6rem;
+    overflow-x: auto;
+    margin: 1.2rem 0;
+    border-left: 3px solid var(--navy-light);
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--paper-dark);
+    color: var(--rust);
+    padding: 1px 5px;
+  }
+
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* ── FEATURE GRID ── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+    margin: 1.5rem 0;
+  }
+
+  .feature-card {
+    background: var(--paper-dark);
+    border: 1px solid var(--paper-mid);
+    border-top: 3px solid var(--navy-light);
+    padding: 1.1rem 1.2rem;
+  }
+
+  .feature-card h4 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy-mid);
+    margin-bottom: 0.5rem;
+  }
+
+  .feature-card p {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    margin: 0;
+  }
+
+  /* ── DOCS TABLE ── */
+  .docs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 1.2rem 0;
+  }
+
+  .docs-table thead th {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-light);
+    text-align: left;
+    padding: 0.5rem 0.8rem;
+    border-bottom: 2px solid var(--navy);
+    background: var(--paper-dark);
+  }
+
+  .docs-table tbody tr { border-bottom: 1px solid var(--paper-mid); }
+  .docs-table tbody tr:hover { background: var(--paper-dark); }
+
+  .docs-table td {
+    padding: 0.65rem 0.8rem;
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  .docs-table td:first-child { white-space: nowrap; }
+
+  .docs-table a {
+    color: var(--navy-mid);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--paper-mid);
+  }
+
+  .docs-table a:hover {
+    color: var(--rust-light);
+    text-decoration-color: var(--rust-light);
+  }
+
+  .docs-table td:last-child { color: var(--ink-mid); }
+
+  /* ── TOOLS SECTION ── */
+  .tools-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 1.5rem 0;
+  }
+
+  .tool-card {
+    border: 1px solid var(--paper-mid);
+    padding: 1.2rem;
+    background: var(--paper-dark);
+  }
+
+  .tool-card h4 {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--navy);
+    margin-bottom: 0.5rem;
+  }
+
+  .tool-card p {
+    font-size: 0.88rem;
+    color: var(--ink-mid);
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 1.2rem 0;
+  }
+
+  .status-pill {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    border: 1px solid;
+    letter-spacing: 0.04em;
+  }
+
+  .status-pill.green { background: #edf4f0; border-color: #c2d9cb; color: var(--green-ok); }
+  .status-pill.navy  { background: #e8edf4; border-color: #b8c8db; color: var(--navy-mid); }
+  .status-pill.amber { background: #faf3e0; border-color: #d9c88a; color: #705a00; }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--navy);
+    color: rgba(245,242,235,0.55);
+    text-align: center;
+    padding: 2.5rem 2rem;
+    font-size: 0.85rem;
+    font-family: var(--mono);
+    line-height: 1.8;
+  }
+
+  footer a { color: rgba(245,242,235,0.7); }
+  footer a:hover { color: var(--paper); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 600px) {
+    header { padding: 3rem 1.2rem 2rem; }
+    main { padding: 0 1.2rem; }
+    .principle { grid-template-columns: 1fr; }
+    .p-label { border-right: none; border-bottom: 1px solid var(--paper-mid); padding-bottom: 0.4rem; }
+    .p-desc { padding-left: 0; }
+    .tools-row { grid-template-columns: 1fr; }
+    section { padding: 2.5rem 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <p class="header-label">open source · linux · gplv3</p>
+    <h1><code>dar-backup</code> — Long-term archival<br>backups for Linux</h1>
+    <p class="header-sub">With integrity you can prove and repair — years from now, on hardware you don't own yet.</p>
+    <div class="badge-row">
+      <img src="https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg" alt="Codecov">
+      <img src="https://snyk.io/test/github/per2jensen/dar-backup/badge.svg" alt="Snyk">
+      <img src="https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg" alt="CI">
+      <img src="https://img.shields.io/pypi/v/dar-backup.svg" alt="PyPI version">
+      <img src="https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total_downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fclonepulse%2Fdownloads.json" alt="PyPI downloads">
+    </div>
+    <div class="header-cta">
+      <a class="btn btn-primary" href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/quick-guide.md">Quick Start</a>
+      <a class="btn btn-secondary" href="https://github.com/per2jensen/dar-backup">GitHub</a>
+      <a class="btn btn-secondary" href="https://pypi.org/project/dar-backup/">PyPI</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- PHILOSOPHY -->
+  <section id="philosophy">
+    <h2>A personal digital preservation system</h2>
+
+    <p>Most backup tools are designed to survive hardware failure. <code>dar-backup</code> is designed to survive <strong>time</strong>.</p>
+    <p>That is a different problem.</p>
+
+    <div class="lead-quote">
+      "Every backup is validated not when it is created, but when it is successfully restored."
+    </div>
+
+    <p>Hardware failures are acute — they happen on a known day, with the original system still understood and recovery procedures still fresh. Time introduces a different class of failure:</p>
+
+    <ul class="failure-list">
+      <li><strong>Format drift</strong>Tools and expectations shift over years</li>
+      <li><strong>Software obsolescence</strong>The restore environment may no longer exist</li>
+      <li><strong>Silent corruption</strong>Bitrot accumulates unnoticed on disks and media</li>
+      <li><strong>Forgotten procedures</strong>Institutional knowledge degrades or disappears</li>
+      <li><strong>Loss of context</strong>Future operators or family members may need to recover data without the original author present</li>
+    </ul>
+
+    <p>For personal archives — family photographs, home video, research, creative work — these are the real failure modes. The data often grows more valuable with age, not less. And it is irreplaceable.</p>
+    <p><code>dar-backup</code> is built around a single question: <strong>will this archive be recoverable years from now, under conditions I cannot fully predict today?</strong></p>
+  </section>
+
+  <!-- RECOVERY CONFIDENCE -->
+  <section id="recovery">
+    <h2>Recovery confidence over storage efficiency</h2>
+
+    <p>Storage costs are typically lower than the cost of data loss or recovery failure — in currency, or in the sentimental value of your history. <code>dar-backup</code> intentionally prioritises recoverability over deduplication ratios.</p>
+
+    <p>This priority is reflected throughout the design:</p>
+
+    <div class="principles">
+      <div class="principle">
+        <div class="p-label">Independent archives</div>
+        <div class="p-desc">Each backup is a discrete, self-contained artifact — not a node in a shared repository. Archives can be copied, moved, and verified individually.</div>
+      </div>
+      <div class="principle">
+        <div class="p-label">Verification every run</div>
+        <div class="p-desc"><code>dar -t</code> runs automatically after every backup. A backup that has never been tested is an assumption, not a guarantee.</div>
+      </div>
+      <div class="principle">
+        <div class="p-label">Restore testing every run</div>
+        <div class="p-desc">A random sample of files is extracted and compared byte-for-byte against the source. Recovery is exercised routinely, not just in emergencies.</div>
+      </div>
+      <div class="principle">
+        <div class="p-label">PAR2 travels with archive</div>
+        <div class="p-desc">Integrity protection and repair capability are embedded in the archive set itself — not dependent on the original system or any central service.</div>
+      </div>
+      <div class="principle">
+        <div class="p-label">No system dependency</div>
+        <div class="p-desc">A single static <code>dar</code> binary is sufficient to restore. No installation, configuration, or version matching required.</div>
+      </div>
+      <div class="principle">
+        <div class="p-label">Documentation as system</div>
+        <div class="p-desc">Long-term preservation requires preserving the knowledge needed to use the archives — not just the archives themselves.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- IS THIS FOR YOU -->
+  <section id="fit">
+    <h2>Is this for you?</h2>
+
+    <div class="fit-grid">
+      <div class="fit-item yes"><span class="fit-icon">✓</span><span>You back up irreplaceable data — photos, documents, home-made video — and want to be certain you can restore any file to any point in time, years from now</span></div>
+      <div class="fit-item yes"><span class="fit-icon">✓</span><span>You run backups as a <strong>normal user</strong> — root is not required, and FUSE-mounted filesystems (Nextcloud, rclone, sshfs) work correctly</span></div>
+      <div class="fit-item yes"><span class="fit-icon">✓</span><span>You want <strong>bitrot repair</strong> to travel with your archives — onto USB disks, offsite copies, and cloud storage — without depending on the original system</span></div>
+      <div class="fit-item yes"><span class="fit-icon">✓</span><span>You want unattended, scheduled backups with <strong>Discord notifications</strong> on success or failure</span></div>
+      <div class="fit-item yes"><span class="fit-icon">✓</span><span>You want a transparent, no-lock-in tool built on proven Unix components</span></div>
+      <div class="fit-item no"><span class="fit-icon">✗</span><span>You need a GUI or Windows support</span></div>
+      <div class="fit-item no"><span class="fit-icon">✗</span><span>You need <strong>multiple backups per day</strong> — <code>dar-backup</code> is designed around one backup run per day per definition (one FULL, one DIFF, one INCR)</span></div>
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section id="quickstart">
+    <h2>Quick start</h2>
+<pre>sudo apt -y install dar par2 python3 python3-venv
+INSTALL_DIR=/tmp/dar-backup
+mkdir "$INSTALL_DIR" && cd "$INSTALL_DIR"
+python3 -m venv venv && . venv/bin/activate
+pip install dar-backup
+demo --install && manager --create-db
+dar-backup --full-backup</pre>
+
+    <p>After each archive, <code>dar-backup</code> automatically:</p>
+
+    <ol class="tldr-steps">
+      <li><div class="step-text"><strong>Verifies</strong> the archive with <code>dar -t</code></div></li>
+      <li><div class="step-text"><strong>Restore-tests</strong> a random sample of files and compares them byte-for-byte against the source</div></li>
+      <li><div class="step-text"><strong>Creates PAR2 redundancy files</strong> so the archive can be repaired if bitrot occurs later</div></li>
+      <li><div class="step-text"><strong>Notifies</strong> your Discord channel on completion or failure</div></li>
+    </ol>
+
+    <p>Schedules are managed by systemd timers (generated for you). Catalogs of every archive are maintained by <code>dar_manager</code>, enabling single-file Point-in-Time Recovery without a database server.</p>
+  </section>
+
+  <!-- BUILT ON -->
+  <section id="tools">
+    <h2>Built on two exceptional tools</h2>
+
+    <div class="tools-row">
+      <div class="tool-card">
+        <h4><a href="https://github.com/Edrusb/DAR" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">dar — Disk ARchiver</a></h4>
+        <p>A powerful, actively maintained archiver by Denis Corbin with native FULL/DIFF/INCR cycles, built-in verification, catalogue databases, and precise file selection. A single static binary is all that is needed to restore — no installation or configuration required years from now.</p>
+      </div>
+      <div class="tool-card">
+        <h4><a href="https://github.com/Parchive/par2cmdline" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">par2cmdline — Parchive</a></h4>
+        <p>Reed-Solomon based redundancy that can detect and repair corruption in any file, years after the fact, with no connection to the original source. The PAR2 specification has not changed in years — a deliberate choice for long-horizon durability.</p>
+      </div>
+    </div>
+
+    <p style="font-size:0.9rem; color:var(--ink-light); font-style:italic;">If you find <code>dar-backup</code> useful, consider giving those upstream projects a star too.</p>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <h2>Features</h2>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>FULL / DIFF / INCR cycles</h4>
+        <p>Per backup definition, independently scheduled. Each archive type is a self-contained artifact.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Automatic verification</h4>
+        <p><code>dar -t</code> runs after every backup run without manual intervention.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Automatic restore test</h4>
+        <p>Random files extracted and compared to source after each backup. Configurable excludes for cache dirs, temp files, locks.</p>
+      </div>
+      <div class="feature-card">
+        <h4>PAR2 redundancy</h4>
+        <p>Configurable coverage per backup type. Optionally stored in a separate directory on a different device or offsite mount.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Point-in-Time Recovery</h4>
+        <p><code>dar_manager</code> catalogs let you locate and restore any file to any date across your full archive history.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Restore environment</h4>
+        <p>Optional <a href="https://github.com/per2jensen/dar-backup-image">Docker image</a> packaging <code>dar</code>, <code>par2</code>, and tooling — a time capsule that travels with your archives.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Metrics &amp; dashboard</h4>
+        <p>Structured metrics written to SQLite after every run. Built-in Datasette dashboard for history and auditing.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Normal user operation</h4>
+        <p>No root required. Works correctly on FUSE-mounted filesystems including Nextcloud, rclone, and sshfs.</p>
+      </div>
+      <div class="feature-card">
+        <h4>No lock-in</h4>
+        <p>Standard <code>dar</code> archives, standard PAR2 files. Restore with just the <code>dar</code> binary — no <code>dar-backup</code> installation needed on the restore machine.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS -->
+  <section id="status">
+    <h2>Status</h2>
+
+    <div class="status-bar">
+      <span class="status-pill green">v1.1.7 current</span>
+      <span class="status-pill green">v1.0.0 reached Oct 9, 2025</span>
+      <span class="status-pill navy">1000+ tests</span>
+      <span class="status-pill navy">CI on every commit</span>
+      <span class="status-pill navy">Python ≥ 3.11</span>
+      <span class="status-pill amber">~6 years in production use</span>
+    </div>
+
+    <p>The author has used <code>dar-backup</code> for approximately six years and has been saved by it multiple times.</p>
+    <p><a href="https://github.com/per2jensen/dar-backup/blob/main/CHANGELOG.md" style="color:var(--navy-mid);text-decoration:underline;text-underline-offset:3px;">Changelog</a></p>
+  </section>
+
+  <!-- DOCUMENTATION -->
+  <section id="docs">
+    <h2>Documentation</h2>
+
+    <table class="docs-table">
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/quick-guide.md">Quick Guide</a></td><td>Get started in minutes using the demo app</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/getting-started.md">Getting Started</a></td><td>Manual setup for a real installation</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/config-reference.md">Configuration Reference</a></td><td>Config file, .darrc, backup definitions</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/restoring.md">Restoring</a></td><td>Point-in-Time Recovery (PITR), restore examples</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/par2.md">PAR2 Redundancy</a></td><td>Verify, repair, and create PAR2 files</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/systemd-setup.md">systemd Setup</a></td><td>Generate and install systemd timers/services</td></tr>
+        <tr><td><a href="https://github.com/per2ensen/dar-backup/blob/main/v2/doc/dashboard-and-metrics.md">Dashboard &amp; Metrics</a></td><td>Metrics database, Datasette, dashboard</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/cli-reference.md">CLI Reference</a></td><td>All command options, exit codes, env vars</td></tr>
+        <tr><td><a href="https://github.com/per2jensen/dar-backup/blob/main/v2/doc/troubleshooting.md">Troubleshooting</a></td><td>Error codes, FUSE issues, special characters</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<footer>
+  <p><code>dar-backup</code> is licensed under the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GNU GPL v3.0</a> · Linux only · No built-in encryption (assumes storage is already encrypted)</p>
+  <p style="margin-top:0.5rem;">Built on <a href="https://github.com/Edrusb/DAR">dar</a> by Denis Corbin and <a href="https://github.com/Parchive/par2cmdline">par2cmdline</a> by the Parchive team</p>
+  <p style="margin-top:0.5rem;"><a href="https://github.com/per2jensen/dar-backup">GitHub</a> · <a href="https://pypi.org/project/dar-backup/">PyPI</a> · <a href="https://github.com/per2jensen/dar-backup/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a></p>
+</footer>
+
+<script>
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+  }, { threshold: 0.08 });
+  document.querySelectorAll('section').forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
