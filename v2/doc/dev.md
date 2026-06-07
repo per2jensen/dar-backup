@@ -4,8 +4,7 @@ Back to [README](../../README.md)
 
 - [Development](#development)
   - [Easy development setup](#easy-development-setup)
-  - [Alternative: setup\_environment.py](#alternative-setup_environmentpy)
-  - [Howto activate the venv](#howto-activate-the-venv)
+  - [Activate and run the test suite](#activate-and-run-the-test-suite)
   - [Howto build \& deploy to dev venv](#howto-build--deploy-to-dev-venv)
   - [Test coverage](#test-coverage)
     - [Test selection with markers](#test-selection-with-markers)
@@ -13,8 +12,8 @@ Back to [README](../../README.md)
     - [Run all tests](#run-all-tests)
     - [Howto use pytest in venv](#howto-use-pytest-in-venv)
     - [Subprocess coverage (local == CI)](#subprocess-coverage-local--ci)
-  - [PyPI download stats](#pypi-download-stats)
-  - [Release to PyPI](#release-to-pypi)
+- [PyPI download stats](#pypi-download-stats)
+- [Release to PyPI](#release-to-pypi)
   - [Build dar from source](#build-dar-from-source)
     - [Check signature](#check-signature)
     - [Build](#build)
@@ -23,7 +22,7 @@ Back to [README](../../README.md)
     - [Display backup run summary](#display-backup-run-summary)
     - [Datasette view](#datasette-view)
   - [Git log](#git-log)
-  - [Tarball for ChatGPT](#tarball-for-chatgpt)
+  - [Tarball for LLM to study](#tarball-for-llm-to-study)
 
 ## Easy development setup
 
@@ -59,35 +58,12 @@ Example:
   "black>=25.1.0"]
   ```
 
-Activate and run the test suite:
+## Activate and run the test suite
 
 ```bash
 source venv/bin/activate # activate the virtual env
 pytest                   # run the test suite
 ```
-
-## Alternative: setup_environment.py
-
-The easiest way to set up a fully reproducible environment is to
-use the included helper script:
-
-```bash
-cd <path/to/dar-backup/v2>
-./setup_environment.py
-```
-
-This will:
-
-- Create a unique Python virtual environment (like venv or venv-YYYYMMDD-{N})
-- Install all development dependencies listed in requirements-dev.txt
-- Run build.sh to build the project wheel in the new environment
-
-## Howto activate the venv
-
-```` bash
-cd <path/to/dar-backup/v2>
-. venv/bin/activate
-````
 
 ## Howto build & deploy to dev venv
 
@@ -187,7 +163,7 @@ Or run the full CI-equivalent report flow (same markers + coverage artifacts):
 
 ---
 
-## PyPI download stats
+# PyPI download stats
 
 The repo root includes `track_downloads.py` which fetches daily download counts
 from the PyPI Stats API and writes `downloads.json` in a time-series format
@@ -231,11 +207,21 @@ https://en.wikipedia.org/wiki/Moving_average
 
 ---
 
-## Release to PyPI
+# Release to PyPI
+
+The release.sh script checks that the repo is clean with no changed files and that tag for
+the --tag option exists AND is at HEAD.
+
+Two environment variables must be present for the release.sh scripts to upload to PyPI.
+
+The developer must be ready to provide gpg passphrase when the gpg asks for it (after the user has tapped
+a key to procede to that step).
 
 ```bash
+  export TWINE_USERNAME=__token__
+  export TWINE_PASSWORD=<the token>
 cd <path/to/dar-backup/v2>
-./release.sh --upload-to-pypi # provide password to GPG to sign the built artifacts
+./release.sh --tag <the tag> --upload-to-pypi # provide password to GPG to sign the built artifacts
 ```
 
 ---
@@ -353,7 +339,7 @@ datasette ~/dar-backup/dar-backup-metrics.db --cors -p 8001
 git log --pretty=format:"%ad - %an: %s %d" --date=short
 ````
 
-## Tarball for ChatGPT
+## Tarball for LLM to study
 
 ```bash
 tar --exclude='*/__pycache__' \

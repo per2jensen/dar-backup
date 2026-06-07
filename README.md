@@ -18,13 +18,12 @@ It automates FULL / DIFF / INCR archive cycles built on two exceptional open-sou
   archiver by Denis Corbin that handles differential and incremental archives, built-in
   verification, catalogue databases, and precise file selection. `dar` is the engine that makes
   long-term archival practical. It deserves to be far better known than it is.
-- **[par2cmdline](https://github.com/Parchive/par2cmdline)** — the Parchive suite's
-  implementation of PAR2, a Reed-Solomon based redundancy format that can detect and repair
-  corruption in any file, years after the fact, with no connection to the original source.
-  A quiet but remarkable piece of technology.
+- **[par2cmdline](https://github.com/Parchive/par2cmdline)** — Parchive's
+  redundancy format can detect and repair corruption in any archive, as long as the .par2 files travels with the
+  dar archives. A quiet but remarkable piece of technology.
 
 `dar-backup` wires these two tools together into a fully automated backup system, with every
-archive verified and restore-tested before the job completes.
+archive verified and a random set (configurable) of files restored to a test directory before the job completes.
 
 **Is this for you?**
 
@@ -333,7 +332,7 @@ Manual setup for a real installation — configuration, catalog databases, first
 
 **1.0.0 milestone reached**
 
-October 9, 2025, version **1.0.0** was released after extensive testing. The current release is **1.1.2**.
+October 9, 2025, version **1.0.0** was released after extensive testing.
 
 ### GPG Signing key
 
