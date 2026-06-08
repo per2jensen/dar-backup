@@ -31,10 +31,14 @@ Tests are paired with their mock counterparts:
 """
 
 import contextlib
+import logging
 import os
 import re
+import sqlite3
 import subprocess
 import sys
+import time
+from contextlib import closing
 from types import SimpleNamespace
 from typing import Generator
 
@@ -522,3 +526,203 @@ def test_verify_raises_on_corrupt_archive(setup_environment, env: EnvData) -> No
     with _module_context(env):
         with pytest.raises(Exception):
             db.verify(args, archive_path, backup_def_path, config)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for restore-test failure → metrics DB tests
+# ---------------------------------------------------------------------------
+
+# Must NOT be "example" — perform_backup() skips metrics for that name.
+_RESTORE_TEST_DEF_NAME = "restore-test-check"
+
+
+def _inject_metrics_db(env: EnvData) -> str:
+    """Insert METRICS_DB_PATH into [MISC] in the test config; return the db path."""
+    db_path = os.path.join(env.test_dir, "dar-backup-metrics.db")
+    with open(env.config_file) as fh:
+        content = fh.read()
+    content = content.replace(
+        "[MISC]\n",
+        f"[MISC]\nMETRICS_DB_PATH = {db_path}\n",
+        1,
+    )
+    with open(env.config_file, "w") as fh:
+        fh.write(content)
+    return db_path
+
+
+def _latest_metrics_row(db_path: str) -> sqlite3.Row:
+    """Return the most-recently written backup_runs row, or None."""
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute(
+            "SELECT * FROM backup_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+
+
+def _create_restore_test_definition(env: EnvData) -> None:
+    """Write a backup definition pointing at env.data_dir and create its catalog."""
+    content = (
+        "-R /\n"
+        "-s 10G\n"
+        "-z6\n"
+        "-am\n"
+        "--cache-directory-tagging\n"
+        f"-g {env.data_dir}\n"
+    ).replace("-g /tmp/", "-g tmp/")
+    def_path = os.path.join(env.backup_d_dir, _RESTORE_TEST_DEF_NAME)
+    with open(def_path, "w") as fh:
+        fh.write(content)
+    from dar_backup.command_runner import CommandRunner as _CR
+    _CR(logger=env.logger, command_logger=env.command_logger).run(
+        ["manager", "--create-db", "--config-file", env.config_file, "--log-level", "debug"],
+        timeout=60,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+def test_verify_restore_test_failure_logs_error(
+    setup_environment, env: EnvData
+) -> None:
+    """
+    verify() must emit at least one ERROR log entry containing 'did not match'
+    when restored files differ from their sources.
+
+    Steps:
+      1. Create a real full backup (archive has original content).
+      2. Overwrite all source files with different content.
+      3. Call verify() directly with a real runner.
+      4. Assert restore_test_passed is False.
+      5. Assert an ERROR was logged about the mismatch.
+
+    This test calls verify() directly and is not subject to any timing issues.
+    """
+    run_backup_script("--full-backup", env)
+    archive_name = _find_archive_name(env.backup_dir, "FULL", "example")
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    config = ConfigSettings(env.config_file)
+
+    for filename in os.listdir(env.data_dir):
+        filepath = os.path.join(env.data_dir, filename)
+        if os.path.isfile(filepath):
+            with open(filepath, "w") as fh:
+                fh.write("CORRUPTED — does not match archive content")
+
+    captured_errors: list[str] = []
+
+    class _ErrorCapture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            if record.levelno >= logging.ERROR:
+                captured_errors.append(record.getMessage())
+
+    handler = _ErrorCapture()
+    args = SimpleNamespace(verbose=False, do_not_compare=False, darrc=env.dar_rc)
+    archive_path = os.path.join(config.backup_dir, archive_name)
+
+    with _module_context(env):
+        env.logger.addHandler(handler)
+        try:
+            result = db.verify(args, archive_path, backup_def_path, config)
+        finally:
+            env.logger.removeHandler(handler)
+
+    assert result.restore_test_passed is False, (
+        "verify() must return False when source files were modified after backup"
+    )
+    assert any("did not match" in msg for msg in captured_errors), (
+        f"Expected ERROR containing 'did not match the original' but captured: {captured_errors}"
+    )
+
+
+def test_restore_test_failure_writes_failure_to_metrics_db(
+    setup_environment, env: EnvData
+) -> None:
+    """
+    When the restore-test fails, dar-backup must exit non-zero and the metrics
+    DB row must show status='FAILURE' with restore_test_passed=0.
+
+    Steps:
+      1. Inject METRICS_DB_PATH into the test config.
+      2. Create a non-'example' backup definition (metrics are skipped for 'example').
+      3. Add a 512 KB random-data file to the source to lengthen the backup phase.
+      4. Launch dar-backup --full-backup as a non-blocking subprocess.
+      5. Poll the backup directory until a .1.dar slice appears, which signals
+         that dar has finished writing the archive.
+      6. Immediately overwrite every source file with different content so that
+         verify()'s restore-test detects a mismatch.
+      7. Wait for dar-backup to exit.
+      8. Assert: non-zero exit code.
+      9. Assert: metrics row has status='FAILURE' and restore_test_passed=0.
+
+    TIMING NOTE: the source files are corrupted in the narrow window between dar
+    completing the archive (the .1.dar file becomes visible) and verify() opening
+    the source files for comparison.  On a very fast machine or with a small
+    backup that compresses to almost nothing, this window may be too short and
+    the corruption will arrive after verify() has already read the sources,
+    causing the test to see WARNING instead of FAILURE.  If this becomes flaky
+    in CI, increase the padding file size or switch to incompressible random data.
+    """
+    db_path = _inject_metrics_db(env)
+    _create_restore_test_definition(env)
+
+    # 512 KB of random (incompressible) data to ensure the backup phase
+    # takes long enough for the corruption step to win the race.
+    padding = os.path.join(env.data_dir, "padding.bin")
+    with open(padding, "wb") as fh:
+        fh.write(os.urandom(512 * 1024))
+
+    proc = subprocess.Popen(
+        [
+            "dar-backup", "--full-backup",
+            "-d", _RESTORE_TEST_DEF_NAME,
+            "--config-file", env.config_file,
+            "--log-level", "debug", "--log-stdout",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    # Poll until the .dar archive slice appears — backup creation is complete.
+    deadline = time.time() + 120
+    dar_appeared = False
+    while time.time() < deadline:
+        try:
+            slices = [f for f in os.listdir(env.backup_dir) if f.endswith(".1.dar")]
+        except FileNotFoundError:
+            slices = []
+        if slices:
+            dar_appeared = True
+            # Corrupt every source file before verify() can read them.
+            for filename in os.listdir(env.data_dir):
+                filepath = os.path.join(env.data_dir, filename)
+                if os.path.isfile(filepath):
+                    with open(filepath, "w") as fh:
+                        fh.write("CORRUPTED AFTER BACKUP — content mismatch expected")
+            break
+        time.sleep(0.05)
+
+    stdout, stderr = proc.communicate(timeout=120)
+
+    assert dar_appeared, (
+        "Backup .dar slice never appeared — test setup failed, not a timing issue"
+    )
+    assert proc.returncode != 0, (
+        f"dar-backup must exit non-zero when restore-test fails.\n"
+        f"stdout (last 1000): {stdout[-1000:]}"
+    )
+
+    row = _latest_metrics_row(db_path)
+    assert row is not None, "No metrics row was written to the DB"
+    assert row["status"] == "FAILURE", (
+        f"Expected status='FAILURE' but got '{row['status']}'. "
+        "If this is 'WARNING', the results.append exit-code change from 2→1 "
+        "in perform_backup() is missing or the timing race was lost."
+    )
+    assert row["restore_test_passed"] == 0, (
+        f"Expected restore_test_passed=0 but got {row['restore_test_passed']}"
+    )

@@ -66,12 +66,18 @@
     background: var(--bg2);
     border-bottom: 1px solid var(--border);
     display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  #config-bar label { font-size: 12px; color: var(--muted); }
+
+  .config-row {
+    display: flex;
     align-items: center;
     gap: 1rem;
     flex-wrap: wrap;
   }
-
-  #config-bar label { font-size: 12px; color: var(--muted); }
 
   #config-bar input[type="text"] {
     background: var(--bg3);
@@ -524,28 +530,40 @@
 </header>
 
 <div id="config-bar">
-  <label for="ds-url">Datasette URL</label>
-  <input id="ds-url" type="text" value="http://localhost:8001" placeholder="http://localhost:8001" />
-  <input id="ds-db" type="text" value="dar-backup-metrics" placeholder="database name" style="width:180px" />
-  <div class="sep"></div>
-  <label for="filter-def">Definition</label>
-  <select id="filter-def">
-    <option value="">— all —</option>
-  </select>
-  <div class="sep"></div>
-  <label for="filter-runs">Runs</label>
-  <input id="filter-runs" type="number" min="1" value="3" title="Number of most-recent runs to show per definition" />
-  <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-    <input id="filter-all" type="checkbox" style="width:auto;padding:0" />
-    All
-  </label>
-  <div class="sep"></div>
-  <label for="filter-from">From</label>
-  <input id="filter-from" type="datetime-local" step="1" title="Show runs started on or after this time (local time)" style="width:auto" />
-  <label for="filter-to">To</label>
-  <input id="filter-to" type="datetime-local" step="1" title="Show runs started on or before this time (local time)" style="width:auto" />
-  <div class="sep"></div>
-  <button id="refresh-btn" onclick="loadAll()">&#8635; Refresh</button>
+  <div class="config-row">
+    <label for="ds-url">Datasette URL</label>
+    <input id="ds-url" type="text" value="http://localhost:8001" placeholder="http://localhost:8001" />
+    <input id="ds-db" type="text" value="dar-backup-metrics" placeholder="database name" style="width:180px" />
+    <div class="sep"></div>
+    <label for="filter-def">Definition</label>
+    <select id="filter-def">
+      <option value="">— all —</option>
+    </select>
+  </div>
+  <div class="config-row">
+    <label for="filter-runs">Runs</label>
+    <input id="filter-runs" type="number" min="1" value="3" title="Number of most-recent runs to show per definition" />
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input id="filter-all" type="checkbox" style="width:auto;padding:0" />
+      All
+    </label>
+    <div class="sep"></div>
+    <label for="filter-from">From</label>
+    <input id="filter-from" type="datetime-local" step="1" title="Show runs started on or after this time (local time)" style="width:auto" />
+    <label for="filter-to">To</label>
+    <input id="filter-to" type="datetime-local" step="1" title="Show runs started on or before this time (local time)" style="width:auto" />
+    <div class="sep"></div>
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Uncheck to exclude runs where the PREREQ phase failed">
+      <input id="filter-prereq" type="checkbox" checked style="width:auto;padding:0" />
+      PREREQ
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Uncheck to exclude runs where the POSTREQ phase failed">
+      <input id="filter-postreq" type="checkbox" checked style="width:auto;padding:0" />
+      POSTREQ
+    </label>
+    <div class="sep"></div>
+    <button id="refresh-btn" onclick="loadAll()">&#8635; Refresh</button>
+  </div>
 </div>
 
 <main>
@@ -659,7 +677,7 @@ function buildSummaryCards(rows) {
   const successCount = rows.filter(r => r.status === 'SUCCESS').length;
   const warnCount    = rows.filter(r => r.status === 'WARNING').length;
   const failCount    = rows.filter(r => r.status === 'FAILURE').length;
-  const rate = total > 0 ? Math.round(successCount * 100 / total) : 0;
+  const rate = total > 0 ? Math.round((total - failCount) * 100 / total) : 0;
   const rateClass = rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'fail';
   const totalFailed = rows.reduce((acc, r) => acc + (r.inodes_failed || 0), 0);
   const failedClass = totalFailed === 0 ? 'ok' : totalFailed <= 20 ? 'warn' : 'fail';
@@ -677,9 +695,9 @@ function buildSummaryCards(rows) {
       <div class="sub">${successCount} success · ${warnCount} warn · ${failCount} fail</div>
     </div>
     <div class="summary-card">
-      <div class="label">Success rate (all)</div>
+      <div class="label">Non-failure rate</div>
       <div class="value ${rateClass}">${rate}%</div>
-      <div class="sub">last ${total} runs</div>
+      <div class="sub">last ${total} runs · warnings pass</div>
     </div>
     <div class="summary-card">
       <div class="label">Backup definitions</div>
@@ -1069,6 +1087,21 @@ function filterRunLimit() {
   return (Number.isFinite(n) && n >= 1) ? n : 3;
 }
 
+function filterPhaseExclusions() {
+  const prereq  = document.getElementById('filter-prereq').checked;
+  const postreq = document.getElementById('filter-postreq').checked;
+  return {
+    withAlias: [
+      !prereq  ? `(b.prereq_status IS NULL OR b.prereq_status = 'SUCCESS')`  : '',
+      !postreq ? `(b.postreq_status IS NULL OR b.postreq_status = 'SUCCESS')` : '',
+    ].filter(Boolean),
+    noAlias: [
+      !prereq  ? `(prereq_status IS NULL OR prereq_status = 'SUCCESS')`  : '',
+      !postreq ? `(postreq_status IS NULL OR postreq_status = 'SUCCESS')` : '',
+    ].filter(Boolean),
+  };
+}
+
 function filterTimeRange() {
   /* datetime-local gives local time; convert to UTC ISO for SQLite comparison.
      run_started_at is stored as UTC ISO 8601, so datetime() normalises both
@@ -1115,6 +1148,7 @@ async function loadAll() {
     const def       = filterDef();
     const limit     = filterRunLimit();
     const timeRange = filterTimeRange();
+    const phase     = filterPhaseExclusions();
 
     const defClause   = def ? `AND b.backup_definition = '${def.replace(/'/g, "''")}'` : '';
     const limitClause = limit != null
@@ -1122,8 +1156,9 @@ async function loadAll() {
              WHERE b2.backup_definition = b.backup_definition
                AND b2.run_started_at > b.run_started_at) < ${limit}`
       : '';
-    const fromClause = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
-    const toClause   = timeRange.to   ? `AND datetime(b.run_started_at) <= datetime('${timeRange.to}')`   : '';
+    const fromClause  = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
+    const toClause    = timeRange.to   ? `AND datetime(b.run_started_at) <= datetime('${timeRange.to}')`   : '';
+    const phaseClauses = phase.withAlias.map(c => `AND ${c}`).join('\n        ');
 
     const recentSql = `
       SELECT b.*
@@ -1133,6 +1168,7 @@ async function loadAll() {
         ${defClause}
         ${fromClause}
         ${toClause}
+        ${phaseClauses}
       ORDER BY b.backup_definition, b.run_started_at DESC
     `;
 
@@ -1140,6 +1176,7 @@ async function loadAll() {
       def          ? `backup_definition = '${def.replace(/'/g, "''")}'`         : '',
       timeRange.from ? `datetime(run_started_at) >= datetime('${timeRange.from}')` : '',
       timeRange.to   ? `datetime(run_started_at) <= datetime('${timeRange.to}')`   : '',
+      ...phase.noAlias,
     ].filter(Boolean).join(' AND ');
     // All runs for trend charts (no row limit — trends always show full history)
     const trendSql = `
@@ -1210,6 +1247,10 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
 document.getElementById('filter-all').addEventListener('change', function() {
   document.getElementById('filter-runs').disabled = this.checked;
 });
+
+/* ── PREREQ / POSTREQ inclusion toggles ─────────────────────────── */
+document.getElementById('filter-prereq').addEventListener('change', loadAll);
+document.getElementById('filter-postreq').addEventListener('change', loadAll);
 
 /* ── auto-populate Datasette URL from query param ───────────────── */
 (function() {

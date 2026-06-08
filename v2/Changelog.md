@@ -3,7 +3,19 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.7 - not released
+## v2-1.1.8 - not released
+
+### Fixed
+
+- a restore-test after a backup would previously result in a WARNING, it is now an ERROR
+  
+  - A test case now prove an ERROR is issued in the log and in the metrics DB.
+
+### Added
+
+- Dashboard gained checkmarks to disable PREREQ and POSTREQ errors, to more easily see "real" backup/restore errors
+
+## v2-1.1.7 - 2026-06-07
 
 ### Fixed
 

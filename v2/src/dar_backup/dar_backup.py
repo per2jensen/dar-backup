@@ -1597,7 +1597,7 @@ def perform_backup(
             else:
                 msg = f"Verification of '{backup_file}' failed."
                 logger.error(msg)
-                results.append((msg, 2))
+                results.append((msg, 1))
                 if metrics["failed_phase"] is None:
                     metrics["failed_phase"] = "VERIFY"
 
