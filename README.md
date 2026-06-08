@@ -148,8 +148,7 @@ format may evolve. Tooling may change or disappear.
 - Each archive can be repaired with its accompanying PAR2 files, without the original system
 - Point-in-Time Recovery operates through `dar_manager` catalogs — no database server required
 
-The result is that recovery confidence does not degrade with distance — in time, in location, or
-in technical context.
+The result is that recovery confidence does not degrade with distance — distance being time, location, or technical context.
 
 ---
 
@@ -161,11 +160,10 @@ in technical context.
   configurable excludes for cache dirs, temp files, locks
 - **PAR2 redundancy** — configurable coverage per backup type (FULL/DIFF/INCR);
   optionally stored in a separate directory (different device or offsite mount)
-- **Reproducible restore environment (time capsule)** — optional [dar-backup-image](https://github.com/per2jensen/dar-backup-image) Docker image providing a fully packaged, known-working restore environment (dar, PAR2, and tooling), ensuring deterministic recovery even if host systems or package ecosystems evolve
-- **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file
-  to any date across your full archive history
+- **Docker based restore environment (time capsule)** — optional [dar-backup-image](https://github.com/per2jensen/dar-backup-image) providing a fully packaged, known-working restore environment (dar-backup, dar, PAR2, and tooling). Very useful years into the future :-)
+- **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file to any date across your full archive history
 - **Metrics and dashboard** - optional [detailed metrics](v2/doc/dashboard-and-metrics.md#metrics-database) and [dashboard](v2/doc/dashboard-and-metrics.md#dashboard)
-- **Runs as a normal user** — no root needed; works correctly on FUSE-mounted filesystems
+- **Can run as a normal user** — no root needed; works correctly on FUSE-mounted filesystems. Root is also a first class user.
 - **systemd integration** — timer units generated for you with sensible default schedules
 - **Discord notifications** — webhook alerts on backup success or failure, from all CLI tools
 - **Shell autocompletion** — bash and zsh, context-aware (archive names filtered by definition)
