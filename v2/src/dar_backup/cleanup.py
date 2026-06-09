@@ -19,9 +19,6 @@ import argparse
 import os
 import re
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-
 from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
 from pathlib import Path
