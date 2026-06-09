@@ -102,33 +102,41 @@ LOGFILE="${RESULTS_DIR}/large-scale-test-${DATESTAMP}.dar-backup.log"
 SUMMARY="${RESULTS_DIR}/summary-${DATESTAMP}.txt"
 CONFIG_FILE="${RUN_DIR}/dar-backup.conf"
 DARRC="${RUN_DIR}/.darrc"
-RSS_LOG="${RUN_DIR}/rss.log"
+RSS_LOGFILE="${RUN_DIR}/rss.log"
 DIFF_PRIMER_DIR="${BASE_DIR}/diff-primer"
 
 mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR" "$DIFF_PRIMER_DIR"
+
 
 # ── RSS monitor ──────────────────────────────────────────────────────────────
 RSS_MONITOR_PID=""
 start_rss_monitor() {
     (
+        local main_script_pid=$PPID
         while true; do
-            for name in dar-backup dar par2; do
-                pids=$(pgrep -x "$name" 2>/dev/null || true)
-                for pid in $pids; do
-                    rss=$(awk '/VmRSS/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
-                    vsz=$(awk '/VmPeak/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
-                    cmd=$(ps -p $pid -o comm= 2>/dev/null || echo "$name")
-                    [[ "$rss" -gt 0 ]] && printf '%s pid=%-6s rss=%-8s kB peak=%-8s kB cmd=%s\n' "$(date '+%H:%M:%S')" "$pid" "$rss" "$vsz" "$cmd"
-                done
+            local child_pids; child_pids=$(pgrep -P "$main_script_pid" 2>/dev/null || true)
+            if [[ -n "$child_pids" ]]; then
+                local nested_pids; nested_pids=$(pgrep -P "$(echo "$child_pids" | tr '\n' ',' | sed 's/,$//')" 2>/dev/null || true)
+                child_pids="${child_pids}"$'\n'"${nested_pids}"
+            fi
+
+            for pid in $child_pids; do
+                [[ -z "$pid" || ! -d "/proc/$pid" ]] && continue
+                local cmd; cmd=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+                
+                if [[ "$cmd" =~ ^(dar|dar-backup|par2|manager)$ ]]; then
+                    local rss; rss=$(awk '/VmRSS/{print $2}' /proc/"$pid"/status 2>/dev/null || echo 0)
+                    local vsz; vsz=$(awk '/VmPeak/{print $2}' /proc/"$pid"/status 2>/dev/null || echo 0)
+                    
+                    [[ "$rss" -gt 0 ]] && printf '%s pid=%-6s rss=%-8s kB peak=%-8s kB cmd=%s\n' \
+                        "$(date '+%H:%M:%S')" "$pid" "$rss" "$vsz" "$cmd"
+                fi
             done
-            sleep 5
+            sleep 0.5
         done
-    ) >> "$RSS_LOG" 2>/dev/null &
+    ) >> "${RSS_LOGFILE:-/dev/null}" 2>/dev/null &
     RSS_MONITOR_PID=$!
 }
-
-stop_rss_monitor() { [[ -n "$RSS_MONITOR_PID" ]] && kill "$RSS_MONITOR_PID" 2>/dev/null || true; }
-peak_rss_kb() { grep "cmd=$1" "$RSS_LOG" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i~/^rss=/) {sub("rss=",""); print $i+0}}' | sort -n | tail -1; }
 
 write_config() {
     cat > "$CONFIG_FILE" << EOF
@@ -363,10 +371,74 @@ fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
 banner "Summary"
-{
-    echo "dar-backup test pass: ${DATESTAMP}"
-    echo "FULL elapsed: ${full_elapsed}s (~${FULL_SIZE_HUMAN})"
-    echo "DIFF elapsed: ${diff_elapsed}s"
-    echo "Failures:     ${FAILURES}"
-} | tee "$SUMMARY"
 
+# Clean up the background resource daemon tracking thread cleanly
+if [[ -n "${RSS_MONITOR_PID:-}" ]]; then
+    kill "$RSS_MONITOR_PID" 2>/dev/null || true
+    wait "$RSS_MONITOR_PID" 2>/dev/null || true
+fi
+
+calc_max_rss() {
+    local target_cmd="$1"
+    local log_path="${RSS_LOGFILE:-}"
+    
+    if [[ -n "$log_path" && -f "$log_path" ]]; then
+        awk -v target="cmd=$target_cmd" '
+            $7 == target {   # <--- CHANGED FROM $6 TO $7
+                split($3, rss_val, "=");
+                if (rss_val[2] > max) max = rss_val[2] 
+            } 
+            END { if (max > 0) printf "%.1f MB", max / 1024; else print "N/A" }
+        ' "$log_path"
+    else
+        echo "N/A"
+    fi
+}
+
+# Use the precise binary names matching the output of cmd= in rss.log
+MAX_DAR_BACKUP=$(calc_max_rss "dar-backup")
+MAX_DAR=$(calc_max_rss "dar")
+MAX_PAR2=$(calc_max_rss "par2")
+MAX_MANAGER=$(calc_max_rss "manager")
+
+# Fixed disk analyzer helper: avoids pipe failures if globs don't match files
+calc_slice_size() {
+    local prefix="$1"
+    local target_dir="${BACKUP_DIR:-}"
+    local def_name="${DEFINITION_NAME:-}"
+    
+    if [[ -n "$target_dir" && -d "$target_dir" && -n "$def_name" ]]; then
+        # Ensure the glob resolves without throwing errors to du
+        local bytes; bytes=$(du -cb "${target_dir}/${def_name}_${prefix}_"* 2>/dev/null | awk 'END{print $1}' || echo 0)
+        if [[ "$bytes" -gt 0 ]]; then
+            awk -v b="$bytes" 'BEGIN { printf "%.2f GB", b / 1024 / 1024 / 1024 }'
+        else
+            echo "0.00 GB"
+        fi
+    else
+        echo "0.00 GB"
+    fi
+}
+
+FULL_SIZE=$(calc_slice_size "FULL")
+DIFF_SIZE=$(calc_slice_size "DIFF")
+
+# Compile final analytics screen layout using matched variable casing
+echo -e "dar-backup test pass: ${DATESTAMP:-}"
+echo -e "FULL elapsed: ${full_elapsed:-0}s (~${FULL_SIZE})"
+echo -e "DIFF elapsed: ${diff_elapsed:-0}s (~${DIFF_SIZE})"
+echo -e "Peak Engine Memory Consumption:"
+echo -e "  ├── dar-backup : ${MAX_DAR_BACKUP}"
+echo -e "  ├── dar backend: ${MAX_DAR}"
+echo -e "  ├── par2 engine: ${MAX_PAR2}"
+echo -e "  └── db manager : ${MAX_MANAGER}"
+echo -e "Failures:      ${FAILURES:-0}"
+
+# Final status validation routing
+if [ "${FAILURES:-0}" -eq 0 ]; then
+    echo -e "\n${GREEN}${BOLD}✓ ALL TESTS PASSED SUCCESSFULLY${RESET}\n"
+    exit 0
+else
+    echo -e "\n${RED}${BOLD}✗ TEST SUITE FAILED WITH ${FAILURES} ERRORS${RESET}\n"
+    exit 1
+fi
