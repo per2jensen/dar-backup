@@ -6,15 +6,16 @@
 set -euo pipefail
 
 # ── defaults ────────────────────────────────────────────────────────────────
-DEFINITION_CONTENT=""
+DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
+DATE_OF_RUN=$(date '+%Y-%m-%d')  # Pinned once at initialization
 BASE_DIR="/data/tmp/large-scale-test"
+DEFINITION_NAME="large-scale-test"
+DEFINITION_CONTENT=""
 SLICE_SIZE="10G"
 PAR2_RATIO=5
 DO_BITROT=0
 KEEP=0
 TIMEOUT=86400
-DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
-DEFINITION_NAME="large-scale-test"
 SCRIPT_VERSION="4"
 DIFF_PRIMER_DIR=""
 DAR_BACKUP_VERSION=""
@@ -176,7 +177,7 @@ update_diff_primer() {
     info "Updating diff-primer data..."
     find "$DIFF_PRIMER_DIR" -type f | grep -v "link_" | while read -r f; do
         dd if=/dev/urandom of="$f" bs=$(stat -c%s "$f") count=1 2>/dev/null
-    done
+    done || true
     rm "${DIFF_PRIMER_DIR}/link_original.txt"
     echo "Appended text block mutating target1 inode before execution of DIFF backup." >> "${DIFF_PRIMER_DIR}/link_target1.txt"
     ln "${DIFF_PRIMER_DIR}/link_target1.txt" "${DIFF_PRIMER_DIR}/link_target2.txt"
@@ -226,15 +227,24 @@ check_dar_integrity() {
 
 check_par2_verify() {
     local archive_base="$1" label="$2" all_ok=1
-    for par2_file in "${PAR2_DIR}/${archive_base}".*.dar.par2; do
-        [[ -f "$par2_file" ]] || continue
+    
+    # Enable safe globbing transitions
+    shopt -s nullglob
+    local par2_files=("${PAR2_DIR}/${archive_base}".*.dar.par2)
+    shopt -u nullglob
+
+    for par2_file in "${par2_files[@]}"; do
         par2 verify -B "$BACKUP_DIR" -q "$par2_file" >> "$LOGFILE" 2>&1 || { fail "par2 verify FAILED: $(basename "$par2_file")"; all_ok=0; }
     done
     [[ $all_ok -eq 1 ]] && pass "par2 verify passed all slices: ${label}"
 }
 
+
+
 do_bitrot_test() {
-    local archive_base="$1" slice="${BACKUP_DIR}/${archive_base}.1.dar" par2="${PAR2_DIR}/${archive_base}.1.dar.par2"
+    local archive_base="$1"
+    local slice="${BACKUP_DIR}/${archive_base}.1.dar"
+    local par2="${PAR2_DIR}/${archive_base}.1.dar.par2"
     banner "Bitrot test on ${archive_base}"
     local size; size=$(stat -c%s "$slice")
     local corrupt_bytes=$(( size * 2 / 100 )) offset=$(( size / 4 ))
@@ -248,10 +258,30 @@ do_bitrot_test() {
 
 count_slices() { ls "${BACKUP_DIR}/${1}".*.dar 2>/dev/null | wc -l; }
 init_manager_db() { manager --create-db --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1 && pass "manager --create-db succeeded" || fail "manager --create-db failed"; }
-find_archive_base() { local match; match=$(ls "${BACKUP_DIR}/${DEFINITION_NAME}_${1}_$(date '+%Y-%m-%d')*.dar" 2>/dev/null | head -1 || true); basename "$match" | sed 's/\.1\.dar$//'; }
+# ── find archive base for a backup type ───────────────────────────────────────
+
+
+# ── find archive base for a backup type ───────────────────────────────────────
+find_archive_base() {
+    local type="$1"
+    
+    # Explicitly construct the exact expected filename structure
+    local expected_base="${DEFINITION_NAME}_${type}_${DATE_OF_RUN}"
+    local expected_file="${BACKUP_DIR}/${expected_base}.1.dar"
+
+    # Verify the file is actually present on disk before claiming success
+    if [[ -f "$expected_file" ]]; then
+        echo "$expected_base"
+    else
+        # If it doesn't exist, log why directly to stderr so it bypasses command substitutions
+        echo "  FAIL  Expected slice file not found at: ${expected_file}" >&2
+        echo ""
+    fi
+}
 
 cleanup() { stop_rss_monitor; [[ $KEEP -eq 0 ]] && rm -rf "$RUN_DIR" || info "Keeping run directory: $RUN_DIR"; }
-trap cleanup EXIT
+
+#trap cleanup EXIT
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MAIN ORCHESTRATION
@@ -274,7 +304,7 @@ fi
 FULL_BASE=$(find_archive_base "FULL")
 [[ -z "${FULL_BASE}" ]] && { fail "No FULL base found"; exit 1; }
 FULL_SLICES=$(count_slices "$FULL_BASE")
-FULL_SIZE_HUMAN=$(du-sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}')
+FULL_SIZE_HUMAN=$(du -sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}')
 
 check_dar_integrity  "$FULL_BASE" "FULL"
 check_par2_per_slice "$FULL_BASE" "$FULL_SLICES"
@@ -301,10 +331,27 @@ verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
 
 # ── PHASE 3 ──
 banner "Phase 3 — Point-In-Time Restore Validation"
-manager --sync --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1
-dar-backup -R -d "$DEFINITION_NAME" --config-file "$CONFIG_FILE" --darrc "$DARRC" --log-level debug
+
+info "Cleaning restore target directory to satisfy manager safety checks..."
+rm -rf "$RESTORE_DIR"
+mkdir -p "$RESTORE_DIR"
+
+info "Invoking manager to process PITR extraction for diff-primer data..."
+
+# Using the exact CLI arguments from restoring.md to restore our relative primer directory
+if manager --config-file "$CONFIG_FILE" \
+           -d "$DEFINITION_NAME" \
+           --restore-path "${DIFF_PRIMER_DIR#/}/" \
+           --when "now" \
+           --target "$RESTORE_DIR" \
+           --log-stdout --verbose >> "$LOGFILE" 2>&1; then
+    pass "Restore sequence completed execution via manager"
+else
+    fail "manager PITR restore dropped an error exit code"
+fi
 
 RESTORE_PRIMER_PATH="${RESTORE_DIR}/${DIFF_PRIMER_DIR#/}"
+
 if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then fail "link_original.txt should be deleted"; fi
 if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
     inode1=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target1.txt")
