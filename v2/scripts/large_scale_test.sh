@@ -14,66 +14,6 @@
 #
 # Usage:
 #   ./large_scale_test.sh --definition DEF_STRING [OPTIONS]
-#
-# Options:
-#   --definition STR   dar backup definition content (required, see example)
-#   --base       DIR   Base directory for test output (default: /data/tmp/large-scale-test)
-#   --slice      SIZE  dar slice size written into the definition (default: 10G)
-#   --par2-ratio INT   PAR2 redundancy percent (default: 5)
-#   --bitrot           Inject bitrot into FULL slice 1, repair, verify
-#   --keep             Do not delete backup/par2/run dirs on exit (metrics DB always kept)
-#   --timeout    SECS  Command timeout in seconds (default: 86400)
-#   --help             Show this help
-#
-# The metrics DB and summary report are always kept under --base/results/.
-#
-#
-# The metrics DB accumulates across runs so you can compare releases over time.
-# Example — single source tree:
-#   ./large_scale_test.sh \
-#       --base /data/tmp/large-scale-test \
-#       --bitrot \
-#       --definition "$(cat << 'EOF'
-# -R /
-# -s 10G
-# -z6
-# -am
-# --cache-directory-tagging
-# -g mnt/photos/2023
-# EOF
-# )"
-#
-# Example — multiple source trees:
-#   ./large_scale_test.sh \
-#       --base /data/tmp/large-scale-test \
-#       --bitrot \
-#       --definition "$(cat << 'EOF'
-# -R /
-# -s 10G
-# -z6
-# -am
-# --cache-directory-tagging
-# -g mnt/photos/2023
-# -g mnt/photos/2024
-# -g home/pj/documents
-# EOF
-# )"
-#
-# Note: dar does not accept a leading '/' in -g paths; write 'mnt/foo' not '/mnt/foo'.
-# The -s (slice size) in the definition overrides --slice if both are present;
-# omit -s from the definition to let --slice control it.
-#
-# A synthetic diff-primer directory is automatically appended to the definition
-# and managed by the script:
-#   - Before FULL:  100 small files, 10 × 2 MB files, 5 × 55 MB files are created.
-#   - Before DIFF:  all files are overwritten with new random data and one new
-#                   file is added, guaranteeing a non-trivial DIFF without
-#                   touching any personal source files.
-# The primer directory lives at --base/diff-primer/ and is NOT deleted on exit
-# (even without --keep) so it can serve as a stable DIFF source across runs.
-
-
-
 
 set -euo pipefail
 
@@ -87,7 +27,7 @@ KEEP=0
 TIMEOUT=86400
 DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
-SCRIPT_VERSION="4"          # incremented due to hard link & PITR changes
+SCRIPT_VERSION="4"   # incremented due to hard link & PITR changes
 DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
 DAR_BACKUP_VERSION=""
 GIT_COMMIT=""
@@ -291,9 +231,13 @@ write_backup_def() {
     info "Diff-primer appended: -g ${primer_g}"
 }
 
-# ── diff-primer data generation ──────────────────────────────────────────────
+# ── diff-primer data generation (Idempotent) ─────────────────────────────────
 create_diff_primer() {
     info "Creating diff-primer data in ${DIFF_PRIMER_DIR}..."
+    
+    # Aggressively clear stale text streams or link targets from prior aborted runs
+    rm -rf "${DIFF_PRIMER_DIR:?}"/*
+
     # 100 small files (4 kB each — metadata-heavy workload)
     for i in $(seq 1 100); do
         dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/small_${i}.bin" bs=4096 count=1 2>/dev/null
@@ -534,30 +478,6 @@ count_slices() {
     ls "${BACKUP_DIR}/${archive_base}".*.dar 2>/dev/null | wc -l
 }
 
-# ── run dar-backup ────────────────────────────────────────────────────────────
-run_backup() {
-    local flag="$1"
-    local label="$2"
-    local elapsed_file; elapsed_file=$(mktemp)
-    local t0; t0=$(date +%s)
-    info "Starting ${label} backup..."
-    if dar-backup "$flag" -d "$DEFINITION_NAME" \
-            --config-file "$CONFIG_FILE" \
-            --darrc "$DARRC" \
-            --log-level debug \
-            >> "$LOGFILE" 2>&1; then
-        local secs=$(( $(date +%s) - t0 ))
-        pass "${label} backup completed in ${secs}s"
-        echo "$secs" > "$elapsed_file"
-    else
-        local secs=$(( $(date +%s) - t0 ))
-        fail "${label} backup failed after ${secs}s"
-        echo "$secs" > "$elapsed_file"
-    fi
-    cat "$elapsed_file"
-    rm -f "$elapsed_file"
-}
-
 # ── initialise manager DB ─────────────────────────────────────────────────────
 init_manager_db() {
     if manager --create-db --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1; then
@@ -591,7 +511,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ════════════════════════════════════════════════════════════════════════════════
-# MAIN
+# MAIN ORCHESTRATION
 # ════════════════════════════════════════════════════════════════════════════════
 
 banner "dar-backup large-scale test  ${DATESTAMP}"
@@ -603,7 +523,15 @@ info "Metrics DB: ${METRICS_DB}"
 info "Log:        ${LOGFILE}"
 echo ""
 
-# Setup
+# Pre-initialize tracking variables to ensure 'set -u' invariant safety
+full_elapsed=0
+diff_elapsed=0
+FULL_BASE=""
+DIFF_BASE=""
+FULL_SLICES=0
+FULL_SIZE_HUMAN="0 GB"
+
+# Environment Setup Execution Steps
 write_config
 create_diff_primer
 write_backup_def
@@ -611,19 +539,34 @@ write_darrc
 init_manager_db
 start_rss_monitor
 
-# ── FULL backup ───────────────────────────────────────────────────────────────
+# ── PHASE 1 — FULL BACKUP ─────────────────────────────────────────────────────
 banner "Phase 1 — FULL backup"
-full_elapsed=$(run_backup "-F" "FULL")
+
+t0=$(date +%s)
+info "Starting FULL backup execution pass..."
+if dar-backup -F -d "$DEFINITION_NAME" \
+        --config-file "$CONFIG_FILE" \
+        --darrc "$DARRC" \
+        --log-level debug \
+        >> "$LOGFILE" 2>&1; then
+    full_elapsed=$(( $(date +%s) - t0 ))
+    pass "FULL backup completed successfully in ${full_elapsed}s"
+else
+    full_elapsed=$(( $(date +%s) - t0 ))
+    fail "FULL backup failed after ${full_elapsed}s"
+    exit 1
+fi
+
 FULL_BASE=$(find_archive_base "FULL")
 
-if [[ -z "$FULL_BASE" ]]; then
-    fail "Could not find FULL archive base — aborting"
+if [[ -z "${FULL_BASE}" ]]; then
+    fail "Could not resolve generated FULL archive base files inside ${BACKUP_DIR} — aborting"
     exit 1
 fi
 
 FULL_SLICES=$(count_slices "$FULL_BASE")
 FULL_SIZE_HUMAN=$(du -sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null \
-    | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}' || echo "?")
+    | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}' || echo "0 GB")
 
 info "Archive:    ${FULL_BASE}"
 info "Slices:     ${FULL_SLICES}"
@@ -635,16 +578,31 @@ check_par2_verify    "$FULL_BASE" "FULL"
 
 [[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$FULL_BASE"
 
-# ── DIFF backup ───────────────────────────────────────────────────────────────
+# ── PHASE 2 — DIFF BACKUP ─────────────────────────────────────────────────────
 banner "Phase 2 — DIFF backup"
 update_diff_primer
 
-diff_elapsed=$(run_backup "-D" "DIFF")
-DIFF_BASE=$(find_archive_base "DIFF")
+t0=$(date +%s)
+info "Starting DIFF backup execution pass..."
+if dar-backup -D -d "$DEFINITION_NAME" \
+        --config-file "$CONFIG_FILE" \
+        --darrc "$DARRC" \
+        --log-level debug \
+        >> "$LOGFILE" 2>&1; then
+    diff_elapsed=$(( $(date +%s) - t0 ))
+    pass "DIFF backup completed successfully in ${diff_elapsed}s"
+else
+    diff_elapsed=$(( $(date +%s) - t0 ))
+    fail "DIFF backup failed after ${diff_elapsed}s"
+    exit 1
+fi
 
+DIFF_BASE=$(find_archive_base "DIFF")
 DIFF_SLICES=0
-if [[ -z "$DIFF_BASE" ]]; then
-    fail "Could not find DIFF archive base"
+
+if [[ -z "${DIFF_BASE}" ]]; then
+    fail "Could not find generated DIFF archive base files."
+    exit 1
 else
     DIFF_SLICES=$(count_slices "$DIFF_BASE")
     info "Archive: ${DIFF_BASE}"
@@ -703,7 +661,7 @@ else
     fail "PITR Verification Blocked: One or both hard-link targets are missing from the restore partition!"
 fi
 
-# ── RSS summary ───────────────────────────────────────────────────────────────
+# ── RSS SUMMARY ───────────────────────────────────────────────────────────────
 banner "Memory usage summary"
 stop_rss_monitor
 RSS_MONITOR_PID=""
@@ -716,7 +674,7 @@ for proc in dar-backup dar par2; do
     fi
 done
 
-# ── write summary ─────────────────────────────────────────────────────────────
+# ── WRITE FINAL SUMMARY REPORT ────────────────────────────────────────────────
 banner "Summary"
 {
     echo "dar-backup large-scale test"
