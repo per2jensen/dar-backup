@@ -36,6 +36,22 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   - Dead code removed: `REQUIRED_LANG` constant and `_locale_ok()` function in `dar_backup.py`
     (superseded by `LC_ALL=C` in `CommandRunner`).
 
+- **Config parse errors now name the offending key and section** (`config_settings.py`) — a bad
+  value such as `DIFF_AGE = 5x` previously produced a generic `"Invalid value in config: invalid
+  literal for int() with base 10: '5x'"` with no indication of which key was at fault.  Now every
+  integer parse failure reports the key name, section, and bad value:
+  `"Expected an integer for 'DIFF_AGE' in [AGE], got: '5x'"`.  Changes:
+
+  - New `_get_int(section, key)` helper used for all 7 mandatory integer fields in `__post_init__`
+    (`MAX_SIZE_VERIFICATION_MB`, `MIN_SIZE_VERIFICATION_MB`, `NO_FILES_VERIFICATION`,
+    `COMMAND_TIMEOUT_SECS`, `DIFF_AGE`, `INCR_AGE`, `ERROR_CORRECTION_PERCENT`).
+  - `_get_optional_int` hardened with the same specific error (previously also did a bare `int()`).
+  - The three per-backup-definition `PAR2_RATIO_*` overrides in `get_par2_config()` now raise
+    `ConfigSettingsError` with key, section, and bad value rather than a raw `ValueError`.
+  - Added `except ConfigSettingsError: raise` as the first handler in the `__post_init__`
+    try/except block so specific errors raised internally are no longer swallowed by the broad
+    `except Exception` fallback.
+
 ### Added
 
 - Dashboard gained checkmarks to disable PREREQ and POSTREQ errors, to more easily see "real" backup/restore errors
@@ -47,7 +63,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - `test_list_contents_unicode_filenames` extended with German umlaut filenames (`deutsch_üöäß.txt`,
   `DEUTSCH_ÜÖÄ.txt`, `ß`).
 - New parametrised integration test `test_list_contents_non_english_utf8_locale` runs backup and
-  list-contents with `LANG` set to each non-English UTF-8 locale installed on the machine
+  list-contents with `LANG` set to each non-English UTF-8 locale installed on the machine.
   (e.g. `da_DK.utf8`), proving file-name handling is correct regardless of the caller's locale.
 
 ## v2-1.1.7 - 2026-06-07

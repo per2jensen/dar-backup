@@ -95,7 +95,7 @@ def test_config_settings_optional_bool_invalid_raises(tmp_path):
     with pytest.raises(ConfigSettingsError) as exc_info:
         ConfigSettings(str(config_path))
     message = str(exc_info.value).lower()
-    assert "unexpected error" in message
+    assert "invalid boolean value" in message
     assert "par2_run_verify" in message
 
 
@@ -266,11 +266,8 @@ def test_config_settings_invalid_optional_ints_raise(tmp_path, section, key, val
     with pytest.raises(ConfigSettingsError) as exc_info:
         ConfigSettings(str(config_path))
     message = str(exc_info.value).lower()
-    if section.lower() == "par2":
-        assert "invalid value in config" in message
-        assert "not-an-int" in message
-    else:
-        assert key.lower() in message
+    assert "not-an-int" in message
+    assert key.lower() in message
 
 
 # ---------------------------------------------------------------------------

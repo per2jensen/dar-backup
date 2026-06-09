@@ -132,19 +132,19 @@ class ConfigSettings:
                 raise RuntimeError(f"Configuration file not found or unreadable: '{self.config_file}'")
 
             self.logfile_location = self.config['MISC']['LOGFILE_LOCATION']
-            self.max_size_verification_mb = int(self.config['MISC']['MAX_SIZE_VERIFICATION_MB'])
-            self.min_size_verification_mb = int(self.config['MISC']['MIN_SIZE_VERIFICATION_MB'])
-            self.no_files_verification = int(self.config['MISC']['NO_FILES_VERIFICATION'])
-            self.command_timeout_secs = int(self.config['MISC']['COMMAND_TIMEOUT_SECS'])
+            self.max_size_verification_mb = self._get_int('MISC', 'MAX_SIZE_VERIFICATION_MB')
+            self.min_size_verification_mb = self._get_int('MISC', 'MIN_SIZE_VERIFICATION_MB')
+            self.no_files_verification = self._get_int('MISC', 'NO_FILES_VERIFICATION')
+            self.command_timeout_secs = self._get_int('MISC', 'COMMAND_TIMEOUT_SECS')
             env_timeout = os.getenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS")
             if env_timeout is not None:
                 self.command_timeout_secs = self._parse_env_timeout(env_timeout)
             self.backup_dir = self.config['DIRECTORIES']['BACKUP_DIR']
             self.test_restore_dir = self.config['DIRECTORIES']['TEST_RESTORE_DIR']
             self.backup_d_dir = self.config['DIRECTORIES']['BACKUP.D_DIR']
-            self.diff_age = int(self.config['AGE']['DIFF_AGE'])
-            self.incr_age = int(self.config['AGE']['INCR_AGE'])
-            self.error_correction_percent = int(self.config['PAR2']['ERROR_CORRECTION_PERCENT'])
+            self.diff_age = self._get_int('AGE', 'DIFF_AGE')
+            self.incr_age = self._get_int('AGE', 'INCR_AGE')
+            self.error_correction_percent = self._get_int('PAR2', 'ERROR_CORRECTION_PERCENT')
 
             if self.no_files_verification < 1:
                 raise ConfigSettingsError(
@@ -219,6 +219,8 @@ class ConfigSettings:
                     if isinstance(value, str):
                         setattr(self, field.name, expanduser(expandvars(value)))
 
+        except ConfigSettingsError:
+            raise
         except RuntimeError as e:
             raise ConfigSettingsError(f"RuntimeError: {e}")
         except KeyError as e:
@@ -243,10 +245,49 @@ class ConfigSettings:
             return self.config.get(section, key).strip()
         return default
 
+    def _get_int(self, section: str, key: str) -> int:
+        """Read a mandatory integer config value and raise ConfigSettingsError with context on failure.
+
+        Args:
+            section: Config file section name.
+            key: Config key within that section.
+
+        Returns:
+            Parsed integer value.
+
+        Raises:
+            ConfigSettingsError: If the value cannot be parsed as an integer.
+        """
+        raw = self.config[section][key].strip()
+        try:
+            return int(raw)
+        except ValueError:
+            raise ConfigSettingsError(
+                f"Expected an integer for '{key}' in [{section}], got: '{raw}'"
+            )
+
     def _get_optional_int(self, section: str, key: str, default: Optional[int] = None) -> Optional[int]:
+        """Read an optional integer config value and raise ConfigSettingsError with context on failure.
+
+        Args:
+            section: Config file section name.
+            key: Config key within that section.
+            default: Value to return when the key is absent.
+
+        Returns:
+            Parsed integer, or *default* if the key is not present.
+
+        Raises:
+            ConfigSettingsError: If the key is present but cannot be parsed as an integer.
+        """
         if self.config.has_option(section, key):
             raw = self.config.get(section, key).strip()
-            return int(raw)
+            try:
+                return int(raw)
+            except ValueError:
+                raise ConfigSettingsError(
+                    f"Expected an integer for '{key}' in [{section}], got: '{raw}'"
+                )
         return default
 
     def _get_optional_bool(self, section: str, key: str, default: Optional[bool] = None) -> Optional[bool]:
@@ -328,11 +369,26 @@ class ConfigSettings:
             if key == "PAR2_DIR":
                 par2_config["par2_dir"] = value
             elif key == "PAR2_RATIO_FULL":
-                par2_config["par2_ratio_full"] = int(value)
+                try:
+                    par2_config["par2_ratio_full"] = int(value)
+                except ValueError:
+                    raise ConfigSettingsError(
+                        f"Expected an integer for 'PAR2_RATIO_FULL' in [{backup_definition}], got: '{value}'"
+                    )
             elif key == "PAR2_RATIO_DIFF":
-                par2_config["par2_ratio_diff"] = int(value)
+                try:
+                    par2_config["par2_ratio_diff"] = int(value)
+                except ValueError:
+                    raise ConfigSettingsError(
+                        f"Expected an integer for 'PAR2_RATIO_DIFF' in [{backup_definition}], got: '{value}'"
+                    )
             elif key == "PAR2_RATIO_INCR":
-                par2_config["par2_ratio_incr"] = int(value)
+                try:
+                    par2_config["par2_ratio_incr"] = int(value)
+                except ValueError:
+                    raise ConfigSettingsError(
+                        f"Expected an integer for 'PAR2_RATIO_INCR' in [{backup_definition}], got: '{value}'"
+                    )
             elif key == "PAR2_RUN_VERIFY":
                 val = value.lower()
                 if val in ('true', '1', 'yes'):
