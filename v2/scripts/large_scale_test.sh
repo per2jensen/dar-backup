@@ -97,7 +97,7 @@ RESTORE_DIR="${RUN_DIR}/restore"
 BACKUP_D_DIR="${RUN_DIR}/backup.d"
 RESULTS_DIR="${BASE_DIR}/results"
 METRICS_DB="${RESULTS_DIR}/dar-backup-metrics.db"
-LOGFILE="${RESULTS_DIR}/large-scale-test-${DATESTAMP}.log"
+LOGFILE="${RESULTS_DIR}/large-scale-test-${DATESTAMP}.dar-backup.log"
 SUMMARY="${RESULTS_DIR}/summary-${DATESTAMP}.txt"
 CONFIG_FILE="${RUN_DIR}/dar-backup.conf"
 DARRC="${RUN_DIR}/.darrc"
@@ -146,8 +146,8 @@ BACKUP_DIR = ${BACKUP_DIR}
 BACKUP.D_DIR = ${BACKUP_D_DIR}
 TEST_RESTORE_DIR = ${RESTORE_DIR}
 [AGE]
-DIFF_AGE = 100
-INCR_AGE = 40
+DIFF_AGE = 50
+INCR_AGE = 30
 [PAR2]
 ERROR_CORRECTION_PERCENT = ${PAR2_RATIO}
 ENABLED = True
