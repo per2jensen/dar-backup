@@ -200,6 +200,16 @@ opens the dashboard in your browser:
 
 ---
 
+### 🛡️ Built for Disaster Recovery
+
+Unlike traditional backup utilities that fail entirely if a single byte is corrupted, `dar-backup` splits data processing into independent, verifiable layers:
+
+1. **Deterministic Slicing:** Backups are divided into manageable chunk sizes (e.g., 10GB blocks) making transfers over networks or long-term disk sets reliable.
+2. **Isolated Parity Directories:** `par2` recovery files are maintained in a completely separate directory infrastructure from your data slices. If an underlying storage volume experiences filesystem bitrot, the parity blocks can cleanly rebuild damaged `.dar` slices automatically.
+3. **Point-in-Time Recovery (PITR):** Integrated timezone-aware historical queries let you roll forward or backward to pinpoint exact historical directory states using differential catalog tracking.
+
+---
+
 ## Documentation
 
 | Document | Description |
