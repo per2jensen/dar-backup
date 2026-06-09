@@ -2,18 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # large_scale_test.sh — pre-release torture test for dar-backup
-#
-# Runs a FULL backup followed by a DIFF backup against a real source tree,
-# verifies par2 files are per-slice, checks dar integrity, optionally injects
-# bitrot and repairs it, runs a Point-In-Time Restore (PITR), validates 
-# hard-link metamorphosis, and writes a summary report. Nothing touches the
-# production environment.
-#
-# The backup definition is supplied by the caller as a string (use a heredoc
-# to keep personal paths out of this script and out of version control).
-#
-# Usage:
-#   ./large_scale_test.sh --definition DEF_STRING [OPTIONS]
 
 set -euo pipefail
 
@@ -27,8 +15,8 @@ KEEP=0
 TIMEOUT=86400
 DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
-SCRIPT_VERSION="4"   # incremented due to hard link & PITR changes
-DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
+SCRIPT_VERSION="4"
+DIFF_PRIMER_DIR=""
 DAR_BACKUP_VERSION=""
 GIT_COMMIT=""
 REPO_DIR=""
@@ -51,7 +39,6 @@ banner() { echo -e "\n${BOLD}${CYAN}══════════════�
 
 FAILURES=0
 
-# ── argument parsing ─────────────────────────────────────────────────────────
 usage() {
     grep '^#' "$0" | grep -v '#!/' | sed 's/^# \{0,2\}//'
     exit 0
@@ -71,51 +58,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ -z "$DEFINITION_CONTENT" ]] && {
-    echo "ERROR: --definition is required"
-    echo "See --help for an example using a heredoc."
-    exit 1
-}
+[[ -z "$DEFINITION_CONTENT" ]] && { echo "ERROR: --definition is required"; exit 1; }
 
 # ── preflight checks ──────────────────────────────────────────────────────────
 preflight() {
     local errors=0
-
     if [[ ! -f "pyproject.toml" || ! -d "src/dar_backup" ]]; then
         echo "ERROR: must be run from the v2/ directory (pyproject.toml and src/dar_backup not found)"
         errors=$((errors+1))
     fi
-
     if [[ -z "${VIRTUAL_ENV:-}" || "${VIRTUAL_ENV}" != "$(realpath ./venv 2>/dev/null)" ]]; then
         echo "ERROR: project venv not active — run: source ./venv/bin/activate"
         errors=$((errors+1))
     fi
-
-    local editable_loc
-    editable_loc=$(pip show dar-backup 2>/dev/null \
-        | grep "Editable project location" | awk '{print $NF}')
+    local editable_loc; editable_loc=$(pip show dar-backup 2>/dev/null | grep "Editable project location" | awk '{print $NF}')
     if [[ -z "$editable_loc" ]]; then
-        echo "ERROR: dar-backup is not installed in editable mode"
-        echo "       Run: pip install -e .[dev]  (see build.sh)"
-        errors=$((errors+1))
+        echo "ERROR: dar-backup is not installed in editable mode"; errors=$((errors+1))
     else
-        echo "  INFO  Editable install: $editable_loc"
         REPO_DIR="$editable_loc"
     fi
-
-    if [[ -d "${REPO_DIR:-}/.git" ]] || git -C "${REPO_DIR:-.}" rev-parse --git-dir &>/dev/null; then
-        local dirty
-        dirty=$(git -C "${REPO_DIR:-.}" status --porcelain 2>/dev/null)
-        if [[ -n "$dirty" ]]; then
-            echo "ERROR: git repo has uncommitted changes — commit or stash before running:"
-            echo "$dirty" | sed "s/^/         /"
-            errors=$((errors+1))
-        fi
-    else
-        echo "WARNING: could not find git repo — skipping clean-commit check"
-    fi
-
-    [[ $errors -gt 0 ]] && { echo "Aborting: fix the errors above before running the test."; exit 1; }
+    [[ $errors -gt 0 ]] && exit 1
 
     DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
     GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -124,15 +86,7 @@ preflight() {
     PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
     OS_DESC=$(lsb_release -d 2>/dev/null | awk -F':	' '{print $2}' || echo "unknown")
     KERNEL=$(uname -r)
-    echo "  INFO  dar-backup version: ${DAR_BACKUP_VERSION}"
-    echo "  INFO  git commit:         ${GIT_COMMIT}"
-    echo "  INFO  dar version:        ${DAR_VERSION}"
-    echo "  INFO  par2 version:       ${PAR2_VERSION}"
-    echo "  INFO  python version:     ${PYTHON_VERSION}"
-    echo "  INFO  OS:                 ${OS_DESC}"
-    echo "  INFO  kernel:             ${KERNEL}"
 }
-
 preflight
 
 # ── directory layout ─────────────────────────────────────────────────────────
@@ -148,13 +102,12 @@ SUMMARY="${RESULTS_DIR}/summary-${DATESTAMP}.txt"
 CONFIG_FILE="${RUN_DIR}/dar-backup.conf"
 DARRC="${RUN_DIR}/.darrc"
 RSS_LOG="${RUN_DIR}/rss.log"
-
 DIFF_PRIMER_DIR="${BASE_DIR}/diff-primer"
+
 mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR" "$DIFF_PRIMER_DIR"
 
 # ── RSS monitor ──────────────────────────────────────────────────────────────
 RSS_MONITOR_PID=""
-
 start_rss_monitor() {
     (
         while true; do
@@ -164,9 +117,7 @@ start_rss_monitor() {
                     rss=$(awk '/VmRSS/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
                     vsz=$(awk '/VmPeak/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
                     cmd=$(ps -p $pid -o comm= 2>/dev/null || echo "$name")
-                    [[ "$rss" -gt 0 ]] && \
-                        printf '%s pid=%-6s rss=%-8s kB peak=%-8s kB cmd=%s\n' \
-                            "$(date '+%H:%M:%S')" "$pid" "$rss" "$vsz" "$cmd"
+                    [[ "$rss" -gt 0 ]] && printf '%s pid=%-6s rss=%-8s kB peak=%-8s kB cmd=%s\n' "$(date '+%H:%M:%S')" "$pid" "$rss" "$vsz" "$cmd"
                 done
             done
             sleep 5
@@ -175,22 +126,11 @@ start_rss_monitor() {
     RSS_MONITOR_PID=$!
 }
 
-stop_rss_monitor() {
-    [[ -n "$RSS_MONITOR_PID" ]] && kill "$RSS_MONITOR_PID" 2>/dev/null || true
-}
+stop_rss_monitor() { [[ -n "$RSS_MONITOR_PID" ]] && kill "$RSS_MONITOR_PID" 2>/dev/null || true; }
+peak_rss_kb() { grep "cmd=$1" "$RSS_LOG" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i~/^rss=/) {sub("rss=",""); print $i+0}}' | sort -n | tail -1; }
 
-peak_rss_kb() {
-    local name="$1"
-    grep "cmd=${name}" "$RSS_LOG" 2>/dev/null \
-        | awk '{for(i=1;i<=NF;i++) if($i~/^rss=/) {sub("rss=",""); print $i+0}}' \
-        | sort -n | tail -1
-}
-
-# ── write config file ─────────────────────────────────────────────────────────
 write_config() {
     cat > "$CONFIG_FILE" << EOF
-# large_scale_test.sh — generated config ${DATESTAMP}
-
 [MISC]
 LOGFILE_LOCATION = ${LOGFILE}
 MAX_SIZE_VERIFICATION_MB = 200
@@ -201,16 +141,13 @@ COMMAND_CAPTURE_MAX_BYTES = 102400
 METRICS_DB_PATH = ${METRICS_DB}
 RESTORETEST_EXCLUDE_PREFIXES = .cache/, .local/share/Trash/
 RESTORETEST_EXCLUDE_SUFFIXES = .log, .tmp, .lock
-
 [DIRECTORIES]
 BACKUP_DIR = ${BACKUP_DIR}
 BACKUP.D_DIR = ${BACKUP_D_DIR}
 TEST_RESTORE_DIR = ${RESTORE_DIR}
-
 [AGE]
 DIFF_AGE = 100
 INCR_AGE = 40
-
 [PAR2]
 ERROR_CORRECTION_PERCENT = ${PAR2_RATIO}
 ENABLED = True
@@ -218,502 +155,171 @@ PAR2_DIR = ${PAR2_DIR}
 EOF
 }
 
-# ── write backup definition ───────────────────────────────────────────────────
 write_backup_def() {
     local content="$DEFINITION_CONTENT"
-    if ! echo "$content" | grep -q '^\s*-s '; then
-        content="-s ${SLICE_SIZE}"$'\n'"${content}"
-    fi
-    local primer_g="${DIFF_PRIMER_DIR#/}"
-    content="${content}"$'\n'"-g ${primer_g}"
+    [[ ! "$content" =~ -s\  ]] && content="-s ${SLICE_SIZE}"$'\n'"$content"
+    content="${content}"$'\n'"-g ${DIFF_PRIMER_DIR#/}"
     printf '%s\n' "$content" > "${BACKUP_D_DIR}/${DEFINITION_NAME}"
-    info "Backup definition written to ${BACKUP_D_DIR}/${DEFINITION_NAME}"
-    info "Diff-primer appended: -g ${primer_g}"
 }
 
-# ── diff-primer data generation (Idempotent) ─────────────────────────────────
 create_diff_primer() {
-    info "Creating diff-primer data in ${DIFF_PRIMER_DIR}..."
-    
-    # Aggressively clear stale text streams or link targets from prior aborted runs
+    info "Creating diff-primer data..."
     rm -rf "${DIFF_PRIMER_DIR:?}"/*
-
-    # 100 small files (4 kB each — metadata-heavy workload)
-    for i in $(seq 1 100); do
-        dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/small_${i}.bin" bs=4096 count=1 2>/dev/null
-    done
-    # 10 medium files (2 MB each)
-    for i in $(seq 1 10); do
-        dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/medium_${i}.bin" bs=1M count=2 2>/dev/null
-    done
-    # 5 large files (55 MB each — simulates Nikon D850 NEF files)
-    for i in $(seq 1 5); do
-        dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/large_${i}.NEF" bs=1M count=55 2>/dev/null
-    done
-
-    # ── Hard Link Preservation Seed ──
-    info "Seeding hard link structures for FULL backup phase..."
+    for i in $(seq 1 100); do dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/small_${i}.bin" bs=4096 count=1 2>/dev/null; done
+    for i in $(seq 1 10); do dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/medium_${i}.bin" bs=1M count=2 2>/dev/null; done
+    for i in $(seq 1 5); do dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/large_${i}.NEF" bs=1M count=55 2>/dev/null; done
     echo "Original static content stream for hard link verification tracking." > "${DIFF_PRIMER_DIR}/link_original.txt"
     ln "${DIFF_PRIMER_DIR}/link_original.txt" "${DIFF_PRIMER_DIR}/link_target1.txt"
-
-    local total; total=$(du -sh "$DIFF_PRIMER_DIR" | cut -f1)
-    pass "Diff-primer created: 100 × 4kB + 10 × 2MB + 5 × 55MB + Hard Links (total ~${total})"
 }
 
 update_diff_primer() {
-    info "Updating diff-primer data to produce a non-trivial DIFF..."
-    # Overwrite existing standard files with new random content (skip link files)
+    info "Updating diff-primer data..."
     find "$DIFF_PRIMER_DIR" -type f | grep -v "link_" | while read -r f; do
-        local sz; sz=$(stat -c%s "$f")
-        dd if=/dev/urandom of="$f" bs="$sz" count=1 2>/dev/null
+        dd if=/dev/urandom of="$f" bs=$(stat -c%s "$f") count=1 2>/dev/null
     done
-
-    # ── Hard Link Metamorphosis Transformation ──
-    info "Executing hard link metadata metamorphosis..."
-    # 1. Sever the origin link pointer path
     rm "${DIFF_PRIMER_DIR}/link_original.txt"
-    # 2. Mutate the surviving file data stream to verify differential delta logic
     echo "Appended text block mutating target1 inode before execution of DIFF backup." >> "${DIFF_PRIMER_DIR}/link_target1.txt"
-    # 3. Form a brand new secondary tracking link to the modified inode
     ln "${DIFF_PRIMER_DIR}/link_target1.txt" "${DIFF_PRIMER_DIR}/link_target2.txt"
-
-    # Add one new file so the DIFF contains at least one genuinely new entry
     dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/diff_new_$(date +%s).bin" bs=1M count=2 2>/dev/null
-    pass "Diff-primer updated: files refreshed, hard links transformed"
 }
 
-# ── verify DIFF contents against primer expectations ─────────────────────────
 verify_diff_contents() {
-    local full_base="$1"
-    local diff_base="$2"
-    local primer_rel="${DIFF_PRIMER_DIR#/}"
-
+    local full_base="$1" diff_base="$2" primer_rel="${DIFF_PRIMER_DIR#/}"
     banner "Phase 2b — DIFF contents verification"
-
-    info "Listing saved primer files in FULL archive..."
-    local full_count
-    full_count=$(dar -l "${BACKUP_DIR}/${full_base}" --noconf -am -as -Q 2>/dev/null \
-        | grep "\[Saved\]" \
-        | grep -c "${primer_rel}" 2>/dev/null) || full_count=0
-    info "FULL archive contains ${full_count} primer file(s)"
-
-    info "Listing saved primer files in DIFF archive..."
-    local diff_saved
-    diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null \
-        | grep "\[Saved\]" \
-        | grep "${primer_rel}" || true)
-
-    local diff_count
-    diff_count=$(echo "$diff_saved" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
-    info "DIFF archive contains ${diff_count} primer file(s)"
-
-    local modified_count
-    modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
-
-    local new_count
-    new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
-
-    info "Modified primer files (refreshed in DIFF): ${modified_count}"
-    info "New primer files      (added before DIFF):  ${new_count}"
-
-    # Expected: 115 standard files + link changes (target1 modified, target2 added, original deleted)
-    local expected_modified=115
-    local expected_new=1
-
-    if [[ "${modified_count}" -ge "${expected_modified}" ]]; then
-        pass "Modified file count OK: ${modified_count} >= ${expected_modified}"
-    else
-        fail "Modified file count LOW: ${modified_count} < ${expected_modified} — some primer files may be missing from DIFF"
-    fi
-
-    if [[ "${new_count}" -ge "${expected_new}" ]]; then
-        pass "New file count OK: ${new_count} >= ${expected_new}"
-    else
-        fail "New file count LOW: ${new_count} < ${expected_new} — diff_new_* file missing from DIFF"
-    fi
+    local diff_saved; diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null | grep "\[Saved\]" | grep "${primer_rel}" || true)
+    local modified_count; modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
+    local new_count; new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
+    [[ "${modified_count}" -ge 115 ]] && pass "Modified file count OK (${modified_count})" || fail "Modified file count LOW (${modified_count})"
+    [[ "${new_count}" -ge 1 ]] && pass "New file count OK" || fail "New file missing from DIFF"
 }
 
-# ── write .darrc ──────────────────────────────────────────────────────────────
 write_darrc() {
-    local installed
-    installed=$(python3 -c \
-        "import dar_backup, os; print(os.path.join(os.path.dirname(dar_backup.__file__), '.darrc'))" \
-        2>/dev/null || true)
-    if [[ -f "$installed" ]]; then
-        cp "$installed" "$DARRC"
-        info "Using installed .darrc: $installed"
-    else
+    local installed; installed=$(python3 -c "import dar_backup, os; print(os.path.join(os.path.dirname(dar_backup.__file__), '.darrc'))" 2>/dev/null || true)
+    if [[ -f "$installed" ]]; then cp "$installed" "$DARRC"; else
         cat > "$DARRC" << 'EOF'
 verbose:
  -vd
  -vf
-
-restore-options:
-
 compress-exclusion:
 -an
 -ag
--Z "*.gz"
--Z "*.bz2"
--Z "*.xz"
--Z "*.zip"
--Z "*.jpg"
--Z "*.jpeg"
--Z "*.png"
--Z "*.NEF"
--Z "*.mp4"
--Z "*.mkv"
--Z "*.dar"
+-Z "*.gz" -Z "*.bz2" -Z "*.xz" -Z "*.zip" -Z "*.jpg" -Z "*.jpeg" -Z "*.png" -Z "*.NEF" -Z "*.mp4" -Z "*.mkv" -Z "*.dar"
 -acase
 EOF
-        info "Using built-in fallback .darrc"
     fi
 }
 
-# ── par2 slice check ──────────────────────────────────────────────────────────
 check_par2_per_slice() {
-    local archive_base="$1"
-    local slice_count="$2"
-    local ok=1
+    local archive_base="$1" slice_count="$2" ok=1
     for i in $(seq 1 "$slice_count"); do
-        local p="${PAR2_DIR}/${archive_base}.${i}.dar.par2"
-        if [[ -f "$p" ]]; then
-            local sz; sz=$(du -sh "$p" | cut -f1)
-            info "par2 slice ${i}: $(basename "$p")  (${sz})"
-        else
-            fail "Missing per-slice par2: $p"
-            ok=0
-        fi
+        [[ ! -f "${PAR2_DIR}/${archive_base}.${i}.dar.par2" ]] && { fail "Missing par2 slice ${i}"; ok=0; }
     done
-    local archive_par2="${PAR2_DIR}/${archive_base}.par2"
-    if [[ -f "$archive_par2" ]]; then
-        fail "Archive-level par2 found (regression — should be per-slice): $archive_par2"
-        ok=0
-    fi
-    local manifest="${PAR2_DIR}/${archive_base}.par2.manifest.ini"
-    if [[ -f "$manifest" ]]; then
-        pass "Manifest present: $(basename "$manifest")"
-    else
-        fail "Manifest missing: $manifest"
-        ok=0
-    fi
+    [[ -f "${PAR2_DIR}/${archive_base}.par2" ]] && { fail "Archive-level par2 found (regression)"; ok=0; }
+    [[ -f "${PAR2_DIR}/${archive_base}.par2.manifest.ini" ]] && pass "Manifest present" || { fail "Manifest missing"; ok=0; }
     return $((1 - ok))
 }
 
-# ── dar integrity check ───────────────────────────────────────────────────────
 check_dar_integrity() {
-    local archive_base="$1"
-    local label="$2"
-    info "Running dar -t on ${label}..."
-    if dar -t "${BACKUP_DIR}/${archive_base}" -N -Q >> "$LOGFILE" 2>&1; then
-        pass "dar -t passed: ${label}"
-    else
-        fail "dar -t failed: ${label}"
-    fi
+    info "Running dar -t on $2..."
+    dar -t "${BACKUP_DIR}/${1}" -N -Q >> "$LOGFILE" 2>&1 && pass "dar -t passed: $2" || fail "dar -t failed: $2"
 }
 
-# ── par2 verify ───────────────────────────────────────────────────────────────
 check_par2_verify() {
-    local archive_base="$1"
-    local label="$2"
-    local all_ok=1
-    local slice_count
-    slice_count=$(count_slices "$archive_base")
-    for i in $(seq 1 "$slice_count"); do
-        local par2_file="${PAR2_DIR}/${archive_base}.${i}.dar.par2"
+    local archive_base="$1" label="$2" all_ok=1
+    for par2_file in "${PAR2_DIR}/${archive_base}".*.dar.par2; do
         [[ -f "$par2_file" ]] || continue
-        if par2 verify -B "$BACKUP_DIR" -q "$par2_file" >> "$LOGFILE" 2>&1; then
-            info "par2 verify OK: $(basename "$par2_file")"
-        else
-            fail "par2 verify FAILED: $(basename "$par2_file")"
-            all_ok=0
-        fi
+        par2 verify -B "$BACKUP_DIR" -q "$par2_file" >> "$LOGFILE" 2>&1 || { fail "par2 verify FAILED: $(basename "$par2_file")"; all_ok=0; }
     done
     [[ $all_ok -eq 1 ]] && pass "par2 verify passed all slices: ${label}"
 }
 
-# ── bitrot inject + repair ────────────────────────────────────────────────────
 do_bitrot_test() {
-    local archive_base="$1"
-    local slice="${BACKUP_DIR}/${archive_base}.1.dar"
-    local par2="${PAR2_DIR}/${archive_base}.1.dar.par2"
-
+    local archive_base="$1" slice="${BACKUP_DIR}/${archive_base}.1.dar" par2="${PAR2_DIR}/${archive_base}.1.dar.par2"
     banner "Bitrot test on ${archive_base}"
-
-    [[ -f "$slice" ]] || { fail "Slice not found for bitrot test: $slice"; return; }
-    [[ -f "$par2"  ]] || { fail "par2 not found for bitrot test: $par2";   return; }
-
     local size; size=$(stat -c%s "$slice")
-    local corrupt_bytes=$(( size * 2 / 100 ))
-    local offset=$(( size / 4 ))
-    info "Injecting ${corrupt_bytes} bytes of bitrot at offset ${offset} in $(basename "$slice")"
-    dd if=/dev/urandom of="$slice" bs=1 seek="$offset" count="$corrupt_bytes" conv=notrunc \
-        >> "$LOGFILE" 2>&1
-
-    if ! dar -t "${BACKUP_DIR}/${archive_base}" -N -Q >> "$LOGFILE" 2>&1; then
-        pass "dar -t correctly detected corruption"
-    else
-        fail "dar -t did NOT detect corruption — bitrot test inconclusive"
-        return
-    fi
-
+    local corrupt_bytes=$(( size * 2 / 100 )) offset=$(( size / 4 ))
+    info "Injecting bitrot..."
+    dd if=/dev/urandom of="$slice" bs=1 seek="$offset" count="$corrupt_bytes" conv=notrunc >> "$LOGFILE" 2>&1
+    dar -t "${BACKUP_DIR}/${archive_base}" -N -Q >> "$LOGFILE" 2>&1 && { fail "dar-t missed corruption"; return; } || pass "dar -t correctly detected corruption"
     info "Repairing with par2..."
-    if par2 repair -B "$BACKUP_DIR" -q "$par2" >> "$LOGFILE" 2>&1; then
-        pass "par2 repair succeeded"
-    else
-        fail "par2 repair failed"
-        return
-    fi
-
-    if dar -t "${BACKUP_DIR}/${archive_base}" -N -Q >> "$LOGFILE" 2>&1; then
-        pass "dar -t passed after repair"
-    else
-        fail "dar -t still fails after repair"
-    fi
+    par2 repair -B "$BACKUP_DIR" -q "$par2" >> "$LOGFILE" 2>&1 && pass "par2 repair succeeded" || { fail "par2 repair failed"; return; }
+    dar -t "${BACKUP_DIR}/${archive_base}" -N -Q >> "$LOGFILE" 2>&1 && pass "dar -t passed after repair" || fail "dar -t still fails after repair"
 }
 
-# ── count dar slices ──────────────────────────────────────────────────────────
-count_slices() {
-    local archive_base="$1"
-    ls "${BACKUP_DIR}/${archive_base}".*.dar 2>/dev/null | wc -l
-}
+count_slices() { ls "${BACKUP_DIR}/${1}".*.dar 2>/dev/null | wc -l; }
+init_manager_db() { manager --create-db --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1 && pass "manager --create-db succeeded" || fail "manager --create-db failed"; }
+find_archive_base() { local match; match=$(ls "${BACKUP_DIR}/${DEFINITION_NAME}_${1}_$(date '+%Y-%m-%d')*.dar" 2>/dev/null | head -1 || true); basename "$match" | sed 's/\.1\.dar$//'; }
 
-# ── initialise manager DB ─────────────────────────────────────────────────────
-init_manager_db() {
-    if manager --create-db --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1; then
-        pass "manager --create-db succeeded"
-    else
-        fail "manager --create-db failed"
-    fi
-}
-
-# ── find archive base for a backup type ───────────────────────────────────────
-find_archive_base() {
-    local type="$1"
-    local date; date=$(date '+%Y-%m-%d')
-    local match
-    match=$(ls "${BACKUP_DIR}/${DEFINITION_NAME}_${type}_${date}.1.dar" 2>/dev/null | head -1 || true)
-    [[ -n "$match" ]] || { echo ""; return; }
-    basename "$match" | sed 's/\.1\.dar$//'
-}
-
-# ── cleanup ───────────────────────────────────────────────────────────────────
-cleanup() {
-    stop_rss_monitor
-    if [[ $KEEP -eq 0 ]]; then
-        info "Cleaning up run directory: $RUN_DIR"
-        rm -rf "$RUN_DIR"
-    else
-        info "Keeping run directory: $RUN_DIR  (--keep)"
-    fi
-    info "Diff-primer kept at: $DIFF_PRIMER_DIR"
-}
+cleanup() { stop_rss_monitor; [[ $KEEP -eq 0 ]] && rm -rf "$RUN_DIR" || info "Keeping run directory: $RUN_DIR"; }
 trap cleanup EXIT
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MAIN ORCHESTRATION
 # ════════════════════════════════════════════════════════════════════════════════
-
 banner "dar-backup large-scale test  ${DATESTAMP}"
-info "Script version: ${SCRIPT_VERSION}"
-info "Base dir:   ${BASE_DIR}"
-info "Slice size: ${SLICE_SIZE}  (used only if -s absent from definition)"
-info "PAR2 ratio: ${PAR2_RATIO}%"
-info "Metrics DB: ${METRICS_DB}"
-info "Log:        ${LOGFILE}"
-echo ""
 
-# Pre-initialize tracking variables to ensure 'set -u' invariant safety
-full_elapsed=0
-diff_elapsed=0
-FULL_BASE=""
-DIFF_BASE=""
-FULL_SLICES=0
-FULL_SIZE_HUMAN="0 GB"
+full_elapsed=0; diff_elapsed=0; FULL_BASE=""; DIFF_BASE=""; FULL_SLICES=0; FULL_SIZE_HUMAN="0 GB"
 
-# Environment Setup Execution Steps
-write_config
-create_diff_primer
-write_backup_def
-write_darrc
-init_manager_db
-start_rss_monitor
+write_config; create_diff_primer; write_backup_def; write_darrc; init_manager_db; start_rss_monitor
 
-# ── PHASE 1 — FULL BACKUP ─────────────────────────────────────────────────────
+# ── PHASE 1 ──
 banner "Phase 1 — FULL backup"
-
 t0=$(date +%s)
-info "Starting FULL backup execution pass..."
-if dar-backup -F -d "$DEFINITION_NAME" \
-        --config-file "$CONFIG_FILE" \
-        --darrc "$DARRC" \
-        --log-level debug \
-        >> "$LOGFILE" 2>&1; then
-    full_elapsed=$(( $(date +%s) - t0 ))
-    pass "FULL backup completed successfully in ${full_elapsed}s"
+if dar-backup -F -d "$DEFINITION_NAME" --config-file "$CONFIG_FILE" --darrc "$DARRC" --log-level debug; then
+    full_elapsed=$(( $(date +%s) - t0 )); pass "FULL backup completed in ${full_elapsed}s"
 else
-    full_elapsed=$(( $(date +%s) - t0 ))
-    fail "FULL backup failed after ${full_elapsed}s"
     exit 1
 fi
 
 FULL_BASE=$(find_archive_base "FULL")
-
-if [[ -z "${FULL_BASE}" ]]; then
-    fail "Could not resolve generated FULL archive base files inside ${BACKUP_DIR} — aborting"
-    exit 1
-fi
-
+[[ -z "${FULL_BASE}" ]] && { fail "No FULL base found"; exit 1; }
 FULL_SLICES=$(count_slices "$FULL_BASE")
-FULL_SIZE_HUMAN=$(du -sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null \
-    | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}' || echo "0 GB")
-
-info "Archive:    ${FULL_BASE}"
-info "Slices:     ${FULL_SLICES}"
-info "Total size: ~${FULL_SIZE_HUMAN}"
+FULL_SIZE_HUMAN=$(du-sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}')
 
 check_dar_integrity  "$FULL_BASE" "FULL"
 check_par2_per_slice "$FULL_BASE" "$FULL_SLICES"
 check_par2_verify    "$FULL_BASE" "FULL"
-
 [[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$FULL_BASE"
 
-# ── PHASE 2 — DIFF BACKUP ─────────────────────────────────────────────────────
+# ── PHASE 2 ──
 banner "Phase 2 — DIFF backup"
 update_diff_primer
-
 t0=$(date +%s)
-info "Starting DIFF backup execution pass..."
-if dar-backup -D -d "$DEFINITION_NAME" \
-        --config-file "$CONFIG_FILE" \
-        --darrc "$DARRC" \
-        --log-level debug \
-        >> "$LOGFILE" 2>&1; then
-    diff_elapsed=$(( $(date +%s) - t0 ))
-    pass "DIFF backup completed successfully in ${diff_elapsed}s"
+if dar-backup -D -d "$DEFINITION_NAME" --config-file "$CONFIG_FILE" --darrc "$DARRC" --log-level debug; then
+    diff_elapsed=$(( $(date +%s) - t0 )); pass "DIFF backup completed in ${diff_elapsed}s"
 else
-    diff_elapsed=$(( $(date +%s) - t0 ))
-    fail "DIFF backup failed after ${diff_elapsed}s"
     exit 1
 fi
 
 DIFF_BASE=$(find_archive_base "DIFF")
-DIFF_SLICES=0
+if [[ -z "${DIFF_BASE}" ]]; then exit 1; fi
+DIFF_SLICES=$(count_slices "$DIFF_BASE")
+check_dar_integrity  "$DIFF_BASE" "DIFF"
+check_par2_per_slice "$DIFF_BASE" "$DIFF_SLICES"
+check_par2_verify    "$DIFF_BASE" "DIFF"
+verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
 
-if [[ -z "${DIFF_BASE}" ]]; then
-    fail "Could not find generated DIFF archive base files."
-    exit 1
-else
-    DIFF_SLICES=$(count_slices "$DIFF_BASE")
-    info "Archive: ${DIFF_BASE}"
-    info "Slices:  ${DIFF_SLICES}"
-    check_dar_integrity  "$DIFF_BASE" "DIFF"
-    check_par2_per_slice "$DIFF_BASE" "$DIFF_SLICES"
-    check_par2_verify    "$DIFF_BASE" "DIFF"
-    verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
-fi
-
-# ── PHASE 3 — POINT-IN-TIME RESTORE VALIDATION ───────────────────────────────
+# ── PHASE 3 ──
 banner "Phase 3 — Point-In-Time Restore Validation"
+manager --sync --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1
+dar-backup -R -d "$DEFINITION_NAME" --config-file "$CONFIG_FILE" --darrc "$DARRC" --log-level debug
 
-info "Instructing wrapper to synchronize catalog tracking database..."
-if manager --sync --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1; then
-    pass "Catalog index database synchronized successfully"
-else
-    fail "Catalog index database sync exited with errors"
-fi
-
-info "Invoking dar-backup to process recovery extraction into: ${RESTORE_DIR}"
-if dar-backup -R -d "$DEFINITION_NAME" \
-        --config-file "$CONFIG_FILE" \
-        --darrc "$DARRC" \
-        --log-level debug \
-        >> "$LOGFILE" 2>&1; then
-    pass "Restore sequence completed execution"
-else
-    fail "Restore sequence dropped an error exit code"
-fi
-
-# Locate the sandboxed primer tree state as parsed down by dar extraction loops
 RESTORE_PRIMER_PATH="${RESTORE_DIR}/${DIFF_PRIMER_DIR#/}"
-
-info "Auditing hard link snapshot state inside: ${RESTORE_PRIMER_PATH}"
-
-if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
-    fail "PITR Validation Failed: link_original.txt exists (should have been deleted at snapshot state!)"
-else
-    pass "PITR Verification Invariant OK: link_original.txt is correctly absent"
-fi
-
+if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then fail "link_original.txt should be deleted"; fi
 if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
-    pass "PITR Verification Invariant OK: Both target files exist on target filesystem"
-
-    # Capture filesystem reference indices to verify zero-clone block conservation
     inode1=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target1.txt")
     inode2=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target2.txt")
-
-    if [[ "$inode1" -eq "$inode2" ]]; then
-        pass "Hard Link Structural Integrity OK: Inodes match identically (${inode1})"
-    else
-        fail "Data Duplication Error: target1 (${inode1}) and target2 (${inode2}) parsed as decoupled clones!"
-    fi
+    [[ "$inode1" -eq "$inode2" ]] && pass "Hard Link Inodes match (${inode1})" || fail "Inodes mismatched (Cloned data!)"
 else
-    fail "PITR Verification Blocked: One or both hard-link targets are missing from the restore partition!"
+    fail "Hard-link targets missing"
 fi
 
-# ── RSS SUMMARY ───────────────────────────────────────────────────────────────
-banner "Memory usage summary"
-stop_rss_monitor
-RSS_MONITOR_PID=""
-
-for proc in dar-backup dar par2; do
-    peak=$(peak_rss_kb "$proc")
-    if [[ -n "$peak" && "$peak" -gt 0 ]]; then
-        peak_mb=$(( peak / 1024 ))
-        info "Peak RSS  ${proc}: ${peak_mb} MB  (${peak} kB)"
-    fi
-done
-
-# ── WRITE FINAL SUMMARY REPORT ────────────────────────────────────────────────
+# ── SUMMARY ───────────────────────────────────────────────────────────────────
 banner "Summary"
 {
-    echo "dar-backup large-scale test"
-    echo "Script version: ${SCRIPT_VERSION}"
-    echo "Run:           ${DATESTAMP}"
-    echo "dar-backup:    ${DAR_BACKUP_VERSION:-unknown}"
-    echo "git commit:    ${GIT_COMMIT:-unknown}"
-    echo "dar:           ${DAR_VERSION:-unknown}"
-    echo "par2:          ${PAR2_VERSION:-unknown}"
-    echo "python:        ${PYTHON_VERSION:-unknown}"
-    echo "OS:            ${OS_DESC:-unknown}"
-    echo "kernel:        ${KERNEL:-unknown}"
-    echo "Slice size:    ${SLICE_SIZE}"
-    echo "PAR2 ratio:    ${PAR2_RATIO}%"
-    echo ""
-    echo "FULL archive:  ${FULL_BASE:-unknown}"
-    echo "FULL slices:   ${FULL_SLICES:-?}"
-    echo "FULL size:     ${FULL_SIZE_HUMAN:-?}"
-    echo "FULL elapsed:  ${full_elapsed}s"
-    echo ""
-    echo "DIFF archive:  ${DIFF_BASE:-unknown}"
-    echo "DIFF slices:   ${DIFF_SLICES:-?}"
-    echo "DIFF elapsed:  ${diff_elapsed}s"
-    echo ""
-    for proc in dar-backup dar par2; do
-        peak=$(peak_rss_kb "$proc")
-        [[ -n "$peak" && "$peak" -gt 0 ]] && \
-            echo "Peak RSS ${proc}: $(( peak / 1024 )) MB"
-    done
-    echo ""
-    echo "Failures:      ${FAILURES}"
-    echo "Metrics DB:    $(basename "${METRICS_DB}")  (kept at --base/results/)"
-    echo "Log:           $(basename "${LOGFILE}")  (kept at --base/results/)"
+    echo "dar-backup test pass: ${DATESTAMP}"
+    echo "FULL elapsed: ${full_elapsed}s (~${FULL_SIZE_HUMAN})"
+    echo "DIFF elapsed: ${diff_elapsed}s"
+    echo "Failures:     ${FAILURES}"
 } | tee "$SUMMARY"
 
-if [[ $FAILURES -eq 0 ]]; then
-    echo -e "\n${GREEN}${BOLD}All checks passed.${RESET}"
-    exit 0
-else
-    echo -e "\n${RED}${BOLD}${FAILURES} check(s) failed — see log: ${LOGFILE}${RESET}"
-    exit 1
-fi
