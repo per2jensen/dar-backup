@@ -11,9 +11,44 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   
   - A test case now prove an ERROR is issued in the log and in the metrics DB.
 
+- **Signal propagation in generated systemd units** (`dar_backup_systemd.py`) — the generated
+  `ExecStart` line ran the backup tool as a child of a bash subshell.  When systemd sent `SIGTERM`
+  (e.g. on shutdown or `systemctl stop`), bash received the signal but did not forward it to the
+  Python process, which could be left running until systemd sent `SIGKILL` after the stop timeout —
+  risking stale dar lockfiles or half-written archives.  Fixed by prepending `exec` to the tool
+  invocation so bash replaces itself with the Python process, making it the direct target of any
+  signal from systemd.
+
+- **Locale handling — any UTF-8 locale now accepted** (`dar_backup_systemd.py`, `dar_backup.py`) —
+  previously the codebase enforced `LANG=en_US.UTF-8` system-wide: the generated systemd service
+  units hard-coded `Environment=LANG=en_US.UTF-8` and `check_locale()` warned for any other locale
+  including valid ones such as `de_DE.UTF-8`.  This was unnecessary because `CommandRunner` already
+  pins `LC_ALL=C` for every `dar` subprocess, which guarantees English-formatted diagnostic output
+  for `parse_dar_stats()` regardless of the caller's locale.  Changes:
+
+  - Generated service units now set `Environment=LC_MESSAGES=C` instead of `LANG=en_US.UTF-8`.
+    `LC_MESSAGES=C` keeps dar's messages in English for parsing; `LANG` is inherited from the user
+    session and can be any `*.UTF-8` locale.
+  - `check_locale()` now warns only when `LANG` has no UTF-8 encoding (e.g. bare `C`, `POSIX`),
+    which would mangle non-ASCII file paths.  Any `*.UTF-8` locale — `en_US.UTF-8`, `de_DE.UTF-8`,
+    `da_DK.utf8`, etc. — is accepted without warning.  The locale name normalisation also handles
+    the Linux `utf8` (no hyphen) spelling alongside the standard `UTF-8` spelling.
+  - Dead code removed: `REQUIRED_LANG` constant and `_locale_ok()` function in `dar_backup.py`
+    (superseded by `LC_ALL=C` in `CommandRunner`).
+
 ### Added
 
 - Dashboard gained checkmarks to disable PREREQ and POSTREQ errors, to more easily see "real" backup/restore errors
+
+### Tests
+
+- Fixed tests that broke due to the locale changes: removed dead `_locale_ok` / `REQUIRED_LANG`
+  tests, rewrote `check_locale` and service-template assertions in `test_systemd_unit_generation.py`.
+- `test_list_contents_unicode_filenames` extended with German umlaut filenames (`deutsch_üöäß.txt`,
+  `DEUTSCH_ÜÖÄ.txt`, `ß`).
+- New parametrised integration test `test_list_contents_non_english_utf8_locale` runs backup and
+  list-contents with `LANG` set to each non-English UTF-8 locale installed on the machine
+  (e.g. `da_DK.utf8`), proving file-name handling is correct regardless of the caller's locale.
 
 ## v2-1.1.7 - 2026-06-07
 

@@ -146,19 +146,6 @@ def test_dar_backup_logs_preflight_failures_to_main_log(monkeypatch, tmp_path):
     assert "stale NFS handle" in log_text
 
 
-def test_locale_ok_returns_true_when_lang_is_en_us_utf8(monkeypatch):
-    """_locale_ok() returns True when LANG is exactly en_US.UTF-8."""
-    monkeypatch.setenv("LANG", dar_backup.REQUIRED_LANG)
-    assert dar_backup._locale_ok() is True
-
-
-def test_locale_ok_returns_false_when_lang_is_not_en_us_utf8(monkeypatch):
-    """_locale_ok() returns False when LANG is any other value."""
-    monkeypatch.setenv("LANG", "de_DE.UTF-8")
-    assert dar_backup._locale_ok() is False
-
-
-
 def _make_generic_backup_mocks(monkeypatch, lang: str) -> list:
     """
     Set up mocks needed to call generic_backup() in isolation.
@@ -190,7 +177,7 @@ def _make_generic_backup_mocks(monkeypatch, lang: str) -> list:
 
 def test_generic_backup_calls_parse_dar_stats_when_locale_correct(monkeypatch):
     """generic_backup() always calls parse_dar_stats — LC_ALL=C is pinned in CommandRunner."""
-    parse_called = _make_generic_backup_mocks(monkeypatch, dar_backup.REQUIRED_LANG)
+    parse_called = _make_generic_backup_mocks(monkeypatch, "en_US.UTF-8")
 
     config = MagicMock()
     config.command_timeout_secs = 10

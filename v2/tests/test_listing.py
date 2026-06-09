@@ -116,6 +116,9 @@ def _create_unicode_files(env: EnvData) -> list[str]:
         "space name_æøå.txt",
         "dir with spaces/ø/fil_æøå.txt",
         "deep/日本語/emoji-🙂.txt",
+        # German umlauts and sharp-s
+        "deutsch_üöäß.txt",
+        "DEUTSCH_ÜÖÄ.txt",
     ]
     for name in filenames:
         path = os.path.join(env.data_dir, name)
@@ -150,3 +153,53 @@ def test_list_contents_unicode_filenames(setup_environment, env):
     stdout = list_result.stdout
     for name in filenames:
         assert name in stdout
+
+
+def _available_utf8_locales() -> list[str]:
+    """Return UTF-8 locales installed on this machine, skipping C.* variants."""
+    import subprocess
+    try:
+        out = subprocess.check_output(["locale", "-a"], text=True, timeout=5)
+    except Exception:
+        return []
+    return [
+        loc.strip() for loc in out.splitlines()
+        if loc.strip().upper().replace("-", "").endswith("UTF8")
+        and not loc.strip().upper().startswith("C.")
+        and loc.strip().upper() != "EN_US.UTF8"
+        and loc.strip().upper() != "EN_US.UTF-8"
+    ]
+
+
+@pytest.mark.parametrize("locale_name", _available_utf8_locales() or [pytest.param("skip", marks=pytest.mark.skip(reason="no non-English UTF-8 locale installed"))])
+def test_list_contents_non_english_utf8_locale(setup_environment, env, monkeypatch, locale_name):
+    """
+    Backup and list-contents must work correctly when LANG is a non-English
+    UTF-8 locale.  CommandRunner pins LC_ALL=C for every dar subprocess so
+    parse_dar_stats() is unaffected; this test proves file-name handling is
+    correct for non-ASCII paths regardless of the caller's locale.
+    """
+    monkeypatch.setenv("LANG", locale_name)
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    filenames = _create_unicode_files(env)
+
+    result = runner.run([
+        'dar-backup',
+        '--full-backup',
+        '-d', 'example',
+        '--config-file', env.config_file,
+        '--log-level', 'debug',
+    ])
+    assert result.returncode == 0, f"Backup failed under LANG={locale_name}"
+
+    archive_base = f"example_FULL_{env.datestamp}"
+    list_result = runner.run([
+        'dar-backup',
+        '--list-contents',
+        archive_base,
+        '--config-file', env.config_file
+    ])
+    assert list_result.returncode == 0, f"list-contents failed under LANG={locale_name}"
+    stdout = list_result.stdout
+    for name in filenames:
+        assert name in stdout, f"{name!r} missing from listing under LANG={locale_name}"

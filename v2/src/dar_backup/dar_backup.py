@@ -74,27 +74,6 @@ from dar_backup.util import (
 
 from dar_backup.command_runner import CommandRunner
 
-REQUIRED_LANG = "en_US.UTF-8"
-
-
-def _locale_ok() -> bool:
-    """
-    Return True if LANG is set to en_US.UTF-8.
-
-    dar emits inode counts and sizes in a locale-sensitive format. A non-US
-    locale can cause parse_dar_stats() to silently return None for every field
-    because the number formatting (decimal separator, thousand separator) does
-    not match the expected English pattern. Checking once at startup lets callers
-    skip metadata capture and log a clear explanation instead of producing
-    misleading all-None stats.
-
-    Returns:
-        True if os.environ["LANG"] == "en_US.UTF-8", False otherwise.
-    """
-    return os.environ.get("LANG", "") == REQUIRED_LANG
-
-
-
 logger = None
 runner = None
 
@@ -180,8 +159,6 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         # 500 lines regardless of the main capture limit.  The summary appears at
         # the very end of dar's output, so the tail is reliable even for large
         # backups where process.stdout may have been truncated.
-        # Skip parsing when LANG is not en_US.UTF-8: dar's number formatting is
-        # locale-sensitive and would produce silently wrong (all-None) stats.
         dar_stats = parse_dar_stats((process.stdout_tail or "") + (process.stderr_tail or ""))
         if process.returncode in (0, 5) and dar_stats.get("inodes_saved") is None:
             logger.warning(

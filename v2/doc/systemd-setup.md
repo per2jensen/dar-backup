@@ -69,9 +69,11 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
-
-
-ExecStart=/bin/bash -c 'PATH=$HOME/.local/dar/bin:$PATH && . $HOME/programmer/dar-backup.py/venv/bin/activate && dar-backup -I --verbose --log-stdout'
+# LC_MESSAGES=C keeps dar's diagnostic output in English so dar-backup can
+# parse inode counts reliably.  Your LANG (any *.UTF-8 locale) is inherited
+# from the session and controls file-name encoding — leave it unchanged.
+Environment=LC_MESSAGES=C
+ExecStart=/bin/bash -c 'PATH=$HOME/.local/dar/bin:$PATH && . $HOME/programmer/dar-backup.py/venv/bin/activate && exec dar-backup -I --verbose --log-stdout'
 ```
 
 ## Timer example: dar-backup --incremental-backup
@@ -90,11 +92,24 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-## LANG=en_US.UTF-8
+## Locale settings
 
-LANG is set to `en_US.UTF-8` in the environment setup by systemd.
+The generated service units set `LC_MESSAGES=C`. This keeps `dar`'s
+diagnostic output in English so `dar-backup` can reliably parse inode counts
+from the backup summary. It does **not** touch `LANG`.
 
-This is to ensure that `dar-backup` can read the metadata `dar` emits after a backup.
+Your `LANG` (inherited from the user session or the system default) controls
+file-name encoding. Any `*.UTF-8` locale works — `en_US.UTF-8`, `de_DE.UTF-8`,
+`fr_FR.UTF-8`, and so on. The only requirement is that the encoding is UTF-8;
+a non-UTF-8 locale (e.g. bare `C` or `POSIX`) will mangle non-ASCII file names
+and `dar-backup-systemd` will warn you at unit-generation time.
+
+If you need to override the locale for the service, edit the `Environment=`
+line in the generated `.service` file, e.g.:
+
+```ini
+Environment=LC_MESSAGES=C LANG=ja_JP.UTF-8
+```
 
 ## systemd timer note
 

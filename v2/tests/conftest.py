@@ -10,9 +10,11 @@ from pathlib import Path
 tests_dir = os.path.abspath(os.path.dirname(__file__))
 project_dir = os.path.abspath(os.path.join(tests_dir, ".."))
 
-# Force en_US.UTF-8 for the entire test suite so that dar's locale-sensitive
-# output (inode counts, sizes) is in the format parse_dar_stats() expects.
-# This mirrors what the generated systemd units do via Environment=LANG=en_US.UTF-8.
+# Set a UTF-8 locale for the test suite.  Any *.UTF-8 locale is safe:
+# CommandRunner pins LC_ALL=C for every dar subprocess so parse_dar_stats()
+# always receives English-formatted output regardless of LANG.  LANG itself
+# only controls Python's own I/O encoding — it must be a UTF-8 locale so
+# that non-ASCII file paths and log messages are handled correctly.
 os.environ["LANG"] = "en_US.UTF-8"
 
 # Force Python UTF-8 mode for all Python I/O in this process and every

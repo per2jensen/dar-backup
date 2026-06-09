@@ -150,37 +150,49 @@ def test_main_passes_args_to_write_unit_files(monkeypatch):
     assert calls == [("/opt/venv", "/opt/dar", True)]
 
 
-from dar_backup.dar_backup_systemd import check_locale, REQUIRED_LANG
+from dar_backup.dar_backup_systemd import check_locale
 
 
-def test_check_locale_no_output_when_lang_correct(monkeypatch, capsys):
-    """check_locale() prints nothing when LANG is already en_US.UTF-8."""
-    monkeypatch.setenv("LANG", REQUIRED_LANG)
+@pytest.mark.parametrize("lang", [
+    "en_US.UTF-8",   # canonical US English
+    "de_DE.UTF-8",   # German — previously rejected, now valid
+    "fr_FR.UTF-8",   # French
+    "da_DK.utf8",    # Danish — Linux-style lowercase no-hyphen spelling
+    "C.UTF-8",       # minimal UTF-8 locale
+    "C.utf8",        # same, lowercase spelling
+])
+def test_check_locale_no_output_for_utf8_locales(monkeypatch, capsys, lang):
+    """check_locale() prints nothing for any UTF-8 locale regardless of language."""
+    monkeypatch.setenv("LANG", lang)
     check_locale()
-    captured = capsys.readouterr()
-    assert captured.out == ""
+    assert capsys.readouterr().out == ""
 
 
-def test_check_locale_warns_when_lang_wrong(monkeypatch, capsys):
-    """check_locale() prints a WARNING when LANG is not en_US.UTF-8."""
-    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+@pytest.mark.parametrize("lang", [
+    "C",
+    "POSIX",
+    "",
+    "en_US",          # no encoding suffix
+])
+def test_check_locale_warns_for_non_utf8_locales(monkeypatch, capsys, lang):
+    """check_locale() prints a WARNING when LANG has no UTF-8 encoding."""
+    monkeypatch.setenv("LANG", lang)
     check_locale()
     captured = capsys.readouterr()
     assert "WARNING" in captured.out
-    assert "de_DE.UTF-8" in captured.out
-    assert REQUIRED_LANG in captured.out
+    assert lang in captured.out
 
 
-def test_generate_service_contains_lang_env():
-    """Generated service unit must set Environment=LANG=en_US.UTF-8."""
+def test_generate_service_contains_lc_messages_c():
+    """Generated service unit must set Environment=LC_MESSAGES=C."""
     content = generate_service("FULL", "/fake/venv", None)
-    assert "Environment=LANG=en_US.UTF-8" in content
+    assert "Environment=LC_MESSAGES=C" in content
 
 
-def test_generate_cleanup_service_contains_lang_env():
-    """Generated cleanup service unit must set Environment=LANG=en_US.UTF-8."""
+def test_generate_cleanup_service_contains_lc_messages_c():
+    """Generated cleanup service unit must set Environment=LC_MESSAGES=C."""
     content = generate_cleanup_service("/fake/venv", None)
-    assert "Environment=LANG=en_US.UTF-8" in content
+    assert "Environment=LC_MESSAGES=C" in content
 
 
 if __name__ == '__main__':

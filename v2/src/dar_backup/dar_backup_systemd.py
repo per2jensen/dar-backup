@@ -6,8 +6,6 @@ import os
 import subprocess
 import argparse
 
-REQUIRED_LANG = "en_US.UTF-8"
-
 SERVICE_TEMPLATE = """[Unit]
 Description=dar-backup {mode}
 StartLimitIntervalSec=120
@@ -17,7 +15,10 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=infinity
 RemainAfterExit=no
-Environment=LANG=en_US.UTF-8
+# LC_MESSAGES=C keeps dar's diagnostic output in English so dar-backup can
+# parse inode counts reliably.  Your LANG (any *.UTF-8 locale) is inherited
+# from the session and controls file-name encoding — leave it unchanged.
+Environment=LC_MESSAGES=C
 ExecStart=/bin/bash -c '{exec_command}'
 """
 
@@ -41,7 +42,8 @@ StartLimitBurst=1
 Type=oneshot
 TimeoutSec=60
 RemainAfterExit=no
-Environment=LANG=en_US.UTF-8
+# See SERVICE_TEMPLATE comment above for locale rationale.
+Environment=LC_MESSAGES=C
 ExecStart=/bin/bash -c '{exec_command}'
 """
 
@@ -69,27 +71,29 @@ FLAGS = {
 
 def check_locale() -> None:
     """
-    Warn if the current LANG is not en_US.UTF-8.
+    Warn if the current locale is not a UTF-8 locale.
 
-    dar emits backup metadata (inode counts, sizes) in a locale-sensitive
-    format. Running dar-backup with a non-US locale can produce metadata that
-    is unparseable or silently wrong. The generated service units set
-    Environment=LANG=en_US.UTF-8 to prevent this, but this check catches
-    cases where the unit generator itself is invoked from an unexpected locale.
+    dar-backup sets LC_MESSAGES=C in generated service units so dar's
+    diagnostic output is always in English (required for inode-count parsing).
+    File-name encoding is governed by the user's LANG; any *.UTF-8 locale is
+    fine.  This check catches cases where the generator or the backup service
+    runs with a non-UTF-8 encoding, which could mangle non-ASCII file paths.
     """
     lang = os.environ.get("LANG", "")
-    if lang != REQUIRED_LANG:
+    # Normalise away the hyphen so both "UTF-8" and "utf8" spellings match.
+    if "UTF8" not in lang.upper().replace("-", ""):
         print(
-            f"WARNING: LANG is {lang!r}, expected {REQUIRED_LANG!r}. "
-            "dar metadata parsing may be unreliable. "
-            "The generated service units set LANG=en_US.UTF-8 explicitly."
+            f"WARNING: LANG is {lang!r}, which is not a UTF-8 locale. "
+            "Non-ASCII file paths may be mangled. "
+            "Any *.UTF-8 locale (e.g. en_US.UTF-8, de_DE.UTF-8) is fine."
         )
 
 
 def build_exec_command(venv, flag, dar_path=None, tool='dar-backup'):
+    # exec replaces bash with the tool process so systemd SIGTERM reaches it directly
     if dar_path:
-        return f"PATH={dar_path}:$PATH && . {venv}/bin/activate && {tool} {flag} --verbose --log-stdout"
-    return f". {venv}/bin/activate && {tool} {flag} --verbose --log-stdout"
+        return f"PATH={dar_path}:$PATH && . {venv}/bin/activate && exec {tool} {flag} --verbose --log-stdout"
+    return f". {venv}/bin/activate && exec {tool} {flag} --verbose --log-stdout"
 
 def generate_service(mode, venv, dar_path):
     exec_command = build_exec_command(venv, FLAGS[mode], dar_path)
