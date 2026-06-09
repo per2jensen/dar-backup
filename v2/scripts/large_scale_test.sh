@@ -5,7 +5,8 @@
 #
 # Runs a FULL backup followed by a DIFF backup against a real source tree,
 # verifies par2 files are per-slice, checks dar integrity, optionally injects
-# bitrot and repairs it, and writes a summary report.  Nothing touches the
+# bitrot and repairs it, runs a Point-In-Time Restore (PITR), validates 
+# hard-link metamorphosis, and writes a summary report. Nothing touches the
 # production environment.
 #
 # The backup definition is supplied by the caller as a string (use a heredoc
@@ -25,8 +26,9 @@
 #   --help             Show this help
 #
 # The metrics DB and summary report are always kept under --base/results/.
-# The metrics DB accumulates across runs so you can compare releases over time.
 #
+#
+# The metrics DB accumulates across runs so you can compare releases over time.
 # Example — single source tree:
 #   ./large_scale_test.sh \
 #       --base /data/tmp/large-scale-test \
@@ -70,6 +72,9 @@
 # The primer directory lives at --base/diff-primer/ and is NOT deleted on exit
 # (even without --keep) so it can serve as a stable DIFF source across runs.
 
+
+
+
 set -euo pipefail
 
 # ── defaults ────────────────────────────────────────────────────────────────
@@ -82,8 +87,7 @@ KEEP=0
 TIMEOUT=86400
 DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 DEFINITION_NAME="large-scale-test"
-SCRIPT_VERSION="3"          # increment when the script changes
-# diff-primer lives outside the run dir so it persists across runs
+SCRIPT_VERSION="4"          # incremented due to hard link & PITR changes
 DIFF_PRIMER_DIR=""   # set after BASE_DIR is finalised
 DAR_BACKUP_VERSION=""
 GIT_COMMIT=""
@@ -95,8 +99,8 @@ OS_DESC=""
 KERNEL=""
 
 # ── colours ─────────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+RED='\033;31m'; GREEN='\033;32m'; YELLOW='\033[1;33m'
+CYAN='\033;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 pass()   { echo -e "${GREEN}  PASS${RESET}  $*"; }
 fail()   { echo -e "${RED}  FAIL${RESET}  $*"; FAILURES=$((FAILURES+1)); }
@@ -137,19 +141,16 @@ done
 preflight() {
     local errors=0
 
-    # 1. Must be run from the v2/ directory
     if [[ ! -f "pyproject.toml" || ! -d "src/dar_backup" ]]; then
         echo "ERROR: must be run from the v2/ directory (pyproject.toml and src/dar_backup not found)"
         errors=$((errors+1))
     fi
 
-    # 2. Must be run inside the project venv
     if [[ -z "${VIRTUAL_ENV:-}" || "${VIRTUAL_ENV}" != "$(realpath ./venv 2>/dev/null)" ]]; then
         echo "ERROR: project venv not active — run: source ./venv/bin/activate"
         errors=$((errors+1))
     fi
 
-    # 3. dar-backup must be installed in editable mode (pip install -e .)
     local editable_loc
     editable_loc=$(pip show dar-backup 2>/dev/null \
         | grep "Editable project location" | awk '{print $NF}')
@@ -162,7 +163,6 @@ preflight() {
         REPO_DIR="$editable_loc"
     fi
 
-    # 4. Git repo must be clean — no uncommitted changes
     if [[ -d "${REPO_DIR:-}/.git" ]] || git -C "${REPO_DIR:-.}" rev-parse --git-dir &>/dev/null; then
         local dirty
         dirty=$(git -C "${REPO_DIR:-.}" status --porcelain 2>/dev/null)
@@ -177,7 +177,6 @@ preflight() {
 
     [[ $errors -gt 0 ]] && { echo "Aborting: fix the errors above before running the test."; exit 1; }
 
-    # Capture version and commit for the summary
     DAR_BACKUP_VERSION=$(dar-backup --version 2>/dev/null | head -1 || echo "unknown")
     GIT_COMMIT=$(git -C "${REPO_DIR:-.}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
     DAR_VERSION=$(dar --version 2>&1 | grep "dar version" | head -1 | sed 's/^ *//' || echo "unknown")
@@ -281,16 +280,10 @@ EOF
 
 # ── write backup definition ───────────────────────────────────────────────────
 write_backup_def() {
-    # If the definition does not already contain a -s (slice size) line,
-    # prepend one using --slice.  This lets the caller override slice size
-    # via --slice without having to embed it in the heredoc.
     local content="$DEFINITION_CONTENT"
     if ! echo "$content" | grep -q '^\s*-s '; then
         content="-s ${SLICE_SIZE}"$'\n'"${content}"
     fi
-    # Automatically append the diff-primer directory so the DIFF has
-    # real changed data without touching any personal source files.
-    # dar requires paths without a leading '/'
     local primer_g="${DIFF_PRIMER_DIR#/}"
     content="${content}"$'\n'"-g ${primer_g}"
     printf '%s\n' "$content" > "${BACKUP_D_DIR}/${DEFINITION_NAME}"
@@ -313,31 +306,46 @@ create_diff_primer() {
     for i in $(seq 1 5); do
         dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/large_${i}.NEF" bs=1M count=55 2>/dev/null
     done
+
+    # ── Hard Link Preservation Seed ──
+    info "Seeding hard link structures for FULL backup phase..."
+    echo "Original static content stream for hard link verification tracking." > "${DIFF_PRIMER_DIR}/link_original.txt"
+    ln "${DIFF_PRIMER_DIR}/link_original.txt" "${DIFF_PRIMER_DIR}/link_target1.txt"
+
     local total; total=$(du -sh "$DIFF_PRIMER_DIR" | cut -f1)
-    pass "Diff-primer created: 100 × 4kB + 10 × 2MB + 5 × 55MB  (total ~${total})"
+    pass "Diff-primer created: 100 × 4kB + 10 × 2MB + 5 × 55MB + Hard Links (total ~${total})"
 }
 
 update_diff_primer() {
     info "Updating diff-primer data to produce a non-trivial DIFF..."
-    # Overwrite all existing files with new random content
-    find "$DIFF_PRIMER_DIR" -type f | while read -r f; do
+    # Overwrite existing standard files with new random content (skip link files)
+    find "$DIFF_PRIMER_DIR" -type f | grep -v "link_" | while read -r f; do
         local sz; sz=$(stat -c%s "$f")
         dd if=/dev/urandom of="$f" bs="$sz" count=1 2>/dev/null
     done
+
+    # ── Hard Link Metamorphosis Transformation ──
+    info "Executing hard link metadata metamorphosis..."
+    # 1. Sever the origin link pointer path
+    rm "${DIFF_PRIMER_DIR}/link_original.txt"
+    # 2. Mutate the surviving file data stream to verify differential delta logic
+    echo "Appended text block mutating target1 inode before execution of DIFF backup." >> "${DIFF_PRIMER_DIR}/link_target1.txt"
+    # 3. Form a brand new secondary tracking link to the modified inode
+    ln "${DIFF_PRIMER_DIR}/link_target1.txt" "${DIFF_PRIMER_DIR}/link_target2.txt"
+
     # Add one new file so the DIFF contains at least one genuinely new entry
     dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/diff_new_$(date +%s).bin" bs=1M count=2 2>/dev/null
-    pass "Diff-primer updated: all files refreshed, one new file added"
+    pass "Diff-primer updated: files refreshed, hard links transformed"
 }
 
 # ── verify DIFF contents against primer expectations ─────────────────────────
 verify_diff_contents() {
     local full_base="$1"
     local diff_base="$2"
-    local primer_rel="${DIFF_PRIMER_DIR#/}"   # path as dar sees it (no leading /)
+    local primer_rel="${DIFF_PRIMER_DIR#/}"
 
     banner "Phase 2b — DIFF contents verification"
 
-    # Count primer files saved in FULL (all new on first backup)
     info "Listing saved primer files in FULL archive..."
     local full_count
     full_count=$(dar -l "${BACKUP_DIR}/${full_base}" --noconf -am -as -Q 2>/dev/null \
@@ -345,7 +353,6 @@ verify_diff_contents() {
         | grep -c "${primer_rel}" 2>/dev/null) || full_count=0
     info "FULL archive contains ${full_count} primer file(s)"
 
-    # Get all saved primer lines from the DIFF archive
     info "Listing saved primer files in DIFF archive..."
     local diff_saved
     diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null \
@@ -356,18 +363,16 @@ verify_diff_contents() {
     diff_count=$(echo "$diff_saved" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
     info "DIFF archive contains ${diff_count} primer file(s)"
 
-    # Modified: saved in DIFF, not the new diff_new_ file
     local modified_count
     modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
 
-    # New: the diff_new_* file added by update_diff_primer
     local new_count
     new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
 
     info "Modified primer files (refreshed in DIFF): ${modified_count}"
     info "New primer files      (added before DIFF):  ${new_count}"
 
-    # Expected: 115 modified (100 small + 10 medium + 5 large), 1 new (diff_new_*)
+    # Expected: 115 standard files + link changes (target1 modified, target2 added, original deleted)
     local expected_modified=115
     local expected_new=1
 
@@ -436,13 +441,11 @@ check_par2_per_slice() {
             ok=0
         fi
     done
-    # Archive-level par2 (old behaviour) must not exist
     local archive_par2="${PAR2_DIR}/${archive_base}.par2"
     if [[ -f "$archive_par2" ]]; then
         fail "Archive-level par2 found (regression — should be per-slice): $archive_par2"
         ok=0
     fi
-    # Manifest
     local manifest="${PAR2_DIR}/${archive_base}.par2.manifest.ini"
     if [[ -f "$manifest" ]]; then
         pass "Manifest present: $(basename "$manifest")"
@@ -470,7 +473,6 @@ check_par2_verify() {
     local archive_base="$1"
     local label="$2"
     local all_ok=1
-    # Sort by slice number numerically to get 1,2,...,10,11 not 1,10,11,2,...
     local slice_count
     slice_count=$(count_slices "$archive_base")
     for i in $(seq 1 "$slice_count"); do
@@ -584,7 +586,6 @@ cleanup() {
     else
         info "Keeping run directory: $RUN_DIR  (--keep)"
     fi
-    # diff-primer is always kept — it serves as a stable DIFF source across runs
     info "Diff-primer kept at: $DIFF_PRIMER_DIR"
 }
 trap cleanup EXIT
@@ -652,6 +653,54 @@ else
     check_par2_per_slice "$DIFF_BASE" "$DIFF_SLICES"
     check_par2_verify    "$DIFF_BASE" "DIFF"
     verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
+fi
+
+# ── PHASE 3 — POINT-IN-TIME RESTORE VALIDATION ───────────────────────────────
+banner "Phase 3 — Point-In-Time Restore Validation"
+
+info "Instructing wrapper to synchronize catalog tracking database..."
+if manager --sync --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1; then
+    pass "Catalog index database synchronized successfully"
+else
+    fail "Catalog index database sync exited with errors"
+fi
+
+info "Invoking dar-backup to process recovery extraction into: ${RESTORE_DIR}"
+if dar-backup -R -d "$DEFINITION_NAME" \
+        --config-file "$CONFIG_FILE" \
+        --darrc "$DARRC" \
+        --log-level debug \
+        >> "$LOGFILE" 2>&1; then
+    pass "Restore sequence completed execution"
+else
+    fail "Restore sequence dropped an error exit code"
+fi
+
+# Locate the sandboxed primer tree state as parsed down by dar extraction loops
+RESTORE_PRIMER_PATH="${RESTORE_DIR}/${DIFF_PRIMER_DIR#/}"
+
+info "Auditing hard link snapshot state inside: ${RESTORE_PRIMER_PATH}"
+
+if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
+    fail "PITR Validation Failed: link_original.txt exists (should have been deleted at snapshot state!)"
+else
+    pass "PITR Verification Invariant OK: link_original.txt is correctly absent"
+fi
+
+if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
+    pass "PITR Verification Invariant OK: Both target files exist on target filesystem"
+
+    # Capture filesystem reference indices to verify zero-clone block conservation
+    inode1=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target1.txt")
+    inode2=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target2.txt")
+
+    if [[ "$inode1" -eq "$inode2" ]]; then
+        pass "Hard Link Structural Integrity OK: Inodes match identically (${inode1})"
+    else
+        fail "Data Duplication Error: target1 (${inode1}) and target2 (${inode2}) parsed as decoupled clones!"
+    fi
+else
+    fail "PITR Verification Blocked: One or both hard-link targets are missing from the restore partition!"
 fi
 
 # ── RSS summary ───────────────────────────────────────────────────────────────
