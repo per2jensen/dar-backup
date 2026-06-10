@@ -87,8 +87,8 @@ def test_verify_filecmp_permission_error_logged(env):
         assert mock_logger.error.called
 
 
-def test_verify_missing_source_file_logs_warning(env):
-    """Ensure missing source file during filecmp is caught and logged."""
+def test_verify_missing_source_file_logs_error(env):
+    """Ensure missing source file during filecmp is recorded as FAIL and logged at ERROR level."""
     args = SimpleNamespace(
         verbose=False,
         do_not_compare=False,
@@ -121,8 +121,8 @@ def test_verify_missing_source_file_logs_warning(env):
         result = verify(args, "mock-backup", env.config_file, config)
 
         assert not result
-        mock_logger.warning.assert_any_call(
-            f"Restore verification skipped for '{restored_file}': source file missing: '{source_path}'"
+        mock_logger.error.assert_any_call(
+            f"Restore verification failed for '{restored_file}': source file missing: '{source_path}'"
         )
 
 
