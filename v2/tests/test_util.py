@@ -1041,3 +1041,69 @@ def test_list_backups_does_not_corrupt_process_locale(tmp_path, capsys):
     # If the locale were corrupted to ASCII this would raise UnicodeEncodeError
     with open(str(tmp_path / "danish_æøå.txt"), 'w') as f:
         f.write("This is file with danish chars æøå and checkmark ✓")
+
+
+# ---------------------------------------------------------------------------
+# ArchiveName tests
+# ---------------------------------------------------------------------------
+
+from dar_backup.util import ArchiveName
+from datetime import datetime as _datetime
+
+
+def test_archive_name_parse_valid_no_time():
+    """Standard archive name without optional time component."""
+    an = ArchiveName.parse("media_FULL_2026-01-15")
+    assert an is not None
+    assert an.definition == "media"
+    assert an.archive_type == "FULL"
+    assert an.date == "2026-01-15"
+    assert an.time is None
+
+
+def test_archive_name_parse_valid_with_time():
+    """Archive name that includes the optional HHMMSS time suffix."""
+    an = ArchiveName.parse("media_DIFF_2026-01-15_143022")
+    assert an is not None
+    assert an.definition == "media"
+    assert an.archive_type == "DIFF"
+    assert an.date == "2026-01-15"
+    assert an.time == "143022"
+
+
+def test_archive_name_parse_definition_with_underscores():
+    """Backup definitions that contain underscores must be captured in full."""
+    an = ArchiveName.parse("my_home_backup_INCR_2026-03-01")
+    assert an is not None
+    assert an.definition == "my_home_backup"
+    assert an.archive_type == "INCR"
+
+
+def test_archive_name_parse_invalid_returns_none():
+    """Names that do not follow the convention must return None, not raise."""
+    assert ArchiveName.parse("invalidarchive") is None
+    assert ArchiveName.parse("") is None
+    assert ArchiveName.parse(None) is None  # type: ignore[arg-type]
+
+
+def test_archive_name_as_datetime_no_time():
+    """as_datetime() builds a date-only datetime when time is absent."""
+    an = ArchiveName.parse("media_FULL_2026-06-10")
+    assert an is not None
+    assert an.as_datetime() == _datetime(2026, 6, 10)
+
+
+def test_archive_name_as_datetime_with_time():
+    """as_datetime() incorporates the HHMMSS time when present."""
+    an = ArchiveName.parse("media_FULL_2026-06-10_083045")
+    assert an is not None
+    assert an.as_datetime() == _datetime(2026, 6, 10, 8, 30, 45)
+
+
+def test_archive_name_from_filename_strips_extension():
+    """from_filename() strips path and .N.dar suffix before parsing."""
+    an = ArchiveName.from_filename("/backups/media_DIFF_2026-01-15.1.dar")
+    assert an is not None
+    assert an.definition == "media"
+    assert an.archive_type == "DIFF"
+    assert an.date == "2026-01-15"

@@ -647,23 +647,23 @@ def verify(
             logger.error("Exception details:", exc_info=True)
         except FileNotFoundError as exc:
             result = False
-            sample["result"] = "SKIP"
+            sample["result"] = "FAIL"
             missing_path = exc.filename or "unknown path"
             if missing_path == source_path:
                 sample["fail_reason_id"] = RESTORE_FAIL_SOURCE_MISSING
-                logger.warning(
-                    f"Restore verification skipped for '{restored_file_path}': source file missing: '{source_path}'"
+                logger.error(
+                    f"Restore verification failed for '{restored_file_path}': source file missing: '{source_path}'"
                 )
             elif missing_path == restore_path:
                 sample["fail_reason_id"] = RESTORE_FAIL_RESTORED_MISSING
-                logger.warning(
-                    f"Restore verification skipped for '{restored_file_path}': restored file missing: '{restore_path}'"
+                logger.error(
+                    f"Restore verification failed for '{restored_file_path}': restored file missing: '{restore_path}'"
                 )
             else:
                 sample["fail_reason_id"] = RESTORE_FAIL_UNKNOWN_ERROR
                 sample["fail_detail"] = f"file not found: {missing_path}"[:500]
-                logger.warning(
-                    f"Restore verification skipped for '{restored_file_path}': file not found: '{missing_path}'"
+                logger.error(
+                    f"Restore verification failed for '{restored_file_path}': file not found: '{missing_path}'"
                 )
         except Exception as exc:
             result = False
@@ -850,6 +850,11 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
         raise BackupError(f"Error listing backed up files from DAR archive: '{backup_name}'") from e
     except subprocess.TimeoutExpired as e:
         logger.error(f"Timeout listing backed up files from DAR archive: '{backup_name}'")
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning(f"Could not delete temporary file: {temp_path}")
         raise BackupError(f"Timeout listing backed up files from DAR archive: '{backup_name}'") from e
     except Exception as e:
         log = logger or get_logger()

@@ -939,3 +939,53 @@ def test_command_runner_overrides_caller_locale(tmp_path, monkeypatch):
 
     assert result.returncode == 0
     assert result.stdout.strip() == "C"
+
+
+# ---------------------------------------------------------------------------
+# stream_command tests
+# ---------------------------------------------------------------------------
+
+def test_stream_command_delivers_lines_to_callback(tmp_path):
+    """stream_command calls the callback once per stdout line."""
+    # Use a script file: passing newlines in args is blocked by is_safe_arg.
+    script = tmp_path / "emit.py"
+    script.write_text("print('line1')\nprint('line2')\nprint('line3')\n")
+
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    received: list = []
+    result = runner.stream_command(
+        ["python3", str(script)],
+        lambda line: received.append(line),
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == ""          # stdout is never accumulated
+    assert received == ["line1", "line2", "line3"]
+
+
+def test_stream_command_nonzero_returncode_reflected(tmp_path):
+    """A failing command produces returncode != 0; no exception is raised."""
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.stream_command(["false"], lambda _: None, timeout=10)
+
+    assert result.returncode != 0
+
+
+def test_stream_command_stderr_captured(tmp_path):
+    """stderr output is captured and returned in CommandResult.stderr."""
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.stream_command(
+        ["bash", "-c", "echo error-output >&2; exit 1"],
+        lambda _: None,
+        timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert "error-output" in result.stderr

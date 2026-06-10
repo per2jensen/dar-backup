@@ -1,3 +1,4 @@
+import logging
 import os
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -563,29 +564,34 @@ from dar_backup.dar_backup import list_contents
 
 
 def test_list_contents_with_selection_parses_and_extends_command(env, capsys):
+    from dar_backup.command_runner import CommandResult
+
     backup_name = "dummy_backup"
     backup_dir = env.backup_dir
     selection = "--selections somefile.txt"
 
-    mock_process = SimpleNamespace(stdout="[Saved] somefile.txt", stderr="", returncode=0, stdout_tail="", stderr_tail="")
+    def fake_stream(cmd, callback, *, timeout=None):
+        callback("[Saved] somefile.txt")
+        return CommandResult(0, "", "")
 
     mock_runner = MagicMock()
-    mock_runner.run.return_value = mock_process
+    mock_runner.stream_command.side_effect = fake_stream
 
     with patch("dar_backup.dar_backup.runner", mock_runner):
         list_contents(backup_name, backup_dir, selection)
 
     captured = capsys.readouterr()
     assert "[Saved]" in captured.out
-    mock_runner.run.assert_called_once()
+    mock_runner.stream_command.assert_called_once()
 
 def test_list_contents_handles_nonzero_returncode(env):
+    from dar_backup.command_runner import CommandResult
+
     backup_name = "fail_backup"
     backup_dir = env.backup_dir
 
-    mock_process = SimpleNamespace(stdout="", stderr="err", returncode=1, stdout_tail="", stderr_tail="")
     mock_runner = MagicMock()
-    mock_runner.run.return_value = mock_process
+    mock_runner.stream_command.return_value = CommandResult(1, "", "err")
 
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
@@ -595,13 +601,12 @@ def test_list_contents_handles_nonzero_returncode(env):
     mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
 
 
-
 def test_list_contents_raises_backup_error_on_called_process_error(env):
     backup_name = "error_backup"
     backup_dir = env.backup_dir
 
     mock_runner = MagicMock()
-    mock_runner.run.side_effect = subprocess.CalledProcessError(1, "dar")
+    mock_runner.stream_command.side_effect = subprocess.CalledProcessError(1, "dar")
 
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
@@ -611,13 +616,12 @@ def test_list_contents_raises_backup_error_on_called_process_error(env):
     mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
 
 
-
 def test_list_contents_raises_runtime_error_on_generic_exception(env):
     backup_name = "broken_backup"
     backup_dir = env.backup_dir
 
     mock_runner = MagicMock()
-    mock_runner.run.side_effect = Exception("Unexpected!")
+    mock_runner.stream_command.side_effect = Exception("Unexpected!")
 
     with patch("dar_backup.dar_backup.runner", mock_runner):
         with pytest.raises(RuntimeError) as excinfo:
@@ -966,6 +970,61 @@ def test_find_files_within_min_max_range(env):
     assert "large.txt" not in result
     assert "huge.txt" not in result
     assert len(result) == 2
+
+
+def test_find_files_unknown_unit_excluded_and_warns(env, caplog):
+    """Files with an unrecognised size unit must be excluded and a WARNING logged.
+
+    _parse_size_bytes() returns None for unknown units; find_files_between_min_and_max_size()
+    must not raise, must not include the file, and must emit a WARNING naming the file and
+    the raw size string so an operator knows to update _DAR_SIZE_UNITS.
+    """
+    import dar_backup.dar_backup as dar_module
+    dar_module.logger = env.logger
+
+    files = [
+        ("good.txt", "5 Mio"),
+        ("bad_unit.txt", "5 XiB"),   # 'XiB' is not in _DAR_SIZE_UNITS
+    ]
+    config = SimpleNamespace(
+        min_size_verification_mb=1,
+        max_size_verification_mb=10,
+        logger=env.logger,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = find_files_between_min_and_max_size(files, config)
+
+    assert "good.txt" in result
+    assert "bad_unit.txt" not in result
+    assert any("XiB" in msg and "bad_unit.txt" in msg for msg in caplog.messages), (
+        "Expected a WARNING mentioning the unknown unit and filename"
+    )
+
+
+def test_find_files_boundary_values_excluded(env):
+    """Files exactly at the boundary edge outside [min, max] are excluded."""
+    import dar_backup.dar_backup as dar_module
+    dar_module.logger = env.logger
+
+    files = [
+        ("below.txt", "512 kio"),    # 0.5 MB — below 1 MB minimum
+        ("above.txt", "11 Mio"),     # 11 MB — above 10 MB maximum
+        ("at_min.txt", "1 Mio"),     # exactly at minimum — included
+        ("at_max.txt", "10 Mio"),    # exactly at maximum — included
+    ]
+    config = SimpleNamespace(
+        min_size_verification_mb=1,
+        max_size_verification_mb=10,
+        logger=env.logger,
+    )
+
+    result = find_files_between_min_and_max_size(files, config)
+
+    assert "below.txt" not in result
+    assert "above.txt" not in result
+    assert "at_min.txt" in result
+    assert "at_max.txt" in result
 
 
 def test_filter_restoretest_candidates_case_insensitive():

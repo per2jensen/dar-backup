@@ -638,6 +638,77 @@ def test_verify_restore_test_failure_logs_error(
     )
 
 
+def test_verify_missing_source_file_is_fail_not_skip(
+    setup_environment, env: EnvData,
+) -> None:
+    """
+    verify() must record a missing source file as FAIL (not SKIP) and log at ERROR level.
+
+    When a source file is deleted between backup and verify, the file cannot be
+    restored to its original state — that is a verification failure, not a benign
+    skip.  Prior to the fix, FileNotFoundError set sample["result"]="SKIP" while
+    still setting result=False, creating a contradictory metrics record.
+
+    Steps:
+      1. Set NO_FILES_VERIFICATION high enough to guarantee file1.txt is selected.
+      2. Create a real full backup (file1.txt is archived).
+      3. Delete file1.txt from the source directory.
+      4. Call verify() directly with a real runner.
+      5. Assert restore_test_passed is False.
+      6. Assert an ERROR (not WARNING) was logged containing 'failed' and
+         'source file missing' — confirming FAIL, not the old SKIP path.
+
+    Complements test_verify_restore_test_failure_logs_error.
+    """
+    _set_no_files_verification(env, 20)
+
+    run_backup_script("--full-backup", env)
+    archive_name = _find_archive_name(env.backup_dir, "FULL", "example")
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    config = ConfigSettings(env.config_file)
+
+    # Delete file1.txt — it was backed up but no longer exists on source.
+    os.remove(os.path.join(env.data_dir, "file1.txt"))
+
+    captured: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    handler = _Capture()
+    args = SimpleNamespace(verbose=False, do_not_compare=False, darrc=env.dar_rc)
+    archive_path = os.path.join(config.backup_dir, archive_name)
+
+    with _module_context(env):
+        env.logger.addHandler(handler)
+        try:
+            result = db.verify(args, archive_path, backup_def_path, config)
+        finally:
+            env.logger.removeHandler(handler)
+
+    assert result.restore_test_passed is False, (
+        "verify() must return False when a source file is missing"
+    )
+
+    # Missing source must produce an ERROR saying "failed" + "source file missing".
+    errors = [r for r in captured if r.levelno >= logging.ERROR]
+    assert any(
+        "failed" in r.getMessage() and "source file missing" in r.getMessage()
+        for r in errors
+    ), (
+        f"Expected ERROR containing 'failed' and 'source file missing'; "
+        f"got errors: {[r.getMessage() for r in errors]}"
+    )
+
+    # Must NOT be logged as a benign WARNING "skipped" (old behaviour).
+    warnings = [r for r in captured if r.levelno == logging.WARNING]
+    assert not any(
+        "skipped" in r.getMessage() and "source file missing" in r.getMessage()
+        for r in warnings
+    ), "Missing source file must not be logged as a benign skip"
+
+
 def test_restore_test_failure_writes_failure_to_metrics_db(
     setup_environment, env: EnvData
 ) -> None:
@@ -650,21 +721,18 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
       2. Create a non-'example' backup definition (metrics are skipped for 'example').
       3. Add a 512 KB random-data file to the source to lengthen the backup phase.
       4. Launch dar-backup --full-backup as a non-blocking subprocess.
-      5. Poll the backup directory until a .1.dar slice appears, which signals
-         that dar has finished writing the archive.
-      6. Immediately overwrite every source file with different content so that
-         verify()'s restore-test detects a mismatch.
+      5. Poll until the .1.dar slice size has been stable for 150 ms, which is
+         the precise signal that dar has finished writing and closed the archive.
+      6. Overwrite every source file with different content so that verify()'s
+         restore-test detects a mismatch.
       7. Wait for dar-backup to exit.
       8. Assert: non-zero exit code.
       9. Assert: metrics row has status='FAILURE' and restore_test_passed=0.
 
-    TIMING NOTE: the source files are corrupted in the narrow window between dar
-    completing the archive (the .1.dar file becomes visible) and verify() opening
-    the source files for comparison.  On a very fast machine or with a small
-    backup that compresses to almost nothing, this window may be too short and
-    the corruption will arrive after verify() has already read the sources,
-    causing the test to see WARNING instead of FAILURE.  If this becomes flaky
-    in CI, increase the padding file size or switch to incompressible random data.
+    TIMING NOTE: stability is detected via 3 consecutive size-equal polls (50 ms
+    each).  After dar closes the archive, the subsequent manager subprocess and
+    dar -t / dar -x calls add ≥0.7 s before verify() reads source files, so the
+    corruption reliably wins the race even on fast NVMe hardware.
     """
     db_path = _inject_metrics_db(env)
     _create_restore_test_definition(env)
@@ -687,23 +755,37 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
         text=True,
     )
 
-    # Poll until the .dar archive slice appears — backup creation is complete.
+    # Poll until the .1.dar slice has stopped growing for 150 ms (3 × 50 ms polls).
+    # Detecting the file appearing is not enough — on a fast NVMe dar can finish
+    # writing and complete verify() before Python's poll loop fires.  Waiting for
+    # size stability is the precise signal that dar just closed the archive; the
+    # subsequent manager subprocess (~0.5 s) and dar -t / dar -x calls give at
+    # least 0.7 s for the source-file corruption to land before verify() reads them.
     deadline = time.time() + 120
     dar_appeared = False
+    last_size = -1
+    stable_count = 0
     while time.time() < deadline:
         try:
             slices = [f for f in os.listdir(env.backup_dir) if f.endswith(".1.dar")]
         except FileNotFoundError:
             slices = []
         if slices:
-            dar_appeared = True
-            # Corrupt every source file before verify() can read them.
-            for filename in os.listdir(env.data_dir):
-                filepath = os.path.join(env.data_dir, filename)
-                if os.path.isfile(filepath):
-                    with open(filepath, "w") as fh:
-                        fh.write("CORRUPTED AFTER BACKUP — content mismatch expected")
-            break
+            current_size = os.path.getsize(os.path.join(env.backup_dir, slices[0]))
+            if current_size == last_size:
+                stable_count += 1
+            else:
+                last_size = current_size
+                stable_count = 0
+            if stable_count >= 3:
+                dar_appeared = True
+                # Corrupt every source file before verify() can read them.
+                for filename in os.listdir(env.data_dir):
+                    filepath = os.path.join(env.data_dir, filename)
+                    if os.path.isfile(filepath):
+                        with open(filepath, "w") as fh:
+                            fh.write("CORRUPTED AFTER BACKUP — content mismatch expected")
+                break
         time.sleep(0.05)
 
     stdout, stderr = proc.communicate(timeout=120)
