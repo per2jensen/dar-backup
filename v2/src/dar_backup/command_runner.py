@@ -359,6 +359,10 @@ class CommandRunner:
                 process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 process.kill()
+                # Drain streaming threads so the captured buffers are stable
+                # before they are read below.
+                for t in threads:
+                    t.join(timeout=2)
                 duration = time.monotonic() - start_time
                 pid = getattr(process, "pid", None)
                 log_msg = (
@@ -366,7 +370,10 @@ class CommandRunner:
                     f"(pid={pid if pid is not None else 'unknown'}, elapsed={duration:.2f}s):\n"
                 )
                 self.logger.error(log_msg)
-                return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines))
+                # Prepend the timeout message to the captured stderr.  The
+                # previous str.join() misuse dropped the message entirely when
+                # stderr was empty and interleaved it between chunks otherwise.
+                return CommandResult(-1, ''.join(stdout_lines), log_msg + ''.join(stderr_lines))
             except KeyboardInterrupt:
                 # Kill the child process and drain threads so callers can log
                 # and flush before the process exits. Without this, background
@@ -377,9 +384,11 @@ class CommandRunner:
                 raise
             except Exception as e:
                 stack = traceback.format_exc()
+                for t in threads:
+                    t.join(timeout=2)
                 log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
                 self.logger.error(log_msg)
-                return CommandResult(-1, ''.join(stdout_lines), log_msg.join(stderr_lines), stack)
+                return CommandResult(-1, ''.join(stdout_lines), log_msg + ''.join(stderr_lines), stack)
 
             for t in threads:
                 t.join()

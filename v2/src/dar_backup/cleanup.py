@@ -122,7 +122,10 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
         filename = entry.name
         if not filename.endswith('.dar'):
             continue
-        if backup_definition and not filename.startswith(backup_definition):
+        if backup_definition and not filename.startswith(f"{backup_definition}_"):
+            # Match on "<definition>_" so that a definition which is a prefix
+            # of another (e.g. "media" vs "media2") cannot delete the other
+            # definition's archives.
             continue
         if backup_type in filename:
             try:

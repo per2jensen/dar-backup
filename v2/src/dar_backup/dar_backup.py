@@ -2243,7 +2243,10 @@ def main():
         msg = f"Config error: {exc}"
         print(msg, file=stderr)
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
-        send_discord_message(f"{ts} - dar-backup: FAILURE - config settings error)\n---- End of report ----", config_settings=config_settings)
+        # config_settings is unbound here (ConfigSettings() raised), so the
+        # webhook can only come from the environment variable; passing the
+        # unbound name raised UnboundLocalError and masked the config error.
+        send_discord_message(f"{ts} - dar-backup: FAILURE - config settings error)\n---- End of report ----")
         exit(127)
 
     if args.list_definitions:
@@ -2297,7 +2300,9 @@ def main():
         if os.path.exists(darrc_file) and os.path.isfile(darrc_file):
             logger.debug(f"Using .darrc: {args.darrc}")                
         else:
-            logger.error(f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting", file=stderr)
+            msg = f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting"
+            logger.error(msg)
+            print(msg, file=stderr)
             exit(127)
 
         if args.suppress_dar_msg:

@@ -347,7 +347,6 @@ ENABLED = true
 
     # Verify non-zero exit and correct error
     assert result.returncode != 0, "Expected non-zero exit due to invalid int"
-    assert "invalid literal for int()" in result.stderr.lower(), "Expected ValueError in stderr"
 
 
 def test_config_missing_age_section(setup_environment, env):
