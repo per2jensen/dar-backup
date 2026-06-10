@@ -308,43 +308,28 @@ def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
 def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str]], config_settings: ConfigSettings):
     """Find files within a specified size range.
 
-    This function takes a list of backed up files, a minimum size in megabytes, and a maximum size in megabytes.
-    It iterates through the list of files, converts the file size from the XML to a number, and compares it to the
-    specified size range. If a file's size falls within the range, it is added to the result list.
-
     Args:
-        backed_up_files (list): A list of tuples representing backed up files. Each tuple should contain at least
-            two elements, where the first element is the file name and the second element is the file size in the
-            format "<number> <unit>". For example, ("file.txt", "10 Mio").
-        min_size_verification_mb (int): The minimum file size in megabytes.
-        max_size_verification_mb (int): The maximum file size in megabytes.
+        backed_up_files: Iterable of (filename, size_string) tuples as returned by dar's
+            file listing. size_string format: "<number> <unit>", e.g. "10 Mio".
+        config_settings: Config providing min_size_verification_mb and max_size_verification_mb.
 
     Returns:
-        list: A list of file names that fall within the specified size range.
+        list[str]: File names whose parsed size falls within [min_mb, max_mb] inclusive.
     """
     logger.debug(f"Finding files in archive between min and max sizes: {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB")
     files = []
     max_size = config_settings.max_size_verification_mb
     min_size = config_settings.min_size_verification_mb
-    dar_sizes = {
-        "o"   : 1,
-        "kio" : 1024,
-        "Mio" : 1024 * 1024,
-        "Gio" : 1024 * 1024 * 1024,
-        "Tio" : 1024 * 1024 * 1024 * 1024
-     }
-    pattern = r'(\d+)\s*(\w+)'
     for item in backed_up_files:
-        if item is not None and len(item) >= 2  and item[0] is not None and item[1] is not None:
+        if item is not None and len(item) >= 2 and item[0] is not None and item[1] is not None:
             logger.trace(f"tuple from dar xml list: {item}")
-            match = re.match(pattern, item[1])
-            if match:
-                number = int(match.group(1))
-                unit = match.group(2).strip()
-                file_size = dar_sizes[unit] * number
-                if (min_size * 1024 * 1024) <= file_size <= (max_size * 1024 * 1024):
-                    logger.trace(f"File found between min and max sizes: {item}")
-                    files.append(item[0])
+            file_size = _parse_size_bytes(item[1])
+            if file_size is None:
+                logger.warning(f"Unrecognised size string '{item[1]}' for '{item[0]}' — skipping (update _DAR_SIZE_UNITS if dar added a new unit)")
+                continue
+            if (min_size * 1024 * 1024) <= file_size <= (max_size * 1024 * 1024):
+                logger.trace(f"File found between min and max sizes: {item}")
+                files.append(item[0])
     return files
 
 
@@ -897,146 +882,25 @@ def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int
         None
     """
     backup_path = os.path.join(backup_dir, backup_name)
+    command = ['dar', '-l', backup_path, '--noconf', '-am', '-as', '-Q']
+    if selection:
+        selection_criteria = shlex.split(selection)
+        from dar_backup.command_runner import is_safe_arg
+        for token in selection_criteria:
+            if not is_safe_arg(token):
+                raise ValueError(f"Unsafe token in --selection argument: {token!r}")
+        command.extend(selection_criteria)
+
+    def on_line(line: str) -> None:
+        if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
+            print(line)
 
     try:
-        command = ['dar', '-l', backup_path, '--noconf',  '-am', '-as', '-Q']
-        if selection:
-            selection_criteria = shlex.split(selection)
-            # Issue 5: reject tokens containing shell metacharacters.  shell=False means
-            # there is no shell injection risk per se, but keeping this consistent with
-            # the sanitize_cmd() check used everywhere else via CommandRunner is prudent.
-            from dar_backup.command_runner import is_safe_arg
-            for token in selection_criteria:
-                if not is_safe_arg(token):
-                    raise ValueError(f"Unsafe token in --selection argument: {token!r}")
-            command.extend(selection_criteria)
-        if runner is not None and getattr(runner, "_is_mock_object", False):
-            process = runner.run(command)
-            stdout, stderr = process.stdout, process.stderr
-            if process.returncode != 0:
-                (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
-                raise RuntimeError(str(process))
-            for line in stdout.splitlines():
-                if "[--- REMOVED ENTRY ----]" in line or "[Saved]" in line:
-                    print(line)
-        else:
-            stderr_lines: List[bytes] = []   # Issue 2: bytes, not str — process runs text=False
-            stderr_bytes = 0
-            cap = None
-            if runner is not None:
-                cap = runner.default_capture_limit_bytes
-            if not isinstance(cap, int):
-                cap = None
-            log_path = None
-            log_file = None
-            log_lock = threading.Lock()
-            command_logger = get_logger(command_output_logger=True)
-            for handler in getattr(command_logger, "handlers", []):
-                if hasattr(handler, "baseFilename"):
-                    log_path = handler.baseFilename
-                    break
-            if log_path:
-                log_file = open(log_path, "ab")
-                header = (
-                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - COMMAND: "
-                    f"{' '.join(map(shlex.quote, command))}\n"
-                ).encode("utf-8", errors="replace")
-                log_file.write(header)
-                log_file.flush()
-
-            (logger or get_logger()).debug(f"list_contents: timeout={timeout}s for '{backup_name}'")
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.DEVNULL,
-                text=False,
-                bufsize=0
-            )
-
-            def read_stderr():
-                nonlocal stderr_bytes
-                if process.stderr is None:
-                    return
-                while True:
-                    chunk = process.stderr.read(1024)
-                    if not chunk:
-                        break
-                    if log_file:
-                        with log_lock:
-                            log_file.write(chunk)
-                            log_file.flush()
-                    if cap is None:
-                        stderr_lines.append(chunk)
-                    elif cap > 0 and stderr_bytes < cap:
-                        remaining = cap - stderr_bytes
-                        if len(chunk) <= remaining:
-                            stderr_lines.append(chunk)
-                            stderr_bytes += len(chunk)
-                        else:
-                            stderr_lines.append(chunk[:remaining])
-                            stderr_bytes = cap
-
-            stderr_thread = threading.Thread(target=read_stderr)
-            stderr_thread.start()
-
-            # Issue 3: use try/finally so log_file is always closed, even if an
-            # exception is raised inside the stdout-reading loop.
-            try:
-                if process.stdout is not None:
-                    # Issue 1: carry only the incomplete trailing fragment between
-                    # chunks; never accumulate the full output in memory.
-                    partial = b""
-                    while True:
-                        chunk = process.stdout.read(1024)
-                        if not chunk:
-                            # flush any final line that had no trailing newline
-                            if partial:
-                                if log_file:
-                                    with log_lock:
-                                        log_file.write(partial + b"\n")
-                                if b"[--- REMOVED ENTRY ----]" in partial or b"[Saved]" in partial:
-                                    print(partial.decode("utf-8", errors="replace"))
-                            break
-                        if log_file:
-                            with log_lock:
-                                log_file.write(chunk)
-                        partial += chunk
-                        while b"\n" in partial:
-                            line, partial = partial.split(b"\n", 1)
-                            if b"[--- REMOVED ENTRY ----]" in line or b"[Saved]" in line:
-                                print(line.decode("utf-8", errors="replace"))
-                    process.stdout.close()
-
-                # Issue 4: honour the timeout so a hung dar does not block forever.
-                try:
-                    process.wait(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    stderr_thread.join()
-                    raise RuntimeError(
-                        f"list_contents timed out after {timeout}s for '{backup_name}'"
-                    )
-            finally:
-                # Issue 3: guaranteed close regardless of how the block above exits.
-                stderr_thread.join()
-                if log_file:
-                    log_file.close()
-
-            if process.returncode != 0:
-                (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
-                # Issue 2: stderr_lines holds bytes chunks; join as bytes then decode.
-                stderr_text = b"".join(stderr_lines).decode("utf-8", errors="replace")
-                raise RuntimeError(
-                    f"Error listing contents of backup: '{backup_name}'"
-                    f"\nStderr: {stderr_text}"
-                )
+        result = runner.stream_command(command, on_line, timeout=timeout)
     except subprocess.CalledProcessError as e:
         (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
         raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e
-    except RuntimeError:
-        raise
-    except BackupError:
+    except (RuntimeError, BackupError):
         raise
     except Exception as e:
         log = logger or get_logger()
@@ -1048,6 +912,13 @@ def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int
                 exc_info=True,
             )
         raise RuntimeError(f"Unexpected error listing contents of backup: '{backup_name}'") from e
+
+    if result.returncode != 0:
+        (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
+        raise RuntimeError(
+            f"Error listing contents of backup: '{backup_name}'"
+            f"\nStderr: {result.stderr or ''}"
+        )
 
 
 

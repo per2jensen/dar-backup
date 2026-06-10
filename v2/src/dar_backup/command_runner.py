@@ -15,7 +15,7 @@ except ImportError:
     termios = None
 import tempfile
 import time
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 from dar_backup.util import get_logger
 
 
@@ -464,3 +464,129 @@ class CommandRunner:
                     tty_file.close()
                 except Exception:
                     self.logger.debug("Failed to close /dev/tty handle", exc_info=True)
+
+    def stream_command(
+        self,
+        cmd: List[str],
+        line_callback: Callable[[str], None],
+        *,
+        timeout: Optional[int] = None,
+    ) -> CommandResult:
+        """Run cmd, calling line_callback once per decoded stdout line.
+
+        Stderr is captured in a background thread (respecting
+        self.default_capture_limit_bytes) and every line is logged via
+        self.command_logger.  stdout lines are logged and handed to
+        line_callback as they arrive; stdout is NOT accumulated in the
+        returned CommandResult so callers can collect only what they need.
+
+        Args:
+            cmd: Command and arguments.
+            line_callback: Invoked in the calling thread for each complete,
+                decoded stdout line (no trailing newline).
+            timeout: Kill timeout in seconds. None uses self.default_timeout.
+
+        Returns:
+            CommandResult with returncode and captured stderr. stdout is always
+            empty string.
+        """
+        if timeout is None:
+            timeout = self.default_timeout
+        if timeout is not None and timeout <= 0:
+            timeout = None
+
+        try:
+            cmd = sanitize_cmd(cmd)
+        except ValueError as e:
+            self.logger.error("Command sanitation failed: %s", e)
+            return CommandResult(returncode=-1, stdout="", stderr=str(e))
+
+        cmd_str = " ".join(shlex.quote(arg) for arg in cmd)
+        self.command_logger.info("Executing command: %s (timeout=%ss)", cmd_str, timeout)
+        self.logger.debug("Executing command: %s (timeout=%ss)", cmd_str, timeout)
+
+        cap = self.default_capture_limit_bytes
+        stderr_lines: List[bytes] = []
+        stderr_bytes_seen = 0
+        lock = threading.Lock()
+
+        cmd_env = os.environ.copy()
+        cmd_env["LC_ALL"] = "C"
+
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                text=False,
+                bufsize=0,
+                env=cmd_env,
+            )
+        except Exception as e:
+            self.logger.error("Failed to start command: %s (error=%s)", cmd_str, e)
+            return CommandResult(
+                returncode=-1, stdout="", stderr=str(e),
+                stack=traceback.format_exc()
+            )
+
+        def _read_stderr() -> None:
+            nonlocal stderr_bytes_seen
+            assert process.stderr is not None
+            while True:
+                chunk = process.stderr.read(1024)
+                if not chunk:
+                    break
+                decoded = chunk.decode("utf-8", errors="replace")
+                self.command_logger.error(decoded.rstrip("\n"))
+                with lock:
+                    if cap is None:
+                        stderr_lines.append(chunk)
+                    elif cap > 0 and stderr_bytes_seen < cap:
+                        remaining = cap - stderr_bytes_seen
+                        if len(chunk) <= remaining:
+                            stderr_lines.append(chunk)
+                            stderr_bytes_seen += len(chunk)
+                        else:
+                            stderr_lines.append(chunk[:remaining])
+                            stderr_bytes_seen = cap
+
+        stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+        stderr_thread.start()
+
+        try:
+            assert process.stdout is not None
+            partial = b""
+            while True:
+                chunk = process.stdout.read(1024)
+                if not chunk:
+                    if partial:
+                        decoded = partial.decode("utf-8", errors="replace")
+                        self.command_logger.info(decoded)
+                        line_callback(decoded)
+                    break
+                partial += chunk
+                while b"\n" in partial:
+                    raw_line, partial = partial.split(b"\n", 1)
+                    decoded = raw_line.decode("utf-8", errors="replace")
+                    self.command_logger.info(decoded)
+                    line_callback(decoded)
+            process.stdout.close()
+
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stderr_thread.join(timeout=2)
+                msg = f"Command timed out after {timeout}s: {cmd_str}"
+                self.logger.error(msg)
+                return CommandResult(-1, "", msg)
+        finally:
+            stderr_thread.join()
+
+        stderr_text = b"".join(stderr_lines).decode("utf-8", errors="replace")
+        if process.returncode != 0:
+            self.logger.error(
+                "Command failed returncode=%s: %s", process.returncode, cmd_str
+            )
+        return CommandResult(process.returncode, "", stderr_text)
