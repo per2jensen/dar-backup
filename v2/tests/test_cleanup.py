@@ -643,6 +643,32 @@ def test_invalid_backup_type(monkeypatch, tmp_path):
     delete_old_backups(str(backup_dir), 30, "INVALID_TYPE", args=MagicMock())
 
 
+def test_delete_old_backups_prefix_definition_does_not_delete_longer_definition(monkeypatch, tmp_path):
+    """Cleaning definition 'media' must not delete archives for definition 'media2'.
+
+    Before the fix, startswith(backup_definition) without a trailing underscore
+    matched 'media2_DIFF_…' when backup_definition='media', causing archives that
+    belong to a different definition to be silently deleted.
+    """
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    # Both archives are old enough to be deleted by age
+    media_archive = f"media_DIFF_{date_100_days_ago}.1.dar"
+    media2_archive = f"media2_DIFF_{date_100_days_ago}.1.dar"
+    (backup_dir / media_archive).write_text("dummy")
+    (backup_dir / media2_archive).write_text("dummy")
+
+    monkeypatch.setattr("dar_backup.cleanup.logger", logging.getLogger("test"))
+    monkeypatch.setattr("dar_backup.cleanup.delete_catalog", lambda *a, **kw: True)
+
+    from dar_backup.cleanup import delete_old_backups
+    delete_old_backups(str(backup_dir), 30, "DIFF", args=MagicMock(), backup_definition="media")
+
+    assert not (backup_dir / media_archive).exists(), "media DIFF archive should have been deleted"
+    assert (backup_dir / media2_archive).exists(), "media2 DIFF archive must not be deleted when cleaning 'media'"
+
+
 
 
 def test_postreq_script_success(monkeypatch, env, caplog):

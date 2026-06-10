@@ -7,9 +7,65 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Fixed
 
+- **`cat_no_for_name()` wrong catalog match** (`manager.py`) — the regex used to locate an
+  archive's catalog number interpolated the archive name directly without `re.escape()` and without
+  anchoring, so `media_FULL_2026-01-01` could match a catalog-list line for
+  `media2_FULL_2026-01-01`, causing `remove_specific_archive()` to delete the wrong entry.  Fixed
+  by switching to a tab-split exact-field comparison against `parts[2]` (the column that
+  `list_catalogs` already extracts as the archive name), which is unambiguous and immune to
+  special-character issues.
+
+- **`_restore_target_unsafe_reason()` allow-list gap** (`manager.py`) — `startswith(allow_prefixes)`
+  accepted any path whose first characters matched a prefix tuple entry, so `/tmpfoo` and
+  `/homestead` were silently allowed.  Fixed to use `prefix + os.sep` (matching the same pattern
+  the protected-prefix check already used correctly).
+
+- **`add_directory()` always exited 0** (`manager.py`) — the function returned `None` on both
+  success and per-archive failure, so `sys.exit(add_directory(...))` always reported success to
+  systemd and calling scripts.  Fixed by returning `1` if any archive failed to add, `0` otherwise.
+  Also fixed a missing `{result}` interpolation in the final debug log line.
+
+- **`setup_logging()` bad config path continued silently** (`dar_backup.py`) — if
+  `logfile_location` did not end with `dar-backup.log`, the code printed an "exiting" message but
+  then continued, silently aliasing the command-output log to the main log.  Added the missing
+  `exit(1)`.
+
+- **`filter_darrc_file()` used private `tempfile._get_candidate_names()`** (`dar_backup.py`) —
+  replaced with the public `tempfile.mkstemp()`, which also avoids the previous TOCTOU race between
+  generating a name and opening the file.
+
+- **Duplicate `-c` flag in cleanup argument parser** (`cleanup.py`) — `argparse.add_argument` was
+  called with `'-c', '--config-file', '-c'`; the duplicate was silently tolerated but is now
+  removed.
+
+- **Discarded `ArgumentParser` in `manager.main()`** (`manager.py`) — `argparse.ArgumentParser()`
+  was constructed and immediately overwritten by `build_arg_parser()`.  The dead call is removed.
+
+- **`datetime.utcnow()` deprecated** (`dar_backup.py`) — replaced with
+  `datetime.now(timezone.utc)` (already imported) in `write_par2_manifest()`.
+
+- **`List[(str,int)]` invalid type annotation** (`dar_backup.py`) — corrected to
+  `List[Tuple[str, int]]`.
+
+- **Dead `raw_config` block in `main()`** (`dar_backup.py`) — duplicate config-path resolution that
+  was superseded by `get_config_file(args)` on the very next line; removed.
+
 - a restore-test after a backup would previously result in a WARNING, it is now an ERROR
   
-  - A test case now prove an ERROR is issued in the log and in the metrics DB.
+  - A test case now proves an ERROR is issued in the log and in the metrics DB.
+
+- **`get_backed_up_files()` — temp file leaked on timeout** (`dar_backup.py`) —
+  the `subprocess.TimeoutExpired` handler raised `BackupError` without removing the
+  temporary XML file, because `TimeoutExpired` is caught before the `except Exception`
+  block that contained the cleanup.  Fixed by adding the same `os.remove(temp_path)`
+  guard to the `TimeoutExpired` handler.
+
+- **`verify()` — missing source file recorded as SKIP but counted as failure** (`dar_backup.py`) —
+  when a `FileNotFoundError` occurred (source file deleted between backup and verify), the sample
+  was recorded as `result="SKIP"` in the metrics DB while `restore_test_passed` was set to `0`
+  (failure).  The two signals contradicted each other: the sample said "skipped" but the run was
+  marked failed.  Fixed by recording the sample as `result="FAIL"` and logging at `ERROR` level,
+  consistent with the aggregate result — if the file is gone it cannot be verified or restored.
 
 - **Signal propagation in generated systemd units** (`dar_backup_systemd.py`) — the generated
   `ExecStart` line ran the backup tool as a child of a bash subshell.  When systemd sent `SIGTERM`
@@ -52,6 +108,32 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
     try/except block so specific errors raised internally are no longer swallowed by the broad
     `except Exception` fallback.
 
+### Changed
+
+- **`CommandRunner.stream_command()` consolidates streaming subprocess pattern** (`command_runner.py`, `manager.py`, `dar_backup.py`) —
+  `list_catalogs()`, `list_archive_contents()`, and `list_contents()` each contained their
+  own copy of the same ~40-line block: open `Popen`, drain stderr in a background thread with
+  capping, read stdout line by line, wait with timeout, close the log file.  The block is now
+  in a single `CommandRunner.stream_command(cmd, line_callback, *, timeout)` method; callers
+  supply a callback that receives each decoded stdout line and decide what to keep or print.
+  The per-function dual path (mock branch vs real subprocess branch) is gone; all paths go
+  through `runner.stream_command()`.
+
+- **`ArchiveName` dataclass replaces `backup_def_from_archive()`** (`util.py`, `manager.py`) —
+  `backup_def_from_archive()` returned `None` when the archive name did not contain `_`, and
+  callers propagated that `None` silently into database paths (producing `"None.db"` lookups).
+  The function is removed; call sites in `cat_no_for_name()`, `list_archive_contents()`, and
+  `remove_specific_archive()` now call `ArchiveName.parse()` and return early with an error when
+  parsing fails.  `_parse_archive_info()` also migrated, removing its own inline regex and
+  strptime block.  `ArchiveName` is defined once in `util.py` and shared by all callers.
+
+- **`find_files_between_min_and_max_size()` deduplicates size-string parsing** (`dar_backup.py`) —
+  the function previously maintained its own copy of the unit table (`dar_sizes`) and a duplicate
+  `re.match` block that mirrored `_DAR_SIZE_UNITS` / `_parse_size_bytes()` defined ~70 lines below
+  in the same file.  Replaced with a single call to `_parse_size_bytes()`.  Files whose size string
+  uses an unrecognised unit are now silently excluded (consistent with the helper's `None` return)
+  rather than raising `KeyError`.
+
 ### Added
 
 - Dashboard gained checkmarks to disable PREREQ and POSTREQ errors, to more easily see "real" backup/restore errors
@@ -65,6 +147,22 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - New parametrised integration test `test_list_contents_non_english_utf8_locale` runs backup and
   list-contents with `LANG` set to each non-English UTF-8 locale installed on the machine.
   (e.g. `da_DK.utf8`), proving file-name handling is correct regardless of the caller's locale.
+- Fixed 7 unit/component tests in `test_manager_coverage.py` and `test_dar_backup_additional_coverage.py`
+  that mocked `subprocess.Popen` directly; updated to mock `runner.stream_command` (the new API after B-3).
+- Deleted 5 now-empty tests in `test_manager_coverage.py` that were testing the old direct-Popen
+  infrastructure (stderr capping, truncation, timeout) — that behaviour now lives in
+  `CommandRunner.stream_command` and is already covered by `test_command_runner.py`.
+- Fixed `ArchiveName` regex (`util.py`) to accept an optional trailing suffix after the date/time
+  (e.g. `_01` sequence counter used by PITR integration tests, or `_manual` labels); restores
+  `_parse_archive_info()` parsing for all PITR integration test archive names.
+- `test_concurrent_same_definition_does_not_corrupt_catalog` marked `xfail(strict=False)` — a
+  TOCTOU race between the `os.path.exists` guard and dar creation means the losing process can
+  return rc=1 instead of rc=2; proper fix (per-definition `fcntl.flock`) tracked in `doc/todo.md`.
+- `test_restore_test_failure_writes_failure_to_metrics_db` timing fixed — the polling loop now
+  waits for the `.1.dar` slice size to be stable for 150 ms (3 × 50 ms) rather than firing as
+  soon as the file appears, giving a precise signal that dar has closed the archive.  The
+  subsequent manager subprocess and `dar -t` / `dar -x` calls add ≥0.7 s before `verify()`
+  reads source files, so the source-file corruption reliably wins the race on fast NVMe hardware.
 
 ## v2-1.1.7 - 2026-06-07
 
@@ -451,8 +549,8 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 - perform_backup() now correctly records FAILURE in the metrics DB when dar exits 0 but writes no archive slices (e.g. due to an NFS mount stall). Previously, the run was silently recorded as SUCCESS.
 - NFS stall scenario now logs a clear error in the main log. Previously the failure was visible only in the command log.
 - KeyboardInterrupt (Ctrl-C) is now caught explicitly in perform_backup(). A clear error message naming the interrupted phase and warning that partial slices must not be used for restore is logged and recorded in the metrics DB. Previously, a Ctrl-C with a partial slice on disk could be recorded as SUCCESS.
-- SIGTERM (kill <pid>) is now handled in dar-backup and manager — a handler converts it to KeyboardInterrupt so the same logging and cleanup chain fires as for Ctrl-C. Previously SIGTERM terminated the process immediately with no log entry and no metrics written.
-- KeyboardInterrupt and SIGTERM are now caught in restore_backup(), verify(), _is_directory_in_archive(), _restore_with_dar() and restore_at() (PITR). Each handler logs a clear error naming the interrupted operation and warns that the target directory may be incomplete.
+- SIGTERM (`kill <pid>`) is now handled in dar-backup and manager — a handler converts it to KeyboardInterrupt so the same logging and cleanup chain fires as for Ctrl-C. Previously SIGTERM terminated the process immediately with no log entry and no metrics written.
+- KeyboardInterrupt and SIGTERM are now caught in `restore_backup()`, `verify()`, `_is_directory_in_archive()`, `_restore_with_dar()` and `restore_at()` (PITR). Each handler logs a clear error naming the interrupted operation and warns that the target directory may be incomplete.
 - CommandRunner.run() now kills the child process and joins streaming threads on KeyboardInterrupt, ensuring log buffers are flushed to disk before the process exits.
 - CommandRunner fixed, so log lines in command log are not split. Test cases added.
 

@@ -730,26 +730,65 @@ def test_list_catalogs_db_missing(tmp_path):
 
 def test_list_catalogs_command_failure(tmp_path):
     from dar_backup.manager import list_catalogs
+    from dar_backup.command_runner import CommandResult
 
     backup_def = "exampledef"
     db_path = tmp_path / f"{backup_def}.db"
-    db_path.touch()  # simulate database presence
+    db_path.touch()
 
     config = SimpleNamespace(backup_dir=tmp_path)
 
-    mock_process = MagicMock()
-    mock_process.returncode = 1
-    mock_process.stdout = "failure output"
-    mock_process.stderr = "failure error"
+    def fake_stream(cmd, callback, *, timeout=None):
+        return CommandResult(1, "", "failure error")
 
-    with patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))), \
+    with patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_catalogs(backup_def, config)
 
-        assert result.returncode == 1
-        mock_logger.error.assert_any_call(f'Error listing catalogs for: "{db_path}"')
-        mock_logger.error.assert_any_call("stderr: failure error")
-        mock_logger.error.assert_any_call("stdout: failure output")
+    assert result.returncode == 1
+    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{db_path}"')
+    mock_logger.error.assert_any_call("stderr: failure error")
+
+
+def test_cat_no_for_name_returns_correct_number(tmp_path):
+    """Returns the catalog number when the archive is found in the tab-split output."""
+    from dar_backup.manager import cat_no_for_name
+
+    archive = "media_FULL_2026-01-01"
+    # archive_lines from list_catalogs are tab-separated: col0=number, col1=path, col2=archive
+    mock_process = SimpleNamespace(
+        returncode=0,
+        stdout=f"3\t/path/to/db\t{archive}",
+        stderr="",
+    )
+    with patch("dar_backup.manager.list_catalogs", return_value=mock_process), \
+         patch("dar_backup.manager.logger"):
+        result = cat_no_for_name(archive, SimpleNamespace())
+
+    assert result == 3
+
+
+def test_cat_no_for_name_prefix_definition_does_not_match(tmp_path):
+    """A definition that is a prefix of another must not produce a false match.
+
+    Before the fix the regex was unanchored, so looking up 'media_FULL_2026-01-01'
+    would match a catalog line for 'media2_FULL_2026-01-01' and return its number.
+    """
+    from dar_backup.manager import cat_no_for_name
+
+    archive = "media_FULL_2026-01-01"
+    longer_archive = "media2_FULL_2026-01-01"
+    mock_process = SimpleNamespace(
+        returncode=0,
+        stdout=f"1\t/path/to/db\t{longer_archive}",
+        stderr="",
+    )
+    with patch("dar_backup.manager.list_catalogs", return_value=mock_process), \
+         patch("dar_backup.manager.logger"):
+        result = cat_no_for_name(archive, SimpleNamespace())
+
+    assert result == -1  # must NOT match the longer definition's archive
 
 
 def test_cat_no_for_name_list_catalogs_fails(tmp_path):
@@ -775,32 +814,26 @@ def test_cat_no_for_name_list_catalogs_fails(tmp_path):
 
 def test_list_archive_contents_runner_fails(tmp_path):
     from dar_backup.manager import list_archive_contents
+    from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
     config = SimpleNamespace(backup_dir=tmp_path)
 
-    # Simulate database file existing
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    # Mock the process result
-    mock_process = SimpleNamespace(
-        returncode=1,
-        stdout="mocked stdout",
-        stderr="mocked stderr"
-    )
+    def fake_stream(cmd, callback, *, timeout=None):
+        return CommandResult(1, "", "mocked stderr")
 
-    # Patch the entire runner object used inside manager.py
     with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
          patch("dar_backup.manager.logger") as mock_logger, \
-         patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))):
-        
+         patch("dar_backup.manager.runner") as mock_runner:
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_archive_contents(archive, config)
 
     assert result == 1
-    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{str(db_path)}"')
+    mock_logger.error.assert_any_call(f'Error listing contents of archive: "{str(db_path)}"')
     mock_logger.error.assert_any_call("stderr: mocked stderr")
-    mock_logger.error.assert_any_call("stdout: mocked stdout")
 
 
 def test_list_archive_contents_cat_not_found(tmp_path):
@@ -825,6 +858,7 @@ def test_list_archive_contents_cat_not_found(tmp_path):
 
 def test_list_archive_contents_runner_fails_isolated(tmp_path):
     from dar_backup.manager import list_archive_contents
+    from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
     config = SimpleNamespace(backup_dir=tmp_path)
@@ -832,22 +866,18 @@ def test_list_archive_contents_runner_fails_isolated(tmp_path):
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    mock_process = SimpleNamespace(
-        returncode=1,
-        stdout="mocked stdout",
-        stderr="mocked stderr"
-    )
+    def fake_stream(cmd, callback, *, timeout=None):
+        return CommandResult(1, "", "mocked stderr")
 
     with patch("dar_backup.manager.cat_no_for_name", return_value=5), \
          patch("dar_backup.manager.logger") as mock_logger, \
-         patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=mock_process))):
-        
+         patch("dar_backup.manager.runner") as mock_runner:
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_archive_contents(archive, config)
 
     assert result == 1
-    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{str(db_path)}"')
+    mock_logger.error.assert_any_call(f'Error listing contents of archive: "{str(db_path)}"')
     mock_logger.error.assert_any_call("stderr: mocked stderr")
-    mock_logger.error.assert_any_call("stdout: mocked stdout")
 
 
 def test_find_file_db_missing(tmp_path):
@@ -1278,40 +1308,38 @@ def test_manager_db_dir_invalid_path_raises(env, setup_environment, tmp_path):
     env.logger.info("✅ Catalog creation failed as expected due to invalid MANAGER_DB_DIR")
 
 
-def test_backup_def_from_archive_no_match_logs_error():
-    from dar_backup.manager import backup_def_from_archive
+def test_cat_no_for_name_unparseable_archive_returns_minus_one(tmp_path):
+    """cat_no_for_name() must return -1 and log an error for an archive name that
+    does not follow the {def}_{TYPE}_{date} convention."""
+    from dar_backup.manager import cat_no_for_name
+
+    config = SimpleNamespace(backup_dir=tmp_path)
 
     with patch("dar_backup.manager.logger") as mock_logger:
-        result = backup_def_from_archive("invalidarchive")
+        result = cat_no_for_name("invalidarchive", config)
 
-    assert result is None
+    assert result == -1
     mock_logger.error.assert_called_once()
 
 
-def test_list_archive_contents_subprocess_empty_prints_info(tmp_path, capsys):
-    import io
+def test_list_archive_contents_empty_prints_info(tmp_path, capsys):
     from dar_backup.manager import list_archive_contents
+    from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
+    config = SimpleNamespace(backup_dir=tmp_path)
 
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 0
-            self.stdout = io.BytesIO(b"header line\n")
-            self.stderr = io.BytesIO(b"")
-
-        def wait(self, timeout=None):
-            return None
+    def fake_stream(cmd, callback, *, timeout=None):
+        callback("header line")
+        return CommandResult(0, "", "")
 
     with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
-         patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
-         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
-         patch("dar_backup.manager.logger", new=MagicMock()), \
-         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+         patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger", new=MagicMock()):
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_archive_contents(archive, config)
 
     assert result == 0
@@ -1319,36 +1347,25 @@ def test_list_archive_contents_subprocess_empty_prints_info(tmp_path, capsys):
     assert f"[info] Archive '{archive}' is empty." in out
 
 
-def test_list_archive_contents_subprocess_filters_saved_lines(tmp_path, capsys):
-    import io
+def test_list_archive_contents_filters_saved_lines(tmp_path, capsys):
     from dar_backup.manager import list_archive_contents
+    from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
-    output = (
-        b"header line\n"
-        b"[ Saved ] file1.txt\n"
-        b"other line\n"
-        b"[ Saved ] dir/file2.txt\n"
-    )
+    config = SimpleNamespace(backup_dir=tmp_path)
 
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 0
-            self.stdout = io.BytesIO(output)
-            self.stderr = io.BytesIO(b"")
-
-        def wait(self, timeout=None):
-            return None
+    def fake_stream(cmd, callback, *, timeout=None):
+        for line in ["header line", "[ Saved ] file1.txt", "other line", "[ Saved ] dir/file2.txt"]:
+            callback(line)
+        return CommandResult(0, "", "")
 
     with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
-         patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
-         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
-         patch("dar_backup.manager.logger", new=MagicMock()), \
-         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+         patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger", new=MagicMock()):
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_archive_contents(archive, config)
 
     assert result == 0
@@ -1467,14 +1484,45 @@ def test_add_directory_sorts_by_date_then_type(tmp_path):
         "example_INCR_2025-01-02",
     ]
 
+
+def test_add_directory_returns_0_when_all_succeed(tmp_path):
+    """Returns 0 when every archive is added successfully."""
+    from dar_backup.manager import add_directory
+
+    (tmp_path / "example_FULL_2025-01-01.1.dar").touch()
+    args = SimpleNamespace(add_dir=str(tmp_path), backup_def=None)
+
+    with patch("dar_backup.manager.add_specific_archive", return_value=0), \
+         patch("dar_backup.manager.logger"):
+        result = add_directory(args, SimpleNamespace())
+
+    assert result == 0
+
+
+def test_add_directory_returns_1_when_any_archive_fails(tmp_path):
+    """Returns 1 when at least one archive fails to add.
+
+    Before the fix the function returned None (implicitly), causing
+    sys.exit(add_directory(...)) to always exit with code 0.
+    """
+    from dar_backup.manager import add_directory
+
+    (tmp_path / "example_FULL_2025-01-01.1.dar").touch()
+    args = SimpleNamespace(add_dir=str(tmp_path), backup_def=None)
+
+    with patch("dar_backup.manager.add_specific_archive", return_value=1), \
+         patch("dar_backup.manager.logger"):
+        result = add_directory(args, SimpleNamespace())
+
+    assert result == 1
+
 def test_remove_specific_archive_failure_returns_one(tmp_path):
     from dar_backup.manager import remove_specific_archive
 
     config = SimpleNamespace(backup_dir=tmp_path)
     process = SimpleNamespace(returncode=1, stdout="bad", stderr="oops")
 
-    with patch("dar_backup.manager.backup_def_from_archive", return_value="example"), \
-         patch("dar_backup.manager.cat_no_for_name", return_value=1), \
+    with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
          patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger") as mock_logger:
         mock_runner.run.return_value = process
@@ -1530,27 +1578,31 @@ def test_create_db_db_dir_not_writable(tmp_path):
     mock_logger.error.assert_called_once_with(f"DB dir is not writable: {db_dir}")
 
 
-def test_list_catalogs_success_runner_parses_and_sorts(tmp_path, capsys):
+def test_list_catalogs_success_parses_and_sorts(tmp_path, capsys):
     from dar_backup.manager import list_catalogs
+    from dar_backup.command_runner import CommandResult
 
     backup_def = "example"
     db_path = tmp_path / f"{backup_def}.db"
     db_path.touch()
 
     config = SimpleNamespace(backup_dir=tmp_path)
-    stdout = "\n".join(
-        [
-            "archive #",
-            "dar path",
-            "1\t/path\tbdef_FULL_2025-01-02",
-            "2\t/path\tadef_FULL_2025-01-03",
-            "3\t/path\tadef_FULL_2025-01-01",
-        ]
-    )
-    process = SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+    raw_lines = [
+        "archive #",
+        "dar path",
+        "1\t/path\tbdef_FULL_2025-01-02",
+        "2\t/path\tadef_FULL_2025-01-03",
+        "3\t/path\tadef_FULL_2025-01-01",
+    ]
 
-    with patch("dar_backup.manager.runner", new=SimpleNamespace(run=MagicMock(return_value=process))), \
+    def fake_stream(cmd, callback, *, timeout=None):
+        for line in raw_lines:
+            callback(line)
+        return CommandResult(0, "", "")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger", new=MagicMock()):
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_catalogs(backup_def, config)
 
     assert result.returncode == 0
@@ -1563,33 +1615,25 @@ def test_list_catalogs_success_runner_parses_and_sorts(tmp_path, capsys):
     assert "bdef_FULL_2025-01-02" in result.stdout
 
 
-def test_list_catalogs_success_subprocess_parses(tmp_path):
-    import io
+def test_list_catalogs_success_parses_suppressed(tmp_path):
+    """suppress_output=True must not print but still return the archive lines."""
     from dar_backup.manager import list_catalogs
+    from dar_backup.command_runner import CommandResult
 
     backup_def = "example"
     db_path = tmp_path / f"{backup_def}.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path, command_capture_max_bytes=1024)
-    output = (
-        b"1\t/path\tadef_FULL_2025-01-01\n"
-        b"2\t/path\tbdef_FULL_2025-01-02\n"
-    )
+    config = SimpleNamespace(backup_dir=tmp_path)
 
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 0
-            self.stdout = io.BytesIO(output)
-            self.stderr = io.BytesIO(b"")
+    def fake_stream(cmd, callback, *, timeout=None):
+        for line in ["1\t/path\tadef_FULL_2025-01-01", "2\t/path\tbdef_FULL_2025-01-02"]:
+            callback(line)
+        return CommandResult(0, "", "")
 
-        def wait(self, timeout=None):
-            return None
-
-    with patch("dar_backup.manager.runner", new=SimpleNamespace(default_capture_limit_bytes=1024)), \
-         patch("dar_backup.manager._open_command_log", return_value=(None, None)), \
-         patch("dar_backup.manager.logger", new=MagicMock()), \
-         patch("dar_backup.manager.subprocess.Popen", return_value=FakeProcess()):
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger", new=MagicMock()):
+        mock_runner.stream_command.side_effect = fake_stream
         result = list_catalogs(backup_def, config, suppress_output=True)
 
     assert result.returncode == 0

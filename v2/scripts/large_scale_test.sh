@@ -110,6 +110,13 @@ mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR"
 
 # ── RSS monitor ──────────────────────────────────────────────────────────────
 RSS_MONITOR_PID=""
+stop_rss_monitor() {
+    if [[ -n "${RSS_MONITOR_PID:-}" ]]; then
+        kill "$RSS_MONITOR_PID" 2>/dev/null || true
+        wait "$RSS_MONITOR_PID" 2>/dev/null || true
+        RSS_MONITOR_PID=""
+    fi
+}
 start_rss_monitor() {
     (
         local main_script_pid=$PPID
@@ -266,8 +273,6 @@ do_bitrot_test() {
 
 count_slices() { ls "${BACKUP_DIR}/${1}".*.dar 2>/dev/null | wc -l; }
 init_manager_db() { manager --create-db --config-file "$CONFIG_FILE" --log-stdout >> "$LOGFILE" 2>&1 && pass "manager --create-db succeeded" || fail "manager --create-db failed"; }
-# ── find archive base for a backup type ───────────────────────────────────────
-
 
 # ── find archive base for a backup type ───────────────────────────────────────
 find_archive_base() {
@@ -289,14 +294,14 @@ find_archive_base() {
 
 cleanup() { stop_rss_monitor; [[ $KEEP -eq 0 ]] && rm -rf "$RUN_DIR" || info "Keeping run directory: $RUN_DIR"; }
 
-#trap cleanup EXIT
+trap cleanup EXIT
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MAIN ORCHESTRATION
 # ════════════════════════════════════════════════════════════════════════════════
 banner "dar-backup large-scale test  ${DATESTAMP}"
 
-full_elapsed=0; diff_elapsed=0; FULL_BASE=""; DIFF_BASE=""; FULL_SLICES=0; FULL_SIZE_HUMAN="0 GB"
+full_elapsed=0; diff_elapsed=0; FULL_BASE=""; DIFF_BASE=""; FULL_SLICES=0
 
 write_config; create_diff_primer; write_backup_def; write_darrc; init_manager_db; start_rss_monitor
 
@@ -312,7 +317,6 @@ fi
 FULL_BASE=$(find_archive_base "FULL")
 [[ -z "${FULL_BASE}" ]] && { fail "No FULL base found"; exit 1; }
 FULL_SLICES=$(count_slices "$FULL_BASE")
-FULL_SIZE_HUMAN=$(du -sb "${BACKUP_DIR}/${FULL_BASE}".*.dar 2>/dev/null | awk '{s+=$1} END{printf "%.1f GB", s/1024/1024/1024}')
 
 check_dar_integrity  "$FULL_BASE" "FULL"
 check_par2_per_slice "$FULL_BASE" "$FULL_SLICES"
@@ -372,11 +376,7 @@ fi
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
 banner "Summary"
 
-# Clean up the background resource daemon tracking thread cleanly
-if [[ -n "${RSS_MONITOR_PID:-}" ]]; then
-    kill "$RSS_MONITOR_PID" 2>/dev/null || true
-    wait "$RSS_MONITOR_PID" 2>/dev/null || true
-fi
+stop_rss_monitor
 
 calc_max_rss() {
     local target_cmd="$1"
@@ -384,7 +384,7 @@ calc_max_rss() {
     
     if [[ -n "$log_path" && -f "$log_path" ]]; then
         awk -v target="cmd=$target_cmd" '
-            $7 == target {   # <--- CHANGED FROM $6 TO $7
+            $7 == target {
                 split($3, rss_val, "=");
                 if (rss_val[2] > max) max = rss_val[2] 
             } 

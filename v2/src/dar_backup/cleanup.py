@@ -122,7 +122,10 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
         filename = entry.name
         if not filename.endswith('.dar'):
             continue
-        if backup_definition and not filename.startswith(backup_definition):
+        if backup_definition and not filename.startswith(f"{backup_definition}_"):
+            # Match on "<definition>_" so that a definition which is a prefix
+            # of another (e.g. "media" vs "media2") cannot delete the other
+            # definition's archives.
             continue
         if backup_type in filename:
             try:
@@ -259,7 +262,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
     parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer
-    parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=None)
+    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
     parser.add_argument(

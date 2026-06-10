@@ -5,7 +5,7 @@ import tempfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
+from dar_backup.command_runner import CommandResult
 import dar_backup.dar_backup as db
 import pytest
 
@@ -438,69 +438,35 @@ def test_get_backed_up_files_subprocess_remove_warns(monkeypatch, tmp_path):
 
 
 def test_list_contents_subprocess_success(monkeypatch, tmp_path, capsys):
-    log_path = tmp_path / "command.log"
-    handler = SimpleNamespace(baseFilename=str(log_path))
-    command_logger = SimpleNamespace(handlers=[handler])
-    error_logger = MagicMock()
+    lines = ["[Saved] file1", "[--- REMOVED ENTRY ----] file2", "ignored line"]
 
-    def fake_get_logger(command_output_logger=False):
-        return command_logger if command_output_logger else error_logger
+    def fake_stream(cmd, callback, *, timeout=None):
+        for line in lines:
+            callback(line)
+        return CommandResult(0, "", "")
 
-    class FakeProcess:
-        def __init__(self, stdout_bytes, stderr_bytes, returncode=0):
-            self.stdout = io.BytesIO(stdout_bytes)
-            self.stderr = io.BytesIO(stderr_bytes)
-            self.returncode = returncode
+    mock_runner = MagicMock()
+    mock_runner.stream_command.side_effect = fake_stream
 
-        def wait(self, timeout=None):
-            return None
-
-    stdout_bytes = b"[Saved] file1\n[--- REMOVED ENTRY ----] file2\n"
-    stderr_bytes = b"abcdef"
-
-    monkeypatch.setattr(db, "runner", SimpleNamespace(default_capture_limit_bytes=4))
+    monkeypatch.setattr(db, "runner", mock_runner)
     monkeypatch.setattr(db, "logger", MagicMock())
-    monkeypatch.setattr(db, "get_logger", fake_get_logger)
-    monkeypatch.setattr(
-        db.subprocess,
-        "Popen",
-        lambda *a, **k: FakeProcess(stdout_bytes, stderr_bytes, returncode=0),
-    )
 
     db.list_contents("archive", str(tmp_path))
 
     out = capsys.readouterr().out
     assert "[Saved] file1" in out
     assert "[--- REMOVED ENTRY ----] file2" in out
-    assert "COMMAND:" in log_path.read_text(encoding="utf-8", errors="replace")
+    assert "ignored line" not in out
 
 
 def test_list_contents_subprocess_error(monkeypatch, tmp_path):
-    log_path = tmp_path / "command.log"
-    handler = SimpleNamespace(baseFilename=str(log_path))
-    command_logger = SimpleNamespace(handlers=[handler])
     error_logger = MagicMock()
 
-    def fake_get_logger(command_output_logger=False):
-        return command_logger if command_output_logger else error_logger
+    mock_runner = MagicMock()
+    mock_runner.stream_command.return_value = CommandResult(1, "", "subprocess error")
 
-    class FakeProcess:
-        def __init__(self, stdout_bytes, returncode=1):
-            self.stdout = io.BytesIO(stdout_bytes)
-            self.stderr = None
-            self.returncode = returncode
-
-        def wait(self, timeout=None):
-            return None
-
-    monkeypatch.setattr(db, "runner", SimpleNamespace(default_capture_limit_bytes="bad"))
-    monkeypatch.setattr(db, "logger", None)
-    monkeypatch.setattr(db, "get_logger", fake_get_logger)
-    monkeypatch.setattr(
-        db.subprocess,
-        "Popen",
-        lambda *a, **k: FakeProcess(b"", returncode=1),
-    )
+    monkeypatch.setattr(db, "runner", mock_runner)
+    monkeypatch.setattr(db, "logger", error_logger)
 
     with pytest.raises(RuntimeError, match="Error listing contents of backup"):
         db.list_contents("archive", str(tmp_path))

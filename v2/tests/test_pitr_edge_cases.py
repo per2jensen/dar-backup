@@ -535,6 +535,21 @@ class TestRestoreTargetUnsafeReason:
         assert _restore_target_unsafe_reason("/var") is not None
         assert _restore_target_unsafe_reason("/var/tmp") is None
 
+    def test_var_tmp_prefix_without_separator_is_blocked(self) -> None:
+        """/var/tmpfoo must not be treated as a sub-directory of /var/tmp.
+
+        Before the fix, startswith(("/var/tmp", …)) accepted /var/tmpfoo because
+        it shares the same leading characters.  /var/tmpfoo is under /var (a
+        protected system directory) and must be blocked.  The new check uses
+        prefix + os.sep, so only paths genuinely beneath /var/tmp/ pass.
+        """
+        result = _restore_target_unsafe_reason("/var/tmpfoo")
+        assert result is not None
+
+    def test_var_tmp_with_separator_still_allowed(self) -> None:
+        """/var/tmp/restore is genuinely under /var/tmp and must remain allowed."""
+        assert _restore_target_unsafe_reason("/var/tmp/restore") is None
+
 
 # ===========================================================================
 # _normalize_when_dt / _parse_when

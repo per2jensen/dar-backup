@@ -39,12 +39,95 @@ from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
-from typing import List
-from typing import Tuple
+from dataclasses import dataclass
+from typing import ClassVar, List, Optional, Tuple
 
 
 logger=None
-secondary_logger=None   
+secondary_logger=None
+
+
+_ARCHIVE_PATTERN: re.Pattern = re.compile(
+    r"^(.+)_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})(?:_(\d{6}))?(?:_.+)?$"
+)
+
+
+@dataclass
+class ArchiveName:
+    """Parsed components of a dar archive base name.
+
+    Archive naming convention: {definition}_{FULL|DIFF|INCR}_{YYYY-MM-DD}[_{HHMMSS}][_suffix]
+
+    The optional trailing suffix (e.g. a sequence counter "_01" or a label "_manual")
+    is accepted and silently ignored — only the definition, type, date, and time are stored.
+    PITR integration tests use a ``_{seq:02d}`` suffix to disambiguate archives created
+    within the same second.
+
+    Backup definitions are normally restricted to letters, digits, spaces, and hyphens
+    (no underscores) by the CLI validation in dar_backup.py.  The greedy ``(.+)`` in the
+    regex is used for robustness: it anchors on ``_(FULL|DIFF|INCR)_`` so that archives
+    created with ``--allow-unsafe-definition-names`` are also handled correctly.
+
+    Attributes:
+        definition: Backup definition name (e.g. "media" or "home-backup").
+        archive_type: One of "FULL", "DIFF", "INCR".
+        date: Date in "YYYY-MM-DD" format.
+        time: Optional time in "HHMMSS" format.
+    """
+
+    definition: str
+    archive_type: str
+    date: str
+    time: Optional[str]
+
+    _pattern: ClassVar[re.Pattern] = _ARCHIVE_PATTERN
+
+    @classmethod
+    def parse(cls, base_name: str) -> Optional["ArchiveName"]:
+        """Parse an archive base name (no path, no extension).
+
+        Args:
+            base_name: Archive base name such as "media_FULL_2026-01-01" or
+                "my_backup_DIFF_2026-01-01_143022".
+
+        Returns:
+            Parsed ArchiveName, or None if the name does not match the expected pattern.
+        """
+        if not base_name:
+            return None
+        m = cls._pattern.match(base_name)
+        if not m:
+            return None
+        definition, archive_type, date, time = m.groups()
+        return cls(definition=definition, archive_type=archive_type, date=date, time=time)
+
+    @classmethod
+    def from_filename(cls, filename: str) -> Optional["ArchiveName"]:
+        """Parse from a filesystem path, stripping the directory and .N.dar / .dar suffix.
+
+        Args:
+            filename: Full path or bare filename, e.g.
+                "/backups/media_FULL_2026-01-01.1.dar".
+
+        Returns:
+            Parsed ArchiveName, or None if the base name does not match.
+        """
+        base = os.path.basename(filename)
+        stem = re.sub(r"\.\d+\.dar$|\.dar$", "", base)
+        return cls.parse(stem)
+
+    def as_datetime(self) -> Optional[datetime]:
+        """Convert the date and time fields to a datetime.
+
+        Returns:
+            Parsed datetime, or None if the stored date string cannot be parsed.
+        """
+        try:
+            if self.time:
+                return datetime.strptime(f"{self.date}_{self.time}", "%Y-%m-%d_%H%M%S")
+            return datetime.strptime(self.date, "%Y-%m-%d")
+        except ValueError:
+            return None   
 
 
 def _reset_logger_handlers(target_logger: logging.Logger) -> None:
