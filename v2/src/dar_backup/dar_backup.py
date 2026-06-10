@@ -1109,6 +1109,7 @@ def initialize_runtime_logging(args: argparse.Namespace, config_settings: Config
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     if command_output_log == config_settings.logfile_location:
         print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
+        exit(1)
 
     trace_log_file = derive_trace_log_path(config_settings.logfile_location)
 
@@ -1727,7 +1728,7 @@ def _write_par2_manifest(
         "archive_base": archive_base,
         "dar_backup_version": dar_backup_version,
         "dar_version": dar_version,
-        "created_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     config["ARCHIVE_FILES"] = {
         "files": "\n".join(archive_files)
@@ -1864,12 +1865,12 @@ def filter_darrc_file(darrc_path):
     last_error = None
 
     for candidate_dir in candidate_dirs:
-        filtered_darrc_path = os.path.join(
-            candidate_dir,
-            f"filtered_darrc_{next(tempfile._get_candidate_names())}.darrc",
-        )
+        filtered_darrc_path = None
         try:
-            with open(darrc_path, "r") as infile, open(filtered_darrc_path, "w") as outfile:
+            fd, filtered_darrc_path = tempfile.mkstemp(
+                suffix=".darrc", prefix="filtered_darrc_", dir=candidate_dir
+            )
+            with os.fdopen(fd, "w") as outfile, open(darrc_path, "r") as infile:
                 for line in infile:
                     # Check if any unwanted option is in the line
                     if not any(option in line for option in options_to_remove):
@@ -1882,7 +1883,7 @@ def filter_darrc_file(darrc_path):
 
         except Exception as e:
             last_error = e
-            if os.path.exists(filtered_darrc_path):
+            if filtered_darrc_path and os.path.exists(filtered_darrc_path):
                 os.remove(filtered_darrc_path)
 
     raise RuntimeError(f"Error filtering .darrc file: {last_error}")
@@ -2111,7 +2112,7 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
 
 def main():
     global logger, runner
-    results: List[(str,int)] = []  # a list op tuples (<msg>, <exit code>)
+    results: List[Tuple[str, int]] = []  # a list of tuples (<msg>, <exit code>)
 
     # Install a SIGTERM handler so that `kill <pid>` (SIGTERM) triggers the
     # same KeyboardInterrupt handling chain as Ctrl-C (SIGINT).  Without this,
@@ -2215,20 +2216,6 @@ def main():
         print_changelog(None, pretty=True)
         exit(0)
 
-
-    # be backwards compatible with older versions
-    DEFAULT_CONFIG_FILE = "~/.config/dar-backup/dar-backup.conf"
-
-    env_cf = os.getenv("DAR_BACKUP_CONFIG_FILE")
-    env_cf = env_cf.strip() if env_cf else None
-
-    cli_cf = args.config_file.strip() if args.config_file else None
-    
-    raw_config = (
-        cli_cf
-        or env_cf
-        or DEFAULT_CONFIG_FILE
-    )
 
     config_settings_path = get_config_file(args)
 

@@ -307,10 +307,17 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
         logger.error(f"Error listing catalogs for backup def: '{backup_def}'")
         return -1
     for line in process.stdout.splitlines():
-        search = re.search(rf".*?(\d+)\s+.*?({archive}).*", line)
-        if search:
-            logger.info(f"Found archive: '{archive}', catalog #: '{search.group(1)}'")
-            return int(search.group(1))
+        # archive_lines from list_catalogs are tab-separated; parts[2] is the
+        # archive base name.  An exact string comparison avoids two bugs in the
+        # previous regex approach: (a) unescaped special chars in archive names
+        # (e.g. '-' in dates) and (b) an un-anchored pattern that let
+        # "media_FULL_…" match a line for "media2_FULL_…".
+        parts = line.split("\t")
+        if len(parts) >= 3 and parts[2].strip() == archive:
+            num_match = re.search(r"\d+", parts[0])
+            if num_match:
+                logger.info(f"Found archive: '{archive}', catalog #: '{num_match.group(0)}'")
+                return int(num_match.group(0))
     return -1
 
 
@@ -616,7 +623,7 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
         "/var/tmp",
         "/home",
     )
-    if target_norm in allow_prefixes or target_norm.startswith(allow_prefixes):
+    if target_norm in allow_prefixes or any(target_norm.startswith(prefix + os.sep) for prefix in allow_prefixes):
         return None
 
     protected_prefixes = (
@@ -1378,13 +1385,16 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
 
 
 
-def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings) -> None:
+def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings) -> int:
     """
     Loop over the DAR archives in the given directory args.add_dir in increasing order by date and add them to their catalog database.
 
     Args:
         args (argparse.ArgumentParser): The command-line arguments object containing the add_dir attribute.
         config_settings (ConfigSettings): The configuration settings object.
+
+    Returns:
+        0 if all archives were added successfully, 1 if any archive failed.
 
     This function performs the following steps:
     1. Checks if the specified directory exists. If not, raises a RuntimeError.
@@ -1430,7 +1440,7 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
 
     if not dar_archives or len(dar_archives) == 0:
         logger.info(f"No 'dar' archives found in directory {args.add_dir}")
-        return
+        return 0
 
     # Sort the DAR archives by date then type (FULL -> DIFF -> INCR) to avoid interactive ordering prompts.
     dar_archives.sort()
@@ -1444,8 +1454,9 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
         result.append({ f"{base_name}" : result_archive})
         if result_archive != 0:
             logger.error(f"Something went wrong added {base_name} to it's catalog")
-    
-    logger.debug(f"Results adding archives found in: '{args.add_dir}': result")
+
+    logger.debug(f"Results adding archives found in: '{args.add_dir}': {result}")
+    return 1 if any(list(v.values())[0] != 0 for v in result) else 0
 
 
 def backup_def_from_archive(archive: str) -> str:
@@ -1589,7 +1600,6 @@ def main():
         raise KeyboardInterrupt("SIGTERM received — manager terminated by kill signal")
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
     parser = build_arg_parser()
 
     argcomplete.autocomplete(parser)

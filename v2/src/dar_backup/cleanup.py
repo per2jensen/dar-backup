@@ -262,7 +262,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
     parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer
-    parser.add_argument('-c', '--config-file', '-c', type=str, help="Path to 'dar-backup.conf'", default=None)
+    parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
     parser.add_argument(

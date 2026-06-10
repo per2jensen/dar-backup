@@ -77,20 +77,23 @@ def test_dar_backup_unreadable_config_exits_127(monkeypatch, tmp_path, capsys):
         os.chmod(config_path, 0o644)
 
 
-def test_dar_backup_warns_on_bad_logfile_location(monkeypatch, tmp_path, capsys):
+def test_dar_backup_bad_logfile_location_exits_1(monkeypatch, tmp_path, capsys):
+    """A logfile_location that does not end in 'dar-backup.log' must exit with code 1.
+
+    Before the fix the error was printed but execution continued, silently
+    aliasing the command-output log to the main log.
+    """
     config_path = tmp_path / "dar-backup.conf"
     _write_min_config(config_path, logfile_location=str(tmp_path / "dar-backup.txt"))
 
     monkeypatch.setattr(sys, "argv", ["dar-backup", "--config-file", str(config_path)])
     monkeypatch.setattr(dar_backup.argcomplete, "autocomplete", lambda *a, **k: None)
-    monkeypatch.setattr(dar_backup, "validate_required_directories", lambda *_a, **_k: None)
-    monkeypatch.setattr(dar_backup, "preflight_check", lambda *_a, **_k: True)
-    monkeypatch.setattr(dar_backup, "setup_logging", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit(0)))
     monkeypatch.setattr(dar_backup, "stderr", sys.stderr)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         dar_backup.main()
 
+    assert exc.value.code == 1
     err = capsys.readouterr().err
     assert "does not end at 'dar-backup.log'" in err
 

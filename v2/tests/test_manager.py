@@ -752,6 +752,46 @@ def test_list_catalogs_command_failure(tmp_path):
         mock_logger.error.assert_any_call("stdout: failure output")
 
 
+def test_cat_no_for_name_returns_correct_number(tmp_path):
+    """Returns the catalog number when the archive is found in the tab-split output."""
+    from dar_backup.manager import cat_no_for_name
+
+    archive = "media_FULL_2026-01-01"
+    # archive_lines from list_catalogs are tab-separated: col0=number, col1=path, col2=archive
+    mock_process = SimpleNamespace(
+        returncode=0,
+        stdout=f"3\t/path/to/db\t{archive}",
+        stderr="",
+    )
+    with patch("dar_backup.manager.list_catalogs", return_value=mock_process), \
+         patch("dar_backup.manager.logger"):
+        result = cat_no_for_name(archive, SimpleNamespace())
+
+    assert result == 3
+
+
+def test_cat_no_for_name_prefix_definition_does_not_match(tmp_path):
+    """A definition that is a prefix of another must not produce a false match.
+
+    Before the fix the regex was unanchored, so looking up 'media_FULL_2026-01-01'
+    would match a catalog line for 'media2_FULL_2026-01-01' and return its number.
+    """
+    from dar_backup.manager import cat_no_for_name
+
+    archive = "media_FULL_2026-01-01"
+    longer_archive = "media2_FULL_2026-01-01"
+    mock_process = SimpleNamespace(
+        returncode=0,
+        stdout=f"1\t/path/to/db\t{longer_archive}",
+        stderr="",
+    )
+    with patch("dar_backup.manager.list_catalogs", return_value=mock_process), \
+         patch("dar_backup.manager.logger"):
+        result = cat_no_for_name(archive, SimpleNamespace())
+
+    assert result == -1  # must NOT match the longer definition's archive
+
+
 def test_cat_no_for_name_list_catalogs_fails(tmp_path):
     from dar_backup.manager import cat_no_for_name
 
@@ -1466,6 +1506,38 @@ def test_add_directory_sorts_by_date_then_type(tmp_path):
         "example_DIFF_2025-01-02",
         "example_INCR_2025-01-02",
     ]
+
+
+def test_add_directory_returns_0_when_all_succeed(tmp_path):
+    """Returns 0 when every archive is added successfully."""
+    from dar_backup.manager import add_directory
+
+    (tmp_path / "example_FULL_2025-01-01.1.dar").touch()
+    args = SimpleNamespace(add_dir=str(tmp_path), backup_def=None)
+
+    with patch("dar_backup.manager.add_specific_archive", return_value=0), \
+         patch("dar_backup.manager.logger"):
+        result = add_directory(args, SimpleNamespace())
+
+    assert result == 0
+
+
+def test_add_directory_returns_1_when_any_archive_fails(tmp_path):
+    """Returns 1 when at least one archive fails to add.
+
+    Before the fix the function returned None (implicitly), causing
+    sys.exit(add_directory(...)) to always exit with code 0.
+    """
+    from dar_backup.manager import add_directory
+
+    (tmp_path / "example_FULL_2025-01-01.1.dar").touch()
+    args = SimpleNamespace(add_dir=str(tmp_path), backup_def=None)
+
+    with patch("dar_backup.manager.add_specific_archive", return_value=1), \
+         patch("dar_backup.manager.logger"):
+        result = add_directory(args, SimpleNamespace())
+
+    assert result == 1
 
 def test_remove_specific_archive_failure_returns_one(tmp_path):
     from dar_backup.manager import remove_specific_archive

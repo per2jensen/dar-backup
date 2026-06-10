@@ -7,9 +7,52 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Fixed
 
+- **`cat_no_for_name()` wrong catalog match** (`manager.py`) — the regex used to locate an
+  archive's catalog number interpolated the archive name directly without `re.escape()` and without
+  anchoring, so `media_FULL_2026-01-01` could match a catalog-list line for
+  `media2_FULL_2026-01-01`, causing `remove_specific_archive()` to delete the wrong entry.  Fixed
+  by switching to a tab-split exact-field comparison against `parts[2]` (the column that
+  `list_catalogs` already extracts as the archive name), which is unambiguous and immune to
+  special-character issues.
+
+- **`_restore_target_unsafe_reason()` allow-list gap** (`manager.py`) — `startswith(allow_prefixes)`
+  accepted any path whose first characters matched a prefix tuple entry, so `/tmpfoo` and
+  `/homestead` were silently allowed.  Fixed to use `prefix + os.sep` (matching the same pattern
+  the protected-prefix check already used correctly).
+
+- **`add_directory()` always exited 0** (`manager.py`) — the function returned `None` on both
+  success and per-archive failure, so `sys.exit(add_directory(...))` always reported success to
+  systemd and calling scripts.  Fixed by returning `1` if any archive failed to add, `0` otherwise.
+  Also fixed a missing `{result}` interpolation in the final debug log line.
+
+- **`setup_logging()` bad config path continued silently** (`dar_backup.py`) — if
+  `logfile_location` did not end with `dar-backup.log`, the code printed an "exiting" message but
+  then continued, silently aliasing the command-output log to the main log.  Added the missing
+  `exit(1)`.
+
+- **`filter_darrc_file()` used private `tempfile._get_candidate_names()`** (`dar_backup.py`) —
+  replaced with the public `tempfile.mkstemp()`, which also avoids the previous TOCTOU race between
+  generating a name and opening the file.
+
+- **Duplicate `-c` flag in cleanup argument parser** (`cleanup.py`) — `argparse.add_argument` was
+  called with `'-c', '--config-file', '-c'`; the duplicate was silently tolerated but is now
+  removed.
+
+- **Discarded `ArgumentParser` in `manager.main()`** (`manager.py`) — `argparse.ArgumentParser()`
+  was constructed and immediately overwritten by `build_arg_parser()`.  The dead call is removed.
+
+- **`datetime.utcnow()` deprecated** (`dar_backup.py`) — replaced with
+  `datetime.now(timezone.utc)` (already imported) in `write_par2_manifest()`.
+
+- **`List[(str,int)]` invalid type annotation** (`dar_backup.py`) — corrected to
+  `List[Tuple[str, int]]`.
+
+- **Dead `raw_config` block in `main()`** (`dar_backup.py`) — duplicate config-path resolution that
+  was superseded by `get_config_file(args)` on the very next line; removed.
+
 - a restore-test after a backup would previously result in a WARNING, it is now an ERROR
   
-  - A test case now prove an ERROR is issued in the log and in the metrics DB.
+  - A test case now proves an ERROR is issued in the log and in the metrics DB.
 
 - **Signal propagation in generated systemd units** (`dar_backup_systemd.py`) — the generated
   `ExecStart` line ran the backup tool as a child of a bash subshell.  When systemd sent `SIGTERM`

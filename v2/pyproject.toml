@@ -111,6 +111,10 @@ packaging = [
 
 [tool.coverage.run]
 data_file = "/tmp/.coverage"
+# parallel=true so each subprocess gets its own .coverage.<pid> file;
+# concurrent subprocesses (e.g. test_concurrent_backup.py) do not contend
+# for the same file.  pytest_report.sh already runs `coverage combine`.
+parallel = true
 
 [project.urls]
 "GPG Public Key" = "https://keys.openpgp.org/search?q=dar-backup@pm.me"
