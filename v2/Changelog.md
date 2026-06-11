@@ -3,7 +3,7 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
-## v2-1.1.8 - not released
+## v2-1.1.8 - 2026-06-11
 
 ### Fixed
 

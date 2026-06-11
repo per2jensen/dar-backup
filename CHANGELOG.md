@@ -3,7 +3,7 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.8 - not released
+## v2-1.1.8 - 2026-06-11
 
 - Any UTF-8 locale now accepted
 - Many small fixes and some refactoring after reviews
