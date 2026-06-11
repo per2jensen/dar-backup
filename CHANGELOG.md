@@ -5,6 +5,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 ## v2-1.1.8 - not released
 
+- Any UTF-8 locale now accepted
 - Many small fixes and some refactoring after reviews
 - `large_scale_test.sh` performs FULL & DIFF backups with mutating hardlinks, bitrot repair and PITR test of ~ 110GB data.
 - `ruff` checks now in release pipeline
