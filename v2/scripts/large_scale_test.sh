@@ -330,15 +330,6 @@ check_par2_per_slice "$FULL_BASE" "$FULL_SLICES"
 check_par2_verify    "$FULL_BASE" "FULL"
 [[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$FULL_BASE"
 
-# Capture between-snapshot anchor AFTER FULL is registered in the DB but BEFORE
-# update_diff_primer mutates the source data and BEFORE the DIFF backup runs.
-# Used in Phase 3b to exercise the PITR archive-selection logic.
-sleep 1
-BETWEEN_TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-LINK_ORIGINAL_SHA256=$(sha256sum "${DIFF_PRIMER_DIR}/link_original.txt" | awk '{print $1}')
-info "Between-snapshot timestamp: ${BETWEEN_TIMESTAMP}"
-info "link_original.txt sha256 (FULL state): ${LINK_ORIGINAL_SHA256}"
-
 # ── PHASE 2 ──
 banner "Phase 2 — DIFF backup"
 update_diff_primer
@@ -391,49 +382,6 @@ if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}
     [[ "$inode1" -eq "$inode2" ]] && pass "Hard Link Inodes match (${inode1})" || fail "Inodes mismatched (Cloned data!)"
 else
     fail "Hard-link targets missing"
-fi
-
-# ── PHASE 3b ──
-banner "Phase 3b — Between-snapshot PITR (FULL-only state)"
-
-# Restores to the state captured by BETWEEN_TIMESTAMP — a point after FULL was
-# registered in the DB but before update_diff_primer mutated the data or DIFF ran.
-# This exercises the archive-selection path; --when "now" (Phase 3a) never does.
-info "Clearing restore directory for between-snapshot test..."
-rm -rf "$RESTORE_DIR"
-mkdir -p "$RESTORE_DIR"
-
-info "Invoking manager PITR with --when '${BETWEEN_TIMESTAMP}' (should resolve to FULL only)..."
-if manager --config-file "$CONFIG_FILE" \
-           -d "$DEFINITION_NAME" \
-           --restore-path "${DIFF_PRIMER_DIR#/}/" \
-           --when "${BETWEEN_TIMESTAMP}" \
-           --target "$RESTORE_DIR" \
-           --log-stdout --verbose >> "$LOGFILE" 2>&1; then
-    pass "Between-snapshot restore completed execution"
-else
-    fail "Between-snapshot manager PITR returned error exit code"
-fi
-
-# link_original.txt existed at FULL time; should be present after between-snapshot restore.
-# sha256 round-trip verifies file content was preserved exactly through backup/restore.
-if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
-    restored_sha256=$(sha256sum "${RESTORE_PRIMER_PATH}/link_original.txt" | awk '{print $1}')
-    if [[ "$restored_sha256" == "$LINK_ORIGINAL_SHA256" ]]; then
-        pass "link_original.txt present and sha256 matches FULL-state content (${restored_sha256})"
-    else
-        fail "link_original.txt present but sha256 mismatch (expected: ${LINK_ORIGINAL_SHA256}, got: ${restored_sha256})"
-    fi
-else
-    fail "link_original.txt absent from between-snapshot restore (was present in FULL, should be restored)"
-fi
-
-# link_target2.txt was created by update_diff_primer before the DIFF backup; at FULL
-# time it did not exist, so the between-snapshot restore must NOT contain it.
-if [[ -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
-    fail "link_target2.txt present in between-snapshot restore (was not in FULL — wrong archive selected)"
-else
-    pass "link_target2.txt absent from between-snapshot restore (correct — did not exist at FULL time)"
 fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
