@@ -1,33 +1,10 @@
 # TODO
 
-## ~~Verifying~~ DONE (v2-1.1.6)
+## Ruff finding
 
-~~log file verifications in the metrics db, perhaps for the 10 first restores.~~
+There are a lot more UP violations than the initial truncated output showed — mostly the typing modernization rules (List→list, Optional→X|None, etc.).
 
-Implemented in v2-1.1.6 — `verify()` records every restore-test result into a
-`restore_test_samples` SQLite table (linked to `backup_runs` via `run_id`), with a
-`restore_test_fail_reasons` lookup table for stable failure codes. See
-`util.py:write_restore_test_samples()` and the Changelog for details.
-
-## ~~Ownership restoration on real restores~~ DONE (v2-1.1.6)
-
-~~The darrc ships with `--comparison-field=ignore-owner` in the `restore-options`
-section so non-root users can restore without permission errors. As a side effect,
-uid/gid is never restored even when running as root.~~
-
-Implemented in v2-1.1.6:
-
-- `RESTORE_OWNERSHIP = no` config setting in `[MISC]` (default `no`, backward-compatible)
-- `--preserve-ownership` CLI flag (forces uid/gid restore for one run, root only)
-- `--ignore-ownership` CLI flag (forces ignore-owner, overrides config)
-- Both flags are mutually exclusive via argparse group
-- Root warning when running as root with ownership disabled
-- `compare_metadata()` updated to optionally check uid/gid (`check_ownership=` param)
-- `--comparison-field=ignore-owner` injected programmatically; removed from darrc
-- Covered by integration tests (`test_dar_ownership_precedence.py`) and unit tests
-
-
-
+That's a large-scale type-hint refactor.
 
 ## Concurrent backup — TOCTOU race (proper fix pending)
 

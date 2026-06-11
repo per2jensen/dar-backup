@@ -211,6 +211,16 @@ if [[ -z "${VIRTUAL_ENV:-}" ]] || [[ "$VIRTUAL_ENV" != "$(realpath "$VENV_DIR")"
 fi
 
 ########################################
+# Static analysis gate (runs in both dry-run and real releases)
+########################################
+green "Running ruff check..."
+if ! ruff check src/; then
+    red "❌ ruff check failed; fix violations before releasing"
+    exit 1
+fi
+green "✅ ruff check passed"
+
+########################################
 # Version and tag policy
 ########################################
 VERSION="$(python - <<'PY'

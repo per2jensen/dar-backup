@@ -5,7 +5,7 @@ util.py source code is here: https://github.com/per2jensen/dar-backup
 
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 """
@@ -127,7 +127,7 @@ class ArchiveName:
                 return datetime.strptime(f"{self.date}_{self.time}", "%Y-%m-%d_%H%M%S")
             return datetime.strptime(self.date, "%Y-%m-%d")
         except ValueError:
-            return None   
+            return None
 
 
 def _reset_logger_handlers(target_logger: logging.Logger) -> None:
@@ -202,11 +202,11 @@ class CleanFormatter(logging.Formatter):
         # Save original exception info
         orig_exc_info = record.exc_info
         orig_exc_text = record.exc_text
-        
+
         # Temporarily hide it
         record.exc_info = None
         record.exc_text = None
-        
+
         try:
             return super().format(record)
         finally:
@@ -229,7 +229,7 @@ def setup_logging(
 
     """
     Sets up logging for the main program and a separate secondary logfile for command outputs.
-    
+
     Also sets up a trace log file that captures all logs at DEBUG level including stack traces.
 
     Args:
@@ -275,7 +275,7 @@ def setup_logging(
             else:
                 base, ext = os.path.splitext(log_file)
                 trace_log_file = f"{base}.trace{ext}"
-            
+
         trace_handler = RotatingFileHandler(
             trace_log_file,
             maxBytes=trace_log_max_bytes,
@@ -294,7 +294,7 @@ def setup_logging(
 
         standard_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         clean_formatter = CleanFormatter('%(asctime)s - %(levelname)s - %(message)s')
-        
+
         file_handler.setFormatter(clean_formatter)
         trace_handler.setFormatter(standard_formatter)
         command_handler.setFormatter(standard_formatter)
@@ -402,7 +402,7 @@ completer_logger.debug("Completer logger initialized.")
 
 def print_debug(msg):
     """
-    Print a debug message with the filename and line number of the caller.    
+    Print a debug message with the filename and line number of the caller.
     """
     frame = inspect.currentframe().f_back
     print(f"[DEBUG] {frame.f_code.co_filename}:{frame.f_lineno} - {repr(msg)}")
@@ -500,7 +500,7 @@ def send_discord_message(
     """
     Send a message to a Discord webhook if configured either in the config file or via environment.
 
-    The environment varible DAR_BACKUP_DISCORD_WEBHOOK_URL, when set, takes precedence over the config file variable 
+    The environment varible DAR_BACKUP_DISCORD_WEBHOOK_URL, when set, takes precedence over the config file variable
     with the same name. If neither is defined, the function logs an info-level message and returns False.
 
     Returns:
@@ -594,8 +594,7 @@ def get_binary_info(command):
     try:
         result = subprocess.run(
             [path, '--version'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=10
         )
@@ -692,13 +691,13 @@ def requirements(
 
                 try:
                     process.wait(timeout=timeout)
-                except subprocess.TimeoutExpired:
+                except subprocess.TimeoutExpired as err:
                     process.kill()
                     stdout_thread.join()
                     stderr_thread.join()
                     raise RuntimeError(
                         f"{type} {key}: '{script}' timed out after {timeout_secs}s"
-                    )
+                    ) from err
 
                 stdout_thread.join()
                 stderr_thread.join()
@@ -749,23 +748,23 @@ class RestoreError(Exception):
 
 def list_backups(backup_dir, backup_definition=None):
     """
-    Lists the available backup files in the specified directory along with their total sizes in megabytes. 
-    The function filters and processes `.dar` files, grouping them by their base names and ensuring proper 
+    Lists the available backup files in the specified directory along with their total sizes in megabytes.
+    The function filters and processes `.dar` files, grouping them by their base names and ensuring proper
     alignment of the displayed sizes.
     Args:
         backup_dir (str): The directory containing the backup files.
-        backup_definition (str, optional): A prefix to filter backups by their base name. Only backups 
+        backup_definition (str, optional): A prefix to filter backups by their base name. Only backups
                                            starting with this prefix will be included. Defaults to None.
     Behavior:
         - Filters `.dar` files in the specified directory based on the following criteria:
             - The file name must contain one of the substrings: "_FULL_", "_DIFF_", or "_INCR_".
             - The file name must include a date in the format "_YYYY-MM-DD".
-        - Groups files by their base name (excluding slice numbers and extensions) and calculates 
+        - Groups files by their base name (excluding slice numbers and extensions) and calculates
           the total size for each group in megabytes.
         - Sorts the backups by their base name and date (if included in the name).
         - Prints the backup names and their sizes in a formatted and aligned manner.
     Returns:
-        None: The function prints the results directly to the console. If no backups are found, 
+        None: The function prints the results directly to the console. If no backups are found,
               it prints "No backups available.".
 
     List the available backups in the specified directory and their sizes in megabytes, with aligned sizes.
@@ -775,7 +774,7 @@ def list_backups(backup_dir, backup_definition=None):
 
    # Define the date pattern
     date_pattern = re.compile(r'_\d{4}-\d{2}-\d{2}')
-  
+
 
     # List all files and filter .dar files
     for f in os.listdir(backup_dir):
@@ -802,17 +801,17 @@ def list_backups(backup_dir, backup_definition=None):
             except OSError as e:
                 get_logger().warning("Skipping %s: could not read file size: %s", file_path, e)
                 continue
-            
+
             # Accumulate the size for each base backup name
             if base_name in backup_sizes:
                 backup_sizes[base_name] += file_size_mb
             else:
                 backup_sizes[base_name] = file_size_mb
-    
+
     if not backup_sizes:
         print("No backups available.")
         return
-    
+
     # Determine the maximum length of the archive names
     max_name_length = max(len(name) for name in backup_sizes.keys())
 
@@ -832,7 +831,7 @@ def list_backups(backup_dir, backup_definition=None):
 
     # Sort backups by name and possibly by date if included in the name
     sorted_backups = sorted(backup_sizes.items(), key=_sort_key)
-    
+
     # Print the backups and their sizes with aligned sizes
     for backup, size in sorted_backups:
         formatted_size = f"{int(size):,}"
@@ -911,7 +910,11 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
             return []
 
         files = os.listdir(backup_dir)
-        archive_re = re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$") if backup_def else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
+        archive_re = (
+            re.compile(rf"^{re.escape(backup_def)}_.+_\d{{4}}-\d{{2}}-\d{{2}}\.1\.dar$")
+            if backup_def
+            else re.compile(r".+_\d{4}-\d{2}-\d{2}\.1\.dar$")
+        )
 
         completions = []
         for fname in files:
@@ -1045,7 +1048,7 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file=config_file)
         #db_dir = expand_path((getattr(config, 'manager_db_dir', config.backup_dir)))   # use manager_db_dir if set, else backup_dir
-        db_dir = expand_path(getattr(config, 'manager_db_dir') or config.backup_dir)
+        db_dir = expand_path(config.manager_db_dir or config.backup_dir)
         backup_dir = config.backup_dir
         backup_def = getattr(parsed_args, "backup_def", None)
 
@@ -1105,7 +1108,7 @@ def patch_config_file(path: str, replacements: dict) -> None:
         path: Path to the config file.
         replacements: Dictionary of keys to new values, e.g., {"LOGFILE_LOCATION": "/tmp/logfile.log"}.
     """
-    with open(path, 'r') as f:
+    with open(path) as f:
         lines = f.readlines()
 
     dir_name = os.path.dirname(os.path.abspath(path))
@@ -1278,7 +1281,6 @@ def is_safe_path(path: str) -> bool:
     Validates that the full path is absolute, has no '..'.
     """
     normalized = os.path.normpath(path)
-    filename = os.path.basename(normalized)
 
     return (
         os.path.isabs(normalized)
@@ -1299,7 +1301,7 @@ def get_config_file(args) -> str:
 
     cli_cf = getattr(args, "config_file", None)
     cli_cf = cli_cf.strip() if cli_cf else None
-    
+
     raw_config = (
         cli_cf
         or env_cf

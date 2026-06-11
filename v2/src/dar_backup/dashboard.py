@@ -44,7 +44,7 @@ def find_free_port(preferred: int) -> int:
                 return port
             except OSError:
                 continue
-    raise RuntimeError("Could not find a free port near %d" % preferred)
+    raise RuntimeError(f"Could not find a free port near {preferred}")
 
 
 def wait_for_datasette(port: int, timeout: int = STARTUP_TIMEOUT) -> bool:

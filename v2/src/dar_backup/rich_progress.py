@@ -22,7 +22,7 @@ def tail_log_file(log_path, stop_event, session_marker=None):
             continue
 
         try:
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 if last_size > os.path.getsize(log_path):
                     f.seek(0)
                 else:

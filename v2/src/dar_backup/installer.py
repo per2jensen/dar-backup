@@ -207,9 +207,9 @@ def main():
     if args.install_autocompletion:
         install_autocompletion()
     elif args.remove_autocompletion:
-        uninstall_autocompletion()  
+        uninstall_autocompletion()
 
-    
+
 
 if __name__ == "__main__":
     main()

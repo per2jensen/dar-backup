@@ -7,7 +7,7 @@ This script is part of dar-backup, a backup solution for Linux using dar and sys
 
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
@@ -19,7 +19,7 @@ User can set ROOT_DIR, DIR_TO_BACKUP and BACKUP_DIR (destination for backups) vi
 
 import argparse
 import os
-import sys 
+import sys
 
 from . import __about__ as about
 from . import util
@@ -72,10 +72,10 @@ def generate_file(args, template: str, file_path: Path, vars_map: Dict[str, str]
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
     env = Environment(loader=FileSystemLoader(current_script_dir))
     tpl = env.get_template(template)
-    rendered = tpl.render(vars_map = vars_map, opts_dict = opts_dict)  
+    rendered = tpl.render(vars_map = vars_map, opts_dict = opts_dict)
     if rendered is None:
         print(f"Error: Template '{template}' could not be rendered.")
-        return False    
+        return False
     if file_path.exists():
         if file_path.is_dir():
             print(f"Error: '{file_path}' is a directory, expected a file.")
@@ -101,7 +101,7 @@ def setup_dicts(args, vars_map: Dict[str, str]) -> Tuple[Dict[str, str], Dict[st
     if args.root_dir:
         opts_dict["ROOT_DIR"] = args.root_dir
     if args.dir_to_backup:
-        opts_dict["DIR_TO_BACKUP"] = args.dir_to_backup 
+        opts_dict["DIR_TO_BACKUP"] = args.dir_to_backup
     if args.backup_dir:
         opts_dict["BACKUP_DIR"] = args.backup_dir
 
@@ -169,7 +169,7 @@ def main():
 
 
     vars_map = {
-    #  dar-backup.conf variables 
+    #  dar-backup.conf variables
         "CONFIG_DIR"       : CONFIG_DIR,
         "DAR_BACKUP_DIR"   : DAR_BACKUP_DIR,
         "BACKUP_DIR"       : os.path.join(DAR_BACKUP_DIR, "backups"),
@@ -178,7 +178,7 @@ def main():
     #  backup definition variables
         "ROOT_DIR"         : util.normalize_dir(util.expand_path("$HOME")),
         "DIR_TO_BACKUP"    : ".config/dar-backup",
-    } 
+    }
 
 
     vars_map, opts_dict = setup_dicts(args, vars_map)
@@ -211,7 +211,7 @@ def main():
         print("4. List contents of a backup with `dar-backup --list-contents <backup-name>`")
     else:
         parser.print_help()
-        sys.exit(1) 
+        sys.exit(1)
 
     sys.exit(0)
 

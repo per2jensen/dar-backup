@@ -6,7 +6,7 @@ This script is part of dar-backup, a backup solution for Linux using dar and sys
 
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
@@ -31,7 +31,7 @@ import xml.etree.ElementTree as ET
 import tempfile
 import threading
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from sys import exit
 from sys import stderr
@@ -114,7 +114,10 @@ def _normalize_backup_definition_name(raw_name: str, *, allow_unsafe: bool = Fal
         return None
     return stem
 
-def generic_backup(type: str, command: List[str], backup_file: str, backup_definition: str, darrc: str,  config_settings: ConfigSettings, args: argparse.Namespace) -> List[str]:
+def generic_backup(
+    type: str, command: List[str], backup_file: str, backup_definition: str,
+    darrc: str, config_settings: ConfigSettings, args: argparse.Namespace
+) -> List[str]:
     """
     Performs a backup using the 'dar' command.
 
@@ -138,7 +141,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
         BackupError: If an error leading to a bad backup occurs during the backup process.
 
     Returns:
-        List of tuples (<msg>, <exit_code>) of errors not considered critical enough for raising an exception  
+        List of tuples (<msg>, <exit_code>) of errors not considered critical enough for raising an exception
     """
 
     result: List[tuple] = []
@@ -217,7 +220,7 @@ def generic_backup(type: str, command: List[str], backup_file: str, backup_defin
     except Exception as e:
         logger.exception("Unexpected error during backup")
         raise BackupError(f"Unexpected error during backup: {e}") from e
-    
+
 
 
 def find_files_with_paths(xml_doc: str):
@@ -258,7 +261,7 @@ class DoctypeStripper:
     File-like wrapper that strips DOCTYPE lines to prevent XXE.
     """
     def __init__(self, path):
-        self.f = open(path, "r", encoding="utf-8")
+        self.f = open(path, encoding="utf-8")
         self.buf = ""
     def read(self, n=-1):
         if n is None or n < 0:
@@ -316,7 +319,7 @@ def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str
     Returns:
         list[str]: File names whose parsed size falls within [min_mb, max_mb] inclusive.
     """
-    logger.debug(f"Finding files in archive between min and max sizes: {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB")
+    logger.debug(f"Finding files in archive between min and max sizes: {config_settings.min_size_verification_mb}MB and {config_settings.max_size_verification_mb}MB")  # noqa: E501
     files = []
     max_size = config_settings.max_size_verification_mb
     min_size = config_settings.min_size_verification_mb
@@ -489,8 +492,8 @@ def verify(
     """
     result = True
     command = ['dar', '-t', backup_file, '-N', '-Q']
- 
- 
+
+
     try:
         process = runner.run(command, timeout=config_settings.command_timeout_secs)
     except KeyboardInterrupt:
@@ -543,7 +546,7 @@ def verify(
         return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
     # find Root path in backup definition
-    with open(backup_definition, 'r') as f:
+    with open(backup_definition) as f:
         backup_definition_content = f.readlines()
         logger.debug(f"Backup definition: '{backup_definition}', content:\n{backup_definition_content}")
     root_path = None
@@ -566,7 +569,7 @@ def verify(
         raise BackupError(f"Cannot create restore directory '{config_settings.test_restore_dir}': {exc}") from exc
 
     samples: list[dict] = []
-    tested_at = datetime.now(timezone.utc).isoformat()
+    tested_at = datetime.now(UTC).isoformat()
 
     for restored_file_path in random_files:
         restore_path = os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/"))
@@ -598,7 +601,7 @@ def verify(
                     os.remove(restore_path)
                 except OSError:
                     pass
-            args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")
+            args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
             if getattr(args, 'preserve_ownership', False):
                 ignore_ownership = False
             elif getattr(args, 'ignore_ownership', False):
@@ -751,7 +754,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         raise RestoreError(f"Restore command failed: {e}") from e
     except OSError as e:
         logger.error(f"Failed to create restore directory: {e}")
-        raise RestoreError("Could not create restore directory")
+        raise RestoreError("Could not create restore directory") from e
     except KeyboardInterrupt:
         msg = (
             f"Restore interrupted (Ctrl-C or SIGTERM) for '{backup_name}'. "
@@ -943,12 +946,12 @@ def create_backup_command(backup_type: str, backup_file: str, darrc: str, backup
         List[str]: The constructed backup command.
     """
     base_command = ['dar', '-c', backup_file, "-N", '-B', darrc, '-B', backup_definition_path, '-Q', "compress-exclusion", "verbose"]
-    
+
     if backup_type in ['DIFF', 'INCR']:
         if not latest_base_backup:
             raise ValueError(f"Base backup is required for {backup_type} backups.")
         base_command.extend(['-A', latest_base_backup])
-    
+
     return base_command
 
 
@@ -1175,7 +1178,7 @@ def _record_prereq_failure(
             logger.error("_record_prereq_failure: could not list definitions: %s", exc)
             definitions = []
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     error_summary = f"PREREQ failed: {error}"[:500]
 
     for definition in definitions:
@@ -1304,7 +1307,7 @@ def perform_backup(
         _current_phase = "DAR"
 
         # --- Metrics initialisation for this definition ---
-        def_start = datetime.now(timezone.utc)
+        def_start = datetime.now(UTC)
         try:
             _free_bytes = shutil.disk_usage(config_settings.backup_dir).free
         except Exception:
@@ -1377,7 +1380,10 @@ def perform_backup(
                         continue
                 else:
                     base_backups = sorted(
-                        [f for f in os.listdir(config_settings.backup_dir) if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')],
+                        [
+                            f for f in os.listdir(config_settings.backup_dir)
+                            if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')
+                        ],
                         key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
                     )
                     if not base_backups:
@@ -1394,9 +1400,9 @@ def perform_backup(
             command = create_backup_command(backup_type, backup_file, args.darrc, backup_definition_path, latest_base_backup)
 
             # --- DAR phase ---
-            _t0 = datetime.now(timezone.utc)
+            _t0 = datetime.now(UTC)
             backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
-            metrics["dar_duration_secs"] = (datetime.now(timezone.utc) - _t0).total_seconds()
+            metrics["dar_duration_secs"] = (datetime.now(UTC) - _t0).total_seconds()
             metrics["dar_exit_code"]     = backup_result.dar_exit_code
             metrics["catalog_updated"]   = 1 if backup_result.catalog_updated else 0
             if backup_result.dar_exit_code != 0 and metrics["failed_phase"] is None:
@@ -1436,9 +1442,9 @@ def perform_backup(
             # --- VERIFY phase ---
             _current_phase = "VERIFY"
             logger.info("Starting verification...")
-            _t1 = datetime.now(timezone.utc)
+            _t1 = datetime.now(UTC)
             verify_result = verify(args, backup_file, backup_definition_path, config_settings, run_id=run_id)
-            metrics["verify_duration_secs"] = (datetime.now(timezone.utc) - _t1).total_seconds()
+            metrics["verify_duration_secs"] = (datetime.now(UTC) - _t1).total_seconds()
             metrics["verify_passed"] = 1  # archive integrity passed (no exception raised)
             metrics["restore_test_passed"] = (
                 1 if verify_result.restore_test_passed is True
@@ -1458,9 +1464,9 @@ def perform_backup(
             # --- PAR2 phase ---
             _current_phase = "PAR2"
             logger.info("Generate par2 redundancy files.")
-            _t2 = datetime.now(timezone.utc)
+            _t2 = datetime.now(UTC)
             generate_par2_files(backup_file, config_settings, args, backup_definition=backup_definition)
-            metrics["par2_duration_secs"] = (datetime.now(timezone.utc) - _t2).total_seconds()
+            metrics["par2_duration_secs"] = (datetime.now(UTC) - _t2).total_seconds()
             metrics["par2_passed"] = 1
             logger.info("par2 files completed successfully.")
 
@@ -1519,7 +1525,7 @@ def perform_backup(
                     status = "SUCCESS"
 
                 # Finalise and write metrics row
-                run_finished_at = datetime.now(timezone.utc)
+                run_finished_at = datetime.now(UTC)
                 metrics["run_finished_at"] = run_finished_at.isoformat()
                 metrics["duration_secs"]   = (run_finished_at - def_start).total_seconds()
                 metrics["status"]          = status
@@ -1604,7 +1610,7 @@ def _write_par2_manifest(
         "archive_base": archive_base,
         "dar_backup_version": dar_backup_version,
         "dar_version": dar_version,
-        "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     config["ARCHIVE_FILES"] = {
         "files": "\n".join(archive_files)
@@ -1720,10 +1726,10 @@ def filter_darrc_file(darrc_path):
     The filtered version is stored in a uniquely named file alongside the source .darrc
     (or a writable temp directory if needed).
     The file permissions are set to 440.
-    
+
     Params:
       darrc_path: Path to the original .darrc file.
-    
+
     Raises:
       RuntimeError if something went wrong
 
@@ -1746,7 +1752,7 @@ def filter_darrc_file(darrc_path):
             fd, filtered_darrc_path = tempfile.mkstemp(
                 suffix=".darrc", prefix="filtered_darrc_", dir=candidate_dir
             )
-            with os.fdopen(fd, "w") as outfile, open(darrc_path, "r") as infile:
+            with os.fdopen(fd, "w") as outfile, open(darrc_path) as infile:
                 for line in infile:
                     # Check if any unwanted option is in the line
                     if not any(option in line for option in options_to_remove):
@@ -1780,7 +1786,7 @@ DIFF backup (differences to the latest FULL) of all backup definitions:
 
 DIFF back of a single backup definition in backup.d
   'python3 dar-backup.py --differential-backup -d <name of file in backup.d/>'
-  
+
 INCR backup (differences to the latest DIFF) of all backup definitions:
   'python3 dar-backup.py --incremental-backup'
 
@@ -1805,12 +1811,11 @@ Point In Time Restore (PITR) of 2 directories into a target location:
 --log-stdout
      Print log messages to screen
 
-     
 --selection
 
     --selection takes dar file selection options inside a quoted string.
-    
-    💡 Shell quoting matters! Always wrap the entire selection string in double quotes to avoid shell splitting. 
+
+    💡 Shell quoting matters! Always wrap the entire selection string in double quotes to avoid shell splitting.
 
     ✅ Use:   --selection="-I '*.NEF'"
     ❌ Avoid: --selection "-I '*.NEF'" → may break due to how your shell parses it.
@@ -1822,7 +1827,7 @@ Point In Time Restore (PITR) of 2 directories into a target location:
     2)
     Filter out *.xmp files:
         python3 dar-backup.py --restore <name of dar archive>  --selection="-X '*.xmp'"
-    
+
     3)
     Include all files in a directory:
         python3 dar-backup.py --restore <name of dar archive>  --selection="-g 'path/to/a/dir'"
@@ -1840,7 +1845,7 @@ Point In Time Restore (PITR) of 2 directories into a target location:
 def print_markdown(source: str, from_string: bool = False, pretty: bool = True):
     """
     Print Markdown content either from a file or directly from a string.
-    
+
     Args:
         source: Path to the file or Markdown string itself.
         from_string: If True, treat `source` as Markdown string instead of file path.
@@ -1856,7 +1861,7 @@ def print_markdown(source: str, from_string: bool = False, pretty: bool = True):
         if not os.path.exists(source):
             print(f"❌ File not found: {source}")
             sys.exit(1)
-        with open(source, "r", encoding="utf-8") as f:
+        with open(source, encoding="utf-8") as f:
             content = f.read()
 
     if pretty:
@@ -1934,19 +1939,19 @@ def clean_restore_test_directory(config_settings: ConfigSettings):
         return
 
     restore_dir = os.path.expanduser(os.path.expandvars(restore_dir))
-    
+
     if not os.path.exists(restore_dir):
         return
 
     # Safety: Do not delete if it resolves to a critical path
     critical_paths = ["/", "/home", "/root", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin", "/boot", "/dev", "/proc", "/sys", "/run"]
     normalized = os.path.realpath(restore_dir)
-    
+
     # Check exact matches
     if normalized in critical_paths:
         logger.warning(f"Refusing to clean critical directory: {normalized}")
         return
-        
+
     # Check if it's the user's home directory
     home = os.path.expanduser("~")
     if normalized == home:
@@ -2007,7 +2012,7 @@ def main():
     parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
     parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
-    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer
+    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer  # noqa: E501
     parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
@@ -2056,7 +2061,7 @@ def main():
     parser.add_argument("--changelog", action="store_true", help="Print Changelog.md to stdout and exit.")
     parser.add_argument("--changelog-pretty", action="store_true", help="Print Changelog.md to stdout with Markdown styling and exit.")
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
-    
+
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
     # Ensure new flags are present when parse_args is mocked in tests
@@ -2161,7 +2166,7 @@ def main():
 
         darrc_file = os.path.expanduser(os.path.expandvars(args.darrc))
         if os.path.exists(darrc_file) and os.path.isfile(darrc_file):
-            logger.debug(f"Using .darrc: {args.darrc}")                
+            logger.debug(f"Using .darrc: {args.darrc}")
         else:
             msg = f"Supplied .darrc: '{args.darrc}' does not exist or is not a file, exiting"
             logger.error(msg)
@@ -2343,7 +2348,7 @@ def main():
             logger.debug(f"Removed filtered .darrc: {filtered_darrc_path}")
 
 
-    # Determine exit code 
+    # Determine exit code
     error = False
     final_exit_code = 0
     logger.debug(f"results[]: {results}")
@@ -2365,7 +2370,7 @@ def main():
                 error = True
                 final_exit_code = 1
             i=i+1
-            
+
     console = Console()
     if error:
         if args.verbose:
@@ -2376,6 +2381,6 @@ def main():
             console.print(Text("Success: all backups completed", style="bold green"))
         exit(0)
 
-    
+
 if __name__ == "__main__":
     main()

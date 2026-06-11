@@ -207,7 +207,7 @@ class ConfigSettings:
                     except Exception as e:
                         raise ConfigSettingsError(
                             f"Failed to parse optional config '{opt['section']}::{opt['key']}': {e}"
-                        )
+                        ) from e
                 else:
                     setattr(self, opt['attr'], opt.get('default', None))
 
@@ -222,13 +222,13 @@ class ConfigSettings:
         except ConfigSettingsError:
             raise
         except RuntimeError as e:
-            raise ConfigSettingsError(f"RuntimeError: {e}")
+            raise ConfigSettingsError(f"RuntimeError: {e}") from e
         except KeyError as e:
-            raise ConfigSettingsError(f"Missing mandatory configuration key: {e}")
+            raise ConfigSettingsError(f"Missing mandatory configuration key: {e}") from e
         except ValueError as e:
-            raise ConfigSettingsError(f"Invalid value in config: {e}")
+            raise ConfigSettingsError(f"Invalid value in config: {e}") from e
         except Exception as e:
-            raise ConfigSettingsError(f"Unexpected error during config initialization: {e}")
+            raise ConfigSettingsError(f"Unexpected error during config initialization: {e}") from e
 
 
 
@@ -261,10 +261,10 @@ class ConfigSettings:
         raw = self.config[section][key].strip()
         try:
             return int(raw)
-        except ValueError:
+        except ValueError as e:
             raise ConfigSettingsError(
                 f"Expected an integer for '{key}' in [{section}], got: '{raw}'"
-            )
+            ) from e
 
     def _get_optional_int(self, section: str, key: str, default: Optional[int] = None) -> Optional[int]:
         """Read an optional integer config value and raise ConfigSettingsError with context on failure.
@@ -284,10 +284,10 @@ class ConfigSettings:
             raw = self.config.get(section, key).strip()
             try:
                 return int(raw)
-            except ValueError:
+            except ValueError as e:
                 raise ConfigSettingsError(
                     f"Expected an integer for '{key}' in [{section}], got: '{raw}'"
-                )
+                ) from e
         return default
 
     def _get_optional_bool(self, section: str, key: str, default: Optional[bool] = None) -> Optional[bool]:
@@ -371,24 +371,24 @@ class ConfigSettings:
             elif key == "PAR2_RATIO_FULL":
                 try:
                     par2_config["par2_ratio_full"] = int(value)
-                except ValueError:
+                except ValueError as e:
                     raise ConfigSettingsError(
                         f"Expected an integer for 'PAR2_RATIO_FULL' in [{backup_definition}], got: '{value}'"
-                    )
+                    ) from e
             elif key == "PAR2_RATIO_DIFF":
                 try:
                     par2_config["par2_ratio_diff"] = int(value)
-                except ValueError:
+                except ValueError as e:
                     raise ConfigSettingsError(
                         f"Expected an integer for 'PAR2_RATIO_DIFF' in [{backup_definition}], got: '{value}'"
-                    )
+                    ) from e
             elif key == "PAR2_RATIO_INCR":
                 try:
                     par2_config["par2_ratio_incr"] = int(value)
-                except ValueError:
+                except ValueError as e:
                     raise ConfigSettingsError(
                         f"Expected an integer for 'PAR2_RATIO_INCR' in [{backup_definition}], got: '{value}'"
-                    )
+                    ) from e
             elif key == "PAR2_RUN_VERIFY":
                 val = value.lower()
                 if val in ('true', '1', 'yes'):

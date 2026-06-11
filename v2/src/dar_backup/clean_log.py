@@ -7,7 +7,7 @@ This script is part of dar-backup, a backup solution for Linux using dar and sys
 
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
@@ -21,7 +21,7 @@ If a rerex is matched, the entire line is removed (change in v2-beta-0.6.19).
 import argparse
 import re
 import os
-import sys 
+import sys
 
 from datetime import datetime
 
@@ -95,13 +95,13 @@ def clean_log_file(log_file_path, dry_run=False):
 
     try:
         if dry_run:
-            with open(log_file_path, "r", errors="ignore") as infile:
+            with open(log_file_path, errors="ignore") as infile:
                 for line in infile:
                     if _should_remove_line(line):
                         print(f"Would remove: {line.strip()}")
             return
 
-        with open(log_file_path, "r", errors="ignore") as infile, open(temp_file_path, "w") as outfile:
+        with open(log_file_path, errors="ignore") as infile, open(temp_file_path, "w") as outfile:
             for line in infile:
                 if not _should_remove_line(line):
                     outfile.write(line.rstrip() + "\n")
@@ -114,7 +114,7 @@ def clean_log_file(log_file_path, dry_run=False):
         sys.exit(1)
 
 
-    
+
 def main():
     parser = argparse.ArgumentParser(
         description="Clean dar-backup log file for `dar` output"
@@ -204,7 +204,7 @@ def main():
             logger.error(msg, exc_info=True)
         else:
             print(msg, file=sys.stderr)
-        
+
         ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - clean-log: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)

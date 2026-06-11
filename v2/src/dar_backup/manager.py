@@ -30,7 +30,6 @@ import sys
 import subprocess
 import threading
 import shlex
-import time as time_module
 import dateparser
 
 from inputimeout import inputimeout, TimeoutOccurred
@@ -50,7 +49,7 @@ from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import show_scriptname
 
-from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
@@ -222,7 +221,7 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
       - the found number, if the archive catalog is present in the database
       - "-1" if the archive is not found
     """
-    
+
     parsed = ArchiveName.parse(archive)
     if parsed is None:
         logger.error(f"Cannot parse archive name: '{archive}'")
@@ -307,10 +306,10 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
     process = runner.run(command, capture_output_limit_bytes=-1)
-    stdout, stderr = process.stdout, process.stderr 
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stderr: {stderr}")
         logger.error(f"stdout: {stdout}")
     else:
         print(stdout)
@@ -328,10 +327,10 @@ def find_file(file, backup_def, config_settings):
         return 1
     command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
     process = runner.run(command, capture_output_limit_bytes=-1)
-    stdout, stderr = process.stdout, process.stderr 
+    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
         logger.error(f'Error finding file: {file} in: "{database_path}"')
-        logger.error(f"stderr: {stderr}")  
+        logger.error(f"stderr: {stderr}")
         logger.error(f"stdout: {stdout}")
     else:
         print(stdout)
@@ -1079,7 +1078,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 continue
 
             restored = False
-            for catalog_no, dt in candidates:
+            for catalog_no, _dt in candidates:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
                     missing_archives.add(f"catalog #{catalog_no} missing from archive map")
@@ -1330,11 +1329,11 @@ def confirm_add_old_archive(archive_name: str, latest_known_date: str, timeout_s
 
 def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> int:
     """
-    
+
     Returns:
         - 0 if the archive was removed from it's catalog
         - 1 if there was an error removing the archive
-        - 2 if the archive was not found in the catalog  
+        - 2 if the archive was not found in the catalog
 
     """
     parsed = ArchiveName.parse(archive)
@@ -1358,7 +1357,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     else:
         logger.error(process.stdout)
         logger.error(process.stderr)
-        return 1    
+        return 1
 
 
 def build_arg_parser():
@@ -1367,11 +1366,11 @@ def build_arg_parser():
     parser.add_argument('--create-db', action='store_true', help='Create missing databases for all backup definitions')
     parser.add_argument('--alternate-archive-dir', type=str, help='Use this directory instead of BACKUP_DIR in config file')
     parser.add_argument('--add-dir', type=str, help='Add all archive catalogs in this directory to databases')
-    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer
+    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer  # noqa: E501
     parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = add_specific_archive_completer
     parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = archive_content_completer
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
-    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer
+    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer  # noqa: E501
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--restore-path', nargs='+', help="Restore specific path(s) (Point-in-Time Recovery).")
     parser.add_argument('--when', type=str, help="Date/time for restoration (used with --restore-path).")
@@ -1417,7 +1416,7 @@ def build_arg_parser():
 
 
 def main():
-    global logger, runner 
+    global logger, runner
 
     MIN_PYTHON_VERSION = (3, 9)
     if sys.version_info < MIN_PYTHON_VERSION:
@@ -1490,8 +1489,6 @@ def main():
 
     start_msgs: List[Tuple[str, str]] = []
 
-    start_time = int(time())
-    
     start_msgs.append((f"{show_scriptname()}:", about.__version__))
     logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
@@ -1503,12 +1500,12 @@ def main():
     args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
     args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
-    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive)) 
+    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive))
     args.verbose and start_msgs.append(("--relocate-archive-path:", args.relocate_archive_path))
     dar_manager_properties = get_binary_info(command='dar_manager')
     start_msgs.append(("dar_manager:", dar_manager_properties['path']))
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
-    
+
     print_aligned_settings(start_msgs, quiet=not args.verbose)
 
     # --- Sanity checks ---
@@ -1608,7 +1605,7 @@ def main():
                 sys.exit(create_db(args.backup_def, config_settings, logger, runner))
                 return
             else:
-                for root, dirs, files in os.walk(config_settings.backup_d_dir):
+                for _root, _dirs, files in os.walk(config_settings.backup_d_dir):
                     for file in files:
                         current_backupdef = os.path.basename(file)
                         logger.debug(f"Create catalog db for backup definition: '{current_backupdef}'")
@@ -1634,7 +1631,7 @@ def main():
                 result = process.returncode
             else:
                 result = 0
-                for root, dirs, files in os.walk(config_settings.backup_d_dir):
+                for _root, _dirs, files in os.walk(config_settings.backup_d_dir):
                     for file in files:
                         current_backupdef = os.path.basename(file)
                         if list_catalogs(current_backupdef, config_settings).returncode != 0:
@@ -1664,7 +1661,7 @@ def main():
             result = find_file(args.find_file, args.backup_def, config_settings)
             sys.exit(result)
             return
-            
+
         if args.pitr_report:
             result = _pitr_chain_report(args.backup_def, args.restore_path, args.when, config_settings)
             sys.exit(result)

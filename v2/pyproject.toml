@@ -31,7 +31,21 @@ gpg_key_url =     "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEF
 
 
 [tool.ruff]
+line-length = 150
+target-version = "py311"
+src = ["src"]
 
+[tool.ruff.lint]
+select = ["E", "F", "W", "UP", "B"]
+ignore = [
+    # Type-hint modernisation (List→list, Optional→X|None, etc.) — deferred large-scale refactor
+    "UP006",
+    "UP007",
+    "UP035",
+    "UP045",
+    # yield-from inside try/finally — subtle generator semantics change, skip
+    "UP028",
+]
 
 [project.scripts]
 dar-backup = "dar_backup.dar_backup:main"

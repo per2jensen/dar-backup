@@ -6,7 +6,7 @@ cleanup.py source code is here: https://github.com/per2jensen/dar-backup
 
 Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 
-THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, 
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW,
 not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 
@@ -44,10 +44,10 @@ from dar_backup.util import safe_remove_file
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message
 
-from dar_backup.command_runner import CommandRunner   
+from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 
-logger = None 
+logger = None
 runner = None
 
 def _delete_par2_files(
@@ -170,12 +170,12 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
     """
     Delete all .dar and .par2 files in the backup directory for the given archive name.
 
-    This function will delete any type of archive, including FULL. 
+    This function will delete any type of archive, including FULL.
     """
     logger.info(f"Deleting all .dar and .par2 files for archive: `{archive_name}`")
     # Regex to match the archive files according to the naming convention
     archive_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar$")
-    
+
     # Delete the specified .dar files according to the naming convention
     files_deleted = False
     dry_run = getattr(args, "dry_run", False) is True
@@ -198,7 +198,7 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
                         logger.warning(f"Skipped deleting unsafe archive slice: {file_path}")
             except Exception as e:
                 logger.error(f"Error deleting archive slice {file_path}: {e}")
-    
+
     if files_deleted:
             if dry_run:
                 logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
@@ -254,7 +254,7 @@ def confirm_full_archive_deletion(archive_name: str, test_mode=False) -> bool:
     except KeyboardInterrupt:
         logger.info(f"User interrupted confirmation for FULL archive: {archive_name}. Skipping deletion.")
         return False
-    
+
 
 
 def main():
@@ -272,7 +272,7 @@ def main():
         const="",
         default=None,
         help="Comma separated list of archives to cleanup",
-    ).completer = list_archive_completer 
+    ).completer = list_archive_completer
     parser.add_argument(
         'cleanup_specific_archives_list',
         nargs='*',
@@ -313,8 +313,6 @@ def main():
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}")
         sys.exit(127)
 
-    start_time=int(time())
-
 #    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
     command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
     logger = setup_logging(
@@ -351,7 +349,7 @@ def main():
     args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
     args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
     args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
-    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives)) 
+    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives))
     args.verbose and start_msgs.append(("--dry-run:", args.dry_run))
 
     dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
@@ -371,10 +369,10 @@ def main():
         if args.alternate_archive_dir:
             if not os.path.exists(args.alternate_archive_dir):
                 logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
-                sys.exit(1) 
+                sys.exit(1)
             if  not os.path.isdir(args.alternate_archive_dir):
                 logger.error("Alternate archive directory is not a directory, exiting")
-                sys.exit(1) 
+                sys.exit(1)
             config_settings.backup_dir = args.alternate_archive_dir
 
         if args.cleanup_specific_archives is None and args.test_mode:
@@ -404,7 +402,7 @@ def main():
             if args.backup_definition:
                 backup_definitions.append(args.backup_definition)
             else:
-                for root, _, files in os.walk(config_settings.backup_d_dir):
+                for _root, _, files in os.walk(config_settings.backup_d_dir):
                     for file in files:
                         backup_definitions.append(file.split('.')[0])
 
