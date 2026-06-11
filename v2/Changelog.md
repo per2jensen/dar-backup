@@ -127,6 +127,27 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   parsing fails.  `_parse_archive_info()` also migrated, removing its own inline regex and
   strptime block.  `ArchiveName` is defined once in `util.py` and shared by all callers.
 
+- **ruff configured and all violations resolved** (`pyproject.toml`, multiple modules) — ruff was
+  listed as a dev dependency but had no configuration and was never run.  Configured with
+  `line-length = 150`, `target-version = "py311"`, and rule sets `E`, `F`, `W`, `UP`, `B`.
+  Typing-modernisation rules `UP006/007/028/035/045` deferred to the ignore list (large-scale
+  refactor, out of scope).  All remaining violations fixed:
+
+  - **B904** — bare `raise` inside `except` blocks replaced with `raise … from e` in
+    `config_settings.py`, `dar_backup.py`, and `util.py` (10+ sites).
+  - **F401** — unused imports removed: `import time as time_module` (`manager.py`),
+    dangling `timezone` after UP017 auto-fix (`dar_backup.py`).
+  - **F841** — unused `start_time` variables removed from `manager.py` and `cleanup.py`.
+  - **B007** — unused loop variables renamed to `_`-prefixed forms in `manager.py` and `cleanup.py`.
+  - **B009** — `getattr(config, 'manager_db_dir')` replaced with `config.manager_db_dir` (`util.py`).
+  - **UP017** — `timezone.utc` → `UTC` throughout `dar_backup.py` (11 sites, auto-fixed).
+  - **UP022** — `stdout=PIPE, stderr=PIPE` → `capture_output=True` (`util.py`).
+  - **UP031** — `%`-style format → f-string (`dashboard.py`).
+  - **W191** — tabs → spaces in `downloads.py` (manual fix; ruff cannot auto-fix mixed indentation).
+  - **E501** — 8 long lines split or annotated `# noqa: E501` (argparse completer chains and
+    structured log messages where splitting would harm readability).
+  - **W291/W293** — trailing whitespace in docstrings and license strings across 7 files.
+
 - **`find_files_between_min_and_max_size()` deduplicates size-string parsing** (`dar_backup.py`) —
   the function previously maintained its own copy of the unit table (`dar_sizes`) and a duplicate
   `re.match` block that mirrored `_DAR_SIZE_UNITS` / `_parse_size_bytes()` defined ~70 lines below
@@ -135,6 +156,9 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   rather than raising `KeyError`.
 
 ### Added
+
+- **ruff static-analysis gate in `release.sh`** — `ruff check src/` now runs as a pre-flight step
+  before both dry-run and real releases; violations abort the release with a clear message.
 
 - Dashboard gained checkmarks to disable PREREQ and POSTREQ errors, to more easily see "real" backup/restore errors
 

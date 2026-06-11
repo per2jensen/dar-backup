@@ -18,6 +18,7 @@ KEEP=0
 TIMEOUT=86400
 SCRIPT_VERSION="4"
 DIFF_PRIMER_DIR=""
+PRIMER_NON_LINK_COUNT=0
 DAR_BACKUP_VERSION=""
 GIT_COMMIT=""
 REPO_DIR=""
@@ -107,6 +108,10 @@ DIFF_PRIMER_DIR="${BASE_DIR}/diff-primer"
 
 mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR" "$DIFF_PRIMER_DIR"
 
+# Tee all output to the summary file from this point forward so every run
+# leaves a self-contained record alongside the structured dar/par2 log.
+exec > >(tee "$SUMMARY") 2>&1
+
 
 # ── RSS monitor ──────────────────────────────────────────────────────────────
 RSS_MONITOR_PID=""
@@ -186,6 +191,8 @@ create_diff_primer() {
     for i in $(seq 1 5); do dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/large_${i}.NEF" bs=1M count=55 2>/dev/null; done
     echo "Original static content stream for hard link verification tracking." > "${DIFF_PRIMER_DIR}/link_original.txt"
     ln "${DIFF_PRIMER_DIR}/link_original.txt" "${DIFF_PRIMER_DIR}/link_target1.txt"
+    # Count non-link files; used as the expected-modified threshold in verify_diff_contents.
+    PRIMER_NON_LINK_COUNT=$(find "${DIFF_PRIMER_DIR}" -type f ! -name "link_*" | wc -l)
 }
 
 update_diff_primer() {
@@ -205,7 +212,7 @@ verify_diff_contents() {
     local diff_saved; diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null | grep "\[Saved\]" | grep "${primer_rel}" || true)
     local modified_count; modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
     local new_count; new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
-    [[ "${modified_count}" -ge 115 ]] && pass "Modified file count OK (${modified_count})" || fail "Modified file count LOW (${modified_count})"
+    [[ "${modified_count}" -ge "${PRIMER_NON_LINK_COUNT}" ]] && pass "Modified file count OK (${modified_count})" || fail "Modified file count LOW (${modified_count}, expected >=${PRIMER_NON_LINK_COUNT})"
     [[ "${new_count}" -ge 1 ]] && pass "New file count OK" || fail "New file missing from DIFF"
 }
 
@@ -323,6 +330,15 @@ check_par2_per_slice "$FULL_BASE" "$FULL_SLICES"
 check_par2_verify    "$FULL_BASE" "FULL"
 [[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$FULL_BASE"
 
+# Capture between-snapshot anchor AFTER FULL is registered in the DB but BEFORE
+# update_diff_primer mutates the source data and BEFORE the DIFF backup runs.
+# Used in Phase 3b to exercise the PITR archive-selection logic.
+sleep 1
+BETWEEN_TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+LINK_ORIGINAL_SHA256=$(sha256sum "${DIFF_PRIMER_DIR}/link_original.txt" | awk '{print $1}')
+info "Between-snapshot timestamp: ${BETWEEN_TIMESTAMP}"
+info "link_original.txt sha256 (FULL state): ${LINK_ORIGINAL_SHA256}"
+
 # ── PHASE 2 ──
 banner "Phase 2 — DIFF backup"
 update_diff_primer
@@ -334,7 +350,7 @@ else
 fi
 
 DIFF_BASE=$(find_archive_base "DIFF")
-if [[ -z "${DIFF_BASE}" ]]; then exit 1; fi
+[[ -z "${DIFF_BASE}" ]] && { fail "No DIFF base found"; exit 1; }
 DIFF_SLICES=$(count_slices "$DIFF_BASE")
 check_dar_integrity  "$DIFF_BASE" "DIFF"
 check_par2_per_slice "$DIFF_BASE" "$DIFF_SLICES"
@@ -342,7 +358,7 @@ check_par2_verify    "$DIFF_BASE" "DIFF"
 verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
 
 # ── PHASE 3 ──
-banner "Phase 3 — Point-In-Time Restore Validation"
+banner "Phase 3a — Point-In-Time Restore Validation (latest state)"
 
 info "Cleaning restore target directory to satisfy manager safety checks..."
 rm -rf "$RESTORE_DIR"
@@ -364,13 +380,60 @@ fi
 
 RESTORE_PRIMER_PATH="${RESTORE_DIR}/${DIFF_PRIMER_DIR#/}"
 
-if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then fail "link_original.txt should be deleted"; fi
+if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
+    fail "link_original.txt present in latest-state restore (should have been deleted by DIFF)"
+else
+    pass "link_original.txt correctly absent from latest-state restore"
+fi
 if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
     inode1=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target1.txt")
     inode2=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target2.txt")
     [[ "$inode1" -eq "$inode2" ]] && pass "Hard Link Inodes match (${inode1})" || fail "Inodes mismatched (Cloned data!)"
 else
     fail "Hard-link targets missing"
+fi
+
+# ── PHASE 3b ──
+banner "Phase 3b — Between-snapshot PITR (FULL-only state)"
+
+# Restores to the state captured by BETWEEN_TIMESTAMP — a point after FULL was
+# registered in the DB but before update_diff_primer mutated the data or DIFF ran.
+# This exercises the archive-selection path; --when "now" (Phase 3a) never does.
+info "Clearing restore directory for between-snapshot test..."
+rm -rf "$RESTORE_DIR"
+mkdir -p "$RESTORE_DIR"
+
+info "Invoking manager PITR with --when '${BETWEEN_TIMESTAMP}' (should resolve to FULL only)..."
+if manager --config-file "$CONFIG_FILE" \
+           -d "$DEFINITION_NAME" \
+           --restore-path "${DIFF_PRIMER_DIR#/}/" \
+           --when "${BETWEEN_TIMESTAMP}" \
+           --target "$RESTORE_DIR" \
+           --log-stdout --verbose >> "$LOGFILE" 2>&1; then
+    pass "Between-snapshot restore completed execution"
+else
+    fail "Between-snapshot manager PITR returned error exit code"
+fi
+
+# link_original.txt existed at FULL time; should be present after between-snapshot restore.
+# sha256 round-trip verifies file content was preserved exactly through backup/restore.
+if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
+    restored_sha256=$(sha256sum "${RESTORE_PRIMER_PATH}/link_original.txt" | awk '{print $1}')
+    if [[ "$restored_sha256" == "$LINK_ORIGINAL_SHA256" ]]; then
+        pass "link_original.txt present and sha256 matches FULL-state content (${restored_sha256})"
+    else
+        fail "link_original.txt present but sha256 mismatch (expected: ${LINK_ORIGINAL_SHA256}, got: ${restored_sha256})"
+    fi
+else
+    fail "link_original.txt absent from between-snapshot restore (was present in FULL, should be restored)"
+fi
+
+# link_target2.txt was created by update_diff_primer before the DIFF backup; at FULL
+# time it did not exist, so the between-snapshot restore must NOT contain it.
+if [[ -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
+    fail "link_target2.txt present in between-snapshot restore (was not in FULL — wrong archive selected)"
+else
+    pass "link_target2.txt absent from between-snapshot restore (correct — did not exist at FULL time)"
 fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
