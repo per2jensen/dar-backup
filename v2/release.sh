@@ -291,7 +291,11 @@ trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
 
 if $DRY_RUN; then
     dryrun "copy README.md and Changelog.md into src/dar_backup/ for wheel inclusion"
+    dryrun "refresh v2/README.md from root README.md for PyPI description"
 else
+    cp ../README.md README.md  ||
+        { red "❌ Error: Failed to refresh README.md from root"; exit 1; }
+
     cp ../README.md "$TEMP_README"  ||
         { red "❌ Error: Failed to copy README.md to $TEMP_README"; exit 1; }
 
@@ -342,13 +346,13 @@ else
 
     REPORT_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- "${REPORT_PREFIX}")"
     RELEASE_META_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- \
-        "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" 2>/dev/null || true)"
+        "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" 2>/dev/null || true)"
 
     if [[ -n "${REPORT_STATUS}" || -n "${RELEASE_META_STATUS}" ]]; then
         TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
         git -C "${REPO_ROOT}" add "${REPORT_PREFIX}"
         # Stage changelog/README changes if present (paths relative to repo root)
-        git -C "${REPO_ROOT}" add -- "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" 2>/dev/null || true
+        git -C "${REPO_ROOT}" add -- "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" 2>/dev/null || true
         git -C "${REPO_ROOT}" commit -m "release: dar-backup ${VERSION} — stamp date, update README, test-report ${TS}"
         green "Committed release metadata and test reports"
     else
@@ -386,6 +390,7 @@ else
                   || ($0 == "CHANGELOG.md") \
                   || ($0 == "README.md") \
                   || (rel != "." && $0 == rel "/Changelog.md") \
+                  || (rel != "." && $0 == rel "/README.md") \
                   || (rel == "." && $0 == "Changelog.md");
            if (!allowed) print $0
          }'
