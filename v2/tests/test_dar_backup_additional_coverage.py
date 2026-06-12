@@ -362,30 +362,24 @@ def test_verify_restore_command_nonzero_raises(tmp_path, monkeypatch):
     assert result.passed is False
 
 
-def test_get_backed_up_files_subprocess_success(monkeypatch, tmp_path):
-    xml = """<!DOCTYPE foo>
-<DARArchive>
-  <Directory name="dirA">
-    <File name="a.txt" size="123"/>
-  </Directory>
-  <File name="root.txt" size="1"/>
-</DARArchive>
-"""
+def test_get_backed_up_files_stream_command_success(monkeypatch, tmp_path):
+    xml_lines = [
+        '<DARArchive>',
+        '  <Directory name="dirA">',
+        '    <File name="a.txt" size="123"/>',
+        '  </Directory>',
+        '  <File name="root.txt" size="1"/>',
+        '</DARArchive>',
+    ]
 
-    class FakeProcess:
-        def __init__(self, text):
-            self.stdout = io.StringIO(text)
-            self.stderr = None
-            self.returncode = 0
+    class MockRunner:
+        def stream_command(self, cmd, callback, *, timeout=None):
+            for line in xml_lines:
+                callback(line)
+            return CommandResult(returncode=0, stdout="", stderr="")
 
-        def wait(self, timeout=None):
-            return None
-
-    fake_process = FakeProcess(xml)
-
-    monkeypatch.setattr(db, "runner", None)
+    monkeypatch.setattr(db, "runner", MockRunner())
     monkeypatch.setattr(db, "logger", MagicMock())
-    monkeypatch.setattr(db.subprocess, "Popen", lambda *a, **k: fake_process)
 
     files = list(db.get_backed_up_files("archive", str(tmp_path)))
 
@@ -393,8 +387,9 @@ def test_get_backed_up_files_subprocess_success(monkeypatch, tmp_path):
     assert ("root.txt", "1") in files
 
 
-def test_get_backed_up_files_subprocess_remove_warns(monkeypatch, tmp_path):
-    xml = "<DARArchive><File name=\"root.txt\" size=\"1\"/></DARArchive>\n"
+def test_get_backed_up_files_nonzero_returncode_remove_warns(monkeypatch, tmp_path):
+    """When dar fails and the temp file cannot be removed, a warning is logged and BackupError is raised."""
+    from dar_backup.util import BackupError as _BackupError
     temp_holder = {}
     real_named_temp = tempfile.NamedTemporaryFile
     real_remove = os.remove
@@ -405,29 +400,21 @@ def test_get_backed_up_files_subprocess_remove_warns(monkeypatch, tmp_path):
         temp_holder["path"] = tmp.name
         return tmp
 
-    class FakeProcess:
-        def __init__(self, text):
-            self.stdout = io.StringIO(text)
-            self.stderr = io.StringIO("boom\n")
-            self.returncode = 1
-
-        def wait(self, timeout=None):
-            return None
-
-    fake_process = FakeProcess(xml)
-
     def fake_remove(path):
         if path == temp_holder.get("path"):
             raise OSError("nope")
         return real_remove(path)
 
-    monkeypatch.setattr(db, "runner", None)
+    class MockRunner:
+        def stream_command(self, cmd, callback, *, timeout=None):
+            return CommandResult(returncode=1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(db, "runner", MockRunner())
     monkeypatch.setattr(db, "logger", MagicMock())
     monkeypatch.setattr(db.tempfile, "NamedTemporaryFile", fake_named_temp)
     monkeypatch.setattr(db.os, "remove", fake_remove)
-    monkeypatch.setattr(db.subprocess, "Popen", lambda *a, **k: fake_process)
 
-    with pytest.raises(RuntimeError, match="Unexpected error listing backed up files"):
+    with pytest.raises(_BackupError, match="Error listing backed up files"):
         db.get_backed_up_files("archive", str(tmp_path))
 
     assert db.logger.warning.called

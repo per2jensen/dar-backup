@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import signal
 import subprocess
 import logging
 import traceback
@@ -17,6 +18,19 @@ import tempfile
 import time
 from typing import Callable, List, Optional, Union
 from dar_backup.util import get_logger
+
+
+def _killpg(pid: int) -> None:
+    """Send SIGKILL to the process group of pid.
+
+    Used after start_new_session=True so background children of shell scripts
+    (which inherit the stderr pipe fd) are also killed, allowing the stderr
+    reader thread to see EOF and exit.
+    """
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
 
 
 def is_safe_arg(arg: str) -> bool:
@@ -522,6 +536,7 @@ class CommandRunner:
                 text=False,
                 bufsize=0,
                 env=cmd_env,
+                start_new_session=True,
             )
         except Exception as e:
             self.logger.error("Failed to start command: %s (error=%s)", cmd_str, e)
@@ -576,12 +591,18 @@ class CommandRunner:
             try:
                 process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                process.kill()
+                _killpg(process.pid)
                 stderr_thread.join(timeout=2)
                 msg = f"Command timed out after {timeout}s: {cmd_str}"
                 self.logger.error(msg)
                 return CommandResult(-1, "", msg)
         finally:
+            # If the process is still alive (e.g. KeyboardInterrupt arrived while
+            # reading stdout), kill its entire process group so that any background
+            # children (e.g. `sleep N &` in a shell script) also close their copies
+            # of the stderr pipe, allowing the stderr reader thread to exit.
+            if process.returncode is None:
+                _killpg(process.pid)
             stderr_thread.join()
 
         stderr_text = b"".join(stderr_lines).decode("utf-8", errors="replace")

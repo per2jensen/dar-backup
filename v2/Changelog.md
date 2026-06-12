@@ -3,6 +3,47 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
+## v2-1.1.9 - not released
+
+### Changed
+
+- **`get_backed_up_files()` — removed `_is_mock_object` test fork** (`dar_backup.py`) — the function
+  previously used `subprocess.Popen` directly with a manual stderr thread, and contained a
+  `_is_mock_object` branch so unit tests could intercept it via a mock runner.  Refactored to go
+  through `runner.stream_command()` (the same path used by `list_contents()`), eliminating the test
+  fork entirely.  Production and test code now execute the same path.
+
+### Fixed
+
+- **Startup banner printed for non-backup operations** (`dar_backup.py`) — the `##  dar-backup INCR  ##`
+  banner and `START TIME`/`END TIME` markers were emitted unconditionally, so commands such as
+  `-l` (list archives) or `--restore` appeared in the log as INCR backup runs.  The banner and
+  timing markers are now only logged when an actual backup operation (`--full`, `--differential`,
+  `--incremental`) is being performed.
+
+- **`Operation:` field missing from startup settings** (`dar_backup.py`, `cleanup.py`, `manager.py`)
+  — the startup settings block logged version, paths, and config but gave no indication of which
+  operation was being run.  Each tool now appends an `Operation:` line (e.g. `list archives`,
+  `INCR backup`, `cleanup`, `restore-path (PITR)`) as the second entry, always visible at INFO
+  level regardless of `--verbose`.  Detection is wrapped in `try/except`; on any error a WARNING
+  is logged and the value falls back to `"unknown"` so the operation itself is never affected.
+  The now-redundant `Type of backup:` entries were removed from `dar_backup.py`.
+
+- **`stream_command()` hung on `KeyboardInterrupt` when child spawned background processes**
+  (`command_runner.py`) — when a signal arrived while `stream_command()` was reading stdout, the
+  `finally: stderr_thread.join()` block would block indefinitely if the child process had launched
+  background subprocesses (e.g. `sleep N &` in a shell script): those grandchildren inherited the
+  stderr pipe file descriptor, so the pipe never closed and the reader thread never saw EOF.  In
+  practice this meant a `SIGINT` or `SIGTERM` during the verify phase could not propagate to
+  `perform_backup()`'s signal handler — the process would hang until systemd's stop timeout issued
+  `SIGKILL`, with no "interrupted" message logged.  Fixed by:
+
+  - Starting the child process with `start_new_session=True` so it leads its own process group,
+    isolating it and all its descendants from the parent's group.
+  - Replacing `process.kill()` with `os.killpg()` at both kill sites (timeout path and the new
+    `finally` guard), ensuring all members of the child's process group — including background
+    grandchildren — are killed, the stderr pipe is fully closed, and the reader thread exits cleanly.
+
 ## v2-1.1.8 - 2026-06-11
 
 ### Fixed
@@ -127,7 +168,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   parsing fails.  `_parse_archive_info()` also migrated, removing its own inline regex and
   strptime block.  `ArchiveName` is defined once in `util.py` and shared by all callers.
 
-- **ruff configured and all violations resolved** (`pyproject.toml`, multiple modules) — ruff was
+- **ruff configured and many violations resolved** (`pyproject.toml`, multiple modules) — ruff was
   listed as a dev dependency but had no configuration and was never run.  Configured with
   `line-length = 150`, `target-version = "py311"`, and rule sets `E`, `F`, `W`, `UP`, `B`.
   Typing-modernisation rules `UP006/007/028/035/045` deferred to the ignore list (large-scale

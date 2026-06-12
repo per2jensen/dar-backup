@@ -1490,6 +1490,25 @@ def main():
     start_msgs: List[Tuple[str, str]] = []
 
     start_msgs.append((f"{show_scriptname()}:", about.__version__))
+    try:
+        operation = None
+        if args.create_db:
+            operation = "create-db"
+        elif args.add_specific_archive:
+            operation = "add-archive"
+        elif args.remove_specific_archive:
+            operation = "remove archive"
+        elif args.list_catalogs:
+            operation = "list"
+        elif args.restore_path:
+            operation = "restore-path (PITR)"
+        elif args.relocate_archive_path:
+            operation = "relocate-archive-path"
+        if operation:
+            start_msgs.append(("Operation:", operation))
+    except Exception as exc:
+        logger.warning("Could not determine operation: %s", exc)
+        start_msgs.append(("Operation:", "unknown"))
     logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")

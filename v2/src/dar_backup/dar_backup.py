@@ -775,105 +775,59 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
     Args:
         backup_name (str): The name of the DAR archive.
         backup_dir (str): The directory where the DAR archive is located.
+        timeout (int, optional): Seconds before the dar process is killed. None means no timeout.
 
     Returns:
         Iterable[Tuple[str, str]]: Stream of (file path, size) tuples for all backed up files.
+
+    Raises:
+        BackupError: If dar returns a non-zero exit code or an unexpected error occurs.
     """
-    logger.debug(f"Getting backed up files in xml from DAR archive: '{backup_name}'")
+    logger.debug("Getting backed up files in xml from DAR archive: '%s'", backup_name)
     backup_path = os.path.join(backup_dir, backup_name)
+    command = ['dar', '-l', backup_path, '--noconf', '-am', '-as', '-Txml', '-Q']
+    logger.debug("Running command: %s", ' '.join(map(shlex.quote, command)))
+
     temp_path = None
     try:
-        command = ['dar', '-l', backup_path, '--noconf', '-am', '-as', "-Txml" , '-Q']
-        logger.debug(f"Running command: {' '.join(map(shlex.quote, command))}")
-        if runner is not None and getattr(runner, "_is_mock_object", False):
-            command_result = runner.run(command)
-            file_paths = find_files_with_paths(command_result.stdout)
-            return file_paths
-        stderr_lines: List[str] = []
-        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, suffix=".xml") as temp_file:
             temp_path = temp_file.name
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
 
-            def read_stderr():
-                if process.stderr is None:
-                    return
-                for line in process.stderr:
-                    stderr_lines.append(line)
+            def on_line(line: str) -> None:
+                if "<!DOCTYPE" not in line:
+                    temp_file.write(line + "\n")
 
-            stderr_thread = threading.Thread(target=read_stderr)
-            stderr_thread.start()
-
-            if process.stdout is not None:
-                for line in process.stdout:
-                    if "<!DOCTYPE" in line:
-                        continue
-                    temp_file.write(line)
-            if process.stdout is not None:
-                process.stdout.close()
-
-            try:
-                process.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                stderr_thread.join()
-                raise
-            stderr_thread.join()
-
-        if process.returncode != 0:
-            stderr_text = "".join(stderr_lines)
-            logger.error(f"Error listing backed up files from DAR archive: '{backup_name}'")
-            try:
-                os.remove(temp_path)
-            except OSError:
-                logger.warning(f"Could not delete temporary file: {temp_path}")
-            raise BackupError(
-                f"Error listing backed up files from DAR archive: '{backup_name}'"
-                f"\nStderr: {stderr_text}"
-            )
-
-        def iter_files():
-            try:
-                for item in iter_files_with_paths_from_xml(temp_path):
-                    yield item
-            finally:
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    logger.warning(f"Could not delete temporary file: {temp_path}")
-
-        return iter_files()
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error listing backed up files from DAR archive: '{backup_name}'")
-        raise BackupError(f"Error listing backed up files from DAR archive: '{backup_name}'") from e
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"Timeout listing backed up files from DAR archive: '{backup_name}'")
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except OSError:
-                logger.warning(f"Could not delete temporary file: {temp_path}")
-        raise BackupError(f"Timeout listing backed up files from DAR archive: '{backup_name}'") from e
+            result = runner.stream_command(command, on_line, timeout=timeout)
     except Exception as e:
-        log = logger or get_logger()
-        if log:
-            log.error(
-                "Unexpected error listing backed up files from DAR archive: '%s': %s",
-                backup_name,
-                e,
-                exc_info=True,
-            )
         if temp_path:
             try:
                 os.remove(temp_path)
             except OSError:
-                logger.warning(f"Could not delete temporary file: {temp_path}")
-        raise RuntimeError(f"Unexpected error listing backed up files from DAR archive: '{backup_name}'") from e
+                logger.warning("Could not delete temporary file: %s", temp_path)
+        raise BackupError(f"Unexpected error listing backed up files from DAR archive: '{backup_name}'") from e
+
+    if result.returncode != 0:
+        logger.error("Error listing backed up files from DAR archive: '%s'", backup_name)
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning("Could not delete temporary file: %s", temp_path)
+        raise BackupError(
+            f"Error listing backed up files from DAR archive: '{backup_name}'"
+            f"\nStderr: {result.stderr or ''}"
+        )
+
+    def iter_files() -> Iterator[Tuple[str, str]]:
+        try:
+            yield from iter_files_with_paths_from_xml(temp_path)
+        finally:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning("Could not delete temporary file: %s", temp_path)
+
+    return iter_files()
 
 
 def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int] = None):
@@ -2158,6 +2112,7 @@ def main():
 
 
     filtered_darrc_path = None
+    is_backup_run = args.full_backup or args.differential_backup or args.incremental_backup
 
     try:
         if not args.darrc:
@@ -2185,15 +2140,35 @@ def main():
         run_start = datetime.now().astimezone()
         run_id = str(uuid.uuid4())
         start_msgs.append((f"{show_scriptname()}:", about.__version__))
-        backup_type = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
-        run_start_str = run_start.strftime("%Y-%m-%d %H:%M:%S")
-        banner_text = f"  dar-backup {backup_type}  {run_start_str}  "
-        banner_bar = "#" * (len(banner_text) + 4)
-        logger.info("")
-        logger.info(banner_bar)
-        logger.info(f"##{banner_text}##")
-        logger.info(banner_bar)
-        logger.info(f"START TIME: {start_time}")
+        try:
+            operation = None
+            if args.full_backup:
+                operation = "FULL backup"
+            elif args.differential_backup:
+                operation = "DIFF backup"
+            elif args.incremental_backup:
+                operation = "INCR backup"
+            elif args.list:
+                operation = "list archives"
+            elif args.list_contents:
+                operation = "list contents"
+            elif args.restore:
+                operation = "restore"
+            if operation:
+                start_msgs.append(("Operation:", operation))
+        except Exception as exc:
+            logger.warning("Could not determine operation: %s", exc)
+            start_msgs.append(("Operation:", "unknown"))
+        if is_backup_run:
+            backup_type = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
+            run_start_str = run_start.strftime("%Y-%m-%d %H:%M:%S")
+            banner_text = f"  dar-backup {backup_type}  {run_start_str}  "
+            banner_bar = "#" * (len(banner_text) + 4)
+            logger.info("")
+            logger.info(banner_bar)
+            logger.info(f"##{banner_text}##")
+            logger.info(banner_bar)
+            logger.info(f"START TIME: {start_time}")
         logger.debug(f"Command line:\n{get_invocation_command_line()}")
         logger.debug(f"`Args`:\n{args}")
         logger.debug(f"`Config_settings`:\n{config_settings}")
@@ -2207,9 +2182,6 @@ def main():
         start_msgs.append(('Config file:', os.path.abspath(args.config_file)))
         start_msgs.append((".darrc location:", args.darrc))
 
-        args.full_backup         and start_msgs.append(("Type of backup:", "FULL"))
-        args.differential_backup and start_msgs.append(("Type of backup:", "DIFF"))
-        args.incremental_backup  and start_msgs.append(("Type of backup:", "INCR"))
         args.verbose and args.backup_definition   and start_msgs.append(("Backup definition:", args.backup_definition))
         if args.alternate_reference_archive:
             args.verbose and start_msgs.append(("Alternate ref archive:", args.alternate_reference_archive))
@@ -2340,8 +2312,9 @@ def main():
         send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}\n---- End of report ----", config_settings=config_settings)
         results.append((repr(e), 1))
     finally:
-        end_time=int(time())
-        logger.info(f"END TIME: {end_time}")
+        if is_backup_run:
+            end_time=int(time())
+            logger.info(f"END TIME: {end_time}")
         # Clean up
         if filtered_darrc_path and os.path.exists(filtered_darrc_path):
             os.remove(filtered_darrc_path)

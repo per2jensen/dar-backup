@@ -336,6 +336,19 @@ def main():
     start_msgs: List[Tuple[str, str]] = []
 
     start_msgs.append((f"{show_scriptname()}:", about.__version__))
+    try:
+        if args.list:
+            operation = "list archives"
+        elif args.cleanup_specific_archives is not None:
+            operation = "cleanup specific archives"
+        else:
+            operation = "cleanup"
+        if args.dry_run:
+            operation += " (dry run)"
+        start_msgs.append(("Operation:", operation))
+    except Exception as exc:
+        logger.warning("Could not determine operation: %s", exc)
+        start_msgs.append(("Operation:", "unknown"))
 
     logger.debug(f"Command line: {get_invocation_command_line()}")
     logger.debug(f"`args`:\n{args}")
