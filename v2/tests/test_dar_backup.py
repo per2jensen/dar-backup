@@ -1208,8 +1208,8 @@ def test_print_markdown_missing_file_exits(capsys, tmp_path):
 @pytest.mark.parametrize(
     "side_effect, expected_exc, match",
     [
-        (subprocess.CalledProcessError(1, "dar"), BackupError, r"Error listing backed up files"),
-        (Exception("explode"), RuntimeError, r"Unexpected error listing backed up files.*dummy_backup"),
+        (Exception("explode"), BackupError, r"Unexpected error listing backed up files.*dummy_backup"),
+        (subprocess.TimeoutExpired(cmd="dar", timeout=5), BackupError, r"Unexpected error listing backed up files.*dummy_backup"),
     ],
 )
 def test_get_backed_up_files_error_mapping(tmp_path, side_effect, expected_exc, match):
@@ -1219,7 +1219,7 @@ def test_get_backed_up_files_error_mapping(tmp_path, side_effect, expected_exc, 
 
     with patch.object(db, "runner") as mock_runner, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_runner.run.side_effect = side_effect
+        mock_runner.stream_command.side_effect = side_effect
         with pytest.raises(expected_exc, match=match):
             db.get_backed_up_files(backup_name, backup_dir)
 
@@ -1235,7 +1235,7 @@ def test_get_backed_up_files_success_parses_xml(tmp_path):
     backup_dir = str(tmp_path)
     (tmp_path / backup_name).touch()
 
-    # Minimal XML that matches find_files_with_paths() expectations
+    # Minimal XML that matches iter_files_with_paths_from_xml() expectations
     xml = """<?xml version="1.0"?>
 <DARArchive>
   <Directory name="dirA">
@@ -1248,13 +1248,17 @@ def test_get_backed_up_files_success_parses_xml(tmp_path):
 </DARArchive>
 """
 
+    def fake_stream(command, on_line, *, timeout=None):
+        for line in xml.splitlines():
+            on_line(line)
+        return SimpleNamespace(returncode=0, stderr="")
+
     with patch.object(db, "runner") as mock_runner, \
          patch.object(db, "logger", new=MagicMock()):
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout=xml, stderr="", stdout_tail="", stderr_tail="")
-        files = db.get_backed_up_files(backup_name, backup_dir)
+        mock_runner.stream_command.side_effect = fake_stream
+        files = list(db.get_backed_up_files(backup_name, backup_dir))
 
     # Expect normalized paths with sizes as strings
-    # Order should match traversal: dirA/a.txt, dirA/nested/b.bin, root.log
     assert ("dirA/a.txt", "123") in files
     assert ("dirA/nested/b.bin", "456") in files
     assert ("root.log", "78") in files
@@ -1441,59 +1445,28 @@ def test_verify_skips_when_no_eligible_files_logs_info(env):
 
 # --- get_backed_up_files subprocess path -------------------------------------
 
-def test_get_backed_up_files_nonzero_returncode_raises_runtime_error(tmp_path):
-    import io
-
+def test_get_backed_up_files_nonzero_returncode_raises_backup_error(tmp_path):
     backup_name = "dummy_backup"
     backup_dir = str(tmp_path)
     (tmp_path / backup_name).touch()
 
-    class FakeProcess:
-        def __init__(self):
-            self.returncode = 1
-            self.stdout = io.StringIO("")
-            self.stderr = io.StringIO("boom\n")
-
-        def wait(self, timeout=None):
-            return None
-
-    fake_process = FakeProcess()
-
-    with patch.object(db, "runner", None), \
-         patch.object(db, "logger", new=MagicMock()), \
-         patch("dar_backup.dar_backup.subprocess.Popen", return_value=fake_process):
-        with pytest.raises(RuntimeError, match="Unexpected error listing backed up files"):
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.stream_command.return_value = SimpleNamespace(returncode=1, stderr="boom\n")
+        with pytest.raises(BackupError, match="Error listing backed up files.*dummy_backup"):
             db.get_backed_up_files(backup_name, backup_dir)
 
 
 def test_get_backed_up_files_timeout_raises_backup_error(tmp_path):
-    import io
-
     backup_name = "dummy_backup"
     backup_dir = str(tmp_path)
     (tmp_path / backup_name).touch()
 
-    class FakeProcess:
-        def __init__(self):
-            self.stdout = io.StringIO("")
-            self.stderr = io.StringIO("")
-            self.killed = False
-
-        def wait(self, timeout=None):
-            raise subprocess.TimeoutExpired(cmd="dar", timeout=timeout)
-
-        def kill(self):
-            self.killed = True
-
-    fake_process = FakeProcess()
-
-    with patch.object(db, "runner", None), \
-         patch.object(db, "logger", new=MagicMock()), \
-         patch("dar_backup.dar_backup.subprocess.Popen", return_value=fake_process):
-        with pytest.raises(BackupError, match="Timeout listing backed up files"):
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.stream_command.side_effect = subprocess.TimeoutExpired(cmd="dar", timeout=1)
+        with pytest.raises(BackupError, match="Unexpected error listing backed up files.*dummy_backup"):
             db.get_backed_up_files(backup_name, backup_dir, timeout=1)
-
-    assert fake_process.killed is True
 
 
 # --- par2 slice helpers ------------------------------------------------------
