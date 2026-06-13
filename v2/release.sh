@@ -283,15 +283,16 @@ else
 fi
 
 ########################################
-# Prepare README/Changelog copies for wheel inclusion
+# Prepare README/Changelog copies and docs for wheel inclusion
 ########################################
 TEMP_README="src/dar_backup/README.md"
 TEMP_CHANGELOG="src/dar_backup/Changelog.md"
-trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"' EXIT
+trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"; rm -f src/dar_backup/doc/*; rmdir src/dar_backup/doc' EXIT
 
 if $DRY_RUN; then
     dryrun "copy README.md and Changelog.md into src/dar_backup/ for wheel inclusion"
     dryrun "refresh v2/README.md from root README.md for PyPI description"
+    dryrun "copy doc/*.md into src/dar_backup/doc/ for wheel inclusion"
 else
     cp ../README.md README.md  ||
         { red "❌ Error: Failed to refresh README.md from root"; exit 1; }
@@ -301,6 +302,15 @@ else
 
     cp Changelog.md "$TEMP_CHANGELOG"  ||
         { red "❌ Error: Failed to copy Changelog.md to $TEMP_CHANGELOG"; exit 1; }
+
+    mkdir -p src/dar_backup/doc
+
+    find doc/ -maxdepth 1 -name "*.md" \
+    ! -name "todo.md" \
+    ! -name "dev.md" \
+    ! -name "dar_manager_w_dst_bug_report.md" \
+    ! -name "NFS server notes.md" \
+    -exec cp {} src/dar_backup/doc/ \;
 fi
 
 

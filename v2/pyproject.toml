@@ -19,6 +19,7 @@ include = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/dar_backup"]
 sources = ["src"]
+artifacts = ["src/dar_backup/doc/*.md", "src/dar_backup/README.md", "src/dar_backup/Changelog.md"]
 
 
 [tool.hatch.version]
