@@ -4,7 +4,7 @@ Tests for PITR edge cases, stability issues, and missing coverage.
 
 Covers:
   - _select_archive_chain: FULL+INCR (no DIFF), multiple FULLs, all-future,
-    same-day with time components
+    same-day with time components, when_dt between DIFF and INCR
   - _parse_archive_info: extra suffixes, non-matching names, time components
   - _parse_file_versions: empty output, malformed lines
   - _restore_target_unsafe_reason: .. traversal, /var/tmp allowed, symlink-like
@@ -14,6 +14,11 @@ Covers:
   - _restore_with_dar: file restore break-vs-continue on missing archive,
     mixed dir+file in single call, darrc passed to dar command
   - restore_at: path normalization with leading /, ./, ..
+  - _missing_chain_elements: all present, some missing, all missing, empty chain
+  - _is_directory_path: existing directory, non-existing path, file instead of dir
+  - _is_directory_in_archive: directory found, file found, not found, dar error
+  - _format_chain_item: with info, without info
+  - _describe_archive: with info, without info
 """
 
 from unittest.mock import MagicMock, patch
@@ -24,6 +29,11 @@ import pytest
 
 from dar_backup.manager import (
     _coerce_timeout,
+    _describe_archive,
+    _format_chain_item,
+    _is_directory_in_archive,
+    _is_directory_path,
+    _missing_chain_elements,
     _normalize_when_dt,
     _parse_archive_info,
     _parse_archive_map,
@@ -1024,3 +1034,262 @@ class TestRestoreAtPathNormalization:
             "data/file.txt",
             "",
         )
+
+
+# ===========================================================================
+# _missing_chain_elements
+# ===========================================================================
+
+
+class TestMissingChainElements:
+    """Tests for _missing_chain_elements edge cases."""
+
+    def test_empty_chain_returns_empty_list(self) -> None:
+        """Empty chain produces no missing elements."""
+        missing = _missing_chain_elements([], {})
+        assert missing == []
+
+    def test_all_archives_present_returns_empty(self, tmp_path) -> None:
+        """All archive slices exist — no missing elements reported."""
+        archive_map = {1: str(tmp_path / "full"), 2: str(tmp_path / "diff"), 3: str(tmp_path / "incr")}
+        for path in archive_map.values():
+            (tmp_path / f"{path}.1.dar").touch()
+
+        missing = _missing_chain_elements([1, 2, 3], archive_map)
+        assert missing == []
+
+    def test_all_archives_missing_from_map(self, tmp_path, monkeypatch) -> None:
+        """All catalog numbers missing from archive map are reported."""
+        archive_map = {1: str(tmp_path / "full")}
+        # Create the .1.dar file for catalog #1 so it doesn't show as filesystem-missing
+        (tmp_path / "full.1.dar").touch()
+        missing = _missing_chain_elements([1, 2, 3], archive_map)
+        assert len(missing) == 2
+        assert "catalog #2 missing from archive map" in missing
+        assert "catalog #3 missing from archive map" in missing
+
+    def test_all_slices_missing_from_filesystem(self, tmp_path) -> None:
+        """All archive slice files missing from filesystem are reported."""
+        archive_map = {1: str(tmp_path / "full"), 2: str(tmp_path / "diff")}
+        missing = _missing_chain_elements([1, 2], archive_map)
+        assert len(missing) == 2
+        assert f"{tmp_path / 'full'}.1.dar" in missing
+        assert f"{tmp_path / 'diff'}.1.dar" in missing
+
+    def test_some_archives_missing(self, tmp_path) -> None:
+        """Only missing archives are reported; present ones are not."""
+        archive_map = {1: str(tmp_path / "full"), 2: str(tmp_path / "diff"), 3: str(tmp_path / "incr")}
+        (tmp_path / "full.1.dar").touch()
+        (tmp_path / "incr.1.dar").touch()
+
+        missing = _missing_chain_elements([1, 2, 3], archive_map)
+        assert len(missing) == 1
+        assert f"{tmp_path / 'diff'}.1.dar" in missing
+
+
+# ===========================================================================
+# _is_directory_path
+# ===========================================================================
+
+
+class TestIsDirectoryPath:
+    """Tests for _is_directory_path."""
+
+    def test_existing_directory_returns_true(self, tmp_path) -> None:
+        """Existing directory path returns True."""
+        test_dir = tmp_path / "existing_dir"
+        test_dir.mkdir()
+        assert _is_directory_path(str(test_dir)) is True
+
+    def test_existing_directory_with_trailing_slash(self, tmp_path) -> None:
+        """Existing directory path with trailing slash returns True."""
+        test_dir = tmp_path / "existing_dir"
+        test_dir.mkdir()
+        assert _is_directory_path(str(test_dir) + "/") is True
+
+    def test_root_directory_returns_true(self) -> None:
+        """Root directory '/' returns True."""
+        assert _is_directory_path("/") is True
+
+    def test_non_existing_path_returns_false(self, tmp_path) -> None:
+        """Non-existing path returns False."""
+        non_existent = tmp_path / "does_not_exist"
+        assert _is_directory_path(str(non_existent)) is False
+
+    def test_file_instead_of_directory_returns_false(self, tmp_path) -> None:
+        """File path (not directory) returns False."""
+        test_file = tmp_path / "file.txt"
+        test_file.touch()
+        assert _is_directory_path(str(test_file)) is False
+
+
+# ===========================================================================
+# _is_directory_in_archive
+# ===========================================================================
+
+
+class TestIsDirectoryInArchive:
+    """Tests for _is_directory_in_archive."""
+
+    def test_dar_output_with_directory_permissions_returns_true(self, mock_runner) -> None:
+        """dar -l output with 'drwxr-xr-x' for path returns True."""
+        dar_output = "drwxr-xr-x user group 4096 2026-01-01 path/to/dir\n-rw-r--r-- user group 123 2026-01-01 path/to/file"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_dar_output_with_file_permissions_returns_false(self, mock_runner) -> None:
+        """dar -l output with '-rw-r--r--' for path returns False."""
+        dar_output = "-rw-r--r-- user group 123 2026-01-01 path/to/file"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/to/file", "/archive/path", mock_runner, 30)
+        assert result is False
+
+    def test_dar_output_with_multiple_entries_finds_directory(self, mock_runner) -> None:
+        """Finds directory in output with multiple entries."""
+        dar_output = (
+            "-rw-r--r-- user group 123 2026-01-01 path/to/file1\n"
+            "drwxr-xr-x user group 4096 2026-01-01 path/to/dir\n"
+            "-rw-r--r-- user group 123 2026-01-01 path/to/file2"
+        )
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_dar_output_without_path_returns_false(self, mock_runner) -> None:
+        """dar -l output without the path returns False."""
+        dar_output = "drwxr-xr-x user group 4096 2026-01-01 path/to/other"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
+        assert result is False
+
+    def test_dar_fails_nonzero_returncode_returns_false(self, mock_runner) -> None:
+        """dar command failure (non-zero return code) returns False."""
+        mock_runner.run.return_value = CommandResult(1, "error", "dar failed", note=None)
+
+        result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
+        assert result is False
+
+    def test_empty_dar_output_returns_false(self, mock_runner) -> None:
+        """Empty dar output returns False."""
+        mock_runner.run.return_value = CommandResult(0, "", "", note=None)
+
+        result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
+        assert result is False
+
+
+# ===========================================================================
+# _format_chain_item
+# ===========================================================================
+
+
+class TestFormatChainItem:
+    """Tests for _format_chain_item."""
+
+    def test_with_archive_info_formats_correctly(self) -> None:
+        """Formats chain item with datetime and archive type."""
+        info_by_no = {1: (datetime.datetime(2026, 1, 15, 10, 30, 0), "FULL")}
+        result = _format_chain_item(1, info_by_no, "ok")
+        assert "#1 FULL@2026-01-15 10:30:00 [ok]" in result
+
+    def test_without_archive_info_uses_unknown(self) -> None:
+        """Formats chain item without info as 'unknown'."""
+        info_by_no = {}
+        result = _format_chain_item(1, info_by_no, "ok")
+        assert "#1 [unknown] [ok]" == result
+
+    def test_missing_status_formats_correctly(self) -> None:
+        """Formats chain item with 'missing' status."""
+        info_by_no = {1: (datetime.datetime(2026, 1, 15), "DIFF")}
+        result = _format_chain_item(1, info_by_no, "missing")
+        assert "[missing]" in result
+
+
+# ===========================================================================
+# _describe_archive
+# ===========================================================================
+
+
+class TestDescribeArchive:
+    """Tests for _describe_archive."""
+
+    def test_with_archive_info_includes_all_fields(self) -> None:
+        """Describes archive with catalog number, type, datetime, and basename."""
+        archive_map = {1: "/backup/path/to/backup-20260115-FULL.1.dar"}
+        info_by_no = {1: (datetime.datetime(2026, 1, 15, 10, 30, 0), "FULL")}
+        result = _describe_archive(1, archive_map, info_by_no)
+        assert "#1" in result
+        assert "FULL" in result
+        assert "2026-01-15 10:30:00" in result
+        assert "backup-20260115-FULL.1.dar" in result
+
+    def test_without_archive_info_excludes_datetime(self) -> None:
+        """Describes archive without info, omitting datetime and type."""
+        archive_map = {1: "/backup/path/to/backup-20260115-FULL.1.dar"}
+        info_by_no = {}
+        result = _describe_archive(1, archive_map, info_by_no)
+        assert "#1" in result
+        assert "backup-20260115-FULL.1.dar" in result
+        assert "FULL@" not in result
+
+    def test_with_missing_archive_path_uses_unknown(self) -> None:
+        """Describes archive with missing path as 'unknown'."""
+        archive_map = {}
+        info_by_no = {1: (datetime.datetime(2026, 1, 15), "FULL")}
+        result = _describe_archive(1, archive_map, info_by_no)
+        assert "#1" in result
+        assert "unknown" in result
+
+    def test_with_both_missing_returns_minimal(self) -> None:
+        """Describes archive with both path and info missing."""
+        archive_map = {}
+        info_by_no = {}
+        result = _describe_archive(999, archive_map, info_by_no)
+        assert "#999" in result
+        assert "unknown" in result
+
+
+# ===========================================================================
+# _select_archive_chain additional edge cases
+# ===========================================================================
+
+
+class TestSelectArchiveChainAdditional:
+    """Additional edge cases for _select_archive_chain."""
+
+    def test_when_dt_between_diff_and_incr_excludes_incr(self) -> None:
+        """when_dt between DIFF and INCR selects FULL+DIFF but NOT INCR."""
+        info = [
+            (1, datetime.datetime(2026, 1, 15, 0, 0, 0), "FULL"),
+            (2, datetime.datetime(2026, 1, 15, 6, 0, 0), "DIFF"),
+            (3, datetime.datetime(2026, 1, 15, 18, 0, 0), "INCR"),
+        ]
+        when_dt = datetime.datetime(2026, 1, 15, 12, 0, 0)  # Between DIFF (06:00) and INCR (18:00)
+        chain = _select_archive_chain(info, when_dt)
+        assert chain == [1, 2], f"Expected [1, 2] (FULL+DIFF only), got {chain}"
+
+    def test_when_dt_exactly_at_diff_includes_diff(self) -> None:
+        """when_dt exactly matching DIFF timestamp includes DIFF in chain."""
+        info = [
+            (1, datetime.datetime(2026, 1, 15, 0, 0, 0), "FULL"),
+            (2, datetime.datetime(2026, 1, 15, 6, 0, 0), "DIFF"),
+            (3, datetime.datetime(2026, 1, 15, 12, 0, 0), "INCR"),
+        ]
+        when_dt = datetime.datetime(2026, 1, 15, 6, 0, 0)  # Exactly at DIFF
+        chain = _select_archive_chain(info, when_dt)
+        assert 2 in chain, "DIFF should be included when when_dt matches exactly"
+
+    def test_when_dt_exactly_at_incr_includes_full_diff_incr(self) -> None:
+        """when_dt exactly matching INCR timestamp includes FULL+DIFF+INCR."""
+        info = [
+            (1, datetime.datetime(2026, 1, 15, 0, 0, 0), "FULL"),
+            (2, datetime.datetime(2026, 1, 15, 6, 0, 0), "DIFF"),
+            (3, datetime.datetime(2026, 1, 15, 12, 0, 0), "INCR"),
+        ]
+        when_dt = datetime.datetime(2026, 1, 15, 12, 0, 0)  # Exactly at INCR
+        chain = _select_archive_chain(info, when_dt)
+        assert chain == [1, 2, 3], f"Expected [1, 2, 3], got {chain}"

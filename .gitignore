@@ -3,6 +3,7 @@ v2/README.md
 v2/run_large_scale_test.sh
 v2/conf/dar-backup.conf
 v2/backup.d/pj-homedir
+v2/.coding-guidelines.md
 v2/dar_backup.egg-info
 v2/dependency_links.txt
 v2/PKG-INFO

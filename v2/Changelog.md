@@ -5,6 +5,14 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.9 - not released
 
+### Added
+
+- **26 new PITR unit tests in `test_pitr_edge_cases.py`** — filled coverage gaps for helper functions:
+  `_missing_chain_elements`, `_is_directory_path`, `_is_directory_in_archive`, `_format_chain_item`,
+  `_describe_archive`, and additional edge cases for `_select_archive_chain` (notably when_dt between DIFF
+  and INCR).  All tests follow real-filesystem conventions with `tmp_path` fixture and proper type
+  hints.
+
 ### Changed
 
 - **`get_backed_up_files()` — removed `_is_mock_object` test fork** (`dar_backup.py`) — the function
