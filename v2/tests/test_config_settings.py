@@ -385,57 +385,27 @@ def test_config_settings_no_files_verification_valid_values_load_cleanly(tmp_pat
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("diff_age", [366, 500])
-def test_config_settings_diff_age_over_365_issues_warning(tmp_path, diff_age, caplog):
-    """
-    DIFF_AGE above 365 is unusual enough to warrant a warning, but the config
-    must still load so the user can proceed with the value they set.
-    """
+def test_config_settings_diff_age_high_loads_cleanly(tmp_path, diff_age):
+    """DIFF_AGE above 365 is valid; the config must load with the supplied value."""
     config_path = write_config(
-        tmp_path / "warn.conf",
+        tmp_path / "cfg.conf",
         tmp_path,
         age_overrides={"DIFF_AGE": str(diff_age)},
     )
-    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
-        cfg = ConfigSettings(str(config_path))
-
+    cfg = ConfigSettings(str(config_path))
     assert cfg.diff_age == diff_age
-    assert any("diff_age" in r.message.lower() for r in caplog.records)
 
 
 @pytest.mark.parametrize("incr_age", [32, 90])
-def test_config_settings_incr_age_over_31_issues_warning(tmp_path, incr_age, caplog):
-    """
-    INCR_AGE above 31 is unusual enough to warrant a warning, but the config
-    must still load so the user can proceed with the value they set.
-    """
+def test_config_settings_incr_age_high_loads_cleanly(tmp_path, incr_age):
+    """INCR_AGE above 31 is valid; the config must load with the supplied value."""
     config_path = write_config(
-        tmp_path / "warn.conf",
+        tmp_path / "cfg.conf",
         tmp_path,
         age_overrides={"INCR_AGE": str(incr_age)},
     )
-    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
-        cfg = ConfigSettings(str(config_path))
-
+    cfg = ConfigSettings(str(config_path))
     assert cfg.incr_age == incr_age
-    assert any("incr_age" in r.message.lower() for r in caplog.records)
-
-
-@pytest.mark.parametrize("diff_age,incr_age", [(365, 31), (1, 1)])
-def test_config_settings_age_at_threshold_no_warning(tmp_path, diff_age, incr_age, caplog):
-    """
-    Values exactly at the thresholds (365, 31) must load cleanly with no warning.
-    """
-    config_path = write_config(
-        tmp_path / "ok.conf",
-        tmp_path,
-        age_overrides={"DIFF_AGE": str(diff_age), "INCR_AGE": str(incr_age)},
-    )
-    with caplog.at_level(logging.WARNING, logger="dar_backup.config_settings"):
-        cfg = ConfigSettings(str(config_path))
-
-    assert cfg.diff_age == diff_age
-    assert cfg.incr_age == incr_age
-    assert not caplog.records
 
 
 # ---------------------------------------------------------------------------

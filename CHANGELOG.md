@@ -3,6 +3,12 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.9 - not released
+
+- PyPI package now includes all doc/*md user docs
+- PyPI package now includes current README.md (!) and Changelog.md
+- warnings about unusual retention times for INCR and DIFF removed - turned out to be a nuisance
+
 ## v2-1.1.8 - 2026-06-11
 
 - Any UTF-8 locale now accepted

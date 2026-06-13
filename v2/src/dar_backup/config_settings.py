@@ -153,13 +153,9 @@ class ConfigSettings:
 
             if self.diff_age < 1:
                 raise ConfigSettingsError(f"DIFF_AGE must be >= 1, got: {self.diff_age}")
-            if self.diff_age > 365:
-                logger.warning("DIFF_AGE is %d days — this is unusually high (> 365)", self.diff_age)
 
             if self.incr_age < 1:
                 raise ConfigSettingsError(f"INCR_AGE must be >= 1, got: {self.incr_age}")
-            if self.incr_age > 31:
-                logger.warning("INCR_AGE is %d days — this is unusually high (> 31)", self.incr_age)
             if not 1 <= self.error_correction_percent <= 90:
                 raise ConfigSettingsError(
                     f"ERROR_CORRECTION_PERCENT must be between 1 and 90, got: {self.error_correction_percent}"
