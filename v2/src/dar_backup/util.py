@@ -1608,9 +1608,8 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
             )
             conn.commit()
     except Exception as exc:
-        log = get_logger()
-        if log:
-            log.warning("Failed to write metrics row: %s", exc)
+        log = get_logger() or logging.getLogger(__name__)
+        log.warning("Failed to write metrics row: %s", exc)
 
 
 def write_restore_test_samples(

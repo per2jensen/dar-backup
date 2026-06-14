@@ -275,7 +275,6 @@ Description=dar-backup DIFF timer
 
 [Timer]
 OnCalendar=*-*-01 20:03:00
-OnBootSec=5min
 RandomizedDelaySec=5min
 Persistent=true
 

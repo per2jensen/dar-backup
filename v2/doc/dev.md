@@ -304,11 +304,11 @@ ORDER BY s.tested_at DESC;
 ### Display backup run summary
 
 ```bash
-sqlite3 /path/to/metrics.db ".mode box" ".headers on" "
+sqlite3 /mnt/dar/dar-backup-metrics.db ".mode box" ".headers on" "
 SELECT archive_name, backup_type, status, dar_exit_code,
-       started_at, finished_at
+       run_started_at as 'started (UTC)', run_finished_at as 'finished (UTC)'
 FROM   backup_runs
-ORDER BY started_at DESC
+ORDER BY run_started_at DESC
 LIMIT  20;
 "
 ```

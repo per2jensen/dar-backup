@@ -12,6 +12,7 @@ See section 15 and section 16 in the supplied "LICENSE" file
 
 This script can be used to control `dar` to backup parts of or the whole system.
 """
+import fcntl
 import argcomplete
 import argparse
 import filecmp
@@ -40,7 +41,7 @@ from time import time
 from rich.console import Console
 from rich.text import Text
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple
+from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -149,7 +150,7 @@ def generic_backup(
     catalog_updated: bool = False
     dar_stats: dict = {}
 
-    logger.info(f"===> Starting {type} backup for {backup_definition}")
+    logger.info(f"Starting {type} backup for {backup_definition}")
     try:
         try:
             process = runner.run(command, timeout=config_settings.command_timeout_secs)
@@ -1141,7 +1142,7 @@ def _record_prereq_failure(
         metrics: dict = {
             "backup_definition":             definition,
             "backup_type":                   backup_type,
-            "archive_name":                  None,
+            "archive_name":                  "no archive produced",
             "dar_backup_version":            about.__version__,
             "dar_version":                   getattr(args, "dar_version", None),
             "run_started_at":                now.isoformat(),
@@ -1260,8 +1261,14 @@ def perform_backup(
         success = True
         _current_phase = "DAR"
 
-        # --- Metrics initialisation for this definition ---
+        # --- Per-definition banner ---
         def_start = datetime.now(UTC)
+        _banner_text = f"  dar-backup {backup_type}  {backup_definition}  {def_start.astimezone().strftime('%Y-%m-%d %H:%M:%S')}  "
+        _banner_bar  = "#" * (len(_banner_text) + 4)
+        logger.info("")
+        logger.info(_banner_bar)
+        logger.info(f"##{_banner_text}##")
+        logger.info(_banner_bar)
         try:
             _free_bytes = shutil.disk_usage(config_settings.backup_dir).free
         except Exception:
@@ -1309,6 +1316,7 @@ def perform_backup(
             "postreq_status":                None,
         }
 
+        backup_file: Optional[str] = None
         try:
             date = datetime.now().strftime('%Y-%m-%d')
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
@@ -1318,6 +1326,7 @@ def perform_backup(
                 msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
                 logger.warning(msg)
                 results.append((msg, 2))
+                metrics["error_summary"] = msg
                 continue
 
             latest_base_backup = None
@@ -1463,12 +1472,16 @@ def perform_backup(
             if backup_definition.lower() == "example":
                 logger.debug("Skipping stats/metrics collection for example backup definition.")
             else:
-                slices_written = bool(glob.glob(f"{backup_file}.*.dar"))
+                _existing_slices = glob.glob(f"{backup_file}.*.dar") if backup_file is not None else []
+                slices_written = bool(_existing_slices)
 
                 if not success or has_error or not slices_written:
                     status = "FAILURE"
                     if not slices_written and not has_error:
-                        msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
+                        if backup_file is None:
+                            msg = "Archive path not constructed — exception raised before backup path was set up"
+                        else:
+                            msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
                         logger.error(msg)
                         results.append((msg, 1))
                         metrics["error_summary"] = msg
@@ -2113,6 +2126,8 @@ def main():
 
     filtered_darrc_path = None
     is_backup_run = args.full_backup or args.differential_backup or args.incremental_backup
+    _lock_fh:   Optional[IO[str]] = None
+    _lock_path: Optional[str]     = None
 
     try:
         if not args.darrc:
@@ -2219,6 +2234,27 @@ def main():
                 exit(1)
 
 
+        # --- Instance lock: one backup run per config at a time ---
+        if is_backup_run:
+            config_abs  = os.path.realpath(args.config_file)
+            lock_name   = config_abs.replace('/', '_').replace(' ', '_').lstrip('_') + '.lock'
+            lock_dir    = '/run/lock' if os.path.isdir('/run/lock') else tempfile.gettempdir()
+            _lock_path  = os.path.join(lock_dir, lock_name)
+            _lock_fh    = open(_lock_path, 'w')
+            try:
+                fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                logger.debug("Lock acquired: %s (pid %d)", _lock_path, os.getpid())
+            except BlockingIOError:
+                _lock_fh.close()
+                _lock_fh = None
+                _bt  = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
+                _err = RuntimeError(
+                    f"Another dar-backup instance is already running (lock: {_lock_path})"
+                )
+                logger.error(str(_err))
+                _record_prereq_failure(args, config_settings, [], _err, _bt, run_id=run_id)
+                exit(1)
+
         prereq_report: dict = {"status": "none", "failures": []}
         prereq_failed: Optional[RuntimeError] = None
         try:
@@ -2315,6 +2351,13 @@ def main():
         if is_backup_run:
             end_time=int(time())
             logger.info(f"END TIME: {end_time}")
+        if _lock_fh is not None:
+            try:
+                fcntl.flock(_lock_fh, fcntl.LOCK_UN)
+                _lock_fh.close()
+                logger.debug("Lock released: %s", _lock_path)
+            except Exception as _lock_exc:
+                logger.warning("Failed to release instance lock %s: %s", _lock_path, _lock_exc)
         # Clean up
         if filtered_darrc_path and os.path.exists(filtered_darrc_path):
             os.remove(filtered_darrc_path)

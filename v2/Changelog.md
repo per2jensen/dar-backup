@@ -7,6 +7,16 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
+- **Instance lock prevents concurrent backup runs** (`dar_backup.py`) — a per-config `fcntl.flock`
+  exclusive lock is acquired at startup for all backup operations (`--full`, `--differential`,
+  `--incremental`) and released on exit.  The lock path is derived from the config file's absolute
+  path with `/` and spaces replaced by `_`, placed under `/run/lock/` (tmpfs on systemd systems,
+  auto-cleared on reboot) or `tempfile.gettempdir()` as fallback.  A second invocation that finds
+  the lock held exits immediately with rc=1; the error is logged at ERROR level and recorded in the
+  metrics DB as a `PREREQ / FAILURE` row so the dashboard shows the blocked run.  The lock is
+  kernel-held and released automatically on process death (power cut, SIGKILL, crash) — no stale
+  lock files.  DEBUG messages are written when the lock is acquired and released.
+
 - **26 new PITR unit tests in `test_pitr_edge_cases.py`** — filled coverage gaps for helper functions:
   `_missing_chain_elements`, `_is_directory_path`, `_is_directory_in_archive`, `_format_chain_item`,
   `_describe_archive`, and additional edge cases for `_select_archive_chain` (notably when_dt between DIFF
@@ -22,6 +32,31 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
   fork entirely.  Production and test code now execute the same path.
 
 ### Fixed
+
+- **`write_metrics_row()` silently swallowed exceptions when logger was `None`** (`util.py`) — the
+  exception handler called `get_logger()` and only logged if it returned a non-`None` value;
+  because `util.logger` is `None` until `setup_logging()` is called, any SQLite failure during that
+  window (wrong path, locked DB, disk full) was completely silent.  Fixed by falling back to
+  `logging.getLogger(__name__)` so a warning is always emitted.
+
+- **`backup_file` undefined in `finally` block could silently drop a metrics row** (`dar_backup.py`)
+  — `backup_file` was assigned inside the `try` block; if an exception occurred before that
+  assignment the `finally` block raised `NameError` on the `glob.glob(f"{backup_file}.*.dar")`
+  call, preventing `write_metrics_row()` from being reached.  Fixed by initialising
+  `backup_file = None` before the `try`, guarding the glob against `None`, and emitting a distinct
+  error message (`"Archive path not constructed — exception raised before backup path was set up"`)
+  instead of the misleading "No archive slices found" message.
+
+- **PREREQ/FAILURE rows now show `"no archive produced"` in `archive_name`** (`dar_backup.py`)
+  — lock-blocked and prereq-failed runs previously wrote `NULL` to `archive_name`, which displayed
+  as an empty cell in the dashboard and could look like a data error.  The field is now set to the
+  literal string `"no archive produced"` so the row is self-explanatory.
+
+- **"Archive already exists" skip left `error_summary` NULL in the metrics row** (`dar_backup.py`)
+  — when a backup was skipped because today's archive already existed, the WARNING metrics row
+  written by the `finally` block had `error_summary = NULL`; the reason was only derived
+  indirectly via `first_error` logic that could be confused by other results.  `error_summary` is
+  now set explicitly to the skip message before `continue` so the field is always populated.
 
 - **Startup banner printed for non-backup operations** (`dar_backup.py`) — the `##  dar-backup INCR  ##`
   banner and `START TIME`/`END TIME` markers were emitted unconditionally, so commands such as

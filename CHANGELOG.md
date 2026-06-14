@@ -8,6 +8,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 - PyPI package now includes all doc/*md user docs
 - PyPI package now includes current README.md (!) and Changelog.md
 - warnings about unusual retention times for INCR and DIFF removed - turned out to be a nuisance
+- kernel lock(s) added, so multiple instances using the same config file cannot run simultaneously
 
 ## v2-1.1.8 - 2026-06-11
 
