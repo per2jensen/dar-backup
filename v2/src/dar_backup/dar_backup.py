@@ -30,7 +30,6 @@ import configparser
 import uuid
 import xml.etree.ElementTree as ET
 import tempfile
-import threading
 
 from datetime import UTC, datetime
 from pathlib import Path
