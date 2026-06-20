@@ -5,6 +5,33 @@ This file documents runs of `[v2/scripts/large_scale_test.sh](https://github.com
 
 The summary shows size of FULL and DIFF + max memory consumption of various programs.
 
+## 2026-06-20
+
+Git commit: 4c03181
+
+══════════════════════════════════════════
+  Phase 3a — Point-In-Time Restore Validation (latest state)
+══════════════════════════════════════════
+  INFO  Cleaning restore target directory to satisfy manager safety checks...
+  INFO  Invoking manager to process PITR extraction for diff-primer data...
+  PASS  Restore sequence completed execution via manager
+  PASS  link_original.txt correctly absent from latest-state restore
+  PASS  Hard Link Inodes match (1016381)
+
+══════════════════════════════════════════
+  Summary
+══════════════════════════════════════════
+dar-backup test pass: 2026-06-20_15-40-11
+FULL elapsed: 3914s (~116.23 GB)
+DIFF elapsed: 6s (~0.29 GB)
+Peak Engine Memory Consumption:
+  ├── dar-backup : 33.1 MB
+  ├── dar backend: 26.5 MB
+  ├── par2 engine: 146.9 MB
+  └── db manager : 37.2 MB
+Failures:      0
+
+
 ## 2026-06-11
 
 Git commit: 7c4e451
