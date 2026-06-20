@@ -3,7 +3,7 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
-## v2-1.1.9 - not released
+## v2-1.1.9 - 2026-06-20
 
 - PyPI package now includes all doc/*md user docs
 - PyPI package now includes current README.md (!) and Changelog.md
