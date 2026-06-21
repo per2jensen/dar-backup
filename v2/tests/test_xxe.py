@@ -86,3 +86,60 @@ def test_find_files_with_paths_is_safe_against_xxe():
     """
     with pytest.raises(ET.ParseError):
         find_files_with_paths(_XXE_PAYLOAD)
+
+
+# ---------------------------------------------------------------------------
+# DoctypeStripper context-manager / file-handle tests
+# ---------------------------------------------------------------------------
+
+def test_doctype_stripper_closes_file_on_normal_exit(tmp_path):
+    """The underlying file handle must be closed after the with block exits normally."""
+    xml_path = tmp_path / "test.xml"
+    xml_path.write_text("<root/>", encoding="utf-8")
+
+    with DoctypeStripper(str(xml_path)) as s:
+        assert not s.f.closed, "file should be open inside the with block"
+    assert s.f.closed, "file must be closed after the with block"
+
+
+def test_doctype_stripper_closes_file_on_exception(tmp_path):
+    """The underlying file handle must be closed even when an exception escapes the with block."""
+    xml_path = tmp_path / "test.xml"
+    xml_path.write_text("<root/>", encoding="utf-8")
+
+    try:
+        with DoctypeStripper(str(xml_path)) as s:
+            raise RuntimeError("simulated mid-parse error")
+    except RuntimeError:
+        pass
+
+    assert s.f.closed, "file must be closed after an exception exits the with block"
+
+
+def test_iter_files_with_paths_from_xml_closes_handle_on_parse_error(tmp_path):
+    """When ET.iterparse raises ParseError, the DoctypeStripper file handle must be closed.
+
+    This guards against the pre-fix behaviour where the handle was left open for
+    the GC to collect, which could exhaust OS file-descriptor limits over many runs.
+    """
+    xml_path = tmp_path / "bad.xml"
+    xml_path.write_text(_XXE_PAYLOAD, encoding="utf-8")
+
+    captured: list[DoctypeStripper] = []
+    original_enter = DoctypeStripper.__enter__
+
+    def capturing_enter(self: DoctypeStripper) -> DoctypeStripper:
+        captured.append(self)
+        return original_enter(self)
+
+    DoctypeStripper.__enter__ = capturing_enter  # type: ignore[method-assign]
+    try:
+        with pytest.raises(ET.ParseError):
+            list(iter_files_with_paths_from_xml(str(xml_path)))
+    finally:
+        DoctypeStripper.__enter__ = original_enter  # type: ignore[method-assign]
+
+    assert captured, "DoctypeStripper must have been instantiated"
+    assert captured[0].f.closed, (
+        "DoctypeStripper file handle must be closed after ParseError during iterparse"
+    )

@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import configparser
+import threading
 from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
@@ -1107,3 +1108,77 @@ def test_archive_name_from_filename_strips_extension():
     assert an.definition == "media"
     assert an.archive_type == "DIFF"
     assert an.date == "2026-01-15"
+
+
+def _make_prereq_settings(script: str, timeout_secs: int = 30) -> SimpleNamespace:
+    """Build a minimal config_settings stub for requirements() with one PREREQ script."""
+    config = configparser.ConfigParser()
+    config["PREREQ"] = {"PREREQ_01": script}
+    return SimpleNamespace(config=config, command_timeout_secs=timeout_secs)
+
+
+def test_requirements_background_child_does_not_hang(logger):
+    """PREREQ script that spawns a background child must not block requirements().
+
+    Before the fix (no start_new_session / no process-group kill), the background
+    child inherited the stdout/stderr pipe FDs from the shell.  After the shell
+    exited, the child kept those FDs open, so stdout_thread.join() blocked until
+    the child eventually finished — potentially minutes later.
+
+    With the fix, the entire process group is killed after the shell exits, so
+    the pipes are closed and requirements() returns quickly.
+    """
+    settings = _make_prereq_settings("sleep 100 &")
+
+    result: list = []
+    exc: list = []
+
+    def run() -> None:
+        try:
+            util.requirements("PREREQ", settings)
+            result.append("ok")
+        except Exception as e:
+            exc.append(e)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=10)
+
+    assert not t.is_alive(), (
+        "requirements() is still running after 10 s — background child held the pipe open"
+    )
+    assert not exc, f"requirements() raised unexpectedly: {exc[0]}"
+    assert result == ["ok"]
+
+
+def test_requirements_timeout_raises_without_hanging(logger):
+    """A PREREQ that exceeds its timeout must raise RuntimeError promptly.
+
+    Before the fix, process.kill() only killed the shell; the child process
+    (sleep 100) kept the pipe open, so stdout_thread.join() blocked long after
+    the timeout fired.  With the fix, the process group is killed and the join
+    completes quickly.
+    """
+    # shell=True makes /bin/sh spawn sleep 100 as a child; both shell and child
+    # must be killed for the reader threads to see EOF.
+    settings = _make_prereq_settings("sleep 100", timeout_secs=2)
+
+    raised: list = []
+
+    def run() -> None:
+        try:
+            util.requirements("PREREQ", settings)
+        except RuntimeError as e:
+            raised.append(e)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    # Allow 10 s: the configured timeout is 2 s, so the thread should finish
+    # well within that window if the fix is working.
+    t.join(timeout=10)
+
+    assert not t.is_alive(), (
+        "requirements() is still running after 10 s — timeout handler hung on join()"
+    )
+    assert raised, "requirements() should have raised RuntimeError on timeout"
+    assert "timed out" in str(raised[0]).lower(), f"Unexpected error message: {raised[0]}"

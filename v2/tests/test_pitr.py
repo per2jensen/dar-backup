@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from unittest.mock import MagicMock, patch
+import fcntl
 import os
 import sys
 import datetime
@@ -44,13 +45,14 @@ def mock_logger():
 
 # --- Tests for restore_at logic ---
 
-def test_restore_at_basic_success(mock_config, mock_logger):
+def test_restore_at_basic_success(tmp_path, mock_config, mock_logger):
     """Test a standard restore operation with a valid date and target."""
 
     backup_def = "test_backup"
     paths = ["home/user/file.txt"]
     when = "2023-10-27 14:30"
-    target = "/tmp/restore_target"
+    target = str(tmp_path / "restore_target")
+    os.makedirs(target)
     parsed_date = datetime.datetime(2023, 10, 27, 14, 30, 0)
 
     def _exists(path):
@@ -213,12 +215,86 @@ def test_restore_at_empty_target_allows_restore(tmp_path, mock_config, mock_logg
         mock_restore.assert_called_once()
 
 
-def test_restore_at_multiple_paths_all_restored(mock_config, mock_logger):
+def test_restore_at_concurrent_restore_to_same_target_is_blocked(tmp_path, mock_config, mock_logger):
+    """A second restore_at() call targeting a locked directory must fail with an error.
+
+    If two concurrent PITR restores both pass the pre-existence check and then run dar
+    simultaneously against the same target, dar's -wa flag causes silently interleaved
+    writes that corrupt the output with no error logged.  The flock on the target directory
+    prevents this: the second caller receives BlockingIOError and returns 1 immediately.
+
+    The test simulates a concurrent holder by acquiring the lock in the test process before
+    calling restore_at() — no threads required.
+    """
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    target.mkdir()
+
+    # Hold an exclusive lock on the target, simulating a concurrent restore already running.
+    holder_fd = os.open(str(target), os.O_RDONLY)
+    fcntl.flock(holder_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+             patch("dateparser.parse", return_value=datetime.datetime(2025, 1, 1)), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._restore_with_dar") as mock_restore:
+
+            ret = restore_at("def", [], "2025-01-01", str(target), mock_config)
+    finally:
+        fcntl.flock(holder_fd, fcntl.LOCK_UN)
+        os.close(holder_fd)
+
+    assert ret == 1
+    mock_restore.assert_not_called()
+    error_text = " ".join(str(c) for c in mock_logger.error.call_args_list)
+    assert "concurrent" in error_text.lower() or "locked" in error_text.lower(), (
+        f"Expected error mentioning concurrent lock; got: {error_text}"
+    )
+
+
+def test_restore_at_lock_released_after_successful_restore(tmp_path, mock_config, mock_logger):
+    """The flock on the target directory must be released after restore_at() returns.
+
+    After a successful restore, another caller must be able to acquire the lock —
+    confirming the finally block correctly released it.
+    """
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    target.mkdir()
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2025, 1, 1)), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0):
+
+        ret = restore_at("def", [], "2025-01-01", str(target), mock_config)
+
+    assert ret == 0
+
+    # The lock must have been released — acquiring it now must succeed.
+    check_fd = os.open(str(target), os.O_RDONLY)
+    try:
+        fcntl.flock(check_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(check_fd, fcntl.LOCK_UN)
+    except BlockingIOError:
+        pytest.fail("Lock was not released after restore_at() returned — finally block is broken")
+    finally:
+        os.close(check_fd)
+
+
+def test_restore_at_multiple_paths_all_restored(tmp_path, mock_config, mock_logger):
     """Multiple paths passed to restore_at are all forwarded to _restore_with_dar."""
 
     paths = ["home/pj/data", "data/billeder", "data/film"]
     when = "2025-12-31 23:59:59"
-    target = "/tmp/restore_target"
+    target = str(tmp_path / "restore_target")
+    os.makedirs(target)
     parsed_date = datetime.datetime(2025, 12, 31, 23, 59, 59)
 
     def _exists(path):
@@ -400,12 +476,15 @@ def test_cli_pitr_report_first_requires_restore_path():
             main()
 
         assert excinfo.value.code == 1
-def test_restore_at_uses_restore_with_dar(mock_config, mock_logger):
+def test_restore_at_uses_restore_with_dar(tmp_path, mock_config, mock_logger):
     """Test that PITR restore uses _restore_with_dar (archive-date semantics)."""
+    target = str(tmp_path / "restore")
+    os.makedirs(target)
+
     def _exists(path):
         if path == "/tmp/db_dir/def.db":
             return True
-        if path == "/tmp/restore":
+        if path == target:
             return True
         return False
 
@@ -415,20 +494,22 @@ def test_restore_at_uses_restore_with_dar(mock_config, mock_logger):
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
-        ret = restore_at("def", ["tmp/file.txt"], "now", "/tmp/restore", mock_config, verbose=True)
+        ret = restore_at("def", ["tmp/file.txt"], "now", target, mock_config, verbose=True)
 
         assert ret == 0
         mock_restore.assert_called_once()
 
 
-def test_restore_at_default_when_uses_now(mock_config, mock_logger):
+def test_restore_at_default_when_uses_now(tmp_path, mock_config, mock_logger):
     """Test that restore_at uses current time when --when is not provided."""
     fixed_now = datetime.datetime(2026, 1, 31, 12, 0, 0)
+    target = str(tmp_path / "restore")
+    os.makedirs(target)
 
     def _exists(path):
         if path == "/tmp/db_dir/def.db":
             return True
-        if path == "/tmp/restore":
+        if path == target:
             return True
         return False
 
@@ -440,10 +521,10 @@ def test_restore_at_default_when_uses_now(mock_config, mock_logger):
 
         mock_datetime.now.return_value = fixed_now
 
-        ret = restore_at("def", ["tmp/file.txt"], None, "/tmp/restore", mock_config)
+        ret = restore_at("def", ["tmp/file.txt"], None, target, mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, "/tmp/restore", mock_config, ignore_ownership=True, no_deleted=False)
+        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, target, mock_config, ignore_ownership=True, no_deleted=False)
 
 
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):

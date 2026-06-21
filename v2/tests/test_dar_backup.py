@@ -1319,6 +1319,82 @@ def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):
             db.generate_par2_files(backup_file, cfg, args)
 
 
+def test_generate_par2_files_keeps_partial_par2_and_logs_coverage_on_mid_run_failure(tmp_path):
+    """If par2 succeeds for slice 1 but fails for slice 2, the par2 files for
+    slice 1 must be KEPT on disk — partial coverage is better than none.
+    Each slice's par2 set is self-contained: slice 1's par2 can repair slice 1
+    regardless of whether slice 2 has par2.  A warning must be logged stating
+    how many slices were covered so operators know what recovery options exist.
+    """
+    (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
+    (tmp_path / "example_FULL_2025-01-01.2.dar").write_text("")
+
+    # Pre-create the par2 file that par2 would have produced for slice 1.
+    par2_slice1 = tmp_path / "example_FULL_2025-01-01.1.dar.par2"
+    par2_slice1.write_text("fake par2 index")
+
+    backup_file = "example_FULL_2025-01-01"
+    cfg = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        error_correction_percent=10,
+        command_timeout_secs=5,
+        logfile_location=str(tmp_path / "dar-backup.log"),
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+
+    call_count = 0
+
+    def run_side_effect(cmd, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return SimpleNamespace(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="par2 error", stdout_tail="", stderr_tail="")
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()) as mock_logger:
+        mock_runner.run.side_effect = run_side_effect
+        with pytest.raises(subprocess.CalledProcessError):
+            db.generate_par2_files(backup_file, cfg, args)
+
+    assert par2_slice1.exists(), (
+        "generate_par2_files() must NOT remove par2 files for completed slices — "
+        "partial coverage is better than no coverage"
+    )
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("1/2" in c or "partial" in c.lower() for c in warning_calls), (
+        f"Expected a warning stating how many slices were covered; got: {warning_calls}"
+    )
+
+
+def test_generate_par2_files_no_warning_when_first_slice_fails_with_nothing_completed(tmp_path):
+    """When par2 fails on the very first slice (completed_slices == 0), no
+    partial-coverage warning must be logged and the CalledProcessError must propagate.
+    """
+    (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
+    backup_file = "example_FULL_2025-01-01"
+    cfg = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        error_correction_percent=5,
+        command_timeout_secs=5,
+        logfile_location=str(tmp_path / "dar-backup.log"),
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()) as mock_logger:
+        mock_runner.run.return_value = SimpleNamespace(
+            returncode=1, stdout="", stderr="par2 error", stdout_tail="", stderr_tail=""
+        )
+        with pytest.raises(subprocess.CalledProcessError):
+            db.generate_par2_files(backup_file, cfg, args)
+
+    warning_texts = " ".join(str(c) for c in mock_logger.warning.call_args_list)
+    assert "partial" not in warning_texts.lower(), (
+        "No partial-coverage warning should be emitted when zero slices completed"
+    )
+
+
 # --- print_markdown ----------------------------------------------------------
 
 def test_print_markdown_from_string_pretty_false(capsys):
@@ -1753,3 +1829,183 @@ def test_restore_backup_overwriting_policy_removed(tmp_path):
     assert "-/ Oo" not in call_args and "-/Oo" not in " ".join(call_args), (
         f"-/ Oo must not appear in the dar restore command. Command: {call_args}"
     )
+
+
+def test_perform_backup_fails_when_dar_slice_missing_after_backup(env):
+    """A .dar slice that disappears between _list_dar_slices() and getsize() means
+    the archive is incomplete.  perform_backup() must record FAILURE and log a clear
+    error — the blame must not fall on the dar phase (which already exited with 0).
+
+    Monkeypatching os.path.getsize is acceptable here: a slice disappearing between
+    two consecutive syscalls is an OS-level TOCTOU that cannot be reproduced reliably
+    without root access or a specially constructed filesystem.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    def getsize_raises_for_dar(path):
+        if path.endswith(".dar"):
+            raise OSError("slice vanished between list and stat (simulated TOCTOU)")
+        return 1024
+
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
+         patch("dar_backup.dar_backup.os.path.getsize", side_effect=getsize_raises_for_dar), \
+         patch("dar_backup.dar_backup.glob.glob", return_value=[]), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL", [])
+
+    assert any(code == 1 for _, code in results), (
+        "perform_backup() must return an error result when a dar slice is missing"
+    )
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("incomplete" in c.lower() or "missing" in c.lower() for c in error_calls), (
+        f"Expected an error log naming the incomplete archive; got: {error_calls}"
+    )
+
+
+def test_perform_backup_succeeds_when_par2_file_disappears_after_generation(env):
+    """If a .par2 file disappears between glob.glob() and getsize(), the backup
+    data (.dar slices) and the restore test are still intact.  perform_backup()
+    must complete as SUCCESS with par2_size_bytes NULL — not mark the whole run FAILED.
+
+    Monkeypatching os.path.getsize is acceptable here: a par2 file disappearing
+    between a glob and a stat call is an OS-level TOCTOU that cannot be reproduced
+    reliably without root access or a specially constructed filesystem.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    captured_metrics: list = []
+
+    def capture_and_pass(metrics, _config):
+        captured_metrics.append(dict(metrics))
+
+    def getsize_raises_for_par2(path):
+        if path.endswith(".par2"):
+            raise OSError("par2 file vanished (simulated TOCTOU)")
+        return 1024
+
+    def glob_side_effect(pattern):
+        if "*.par2" in pattern:
+            return ["test_FULL_2026-05-05.1.par2"]
+        return ["test_FULL_2026-05-05.1.dar"]  # for the _existing_slices check in finally
+
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
+         patch("dar_backup.dar_backup.os.path.getsize", side_effect=getsize_raises_for_par2), \
+         patch("dar_backup.dar_backup.glob.glob", side_effect=glob_side_effect), \
+         patch("dar_backup.dar_backup.write_metrics_row", side_effect=capture_and_pass), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL", [])
+
+    assert all(code == 0 for _, code in results), (
+        "perform_backup() must succeed when only the par2 size measurement fails; "
+        f"got results: {results}"
+    )
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("par2" in c.lower() and "excluded" in c.lower() for c in warning_calls), (
+        f"Expected a warning that the par2 file was excluded from size metric; got: {warning_calls}"
+    )
+    if captured_metrics:
+        assert captured_metrics[0].get("par2_size_bytes") is None, (
+            "par2_size_bytes must be NULL when all par2 getsize calls fail"
+        )
+
+
+def test_perform_backup_par2_size_partial_when_one_file_missing(env):
+    """When some par2 files can be measured and one cannot, the partial sum is
+    recorded rather than NULL — 9 out of 10 par2 files still provides real value.
+
+    Monkeypatching os.path.getsize is acceptable here: a file disappearing between
+    a glob and a stat call is an OS-level TOCTOU that cannot be reproduced reliably
+    without root access or a specially constructed filesystem.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    captured_metrics: list = []
+
+    def capture_and_pass(metrics, _config):
+        captured_metrics.append(dict(metrics))
+
+    par2_present = "test_FULL_2026-05-05.1.par2"
+    par2_missing  = "test_FULL_2026-05-05.2.par2"
+
+    def getsize_one_par2_missing(path):
+        if path.endswith(par2_missing):
+            raise OSError("file vanished (simulated TOCTOU)")
+        if path.endswith(".par2"):
+            return 2048
+        return 1024  # dar slices
+
+    def glob_side_effect(pattern):
+        if "*.par2" in pattern:
+            return [par2_present, par2_missing]
+        return ["test_FULL_2026-05-05.1.dar"]
+
+    with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
+         patch("dar_backup.dar_backup.generate_par2_files"), \
+         patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
+         patch("dar_backup.dar_backup.os.path.getsize", side_effect=getsize_one_par2_missing), \
+         patch("dar_backup.dar_backup.glob.glob", side_effect=glob_side_effect), \
+         patch("dar_backup.dar_backup.write_metrics_row", side_effect=capture_and_pass), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL", [])
+
+    assert all(code == 0 for _, code in results), (
+        "perform_backup() must succeed when only one par2 file is missing; "
+        f"got results: {results}"
+    )
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any(par2_missing in c and "excluded" in c.lower() for c in warning_calls), (
+        f"Expected a warning naming the specific missing par2 file; got: {warning_calls}"
+    )
+    if captured_metrics:
+        assert captured_metrics[0].get("par2_size_bytes") == 2048, (
+            "par2_size_bytes must reflect the partial sum (2048) from the one measurable file"
+        )

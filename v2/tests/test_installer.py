@@ -232,6 +232,42 @@ def test_uninstall_autocompletion_no_marker(monkeypatch, tmp_path, capsys):
     assert rc.read_text(encoding="utf-8") == "# nothing to see\n"
 
 
+def test_install_autocompletion_closes_file_handle_after_write(monkeypatch, tmp_path):
+    """install_autocompletion() must close the RC file handle after appending.
+
+    CPython closes unclosed handles via reference counting, but this is not
+    guaranteed in other implementations.  This test instruments the real file
+    handle's close() method to verify it is called explicitly (i.e. by the
+    with statement, not eventually by the GC).
+    """
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    rc = tmp_path / ".bashrc"
+    rc.write_text("# initial\n", encoding="utf-8")
+
+    closed_handles: list[bool] = []
+    original_open = Path.open
+
+    def tracking_open(self: Path, mode: str = "r", **kwargs):
+        fh = original_open(self, mode, **kwargs)
+        if "a" in mode:
+            original_close = fh.close
+            def close_tracking() -> None:
+                closed_handles.append(True)
+                original_close()
+            fh.close = close_tracking
+        return fh
+
+    monkeypatch.setattr(Path, "open", tracking_open)
+    installer.install_autocompletion()
+
+    assert closed_handles, (
+        "install_autocompletion() must explicitly close the RC file handle after appending; "
+        "relying on GC is not portable across Python implementations"
+    )
+
+
 def test_install_autocompletion_rc_is_dir(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("SHELL", "/bin/bash")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)

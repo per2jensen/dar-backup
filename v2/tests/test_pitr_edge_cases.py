@@ -560,6 +560,32 @@ class TestRestoreTargetUnsafeReason:
         """/var/tmp/restore is genuinely under /var/tmp and must remain allowed."""
         assert _restore_target_unsafe_reason("/var/tmp/restore") is None
 
+    def test_symlink_into_protected_dir_is_blocked(self, tmp_path) -> None:
+        """A symlink under a safe prefix that resolves to a protected dir must be blocked.
+
+        With the old abspath() implementation the symlink path itself (e.g.
+        /tmp/.../link) appeared to be under /tmp and was allowed.  realpath()
+        follows the symlink to its canonical target (/etc) so the protected-
+        prefix check fires correctly.
+        """
+        link = tmp_path / "link_to_etc"
+        link.symlink_to("/etc")
+        result = _restore_target_unsafe_reason(str(link))
+        assert result is not None, (
+            "A symlink into /etc must be blocked; abspath() would have allowed it"
+        )
+        assert "protected" in result
+
+    def test_symlink_to_safe_dir_is_allowed(self, tmp_path) -> None:
+        """A symlink that resolves to a genuinely safe directory must remain allowed."""
+        safe_target = tmp_path / "restore_target"
+        safe_target.mkdir()
+        link = tmp_path / "link_to_safe"
+        link.symlink_to(safe_target)
+        # tmp_path is under /tmp — realpath() resolves the link to the real
+        # path under /tmp, which is in the allow-list.
+        assert _restore_target_unsafe_reason(str(link)) is None
+
 
 # ===========================================================================
 # _normalize_when_dt / _parse_when
@@ -955,15 +981,17 @@ class TestRestoreAtPathNormalization:
     """Tests for restore_at handling of unusual path formats."""
 
     def test_leading_slash_stripped_for_exists_check(
-        self, mock_config, mock_logger
+        self, tmp_path, mock_config, mock_logger
     ) -> None:
         """Paths with leading / are normalized (lstrip) before checking target overlap."""
         db_dir = "/tmp/db_dir"
+        target = str(tmp_path / "restore")
+        os.makedirs(target)
 
         def _exists(path):
             if path == os.path.join(db_dir, "def.db"):
                 return True
-            if path == "/tmp/restore":
+            if path == target:
                 return True
             # The normalized path "tmp/file.txt" under target should NOT exist
             return False
@@ -974,21 +1002,23 @@ class TestRestoreAtPathNormalization:
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
-            ret = restore_at("def", ["/tmp/file.txt"], "now", "/tmp/restore", mock_config)
+            ret = restore_at("def", ["/tmp/file.txt"], "now", target, mock_config)
 
         assert ret == 0
         mock_restore.assert_called_once()
 
     def test_dot_path_skipped_in_exists_check(
-        self, mock_config, mock_logger
+        self, tmp_path, mock_config, mock_logger
     ) -> None:
         """A path that normalizes to '.' is skipped in the target overlap check."""
         db_dir = "/tmp/db_dir"
+        target = str(tmp_path / "restore")
+        os.makedirs(target)
 
         def _exists(path):
             if path == os.path.join(db_dir, "def.db"):
                 return True
-            if path == "/tmp/restore":
+            if path == target:
                 return True
             return False
 
@@ -999,23 +1029,25 @@ class TestRestoreAtPathNormalization:
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
             # "." and "/" both normalize to "." after lstrip+normpath → skipped in overlap check.
-            ret = restore_at("def", ["/"], "now", "/tmp/restore", mock_config)
+            ret = restore_at("def", ["/"], "now", target, mock_config)
 
         assert ret == 0
         mock_restore.assert_called_once()
 
     def test_existing_target_path_aborts(
-        self, mock_config, mock_logger
+        self, tmp_path, mock_config, mock_logger
     ) -> None:
         """Restore aborts when a requested path already exists under target."""
         db_dir = "/tmp/db_dir"
+        target = str(tmp_path / "restore")
+        os.makedirs(target)
 
         def _exists(path):
             if path == os.path.join(db_dir, "def.db"):
                 return True
-            if path == "/tmp/restore":
+            if path == target:
                 return True
-            if path == "/tmp/restore/data/file.txt":
+            if path == os.path.join(target, "data/file.txt"):
                 return True
             return False
 
@@ -1024,13 +1056,13 @@ class TestRestoreAtPathNormalization:
              patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
              patch("dar_backup.manager.logger", mock_logger):
 
-            ret = restore_at("def", ["data/file.txt"], "now", "/tmp/restore", mock_config)
+            ret = restore_at("def", ["data/file.txt"], "now", target, mock_config)
 
         assert ret == 1
         mock_logger.error.assert_any_call(
             "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
             "without overwriting existing files. Use a clean/empty target.",
-            "/tmp/restore",
+            target,
             "data/file.txt",
             "",
         )

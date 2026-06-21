@@ -154,7 +154,7 @@ def generic_backup(
         try:
             process = runner.run(command, timeout=config_settings.command_timeout_secs)
         except Exception as e:
-            print(f"[!] Backup failed: {e}")
+            logger.error("Backup command could not be run for '%s': %s", backup_definition, e)
             raise
 
         dar_exit_code = process.returncode
@@ -257,13 +257,26 @@ def find_files_with_paths(xml_doc: str):
 
 
 class DoctypeStripper:
+    """File-like wrapper that strips DOCTYPE lines to prevent XXE.
+
+    Must be used as a context manager so that the underlying file handle is
+    released promptly if the XML parser raises mid-parse.  Without __exit__,
+    an abandoned parse leaves the handle open until the GC runs.
     """
-    File-like wrapper that strips DOCTYPE lines to prevent XXE.
-    """
-    def __init__(self, path):
+
+    def __init__(self, path: str) -> None:
         self.f = open(path, encoding="utf-8")
         self.buf = ""
-    def read(self, n=-1):
+
+    def read(self, n: int = -1) -> str:
+        """Read up to n bytes, stripping any DOCTYPE line encountered.
+
+        Args:
+            n: Number of bytes to read; -1 or None reads to EOF.
+
+        Returns:
+            Filtered file content with DOCTYPE declarations removed.
+        """
         if n is None or n < 0:
             out = []
             for line in self.f:
@@ -279,33 +292,45 @@ class DoctypeStripper:
         result, self.buf = self.buf[:n], self.buf[n:]
         return result
 
+    def close(self) -> None:
+        """Close the underlying file handle."""
+        self.f.close()
+
+    def __enter__(self) -> "DoctypeStripper":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
 
 def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
     """
     Stream file paths and sizes from a DAR XML listing to keep memory usage low.
     """
     path_stack: List[str] = []
-    # Disable XXE by stripping DOCTYPE
-    context = ET.iterparse(DoctypeStripper(xml_path), events=("start", "end"))
-    for event, elem in context:
-        if event == "start" and elem.tag == "Directory":
-            dir_name = elem.get("name")
-            if dir_name:
-                path_stack.append(dir_name)
-        elif event == "end" and elem.tag == "File":
-            file_name = elem.get("name")
-            file_size = elem.get("size")
-            if file_name:
+    # DoctypeStripper is used as a context manager so the file handle is closed
+    # promptly on normal exit, parse error, or abandoned iteration (GeneratorExit).
+    with DoctypeStripper(xml_path) as stripper:
+        context = ET.iterparse(stripper, events=("start", "end"))
+        for event, elem in context:
+            if event == "start" and elem.tag == "Directory":
+                dir_name = elem.get("name")
+                if dir_name:
+                    path_stack.append(dir_name)
+            elif event == "end" and elem.tag == "File":
+                file_name = elem.get("name")
+                file_size = elem.get("size")
+                if file_name:
+                    if path_stack:
+                        file_path = "/".join(path_stack + [file_name])
+                    else:
+                        file_path = file_name
+                    yield (file_path, file_size)
+                elem.clear()
+            elif event == "end" and elem.tag == "Directory":
                 if path_stack:
-                    file_path = "/".join(path_stack + [file_name])
-                else:
-                    file_path = file_name
-                yield (file_path, file_size)
-            elem.clear()
-        elif event == "end" and elem.tag == "Directory":
-            if path_stack:
-                path_stack.pop()
-            elem.clear()
+                    path_stack.pop()
+                elem.clear()
 
 
 def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str]], config_settings: ConfigSettings):
@@ -395,22 +420,33 @@ def _parse_size_bytes(size_text: str) -> Optional[int]:
 
 
 def _size_in_verification_range(size_text: str, config_settings: ConfigSettings) -> bool:
-    dar_sizes = {
-        "o"   : 1,
-        "kio" : 1024,
-        "Mio" : 1024 * 1024,
-        "Gio" : 1024 * 1024 * 1024,
-        "Tio" : 1024 * 1024 * 1024 * 1024
-     }
-    pattern = r'(\d+)\s*(\w+)'
-    match = re.match(pattern, size_text or "")
-    if not match:
+    """Check whether a dar-formatted size string falls within the configured verification window.
+
+    Delegates to _parse_size_bytes() so that any future addition to _DAR_SIZE_UNITS
+    is automatically reflected here without a second update.
+
+    Args:
+        size_text: Size string as returned by dar's file listing (e.g. '10 Mio').
+        config_settings: Configuration with min_size_verification_mb and
+            max_size_verification_mb attributes.
+
+    Returns:
+        True if the file size is within [min_size_verification_mb, max_size_verification_mb],
+        False if the size cannot be parsed or falls outside the window.
+    """
+    try:
+        file_size = _parse_size_bytes(size_text)
+    except Exception as exc:
+        # An unexpected internal failure in _parse_size_bytes must not silently
+        # empty the sample pool.  Including the file is the conservative fallback:
+        # better to verify a file whose size is unknown than to verify nothing.
+        logger.warning(
+            "_parse_size_bytes raised unexpectedly for %r: %s — including file in sample pool",
+            size_text, exc,
+        )
+        return True
+    if file_size is None:
         return False
-    unit = match.group(2).strip()
-    if unit not in dar_sizes:
-        return False
-    number = int(match.group(1))
-    file_size = dar_sizes[unit] * number
     min_size = config_settings.min_size_verification_mb * 1024 * 1024
     max_size = config_settings.max_size_verification_mb * 1024 * 1024
     return min_size <= file_size <= max_size
@@ -504,7 +540,7 @@ def verify(
         logger.error(msg)
         raise
     except Exception as e:
-        print(f"[!] Backup failed: {e}")
+        logger.error("Verification command could not be run for '%s': %s", backup_file, e)
         raise
 
 
@@ -599,8 +635,11 @@ def verify(
             if os.path.exists(restore_path):
                 try:
                     os.remove(restore_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.warning(
+                        "Could not remove stale restore file '%s': %s — dar will attempt to overwrite it",
+                        restore_path, exc,
+                    )
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
             if getattr(args, 'preserve_ownership', False):
                 ignore_ownership = False
@@ -608,7 +647,7 @@ def verify(
                 ignore_ownership = True
             else:
                 ignore_ownership = not getattr(config_settings, 'restore_ownership', False)
-            command = ['dar', '-x', backup_file, '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
+            command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
             if ignore_ownership:
                 command.append('--comparison-field=ignore-owner')
             command.extend(['-B', args.darrc, 'restore-options'])
@@ -1396,10 +1435,21 @@ def perform_backup(
 
             # Archive slice count and total size
             dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))
-            metrics["num_slices"]         = len(dar_slices)
-            metrics["archive_size_bytes"] = sum(
-                os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
-            )
+            metrics["num_slices"] = len(dar_slices)
+            try:
+                metrics["archive_size_bytes"] = sum(
+                    os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
+                )
+            except OSError as exc:
+                # A missing slice means the archive is incomplete — this is a genuine failure.
+                # Re-raise so the backup is marked FAILURE, but log clearly so the blame does
+                # not fall on the dar phase (which already exited successfully).
+                logger.error(
+                    "Archive slice missing or unreadable after dar completed for '%s': %s"
+                    " — archive is incomplete, backup is FAILED",
+                    backup_file, exc,
+                )
+                raise
 
             # --- VERIFY phase ---
             _current_phase = "VERIFY"
@@ -1437,7 +1487,19 @@ def perform_backup(
             par2_dir = par2_cfg.get("par2_dir") or config_settings.backup_dir
             par2_files = glob.glob(os.path.join(par2_dir, f"{os.path.basename(backup_file)}*.par2"))
             if par2_files:
-                metrics["par2_size_bytes"] = sum(os.path.getsize(p) for p in par2_files)
+                # Measure per-file so a single missing file does not zero out the metric.
+                # par2 files are redundancy protection, not the archive itself; a missing
+                # file after successful generation is degraded but not a data-loss failure.
+                par2_total = 0
+                for p in par2_files:
+                    try:
+                        par2_total += os.path.getsize(p)
+                    except OSError as exc:
+                        logger.warning(
+                            "Could not measure par2 file '%s': %s — excluded from size metric",
+                            p, exc,
+                        )
+                metrics["par2_size_bytes"] = par2_total if par2_total > 0 else None
 
         except KeyboardInterrupt:
             msg = (
@@ -1643,31 +1705,48 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
     # full archive size in RAM — OOM on large archives.  Per-slice preserves the
     # -B portability flag: paths stored inside each par2 set are still relative to
     # archive_dir, so the files remain relocatable across mount points.
-    for counter, slice_file in enumerate(dar_slices, start=1):
-        slice_path = os.path.join(archive_dir, slice_file)
-        par2_path = os.path.join(par2_output_dir, f"{slice_file}.par2")
-        logger.info(f"{counter}/{number_of_slices}: Generating par2 for {slice_file}")
-        if par2_dir:
-            command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
-        else:
-            command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
-        process = runner.run(command, timeout=config_settings.command_timeout_secs)
-        if process.returncode != 0:
-            logger.error(f"Error generating par2 files for {slice_file}")
-            raise subprocess.CalledProcessError(process.returncode, command)
-        logger.info(f"{counter}/{number_of_slices}: Done")
+    #
+    # Each slice's par2 set is self-contained: slices 1..N-1 that completed before
+    # a failure still provide real recovery coverage for those slices.  We therefore
+    # do NOT remove partial par2 files on failure — partial coverage is better than
+    # none.  The except block only logs how much coverage exists so operators know
+    # exactly which slices can be recovered.
+    completed_slices = 0
+    try:
+        for counter, slice_file in enumerate(dar_slices, start=1):
+            slice_path = os.path.join(archive_dir, slice_file)
+            par2_path = os.path.join(par2_output_dir, f"{slice_file}.par2")
+            logger.info(f"{counter}/{number_of_slices}: Generating par2 for {slice_file}")
+            if par2_dir:
+                command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
+            else:
+                command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
+            process = runner.run(command, timeout=config_settings.command_timeout_secs)
+            if process.returncode != 0:
+                logger.error(f"Error generating par2 files for {slice_file}")
+                raise subprocess.CalledProcessError(process.returncode, command)
+            completed_slices = counter
+            logger.info(f"{counter}/{number_of_slices}: Done")
 
-        if par2_config.get("par2_run_verify"):
-            logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
-            verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
-            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
-            if verify_process.returncode != 0:
-                logger.error(
-                    "par2 verify failed for slice: %s (returncode=%s)",
-                    slice_file,
-                    verify_process.returncode,
-                )
-                raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
+            if par2_config.get("par2_run_verify"):
+                logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
+                verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
+                verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+                if verify_process.returncode != 0:
+                    logger.error(
+                        "par2 verify failed for slice: %s (returncode=%s)",
+                        slice_file,
+                        verify_process.returncode,
+                    )
+                    raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
+    except Exception:
+        if completed_slices > 0:
+            logger.warning(
+                "PAR2 generation failed after %d/%d slice(s) for '%s' — "
+                "par2 files for the first %d slice(s) remain on disk and provide partial recovery coverage",
+                completed_slices, number_of_slices, archive_base, completed_slices,
+            )
+        raise
 
     # One manifest for the whole archive — records all slices and their owning archive.
     # Written after all slices succeed so a partial run leaves no manifest behind.

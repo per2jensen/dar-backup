@@ -30,7 +30,7 @@ from dar_backup.util import (
     RESTORE_FAIL_PERMISSION_ERROR,
     RESTORE_FAIL_UNKNOWN_ERROR,
 )
-from dar_backup.dar_backup import _parse_size_bytes
+from dar_backup.dar_backup import _parse_size_bytes, _size_in_verification_range
 
 pytestmark = pytest.mark.unit
 
@@ -232,3 +232,47 @@ def test_parse_size_bytes_empty_returns_none(tmp_path):
 
 def test_parse_size_bytes_none_returns_none(tmp_path):
     assert _parse_size_bytes(None) is None
+
+
+# ---------------------------------------------------------------------------
+# _size_in_verification_range tests
+# ---------------------------------------------------------------------------
+
+def _make_range_config(min_mb: int, max_mb: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        min_size_verification_mb=min_mb,
+        max_size_verification_mb=max_mb,
+    )
+
+
+def test_size_in_verification_range_within_window():
+    cfg = _make_range_config(1, 100)
+    assert _size_in_verification_range("10 Mio", cfg) is True
+
+
+def test_size_in_verification_range_below_minimum():
+    cfg = _make_range_config(10, 100)
+    assert _size_in_verification_range("1 Mio", cfg) is False
+
+
+def test_size_in_verification_range_above_maximum():
+    cfg = _make_range_config(0, 1)
+    assert _size_in_verification_range("10 Mio", cfg) is False
+
+
+def test_size_in_verification_range_unparseable_returns_false():
+    cfg = _make_range_config(0, 100)
+    assert _size_in_verification_range("not-a-size", cfg) is False
+
+
+def test_size_in_verification_range_delegates_unknown_unit_to_parse_size_bytes():
+    """_size_in_verification_range() must return False for an unknown unit by
+    delegating to _parse_size_bytes(), which returns None for unknown units.
+    This guards against the two functions diverging when new units are added
+    to _DAR_SIZE_UNITS: adding a unit there automatically covers this function
+    without a second update.
+    """
+    cfg = _make_range_config(0, 9999)
+    # "Pio" is not in _DAR_SIZE_UNITS — both functions must reject it
+    assert _size_in_verification_range("1 Pio", cfg) is False
+    assert _parse_size_bytes("1 Pio") is None

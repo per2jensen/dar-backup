@@ -18,6 +18,7 @@ from contextlib import closing
 
 import os
 import re
+import signal
 import subprocess
 import shlex
 import shutil
@@ -661,12 +662,17 @@ def requirements(
                 # shell=True is intentional: PREREQ/POSTREQ scripts are arbitrary shell
                 # expressions from a trusted config file and may use pipes, redirects,
                 # or compound commands that require a shell to interpret.
+                # start_new_session=True places the shell and all its descendants in a
+                # fresh process group so that os.killpg() can reap background children
+                # (e.g. `cmd &`) that would otherwise hold the stdout/stderr pipes open
+                # and block the reader-thread join() calls indefinitely.
                 process = subprocess.Popen(
                     script,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    shell=True
+                    shell=True,
+                    start_new_session=True,
                 )
                 stdout_lines = []
                 stderr_lines = []
@@ -689,18 +695,39 @@ def requirements(
                 stdout_thread.start()
                 stderr_thread.start()
 
+                # Capture the process group ID now, while the shell PID is still
+                # live.  After process.wait() reaps the shell, getpgid(pid) raises
+                # ProcessLookupError even though background children are still in
+                # the group — so we must record pgid before calling wait().
+                try:
+                    pgid = os.getpgid(process.pid)
+                except OSError:
+                    pgid = None
+
                 try:
                     process.wait(timeout=timeout)
                 except subprocess.TimeoutExpired as err:
-                    process.kill()
-                    stdout_thread.join()
-                    stderr_thread.join()
+                    if pgid is not None:
+                        try:
+                            os.killpg(pgid, signal.SIGKILL)
+                        except (ProcessLookupError, PermissionError, OSError):
+                            pass
+                    stdout_thread.join(timeout=5)
+                    stderr_thread.join(timeout=5)
                     raise RuntimeError(
                         f"{type} {key}: '{script}' timed out after {timeout_secs}s"
                     ) from err
 
-                stdout_thread.join()
-                stderr_thread.join()
+                # Kill any background children the script left running.  Without
+                # this, children that inherited the pipe FDs keep them open and
+                # the join() calls below would block until those children exit.
+                if pgid is not None:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        pass
+                stdout_thread.join(timeout=5)
+                stderr_thread.join(timeout=5)
 
                 logger.debug(f"{type} {key}: '{script}' run, return code: {process.returncode}")
                 if process.returncode != 0:

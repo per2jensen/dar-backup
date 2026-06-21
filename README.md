@@ -172,7 +172,7 @@ The result is that recovery confidence does not degrade with distance — distan
 - **No lock-in** — standard `dar` archives, standard PAR2 files; restore with just the `dar`
   binary, no `dar-backup` installation required on the restore machine
 - **1000+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
-  restore chains, PITR verification, and edge cases; CI on every commit
+  restore chains, PITR verification, and edge cases; CI on every push to Github and when done locally
 
 ✅ The author has used `dar-backup` ~6 years and has been saved by it multiple times.
 

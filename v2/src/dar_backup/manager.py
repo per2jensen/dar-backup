@@ -23,6 +23,7 @@
 
 import argcomplete
 import argparse
+import fcntl
 import os
 import re
 import signal
@@ -415,56 +416,99 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
 
     # Target directory handling: pass -R and -n via dar_manager's -e option so dar
     # rebases paths and fails fast instead of prompting to overwrite.
-    if target:
-        logger.debug("PITR target directory: %s (cwd=%s)", target, os.getcwd())
-        if not os.path.exists(target):
-            try:
-                os.makedirs(target, exist_ok=True)
-            except Exception as e:
-                logger.error(f"Could not create target directory '{target}': {e}")
-                return 1
-            logger.debug("Created target directory: %s", target)
-        # Fail fast if any requested paths already exist under target.
-        normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
-        if normalized_paths:
-            logger.debug("Normalized restore paths count=%d sample=%s", len(normalized_paths), normalized_paths[:3])
-        existing = []
-        for rel_path in normalized_paths:
-            if not rel_path or rel_path == ".":
-                continue
-            candidate = os.path.join(target, rel_path)
-            if os.path.exists(candidate):
-                existing.append(rel_path)
-        if existing:
-            sample = ", ".join(existing[:3])
-            extra = f" (+{len(existing) - 3} more)" if len(existing) > 3 else ""
-            logger.error(
-                "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
-                "without overwriting existing files. Use a clean/empty target.",
-                target,
-                sample,
-                extra,
-            )
-            return 1
-
-    # PITR restore: select archives by creation date and restore with dar directly.
-    # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
+    #
+    # An exclusive flock on the target directory is held from just after makedirs
+    # through to the end of _restore_with_dar().  This prevents two concurrent
+    # dar-backup PITR processes from both passing the pre-existence check and then
+    # interleaving dar writes into the same target — an event that would produce
+    # silently corrupted output with no error logged.  The lock is cooperative:
+    # it stops concurrent dar-backup processes but cannot block unrelated processes
+    # that happen to write into the directory without acquiring the lock.
+    lock_fd: Optional[int] = None
     try:
-        return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings,
-                                 ignore_ownership=ignore_ownership, no_deleted=no_deleted)
-    except KeyboardInterrupt:
-        msg = (
-            f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
-            f"paths={paths} target='{target}'. "
-            f"The target directory may be incomplete and must NOT be used."
-        )
-        logger.error(msg)
-        raise
+        if target:
+            logger.debug("PITR target directory: %s (cwd=%s)", target, os.getcwd())
+            if not os.path.exists(target):
+                try:
+                    os.makedirs(target, exist_ok=True)
+                except Exception as e:
+                    logger.error(f"Could not create target directory '{target}': {e}")
+                    return 1
+                logger.debug("Created target directory: %s", target)
+
+            try:
+                lock_fd = os.open(target, os.O_RDONLY)
+            except OSError as exc:
+                logger.error("Could not open restore target '%s' for locking: %s", target, exc)
+                return 1
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                logger.error(
+                    "Restore target '%s' is locked by a concurrent PITR restore — "
+                    "aborting to prevent silent data corruption",
+                    target,
+                )
+                os.close(lock_fd)
+                lock_fd = None
+                return 1
+            except OSError as exc:
+                logger.error("Could not lock restore target '%s': %s", target, exc)
+                os.close(lock_fd)
+                lock_fd = None
+                return 1
+
+            # Fail fast if any requested paths already exist under target.
+            normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
+            if normalized_paths:
+                logger.debug("Normalized restore paths count=%d sample=%s", len(normalized_paths), normalized_paths[:3])
+            existing = []
+            for rel_path in normalized_paths:
+                if not rel_path or rel_path == ".":
+                    continue
+                candidate = os.path.join(target, rel_path)
+                if os.path.exists(candidate):
+                    existing.append(rel_path)
+            if existing:
+                sample = ", ".join(existing[:3])
+                extra = f" (+{len(existing) - 3} more)" if len(existing) > 3 else ""
+                logger.error(
+                    "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
+                    "without overwriting existing files. Use a clean/empty target.",
+                    target,
+                    sample,
+                    extra,
+                )
+                return 1
+
+        # PITR restore: select archives by creation date and restore with dar directly.
+        # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
+        try:
+            return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings,
+                                     ignore_ownership=ignore_ownership, no_deleted=no_deleted)
+        except KeyboardInterrupt:
+            msg = (
+                f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
+                f"paths={paths} target='{target}'. "
+                f"The target directory may be incomplete and must NOT be used."
+            )
+            logger.error(msg)
+            raise
+    finally:
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
 
 
 def _restore_target_unsafe_reason(target: str) -> Optional[str]:
-    target_abs = os.path.abspath(target)
-    target_norm = os.path.normpath(target_abs)
+    # realpath() resolves symlinks to their canonical path so that a symlink
+    # under /home pointing to /etc cannot bypass the protected-prefix check.
+    # abspath() would NOT follow symlinks and would leave the check bypassable.
+    # realpath() also normalises the path, so normpath() is not needed.
+    target_norm = os.path.realpath(target)
 
     allow_prefixes = (
         "/tmp",

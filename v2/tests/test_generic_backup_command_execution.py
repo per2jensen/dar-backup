@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 from dar_backup.dar_backup import generic_backup
 from dar_backup.config_settings import ConfigSettings
+from dar_backup.util import BackupError
 from tests.envdata import EnvData
 import pytest
 
@@ -304,4 +305,44 @@ def test_generic_backup_no_inodes_warning_when_stats_parsed(
     )
     assert "inodes_saved" not in warning_texts, (
         "No inodes_saved warning must be emitted when stats parsed successfully"
+    )
+
+
+@patch("dar_backup.dar_backup.get_logger", return_value=MagicMock())
+@patch("dar_backup.util.shutil.which", return_value=True)
+@patch("dar_backup.util.subprocess.Popen")
+@patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
+@patch("dar_backup.dar_backup.os.path.exists")
+@patch("dar_backup.dar_backup.runner")
+def test_generic_backup_runner_exception_logs_error_not_print(
+    mock_runner,
+    mock_exists,
+    mock_logger,
+    mock_popen,
+    mock_which,
+    mock_get_logger,
+    mock_envdata,
+    mock_config,
+):
+    """When runner.run() itself raises (e.g. process cannot be spawned),
+    generic_backup() must log via logger.error() and re-raise.
+
+    On a systemd service stdout is not captured, so a print() would produce
+    no observable record.  This test guards against the print() regressing.
+    """
+    mock_exists.return_value = False
+    mock_runner.run.side_effect = OSError("cannot spawn dar process")
+
+    args = MagicMock()
+    args.config_file = "/mock/dar-backup.conf"
+    command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
+
+    # The OSError is re-raised by the inner handler and then wrapped in BackupError
+    # by the outer except Exception block.
+    with pytest.raises(BackupError):
+        generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", mock_config, args)
+
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("backup command could not be run" in c.lower() for c in error_calls), (
+        f"Expected logger.error to name the failed backup command; got: {error_calls}"
     )

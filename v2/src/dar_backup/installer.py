@@ -55,7 +55,8 @@ def install_autocompletion():
         return
 
     # append the autocompletion block
-    rc_file.open("a").write("\n" + block)
+    with rc_file.open("a") as fh:
+        fh.write("\n" + block)
     print(f"✔️ Appended autocompletion block to {rc_file}")
 
 
