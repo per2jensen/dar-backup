@@ -53,12 +53,22 @@
       "label": "Rel. 1.1.9"
     },
     {
-      "date": "2026-06-24",
-      "label": "Daily max: 2005"
+      "date": "2026-06-06",
+      "label": "Daily max: 170"
     }
   ],
-  "total_clones": 14778,
-  "unique_clones": 6478,
+  "total_clones": 12773,
+  "total_clones_raw": 14778,
+  "unique_clones": 6457,
+  "discard": [
+    {
+      "date": "2026-06-24",
+      "count": 2005,
+      "uniques": 21,
+      "ratio": 95.5,
+      "discard_reason": "Clone/unique ratio 95.5x exceeds threshold 25x"
+    }
+  ],
   "daily": [
     {
       "count": 30,
@@ -2128,7 +2138,8 @@
     {
       "timestamp": "2026-06-24T00:00:00Z",
       "count": 2005,
-      "uniques": 21
+      "uniques": 21,
+      "discarded": true
     }
   ]
 }
