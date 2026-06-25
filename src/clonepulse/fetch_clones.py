@@ -171,12 +171,27 @@ def main():
         elif entry["count"] > 0:
             discarded_dates.add(date)
 
-    # Mark discarded flag on each daily entry; remove stale flags when threshold changes.
+    # Mark discarded flag and compute imputed_count for each outlier entry.
+    # imputed_count = rounded average of the preceding IMPUTE_WINDOW non-discarded days.
+    # Stale flags and imputed values are cleaned up when threshold changes.
+    IMPUTE_WINDOW = 7
     discard_list = []
-    for entry in clones_data["daily"]:
+    for i, entry in enumerate(clones_data["daily"]):
         date = entry["timestamp"][:10]
         if date in discarded_dates:
             entry["discarded"] = True
+
+            # Collect up to IMPUTE_WINDOW preceding non-discarded counts
+            preceding = []
+            for j in range(i - 1, -1, -1):
+                prev = clones_data["daily"][j]
+                if prev["timestamp"][:10] not in discarded_dates:
+                    preceding.append(prev["count"])
+                if len(preceding) == IMPUTE_WINDOW:
+                    break
+            imputed = round(sum(preceding) / len(preceding)) if preceding else 0
+            entry["imputed_count"] = imputed
+
             ratio = round(entry["count"] / entry["uniques"], 1) if entry["uniques"] > 0 else None
             ratio_str = f"{ratio}x" if ratio is not None else "N/A (zero uniques)"
             discard_list.append({
@@ -184,11 +199,17 @@ def main():
                 "count": entry["count"],
                 "uniques": entry["uniques"],
                 "ratio": ratio,
+                "imputed_count": imputed,
+                "imputed_from_days": len(preceding),
                 "discard_reason": f"Clone/unique ratio {ratio_str} exceeds threshold {RATIO_THRESHOLD}x"
             })
-            print(f"🚫 Discarding {date}: {entry['count']} clones, {entry['uniques']} uniques, ratio {ratio_str}")
+            print(
+                f"🚫 Discarding {date}: {entry['count']} clones, ratio {ratio_str}"
+                f" → imputed {imputed} (avg of {len(preceding)} preceding days)"
+            )
         else:
-            entry.pop("discarded", None)  # remove stale flag if threshold was raised
+            entry.pop("discarded", None)
+            entry.pop("imputed_count", None)  # clean up stale value if threshold was raised
 
     clones_data["discard"] = discard_list
 

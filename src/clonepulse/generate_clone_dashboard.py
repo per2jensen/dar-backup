@@ -342,11 +342,16 @@ def main(argv=None):
 
     validated_rows = []
     discarded_count = 0
+    imputed_rows = 0
     now_ts = _utcnow_naive()
     for i, row in enumerate(raw_rows):
         if row.get("discarded", False):
             discarded_count += 1
-            continue
+            if "imputed_count" not in row:
+                continue  # no imputation available, drop the day entirely
+            # substitute imputed count for the raw outlier value
+            row = {**row, "count": row["imputed_count"]}
+            imputed_rows += 1
 
         try:
             ts = pd.to_datetime(row["timestamp"], utc=True)
@@ -365,7 +370,8 @@ def main(argv=None):
         validated_rows.append({"timestamp": ts, "count": count, "uniques": uniques})
 
     if discarded_count:
-        print(f"🚫 Skipped {discarded_count} discarded day(s) from dashboard data.")
+        skipped = discarded_count - imputed_rows
+        print(f"🚫 {discarded_count} discarded day(s): {imputed_rows} imputed, {skipped} skipped (no preceding data).")
 
     df = pd.DataFrame(validated_rows)
     if df.shape[0] < 7:
