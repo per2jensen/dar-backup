@@ -66,6 +66,8 @@
       "count": 2005,
       "uniques": 21,
       "ratio": 95.5,
+      "imputed_count": 50,
+      "imputed_from_days": 7,
       "discard_reason": "Clone/unique ratio 95.5x exceeds threshold 25x"
     }
   ],
@@ -2139,7 +2141,8 @@
       "timestamp": "2026-06-24T00:00:00Z",
       "count": 2005,
       "uniques": 21,
-      "discarded": true
+      "discarded": true,
+      "imputed_count": 50
     }
   ]
 }
