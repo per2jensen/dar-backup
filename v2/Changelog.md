@@ -5,6 +5,14 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.10 - not released
 
+### Updated
+
+- clonepulse now discards a clone # if it is 25x > unique clone #
+
+  2026-06-24 clone # was 2005 with no increase in unique clones #
+
+  Dashboard smooths out such a day by using the average of the last 7 days 
+
 ### Fixed
 
 - **Concurrent PITR restores to the same target directory could silently corrupt output** (`manager.py`) — the pre-existence check (does the target already contain files to restore?) and the actual dar invocation were not atomic.  If two `restore_at()` calls targeted the same directory simultaneously, both could pass the check before either ran dar, and dar with `-wa` would then interleave writes from both processes — producing corrupted output with no error logged.  Fixed by acquiring an exclusive non-blocking `fcntl.flock()` on the target directory immediately after `makedirs` and holding it through the end of `_restore_with_dar()`.  The lock is released unconditionally in a `finally` block.  If the lock is already held, the second caller logs a clear error ("Restore target '…' is locked by a concurrent PITR restore — aborting to prevent silent data corruption") and returns 1 without proceeding.  This is a cooperative lock: it prevents concurrent dar-backup PITR processes from racing; it does not block unrelated processes that write to the directory without acquiring the lock.  Two new unit tests cover: (1) a simulated concurrent holder causes the second call to return 1 and never invoke dar; (2) the lock is confirmed released after a successful restore.
