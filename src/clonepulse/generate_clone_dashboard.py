@@ -341,8 +341,13 @@ def main(argv=None):
         return
 
     validated_rows = []
+    discarded_count = 0
     now_ts = _utcnow_naive()
     for i, row in enumerate(raw_rows):
+        if row.get("discarded", False):
+            discarded_count += 1
+            continue
+
         try:
             ts = pd.to_datetime(row["timestamp"], utc=True)
         except Exception:
@@ -358,6 +363,9 @@ def main(argv=None):
             raise ValueError(f"Row {i} has invalid uniques: {uniques}")
 
         validated_rows.append({"timestamp": ts, "count": count, "uniques": uniques})
+
+    if discarded_count:
+        print(f"🚫 Skipped {discarded_count} discarded day(s) from dashboard data.")
 
     df = pd.DataFrame(validated_rows)
     if df.shape[0] < 7:

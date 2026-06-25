@@ -29,6 +29,10 @@ CLONES_FILE = "clonepulse/fetch_clones.json"
 MILESTONES = [500, 1000, 2000, 5000, 10000, 20000, 50000]
 BADGE_DIR = "clonepulse"
 BADGE_CLONES = "badge_clones.json"
+# Days whose clone/unique ratio exceeds this threshold are discarded.
+# Discarded days are excluded from totals, badges, milestones and the dashboard.
+# Recomputed on every run — adjust this constant to change what gets filtered.
+RATIO_THRESHOLD = 25
 
 
 
@@ -155,14 +159,60 @@ def main():
 
     clones_data["daily"] = sorted(existing_entries.values(), key=lambda x: x["timestamp"])
 
-    # Recalculate totals
-    clones_data["total_clones"] = sum(entry["count"] for entry in clones_data["daily"])
-    clones_data["unique_clones"] = sum(entry["uniques"] for entry in clones_data["daily"])
+    # --- Ratio-based discard ---
+    # Compute which dates exceed RATIO_THRESHOLD (clone count / unique cloners).
+    # A day with uniques == 0 and count > 0 is treated as infinite ratio and discarded.
+    discarded_dates: set[str] = set()
+    for entry in clones_data["daily"]:
+        date = entry["timestamp"][:10]
+        if entry["uniques"] > 0:
+            if entry["count"] / entry["uniques"] > RATIO_THRESHOLD:
+                discarded_dates.add(date)
+        elif entry["count"] > 0:
+            discarded_dates.add(date)
 
-    # --- Auto-annotate the true max clone day ---
-    if clones_data["daily"]:
-        # Step 1: Determine true max across all days
-        max_entry = max(clones_data["daily"], key=lambda d: d["count"])
+    # Mark discarded flag on each daily entry; remove stale flags when threshold changes.
+    discard_list = []
+    for entry in clones_data["daily"]:
+        date = entry["timestamp"][:10]
+        if date in discarded_dates:
+            entry["discarded"] = True
+            ratio = round(entry["count"] / entry["uniques"], 1) if entry["uniques"] > 0 else None
+            ratio_str = f"{ratio}x" if ratio is not None else "N/A (zero uniques)"
+            discard_list.append({
+                "date": date,
+                "count": entry["count"],
+                "uniques": entry["uniques"],
+                "ratio": ratio,
+                "discard_reason": f"Clone/unique ratio {ratio_str} exceeds threshold {RATIO_THRESHOLD}x"
+            })
+            print(f"🚫 Discarding {date}: {entry['count']} clones, {entry['uniques']} uniques, ratio {ratio_str}")
+        else:
+            entry.pop("discarded", None)  # remove stale flag if threshold was raised
+
+    clones_data["discard"] = discard_list
+
+    if discarded_dates:
+        print(f"⚠️  {len(discarded_dates)} day(s) discarded (ratio > {RATIO_THRESHOLD}x)")
+    else:
+        print(f"✅ No days discarded (ratio threshold: {RATIO_THRESHOLD}x)")
+
+    # Recalculate totals — discarded days excluded
+    clones_data["total_clones_raw"] = sum(entry["count"] for entry in clones_data["daily"])
+    clones_data["total_clones"] = sum(
+        entry["count"] for entry in clones_data["daily"]
+        if entry["timestamp"][:10] not in discarded_dates
+    )
+    clones_data["unique_clones"] = sum(
+        entry["uniques"] for entry in clones_data["daily"]
+        if entry["timestamp"][:10] not in discarded_dates
+    )
+
+    # --- Auto-annotate the true max clone day (non-discarded entries only) ---
+    valid_entries = [d for d in clones_data["daily"] if d["timestamp"][:10] not in discarded_dates]
+    if valid_entries:
+        # Step 1: Determine true max across all non-discarded days
+        max_entry = max(valid_entries, key=lambda d: d["count"])
         max_date = max_entry["timestamp"][:10]
         max_count = max_entry["count"]
 
@@ -178,16 +228,18 @@ def main():
         })
         print(f"📌 Set max annotation for {max_date}: {max_count} clones (replaced {before - len(annotations) + 1} old)")
     else:
-        print("ℹ️ No valid clone entries — skipping max annotation.")
+        print("ℹ️ No valid (non-discarded) clone entries — skipping max annotation.")
 
 
 
-    # Reorder keys to keep annotations at the top
+    # Reorder keys: annotations → totals → discard summary → daily
     ordered = OrderedDict()
     if "annotations" in clones_data:
         ordered["annotations"] = clones_data["annotations"]
     ordered["total_clones"] = clones_data["total_clones"]
+    ordered["total_clones_raw"] = clones_data["total_clones_raw"]
     ordered["unique_clones"] = clones_data["unique_clones"]
+    ordered["discard"] = clones_data["discard"]
     ordered["daily"] = clones_data["daily"]
 
 
