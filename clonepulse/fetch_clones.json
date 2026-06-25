@@ -53,12 +53,12 @@
       "label": "Rel. 1.1.9"
     },
     {
-      "date": "2026-06-06",
-      "label": "Daily max: 170"
+      "date": "2026-06-24",
+      "label": "Daily max: 2005"
     }
   ],
-  "total_clones": 12734,
-  "unique_clones": 6441,
+  "total_clones": 14778,
+  "unique_clones": 6478,
   "daily": [
     {
       "count": 30,
@@ -2119,6 +2119,16 @@
       "timestamp": "2026-06-22T00:00:00Z",
       "count": 38,
       "uniques": 19
+    },
+    {
+      "timestamp": "2026-06-23T00:00:00Z",
+      "count": 39,
+      "uniques": 16
+    },
+    {
+      "timestamp": "2026-06-24T00:00:00Z",
+      "count": 2005,
+      "uniques": 21
     }
   ]
 }
