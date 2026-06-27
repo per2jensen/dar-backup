@@ -95,7 +95,7 @@ def test_dar_backup_bad_logfile_location_exits_1(monkeypatch, tmp_path, capsys):
 
     assert exc.value.code == 1
     err = capsys.readouterr().err
-    assert "does not end at 'dar-backup.log'" in err
+    assert "does not contain 'dar-backup.log'" in err
 
 
 def test_dar_backup_logs_preflight_failures_to_main_log(monkeypatch, tmp_path):

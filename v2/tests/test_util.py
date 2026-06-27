@@ -1182,3 +1182,122 @@ def test_requirements_timeout_raises_without_hanging(logger):
     )
     assert raised, "requirements() should have raised RuntimeError on timeout"
     assert "timed out" in str(raised[0]).lower(), f"Unexpected error message: {raised[0]}"
+
+
+def test_validate_directory_valid_returns_none(tmp_path):
+    from dar_backup.util import validate_directory
+
+    assert validate_directory(str(tmp_path), "TEST_DIR") is None
+
+
+def test_validate_directory_valid_no_write_check_returns_none(tmp_path):
+    from dar_backup.util import validate_directory
+
+    assert validate_directory(str(tmp_path), "TEST_DIR", require_write=False) is None
+
+
+def test_validate_directory_empty_path_reports_not_set():
+    from dar_backup.util import validate_directory
+
+    error = validate_directory("", "MY_DIR")
+    assert error == "MY_DIR is not set"
+
+
+def test_validate_directory_none_path_reports_not_set():
+    from dar_backup.util import validate_directory
+
+    error = validate_directory(None, "MY_DIR")
+    assert error == "MY_DIR is not set"
+
+
+def test_validate_directory_missing_path_reports_does_not_exist(tmp_path):
+    from dar_backup.util import validate_directory
+
+    missing = str(tmp_path / "missing")
+    error = validate_directory(missing, "MY_DIR")
+    assert error == f"MY_DIR does not exist: {missing}"
+
+
+def test_validate_directory_file_path_reports_not_a_directory(tmp_path):
+    from dar_backup.util import validate_directory
+
+    f = tmp_path / "file.txt"
+    f.write_text("x")
+    error = validate_directory(str(f), "MY_DIR")
+    assert error == f"MY_DIR exists but is not a directory: {f}"
+
+
+def test_validate_directory_not_writable_reports_not_writable(tmp_path):
+    from dar_backup.util import validate_directory
+
+    with patch("os.access", return_value=False):
+        error = validate_directory(str(tmp_path), "MY_DIR")
+    assert error == f"MY_DIR is not writable: {tmp_path}"
+
+
+def test_validate_directory_not_writable_skipped_when_not_required(tmp_path):
+    from dar_backup.util import validate_directory
+
+    with patch("os.access", return_value=False):
+        error = validate_directory(str(tmp_path), "MY_DIR", require_write=False)
+    assert error is None
+
+
+def test_archive_exists_returns_true_when_slice_present(tmp_path):
+    from dar_backup.util import archive_exists
+
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    (tmp_path / "mydef_FULL_2026-01-01.1.dar").touch()
+    assert archive_exists(base) is True
+
+
+def test_archive_exists_returns_false_when_slice_absent(tmp_path):
+    from dar_backup.util import archive_exists
+
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    assert archive_exists(base) is False
+
+
+def test_resolve_ownership_flag_preserve_ownership_wins(tmp_path):
+    from types import SimpleNamespace
+    from dar_backup.util import resolve_ownership_flag
+
+    args = SimpleNamespace(preserve_ownership=True, ignore_ownership=True)
+    config = SimpleNamespace(restore_ownership=True)
+    assert resolve_ownership_flag(args, config) is False
+
+
+def test_resolve_ownership_flag_ignore_ownership_wins_over_config(tmp_path):
+    from types import SimpleNamespace
+    from dar_backup.util import resolve_ownership_flag
+
+    args = SimpleNamespace(preserve_ownership=False, ignore_ownership=True)
+    config = SimpleNamespace(restore_ownership=True)
+    assert resolve_ownership_flag(args, config) is True
+
+
+def test_resolve_ownership_flag_falls_back_to_config_restore_ownership_true(tmp_path):
+    from types import SimpleNamespace
+    from dar_backup.util import resolve_ownership_flag
+
+    args = SimpleNamespace(preserve_ownership=False, ignore_ownership=False)
+    config = SimpleNamespace(restore_ownership=True)
+    assert resolve_ownership_flag(args, config) is False
+
+
+def test_resolve_ownership_flag_falls_back_to_config_restore_ownership_false(tmp_path):
+    from types import SimpleNamespace
+    from dar_backup.util import resolve_ownership_flag
+
+    args = SimpleNamespace(preserve_ownership=False, ignore_ownership=False)
+    config = SimpleNamespace(restore_ownership=False)
+    assert resolve_ownership_flag(args, config) is True
+
+
+def test_resolve_ownership_flag_missing_attrs_default_to_config(tmp_path):
+    from types import SimpleNamespace
+    from dar_backup.util import resolve_ownership_flag
+
+    args = SimpleNamespace()  # no preserve_ownership or ignore_ownership
+    config = SimpleNamespace(restore_ownership=True)
+    assert resolve_ownership_flag(args, config) is False

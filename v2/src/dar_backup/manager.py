@@ -38,8 +38,7 @@ from inputimeout import inputimeout, TimeoutOccurred
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import setup_logging
-from dar_backup.util import derive_trace_log_path
+from dar_backup.util import init_logging
 from dar_backup.util import get_config_file
 from dar_backup.util import send_discord_message
 from dar_backup.util import get_logger
@@ -49,6 +48,9 @@ from dar_backup.util import show_version
 from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import show_scriptname
+from dar_backup.util import validate_directory
+from dar_backup.util import archive_exists
+from dar_backup.util import resolve_ownership_flag
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
@@ -93,7 +95,7 @@ def get_db_dir(config_settings: ConfigSettings) -> str:
     Return the correct directory for storing catalog databases.
     Uses manager_db_dir if set, otherwise falls back to backup_dir.
     """
-    return getattr(config_settings, "manager_db_dir", None) or config_settings.backup_dir
+    return config_settings.manager_db_dir or config_settings.backup_dir
 
 
 def show_more_help():
@@ -107,14 +109,9 @@ NAME
 def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) -> int:
     db_dir = get_db_dir(config_settings)
 
-    if not os.path.exists(db_dir):
-        logger.error(f"DB dir does not exist: {db_dir}")
-        return 1
-    if not os.path.isdir(db_dir):
-        logger.error(f"DB path exists but is not a directory: {db_dir}")
-        return 1
-    if not os.access(db_dir, os.W_OK):
-        logger.error(f"DB dir is not writable: {db_dir}")
+    error = validate_directory(db_dir, "DB dir")
+    if error:
+        logger.error(error)
         return 1
 
     database = f"{backup_def}{DB_SUFFIX}"
@@ -148,10 +145,7 @@ def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) 
     if process.returncode == 0:
         logger.info(f'Database created: "{database_path}"')
     else:
-        logger.error(f'Something went wrong creating the database: "{database_path}"')
-        stdout, stderr = process.stdout, process.stderr
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        _log_command_failure(process, f'Something went wrong creating the database: "{database_path}"')
 
     return process.returncode
 
@@ -172,7 +166,7 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
         return CommandResult(1, '', error_msg)
 
     command = ['dar_manager', '--base', database_path, '--list']
-    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
 
     archive_names: List[str] = []
     archive_lines: List[str] = []
@@ -189,21 +183,15 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
     result = runner.stream_command(command, on_line, timeout=timeout)
 
     if result.returncode != 0:
-        logger.error(f'Error listing catalogs for: "{database_path}"')
-        if result.stderr:
-            logger.error(f"stderr: {result.stderr}")
+        _log_command_failure(result, f'Error listing catalogs for: "{database_path}"')
         return result
 
-    # Sort by prefix and date
-    def extract_date(arch_name):
-        match = re.search(r"(\d{4}-\d{2}-\d{2})", arch_name)
-        if match:
-            return datetime.strptime(match.group(1), "%Y-%m-%d")
-        return datetime.min
-
+    # Sort by definition then date; fall back gracefully for non-standard names
     def sort_key(name):
-        prefix = name.split("_", 1)[0]
-        return (prefix, extract_date(name))
+        parsed = ArchiveName.parse(name)
+        if parsed:
+            return (parsed.definition, parsed.as_datetime() or datetime.min)
+        return (name, datetime.min)
 
     archive_names = sorted(archive_names, key=sort_key)
 
@@ -270,7 +258,7 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
 
 
     command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
-    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None)) or 10
+    timeout = _coerce_timeout(config_settings.command_timeout_secs) or 10
 
     found = False
 
@@ -283,9 +271,7 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
     result = runner.stream_command(command, on_line, timeout=timeout)
 
     if result.returncode != 0:
-        logger.error(f'Error listing contents of archive: "{database_path}"')
-        if result.stderr:
-            logger.error(f"stderr: {result.stderr}")
+        _log_command_failure(result, f'Error listing contents of archive: "{database_path}"')
         return result.returncode
 
     if not found:
@@ -307,13 +293,10 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
     process = runner.run(command, capture_output_limit_bytes=-1)
-    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
-        logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        _log_command_failure(process, f'Error listing catalogs for: "{database_path}"')
     else:
-        print(stdout)
+        print(process.stdout)
     return process.returncode
 
 
@@ -328,13 +311,10 @@ def find_file(file, backup_def, config_settings):
         return 1
     command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
     process = runner.run(command, capture_output_limit_bytes=-1)
-    stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
-        logger.error(f'Error finding file: {file} in: "{database_path}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        _log_command_failure(process, f'Error finding file: {file} in: "{database_path}"')
     else:
-        print(stdout)
+        print(process.stdout)
     return process.returncode
 
 
@@ -577,6 +557,21 @@ def _coerce_timeout(value: Optional[int]) -> Optional[int]:
     return None
 
 
+def _log_command_failure(result: CommandResult, context: str) -> None:
+    """Log a failed command at ERROR level with context, stderr, and stdout.
+
+    Args:
+        result: CommandResult returned by runner.run() or runner.stream_command().
+        context: Human-readable description of what operation failed (may include
+            returncode when the caller needs it in the message).
+    """
+    logger.error("%s", context)
+    if result.stderr:
+        logger.error("stderr: %s", result.stderr)
+    if result.stdout:
+        logger.error("stdout: %s", result.stdout)
+
+
 def _parse_archive_map(list_output: str) -> Dict[int, str]:
     archives: Dict[int, str] = {}
     for line in list_output.splitlines():
@@ -617,17 +612,13 @@ def relocate_archive_paths(
         logger.error(f'Database not found: "{database_path}"')
         return 1
 
-    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
     list_result = runner.run(["dar_manager", "--base", database_path, "--list"], timeout=timeout)
-    stdout = list_result.stdout or ""
-    stderr = list_result.stderr or ""
     if list_result.returncode != 0:
-        logger.error(f'Error listing catalogs for: "{database_path}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        _log_command_failure(list_result, f'Error listing catalogs for: "{database_path}"')
         return list_result.returncode
 
-    archive_map = _parse_archive_map(stdout)
+    archive_map = _parse_archive_map(list_result.stdout or "")
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
         return 1
@@ -665,13 +656,10 @@ def relocate_archive_paths(
         )
         if result.returncode != 0:
             failures += 1
-            logger.error(
-                "Failed updating archive #%d path to '%s' (returncode=%s).",
-                catalog_no,
-                new_dir,
-                result.returncode,
+            _log_command_failure(
+                result,
+                f"Failed updating archive #{catalog_no} path to '{new_dir}' (returncode={result.returncode}).",
             )
-            logger.error(f"stderr: {result.stderr}")
 
     if failures:
         logger.error("Relocate completed with %d failure(s).", failures)
@@ -875,10 +863,35 @@ def _missing_chain_elements(chain: List[int], archive_map: Dict[int, str]) -> Li
         if not archive_path:
             missing.append(f"catalog #{catalog_no} missing from archive map")
             continue
-        slice_path = f"{archive_path}.1.dar"
-        if not os.path.exists(slice_path):
-            missing.append(slice_path)
+        if not archive_exists(archive_path):
+            missing.append(f"{archive_path}.1.dar")
     return missing
+
+
+def _resolve_directory_chain(
+    archive_info: List[Tuple[int, datetime, str]],
+    when_dt: datetime,
+    archive_map: Dict[int, str],
+) -> Tuple[List[int], List[str]]:
+    """Select and validate the PITR restore chain for a directory path.
+
+    Combines archive chain selection with on-disk availability checking so
+    both _pitr_chain_report and _restore_with_dar use identical logic.
+
+    Args:
+        archive_info: Parsed catalog entries as (catalog_no, date, archive_type).
+        when_dt: Restore to the state at this point in time.
+        archive_map: Maps catalog number to archive base path on disk.
+
+    Returns:
+        A (chain, missing) tuple. chain is the ordered list of catalog numbers
+        to apply (empty when no FULL archive covers when_dt). missing lists any
+        chain elements whose .1.dar slices are absent on disk.
+    """
+    chain = _select_archive_chain(archive_info, when_dt)
+    if not chain:
+        return [], []
+    return chain, _missing_chain_elements(chain, archive_map)
 
 
 def _pitr_chain_report(
@@ -903,7 +916,7 @@ def _pitr_chain_report(
 
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
-    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
     list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(list_result.stdout)
     if not archive_map:
@@ -919,27 +932,21 @@ def _pitr_chain_report(
         is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
         if is_directory:
             logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
-            chain = _select_archive_chain(archive_info, parsed_date)
+            chain, missing = _resolve_directory_chain(archive_info, parsed_date, archive_map)
             if not chain:
                 logger.error(f"No FULL archive found at or before {parsed_date} for '{path}'")
                 failures += 1
                 continue
-            missing = []
+            missing_set = set(missing)
             chain_display_parts = []
             for catalog_no in chain:
                 archive_path = archive_map.get(catalog_no)
-                status = "ok"
                 if not archive_path:
                     status = "missing"
-                    missing.append(f"catalog #{catalog_no} missing from archive map")
                 else:
-                    slice_path = f"{archive_path}.1.dar"
-                    if not os.path.exists(slice_path):
-                        status = "missing"
-                        missing.append(slice_path)
+                    status = "missing" if f"{archive_path}.1.dar" in missing_set else "ok"
                 chain_display_parts.append(_format_chain_item(catalog_no, info_by_no, status))
-            chain_display = ", ".join(chain_display_parts)
-            logger.info("PITR chain report for '%s': %s", path, chain_display)
+            logger.info("PITR chain report for '%s': %s", path, ", ".join(chain_display_parts))
             if missing:
                 for item in missing:
                     logger.error("PITR chain report missing archive: %s", item)
@@ -967,9 +974,8 @@ def _pitr_chain_report(
             logger.error("PITR chain report missing archive map entry for #%d (%s)", catalog_no, path)
             failures += 1
             continue
-        slice_path = f"{archive_path}.1.dar"
-        if not os.path.exists(slice_path):
-            logger.error("PITR chain report missing archive slice: %s", slice_path)
+        if not archive_exists(archive_path):
+            logger.error("PITR chain report missing archive slice: %s", f"{archive_path}.1.dar")
             failures += 1
             continue
         logger.info("PITR chain report selected archive #%d (%s) for '%s'.", catalog_no, dt, path)
@@ -1032,7 +1038,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
-    timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
     list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(list_result.stdout)
     if not archive_map:
@@ -1052,12 +1058,11 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
             if is_directory:
                 logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
-                chain = _select_archive_chain(archive_info, when_dt)
+                chain, missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
                 if not chain:
                     logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
                     failures += 1
                     continue
-                missing = _missing_chain_elements(chain, archive_map)
                 if missing:
                     for item in missing:
                         missing_archives.add(item)
@@ -1077,7 +1082,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
                         restored = False
                         break
-                    if not os.path.exists(f"{archive_path}.1.dar"):
+                    if not archive_exists(archive_path):
                         missing_archives.add(f"{archive_path}.1.dar")
                         logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
                         restored = False
@@ -1129,7 +1134,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
                     restored = False
                     break
-                if not os.path.exists(f"{archive_path}.1.dar"):
+                if not archive_exists(archive_path):
                     missing_archives.add(f"{archive_path}.1.dar")
                     logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
                     restored = False
@@ -1210,8 +1215,12 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
         logger.error(f'dar backup: "{archive_test_path}" not found, exiting')
         return 1
 
-    # Validate backup definition
-    backup_definition = archive.split('_')[0]
+    # Validate archive name and extract backup definition
+    parsed_archive = ArchiveName.parse(archive)
+    if not parsed_archive:
+        logger.error(f'Archive name "{archive}" does not match the expected naming convention, exiting')
+        return 1
+    backup_definition = parsed_archive.definition
     backup_def_path = os.path.join(config_settings.backup_d_dir, backup_definition)
     if not os.path.exists(backup_def_path):
         logger.error(f'backup definition "{backup_definition}" not found (--add-specific-archive option probably not correct), exiting')
@@ -1241,13 +1250,11 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
 
         if catalog_dates:
             latest_date = max(catalog_dates)
-            archive_date_match = date_pattern.search(archive)
-            if archive_date_match:
-                archive_date = datetime.strptime(archive_date_match.group(), "%Y-%m-%d")
-                if archive_date < latest_date:
-                    if not confirm_add_old_archive(archive, latest_date.strftime("%Y-%m-%d")):
-                        logger.info(f"Archive {archive} skipped due to user declining to add older archive.")
-                        return 1
+            archive_date = parsed_archive.as_datetime()
+            if archive_date and archive_date < latest_date:
+                if not confirm_add_old_archive(archive, latest_date.strftime("%Y-%m-%d")):
+                    logger.info(f"Archive {archive} skipped due to user declining to add older archive.")
+                    return 1
 
     except subprocess.CalledProcessError:
         logger.warning("Could not determine latest catalog date for chronological check.")
@@ -1256,16 +1263,16 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
 
     command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q", "--alter=ignore-order"]
     process = runner.run(command)
-    stdout, stderr = process.stdout, process.stderr
 
     if process.returncode == 0:
         logger.info(f'"{archive_path}" added to its catalog')
     elif process.returncode == 5:
         logger.warning(f'Something did not go completely right adding "{archive_path}" to its catalog, dar_manager error: "{process.returncode}"')
     else:
-        logger.error(f'something went wrong adding "{archive_path}" to its catalog, dar_manager error: "{process.returncode}"')
-        logger.error(f"stderr: {stderr}")
-        logger.error(f"stdout: {stdout}")
+        _log_command_failure(
+            process,
+            f'something went wrong adding "{archive_path}" to its catalog, dar_manager error: "{process.returncode}"',
+        )
 
     return process.returncode
 
@@ -1298,10 +1305,6 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     if not os.path.exists(args.add_dir):
         raise RuntimeError(f"Directory {args.add_dir} does not exist")
 
-    # Regular expression to match DAR archive files with base name and date in the format <string>_{FULL, DIFF, INCR}_YYYY-MM-DD
-    #dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.\d+\.dar$')
-    dar_pattern = re.compile(r'^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1.dar$') # just read slice #1 of an archive
-    # List of DAR archives with their dates and base names
     dar_archives = []
     type_order = {"FULL": 0, "DIFF": 1, "INCR": 2}
 
@@ -1311,18 +1314,19 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
 
     for filename in os.listdir(args.add_dir):
         logger.debug(f"check if '{filename}' is a dar archive slice #1?")
-        match = dar_pattern.match(filename)
-        if match:
-            base_name = match.group(1)
-            archive_type = match.group(2)
-            date_str = match.group(3)
-            # Skip archives that don't belong to the requested backup definition
-            if backup_def_filter and not base_name.startswith(f"{backup_def_filter}_"):
-                logger.debug(f" -> skipping '{base_name}': does not match backup definition '{backup_def_filter}'")
-                continue
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            dar_archives.append((date_obj, type_order.get(archive_type, 99), base_name, archive_type))
-            logger.debug(f" -> yes: base name: {base_name}, type: {archive_type}, date: {date_str}")
+        if not filename.endswith('.1.dar'):
+            continue
+        base_name = filename[:-len('.1.dar')]
+        parsed = ArchiveName.parse(base_name)
+        if parsed is None:
+            continue
+        # Skip archives that don't belong to the requested backup definition
+        if backup_def_filter and parsed.definition != backup_def_filter:
+            logger.debug(f" -> skipping '{base_name}': does not match backup definition '{backup_def_filter}'")
+            continue
+        date_obj = parsed.as_datetime() or datetime.min
+        dar_archives.append((date_obj, type_order.get(parsed.archive_type, 99), base_name, parsed.archive_type))
+        logger.debug(f" -> yes: base name: {base_name}, type: {parsed.archive_type}, date: {parsed.date}")
 
     if not dar_archives or len(dar_archives) == 0:
         logger.info(f"No 'dar' archives found in directory {args.add_dir}")
@@ -1388,7 +1392,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     cat_no:int = cat_no_for_name(archive, config_settings)
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
-        timeout = _coerce_timeout(getattr(config_settings, "command_timeout_secs", None))
+        timeout = _coerce_timeout(config_settings.command_timeout_secs)
         process: CommandResult = runner.run(command, timeout=timeout)
         logger.info(f"CommandResult: {process}")
     else:
@@ -1399,8 +1403,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
         logger.info(f"'{archive}' removed from it's catalog")
         return 0
     else:
-        logger.error(process.stdout)
-        logger.error(process.stderr)
+        _log_command_failure(process, f"Failed to remove '{archive}' from catalog '{database_path}'.")
         return 1
 
 
@@ -1510,25 +1513,13 @@ def main():
         sys.exit(1)
         return
 
-    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
-    logger = setup_logging(
-        config_settings.logfile_location,
-        command_output_log,
-        args.log_level,
-        args.log_stdout,
-        logfile_max_bytes=config_settings.logfile_max_bytes,
-        logfile_backup_count=config_settings.logfile_backup_count,
-        trace_log_file=trace_log_file,
-        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
-        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
-    )
+    logger, trace_log_file = init_logging(config_settings, args.log_level, args.log_stdout)
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
-        default_timeout=getattr(config_settings, "command_timeout_secs", 30) or 30,
-        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+        default_timeout=config_settings.command_timeout_secs,
+        default_capture_limit_bytes=config_settings.command_capture_max_bytes,
     )
 
     start_msgs: List[Tuple[str, str]] = []
@@ -1737,12 +1728,7 @@ def main():
                 if result != 0:
                     sys.exit(result)
                     return
-            if getattr(args, "preserve_ownership", False):
-                ignore_ownership = False
-            elif getattr(args, "ignore_ownership", False):
-                ignore_ownership = True
-            else:
-                ignore_ownership = not config_settings.restore_ownership
+            ignore_ownership = resolve_ownership_flag(args, config_settings)
             no_deleted = getattr(args, 'no_deleted', False)
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings,
                                 verbose=args.verbose, ignore_ownership=ignore_ownership,

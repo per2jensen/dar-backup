@@ -93,7 +93,7 @@ def init_manager_runner(config_path: Path, monkeypatch) -> CommandRunner:
 
     monkeypatch.setattr(sys, "argv", ["manager", "--config-file", str(config_path)])
     monkeypatch.setattr(manager.argcomplete, "autocomplete", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(manager, "setup_logging", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(manager, "init_logging", lambda *args, **kwargs: (MagicMock(), "/dev/null"))
     monkeypatch.setattr(manager, "get_logger", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(
         manager,
@@ -623,7 +623,7 @@ def test_manager_add_and_remove_specific_archive(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["manager.py", "--add-specific-archive", "a", "--remove-specific-archive", "b", "--config-file", str(config_path)])
 
     mock_logger = MagicMock()
-    with patch("dar_backup.manager.setup_logging", return_value=mock_logger), patch("sys.exit") as mock_exit:
+    with patch("dar_backup.manager.init_logging", return_value=(mock_logger, "/dev/null")), patch("sys.exit") as mock_exit:
         import dar_backup.manager as mgr
 
         print("=== DEBUG CONFIG FILE ===")
@@ -661,13 +661,13 @@ def test_manager_with_alternate_archive_dir(tmp_path, monkeypatch):
     ])
 
     # Patch logger, CommandRunner and create_db
-    with patch("dar_backup.manager.setup_logging") as mock_logger_setup, \
+    with patch("dar_backup.manager.init_logging") as mock_init_logging, \
          patch("dar_backup.manager.CommandRunner") as mock_runner_class, \
          patch("dar_backup.manager.create_db") as mock_db_creator, \
          patch("sys.exit") as mock_exit:
 
         mock_logger = MagicMock()
-        mock_logger_setup.return_value = mock_logger
+        mock_init_logging.return_value = (mock_logger, "/dev/null")
         mock_runner = MagicMock()
         mock_runner_class.return_value = mock_runner
         mock_runner.run.return_value.returncode = 0
@@ -692,22 +692,21 @@ def test_create_db_handles_dar_manager_failure(tmp_path):
 
     dummy_def = "testdef"
     dummy_db_path = tmp_path / f"{dummy_def}.db"
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     mock_runner = MagicMock()
     mock_runner.run.return_value.returncode = 1
     mock_runner.run.return_value.stdout = "some stdout"
     mock_runner.run.return_value.stderr = "some stderr"
 
-    mock_logger = MagicMock()
+    # _log_command_failure uses the module-level logger, not the passed logger
+    with patch("dar_backup.manager.logger") as mock_module_logger:
+        result = create_db(dummy_def, config, MagicMock(), mock_runner)
 
-    result = create_db(dummy_def, config, mock_logger, mock_runner)
-
-    # It should log the error and return non-zero
     assert result == 1
-    mock_logger.error.assert_any_call(f'Something went wrong creating the database: "{dummy_db_path}"')
-    mock_logger.error.assert_any_call("stderr: some stderr")
-    mock_logger.error.assert_any_call("stdout: some stdout")
+    mock_module_logger.error.assert_any_call("%s", f'Something went wrong creating the database: "{dummy_db_path}"')
+    mock_module_logger.error.assert_any_call("stderr: %s", "some stderr")
+    mock_module_logger.error.assert_any_call("stdout: %s", "some stdout")
 
 
 
@@ -715,7 +714,7 @@ def test_create_db_handles_dar_manager_failure(tmp_path):
 def test_list_catalogs_db_missing(tmp_path):
     from dar_backup.manager import list_catalogs
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
     backup_def = "nonexistent_def"
 
     with patch("dar_backup.manager.logger") as mock_logger:
@@ -736,7 +735,7 @@ def test_list_catalogs_command_failure(tmp_path):
     db_path = tmp_path / f"{backup_def}.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     def fake_stream(cmd, callback, *, timeout=None):
         return CommandResult(1, "", "failure error")
@@ -747,8 +746,8 @@ def test_list_catalogs_command_failure(tmp_path):
         result = list_catalogs(backup_def, config)
 
     assert result.returncode == 1
-    mock_logger.error.assert_any_call(f'Error listing catalogs for: "{db_path}"')
-    mock_logger.error.assert_any_call("stderr: failure error")
+    mock_logger.error.assert_any_call('%s', f'Error listing catalogs for: "{db_path}"')
+    mock_logger.error.assert_any_call("stderr: %s", "failure error")
 
 
 def test_cat_no_for_name_returns_correct_number(tmp_path):
@@ -796,7 +795,7 @@ def test_cat_no_for_name_list_catalogs_fails(tmp_path):
 
     archive = "somearchive_FULL_2025-04-06"
     backup_def = "somearchive"  # what backup_def_from_archive() returns
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     mock_process = SimpleNamespace(
         returncode=1,  # Simulate failure
@@ -817,7 +816,7 @@ def test_list_archive_contents_runner_fails(tmp_path):
     from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     db_path = tmp_path / "example.db"
     db_path.touch()
@@ -832,15 +831,15 @@ def test_list_archive_contents_runner_fails(tmp_path):
         result = list_archive_contents(archive, config)
 
     assert result == 1
-    mock_logger.error.assert_any_call(f'Error listing contents of archive: "{str(db_path)}"')
-    mock_logger.error.assert_any_call("stderr: mocked stderr")
+    mock_logger.error.assert_any_call('%s', f'Error listing contents of archive: "{str(db_path)}"')
+    mock_logger.error.assert_any_call("stderr: %s", "mocked stderr")
 
 
 def test_list_archive_contents_cat_not_found(tmp_path):
     from dar_backup.manager import list_archive_contents
 
     archive = "example_FULL_2025-04-06"
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     db_path = tmp_path / "example.db"
     db_path.touch()
@@ -861,7 +860,7 @@ def test_list_archive_contents_runner_fails_isolated(tmp_path):
     from dar_backup.command_runner import CommandResult
 
     archive = "example_FULL_2025-04-06"
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     db_path = tmp_path / "example.db"
     db_path.touch()
@@ -876,8 +875,8 @@ def test_list_archive_contents_runner_fails_isolated(tmp_path):
         result = list_archive_contents(archive, config)
 
     assert result == 1
-    mock_logger.error.assert_any_call(f'Error listing contents of archive: "{str(db_path)}"')
-    mock_logger.error.assert_any_call("stderr: mocked stderr")
+    mock_logger.error.assert_any_call('%s', f'Error listing contents of archive: "{str(db_path)}"')
+    mock_logger.error.assert_any_call("stderr: %s", "mocked stderr")
 
 
 def test_find_file_db_missing(tmp_path):
@@ -885,7 +884,7 @@ def test_find_file_db_missing(tmp_path):
 
     backup_def = "exampledef"
     fake_file = "some/path/to/file.txt"
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     with patch("dar_backup.manager.logger") as mock_logger:
         result = find_file(fake_file, backup_def, config)
@@ -900,7 +899,9 @@ def test_add_specific_archive_dar_not_found(tmp_path):
 
     config = SimpleNamespace(
         backup_dir=tmp_path,
-        backup_d_dir=tmp_path
+        backup_d_dir=tmp_path,
+        manager_db_dir=None,
+        command_timeout_secs=None,
     )
 
     archive_name = "example_FULL_2025-04-06"
@@ -927,7 +928,9 @@ def test_add_specific_archive_success(tmp_path):
 
     config = SimpleNamespace(
         backup_dir=tmp_path,
-        backup_d_dir=tmp_path
+        backup_d_dir=tmp_path,
+        manager_db_dir=None,
+        command_timeout_secs=None,
     )
 
     mock_process = SimpleNamespace(returncode=0, stdout="success", stderr="")
@@ -951,7 +954,9 @@ def test_add_specific_archive_warning(tmp_path):
 
     config = SimpleNamespace(
         backup_dir=tmp_path,
-        backup_d_dir=tmp_path
+        backup_d_dir=tmp_path,
+        manager_db_dir=None,
+        command_timeout_secs=None,
     )
 
     mock_process = SimpleNamespace(returncode=5, stdout="some warning", stderr="")
@@ -977,7 +982,9 @@ def test_add_specific_archive_failure(tmp_path):
 
     config = SimpleNamespace(
         backup_dir=tmp_path,
-        backup_d_dir=tmp_path
+        backup_d_dir=tmp_path,
+        manager_db_dir=None,
+        command_timeout_secs=None,
     )
 
     mock_process = SimpleNamespace(returncode=42, stdout="error out", stderr="error err")
@@ -988,9 +995,9 @@ def test_add_specific_archive_failure(tmp_path):
 
         result = add_specific_archive(archive_name, config)
 
-    mock_logger.error.assert_any_call(f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"')
-    mock_logger.error.assert_any_call("stderr: error err")
-    mock_logger.error.assert_any_call("stdout: error out")
+    mock_logger.error.assert_any_call('%s', f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"')
+    mock_logger.error.assert_any_call("stderr: %s", "error err")
+    mock_logger.error.assert_any_call("stdout: %s", "error out")
     assert result == 42
 
 
@@ -1003,7 +1010,7 @@ def test_add_specific_archive_unexpected_error(tmp_path):
     (tmp_path / f"{archive_name}.1.dar").touch()
     (tmp_path / "test").touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
     process = SimpleNamespace(returncode=42, stdout="weird error", stderr="unexpected failure")
 
     with patch("dar_backup.manager.runner") as mock_runner, \
@@ -1012,7 +1019,7 @@ def test_add_specific_archive_unexpected_error(tmp_path):
         result = add_specific_archive(archive_name, config)
         assert result == 42
         mock_logger.error.assert_any_call(
-            f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"'
+            '%s', f'something went wrong adding "{tmp_path / archive_name}" to its catalog, dar_manager error: "42"'
         )
 
 
@@ -1313,7 +1320,7 @@ def test_cat_no_for_name_unparseable_archive_returns_minus_one(tmp_path):
     does not follow the {def}_{TYPE}_{date} convention."""
     from dar_backup.manager import cat_no_for_name
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     with patch("dar_backup.manager.logger") as mock_logger:
         result = cat_no_for_name("invalidarchive", config)
@@ -1330,7 +1337,7 @@ def test_list_archive_contents_empty_prints_info(tmp_path, capsys):
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     def fake_stream(cmd, callback, *, timeout=None):
         callback("header line")
@@ -1355,7 +1362,7 @@ def test_list_archive_contents_filters_saved_lines(tmp_path, capsys):
     db_path = tmp_path / "example.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     def fake_stream(cmd, callback, *, timeout=None):
         for line in ["header line", "[ Saved ] file1.txt", "other line", "[ Saved ] dir/file2.txt"]:
@@ -1378,7 +1385,7 @@ def test_add_specific_archive_missing_backup_def(tmp_path):
 
     archive = "example_FULL_2025-04-06"
     (tmp_path / f"{archive}.1.dar").touch()
-    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     with patch("dar_backup.manager.logger") as mock_logger:
         result = add_specific_archive(archive, config)
@@ -1393,7 +1400,7 @@ def test_add_specific_archive_old_archive_declined(tmp_path):
     archive = "example_FULL_2025-04-01"
     (tmp_path / f"{archive}.1.dar").touch()
     (tmp_path / "example").touch()
-    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     list_output = "1\t/path\texample_FULL_2025-04-10"
 
@@ -1417,7 +1424,7 @@ def test_add_specific_archive_catalog_list_failure_logs_warning(tmp_path):
     archive = "example_FULL_2025-04-01"
     (tmp_path / f"{archive}.1.dar").touch()
     (tmp_path / "example").touch()
-    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     with patch("dar_backup.manager.subprocess.run", side_effect=subprocess.CalledProcessError(1, "dar_manager")), \
          patch("dar_backup.manager.runner") as mock_runner, \
@@ -1519,7 +1526,7 @@ def test_add_directory_returns_1_when_any_archive_fails(tmp_path):
 def test_remove_specific_archive_failure_returns_one(tmp_path):
     from dar_backup.manager import remove_specific_archive
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
     process = SimpleNamespace(returncode=1, stdout="bad", stderr="oops")
 
     with patch("dar_backup.manager.cat_no_for_name", return_value=1), \
@@ -1529,15 +1536,16 @@ def test_remove_specific_archive_failure_returns_one(tmp_path):
         result = remove_specific_archive("example_FULL_2025-01-01", config)
 
     assert result == 1
-    mock_logger.error.assert_any_call("bad")
-    mock_logger.error.assert_any_call("oops")
+    mock_logger.error.assert_any_call('%s', f"Failed to remove 'example_FULL_2025-01-01' from catalog '{tmp_path / 'example.db'}'.")
+    mock_logger.error.assert_any_call("stderr: %s", "oops")
+    mock_logger.error.assert_any_call("stdout: %s", "bad")
 
 
 def test_create_db_db_dir_missing(tmp_path):
     from dar_backup.manager import create_db
 
     missing_dir = tmp_path / "missing"
-    config = SimpleNamespace(backup_dir=str(missing_dir))
+    config = SimpleNamespace(backup_dir=str(missing_dir), manager_db_dir=None)
     mock_logger = MagicMock()
     mock_runner = MagicMock()
 
@@ -1552,14 +1560,14 @@ def test_create_db_db_dir_not_directory(tmp_path):
 
     db_file = tmp_path / "dbfile"
     db_file.write_text("not a dir")
-    config = SimpleNamespace(backup_dir=str(db_file))
+    config = SimpleNamespace(backup_dir=str(db_file), manager_db_dir=None)
     mock_logger = MagicMock()
     mock_runner = MagicMock()
 
     result = create_db("example", config, mock_logger, mock_runner)
 
     assert result == 1
-    mock_logger.error.assert_called_once_with(f"DB path exists but is not a directory: {db_file}")
+    mock_logger.error.assert_called_once_with(f"DB dir exists but is not a directory: {db_file}")
 
 
 def test_create_db_db_dir_not_writable(tmp_path):
@@ -1567,7 +1575,7 @@ def test_create_db_db_dir_not_writable(tmp_path):
 
     db_dir = tmp_path / "dbdir"
     db_dir.mkdir()
-    config = SimpleNamespace(backup_dir=str(db_dir))
+    config = SimpleNamespace(backup_dir=str(db_dir), manager_db_dir=None)
     mock_logger = MagicMock()
     mock_runner = MagicMock()
 
@@ -1586,7 +1594,7 @@ def test_list_catalogs_success_parses_and_sorts(tmp_path, capsys):
     db_path = tmp_path / f"{backup_def}.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
     raw_lines = [
         "archive #",
         "dar path",
@@ -1624,7 +1632,7 @@ def test_list_catalogs_success_parses_suppressed(tmp_path):
     db_path = tmp_path / f"{backup_def}.db"
     db_path.touch()
 
-    config = SimpleNamespace(backup_dir=tmp_path)
+    config = SimpleNamespace(backup_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
     def fake_stream(cmd, callback, *, timeout=None):
         for line in ["1\t/path\tadef_FULL_2025-01-01", "2\t/path\tbdef_FULL_2025-01-02"]:

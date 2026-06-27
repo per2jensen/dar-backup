@@ -99,6 +99,7 @@ def test_validate_required_directories_missing(tmp_path):
         backup_dir=str(tmp_path / "missing_backups"),
         backup_d_dir=str(tmp_path / "missing_backup_d"),
         test_restore_dir=str(tmp_path / "missing_restore"),
+        manager_db_dir=None,
     )
 
     with pytest.raises(RuntimeError, match="Required directories missing"):
@@ -113,13 +114,16 @@ def test_list_definitions_requires_dir(tmp_path):
 def test_preflight_reports_missing_paths_and_permissions(monkeypatch, tmp_path, capsys):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
+    restore_dir = tmp_path / "restore"
+    restore_dir.mkdir()
 
     config = SimpleNamespace(
         backup_dir=None,
         backup_d_dir=str(tmp_path / "missing_backup_d"),
-        test_restore_dir=str(tmp_path / "restore"),
+        test_restore_dir=str(restore_dir),
         logfile_location=str(log_dir / "dar-backup.log"),
         par2_enabled=False,
+        manager_db_dir=None,
     )
     args = SimpleNamespace(backup_definition=None)
 
@@ -172,6 +176,7 @@ def test_preflight_reports_backup_dir_write_probe_failure(monkeypatch, tmp_path,
         test_restore_dir=str(test_restore_dir),
         logfile_location=str(log_dir / "dar-backup.log"),
         par2_enabled=False,
+        manager_db_dir=None,
     )
     args = SimpleNamespace(backup_definition=None)
 
@@ -209,6 +214,7 @@ def test_preflight_warns_when_log_directory_is_unavailable(monkeypatch, tmp_path
         test_restore_dir=str(test_restore_dir),
         logfile_location=str(tmp_path / "missing-logs" / "dar-backup.log"),
         par2_enabled=False,
+        manager_db_dir=None,
     )
     args = SimpleNamespace(backup_definition=None)
 
@@ -239,6 +245,7 @@ def test_preflight_reports_missing_binaries(tmp_path, monkeypatch, capsys):
         test_restore_dir=str(test_restore_dir),
         logfile_location=str(log_dir / "dar-backup.log"),
         par2_enabled=True,
+        manager_db_dir=None,
     )
     args = SimpleNamespace(backup_definition=None)
 
@@ -268,6 +275,7 @@ def test_preflight_reports_version_failures(tmp_path, monkeypatch, capsys):
         test_restore_dir=str(test_restore_dir),
         logfile_location=str(log_dir / "dar-backup.log"),
         par2_enabled=True,
+        manager_db_dir=None,
     )
     args = SimpleNamespace(backup_definition=None)
 
@@ -316,6 +324,10 @@ def test_verify_restore_dir_create_error(tmp_path, monkeypatch):
         min_size_verification_mb=0,
         max_size_verification_mb=10,
         no_files_verification=1,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
     backup_definition = tmp_path / "definition.dcf"
     backup_definition.write_text("-R /\n")
@@ -340,6 +352,10 @@ def test_verify_restore_command_nonzero_raises(tmp_path, monkeypatch):
         min_size_verification_mb=0,
         max_size_verification_mb=10,
         no_files_verification=1,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
     backup_definition = tmp_path / "definition.dcf"
     backup_definition.write_text("-R /\n")

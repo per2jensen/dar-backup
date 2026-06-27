@@ -31,7 +31,7 @@ import glob
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
-from dar_backup.util import setup_logging
+from dar_backup.util import init_logging
 from dar_backup.util import get_config_file
 from dar_backup.util import get_logger
 from dar_backup.util import requirements
@@ -40,7 +40,9 @@ from dar_backup.util import get_invocation_command_line
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
 from dar_backup.util import is_archive_name_allowed
+from dar_backup.util import ArchiveName
 from dar_backup.util import safe_remove_file
+from dar_backup.util import validate_directory
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message
 
@@ -49,6 +51,35 @@ from dar_backup.command_runner import CommandResult
 
 logger = None
 runner = None
+
+
+def _remove_file(file_path: str, base_dir: Path, label: str, dry_run: bool) -> bool:
+    """Delete one file, respecting dry_run and logging the outcome.
+
+    Args:
+        file_path: Absolute path of the file to remove.
+        base_dir: Base directory passed to safe_remove_file for path-safety check.
+        label: Short human-readable name used in log messages (e.g. "archive slice").
+        dry_run: When True, only log what would happen; do not touch the filesystem.
+
+    Returns:
+        True if the file was removed or would have been removed in dry_run mode,
+        False if safe_remove_file rejected the path or an exception occurred.
+    """
+    try:
+        if dry_run:
+            logger.info(f"Dry run: would delete {label}: {file_path}")
+            return True
+        removed = safe_remove_file(file_path, base_dir=base_dir)
+        if removed:
+            logger.info(f"Deleted {label}: {file_path}")
+        else:
+            logger.warning(f"Skipped deleting unsafe {label}: {file_path}")
+        return removed
+    except Exception as e:
+        logger.error(f"Error deleting {label} {file_path}: {e}")
+        return False
+
 
 def _delete_par2_files(
     archive_name: str,
@@ -89,14 +120,7 @@ def _delete_par2_files(
         return
 
     for file_path in sorted(targets):
-        try:
-            if dry_run:
-                logger.info(f"Dry run: would delete PAR2 file: {file_path}")
-            else:
-                safe_remove_file(file_path, base_dir=Path(par2_dir))
-                logger.info(f"Deleted PAR2 file: {file_path}")
-        except Exception as e:
-            logger.error(f"Error deleting PAR2 file {file_path}: {e}")
+        _remove_file(file_path, Path(par2_dir), "PAR2 file", dry_run)
 
 
 def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: ConfigSettings = None):
@@ -128,37 +152,24 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
             # definition's archives.
             continue
         if backup_type in filename:
-            try:
-                date_str = filename.split(f"_{backup_type}_")[1].split('.')[0]
-                file_date = datetime.strptime(date_str, '%Y-%m-%d')
-            except Exception as e:
-                logger.warning(f"Skipping file with invalid date format: {filename} ({e})")
+            parsed = ArchiveName.from_filename(filename)
+            file_date = parsed.as_datetime() if parsed else None
+            if file_date is None:
+                logger.warning(f"Skipping file with invalid date format: {filename}")
                 continue
 
             if file_date < cutoff_date:
                 file_path = entry.path
-                try:
-                    if dry_run:
-                        logger.info(f"Dry run: would delete {backup_type} backup: {file_path}")
-                        removed = True
-                    else:
-                        removed = safe_remove_file(file_path, base_dir=Path(backup_dir))
-                        if removed:
-                            logger.info(f"Deleted {backup_type} backup: {file_path}")
-                        else:
-                            logger.warning(f"Skipped deleting unsafe backup file: {file_path}")
-                    if removed:
-                        archive_name = filename.split('.')[0]
-                        if archive_name not in archives_deleted:
-                            logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
-                        archives_deleted[archive_name] = True
-                except Exception as e:
-                    logger.error(f"Error deleting file {file_path}: {e}")
+                if _remove_file(file_path, Path(backup_dir), f"{backup_type} backup", dry_run):
+                    archive_name = filename.split('.')[0]
+                    if archive_name not in archives_deleted:
+                        logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
+                    archives_deleted[archive_name] = True
 
     for archive_name in archives_deleted.keys():
         if not is_archive_name_allowed(archive_name):
             raise ValueError(f"Refusing unsafe archive name: {archive_name}")
-        archive_definition = archive_name.split('_')[0]
+        archive_definition = ArchiveName.parse(archive_name).definition
         _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
         if dry_run:
             logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
@@ -185,19 +196,8 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
         filename = entry.name
         if archive_regex.match(filename):
             file_path = entry.path
-            try:
-                if dry_run:
-                    logger.info(f"Dry run: would delete archive slice: {file_path}")
-                    files_deleted = True
-                else:
-                    removed = safe_remove_file(file_path, base_dir=Path(backup_dir))
-                    if removed:
-                        logger.info(f"Deleted archive slice: {file_path}")
-                        files_deleted = True
-                    else:
-                        logger.warning(f"Skipped deleting unsafe archive slice: {file_path}")
-            except Exception as e:
-                logger.error(f"Error deleting archive slice {file_path}: {e}")
+            if _remove_file(file_path, Path(backup_dir), "archive slice", dry_run):
+                files_deleted = True
 
     if files_deleted:
             if dry_run:
@@ -207,7 +207,8 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
     else:
         logger.info("No .dar files matched the regex for deletion.")
 
-    archive_definition = archive_name.split('_')[0]
+    _an = ArchiveName.parse(archive_name)
+    archive_definition = _an.definition if _an else archive_name.split('_')[0]
     _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
 
 
@@ -313,24 +314,13 @@ def main():
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}")
         sys.exit(127)
 
-#    command_output_log = os.path.join(config_settings.logfile_location.removesuffix("dar-backup.log"), "dar-backup-commands.log")
-    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    logger = setup_logging(
-        config_settings.logfile_location,
-        command_output_log,
-        args.log_level,
-        args.log_stdout,
-        logfile_max_bytes=config_settings.logfile_max_bytes,
-        logfile_backup_count=config_settings.logfile_backup_count,
-        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
-        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
-    )
-    command_logger = get_logger(command_output_logger = True)
+    logger, _ = init_logging(config_settings, args.log_level, args.log_stdout)
+    command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
         default_timeout=config_settings.command_timeout_secs,
-        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+        default_capture_limit_bytes=config_settings.command_capture_max_bytes,
     )
 
     start_msgs: List[Tuple[str, str]] = []
@@ -380,11 +370,9 @@ def main():
 
     try:
         if args.alternate_archive_dir:
-            if not os.path.exists(args.alternate_archive_dir):
-                logger.error(f"Alternate archive directory does not exist: {args.alternate_archive_dir}, exiting")
-                sys.exit(1)
-            if  not os.path.isdir(args.alternate_archive_dir):
-                logger.error("Alternate archive directory is not a directory, exiting")
+            error = validate_directory(args.alternate_archive_dir, "Alternate archive directory", require_write=False)
+            if error:
+                logger.error(f"{error}, exiting")
                 sys.exit(1)
             config_settings.backup_dir = args.alternate_archive_dir
 

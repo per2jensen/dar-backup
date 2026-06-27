@@ -45,8 +45,7 @@ from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
-from dar_backup.util import setup_logging
-from dar_backup.util import derive_trace_log_path
+from dar_backup.util import init_logging
 from dar_backup.util import get_logger
 from dar_backup.util import BackupError
 from dar_backup.util import RestoreError
@@ -57,12 +56,16 @@ from dar_backup.util import get_invocation_command_line
 from dar_backup.util import get_binary_info
 from dar_backup.util import print_aligned_settings
 from dar_backup.util import backup_definition_completer, list_archive_completer
+from dar_backup.util import ArchiveName
 from dar_backup.util import show_scriptname
 from dar_backup.util import send_discord_message, render_discord_report
 from dar_backup.util import write_metrics_row, update_postreq_status
 from dar_backup.util import parse_dar_stats
 from dar_backup.util import compare_metadata
 from dar_backup.util import write_restore_test_samples
+from dar_backup.util import validate_directory
+from dar_backup.util import archive_exists
+from dar_backup.util import resolve_ownership_flag
 from dar_backup.util import (
     RESTORE_FAIL_CONTENT_MISMATCH,
     RESTORE_FAIL_METADATA_MISMATCH,
@@ -364,13 +367,13 @@ def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str
 def _is_restoretest_candidate(path: str, config_settings: ConfigSettings) -> bool:
     prefixes = [
         prefix.lstrip("/").lower()
-        for prefix in getattr(config_settings, "restoretest_exclude_prefixes", [])
+        for prefix in config_settings.restoretest_exclude_prefixes
     ]
     suffixes = [
         suffix.lower()
-        for suffix in getattr(config_settings, "restoretest_exclude_suffixes", [])
+        for suffix in config_settings.restoretest_exclude_suffixes
     ]
-    regex = getattr(config_settings, "restoretest_exclude_regex", None)
+    regex = config_settings.restoretest_exclude_regex
 
     normalized = path.lstrip("/")
     lowered = normalized.lower()
@@ -641,12 +644,7 @@ def verify(
                         restore_path, exc,
                     )
             args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
-            if getattr(args, 'preserve_ownership', False):
-                ignore_ownership = False
-            elif getattr(args, 'ignore_ownership', False):
-                ignore_ownership = True
-            else:
-                ignore_ownership = not getattr(config_settings, 'restore_ownership', False)
+            ignore_ownership = resolve_ownership_flag(args, config_settings)
             command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
             if ignore_ownership:
                 command.append('--comparison-field=ignore-owner')
@@ -957,9 +955,8 @@ def validate_required_directories(config_settings: ConfigSettings) -> None:
         ("BACKUP.D_DIR", config_settings.backup_d_dir),
         ("TEST_RESTORE_DIR", config_settings.test_restore_dir),
     ]
-    manager_db_dir = getattr(config_settings, "manager_db_dir", None)
-    if manager_db_dir:
-        required.append(("MANAGER_DB_DIR", manager_db_dir))
+    if config_settings.manager_db_dir:
+        required.append(("MANAGER_DB_DIR", config_settings.manager_db_dir))
 
     missing = [(name, path) for name, path in required if not path or not os.path.isdir(path)]
     if missing:
@@ -978,29 +975,12 @@ def initialize_runtime_logging(args: argparse.Namespace, config_settings: Config
     logger = None
     runner = None
 
-    command_output_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    if command_output_log == config_settings.logfile_location:
-        print(f"Error: logfile_location in {args.config_file} does not end at 'dar-backup.log', exiting", file=stderr)
-        exit(1)
-
-    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
-
-    logger = setup_logging(
-        config_settings.logfile_location,
-        command_output_log,
-        args.log_level,
-        args.log_stdout,
-        logfile_max_bytes=config_settings.logfile_max_bytes,
-        logfile_backup_count=config_settings.logfile_backup_count,
-        trace_log_file=trace_log_file,
-        trace_log_max_bytes=getattr(config_settings, "trace_log_max_bytes", 10485760),
-        trace_log_backup_count=getattr(config_settings, "trace_log_backup_count", 1)
-    )
+    logger, trace_log_file = init_logging(config_settings, args.log_level, args.log_stdout)
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
-        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+        default_capture_limit_bytes=config_settings.command_capture_max_bytes,
     )
 
     return trace_log_file
@@ -1017,14 +997,9 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     def check_dir(name: str, path: str, require_write: bool = True, issues=None):
         if issues is None:
             issues = errors
-        if not path:
-            issues.append(f"{name} is not set")
-            return
-        if not os.path.isdir(path):
-            issues.append(f"{name} does not exist: {path}")
-            return
-        if require_write and not os.access(path, os.W_OK):
-            issues.append(f"{name} is not writable: {path}")
+        error = validate_directory(path, name, require_write)
+        if error:
+            issues.append(error)
 
     def probe_write(name: str, path: str):
         if not path or not os.path.isdir(path):
@@ -1047,7 +1022,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     _nfs_dirs = [
         config_settings.backup_dir,
         config_settings.test_restore_dir,
-        getattr(config_settings, "manager_db_dir", None),
+        config_settings.manager_db_dir,
     ]
     for _d in _nfs_dirs:
         if _d and os.path.isdir(_d):
@@ -1060,7 +1035,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     check_dir("BACKUP_DIR", config_settings.backup_dir)
     check_dir("BACKUP.D_DIR", config_settings.backup_d_dir)
     check_dir("TEST_RESTORE_DIR", config_settings.test_restore_dir)
-    if getattr(config_settings, "manager_db_dir", None):
+    if config_settings.manager_db_dir:
         check_dir("MANAGER_DB_DIR", config_settings.manager_db_dir)
 
     # Log directory write access
@@ -1070,14 +1045,14 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     # Write probes catch unavailable/stale mounts that may still pass os.access().
     probe_write("BACKUP_DIR", config_settings.backup_dir)
     probe_write("TEST_RESTORE_DIR", config_settings.test_restore_dir)
-    if getattr(config_settings, "manager_db_dir", None):
+    if config_settings.manager_db_dir:
         probe_write("MANAGER_DB_DIR", config_settings.manager_db_dir)
 
     # Binaries present
     for cmd in ("dar",):
         if shutil.which(cmd) is None:
             errors.append(f"Binary not found on PATH: {cmd}")
-    if getattr(config_settings, "par2_enabled", False):
+    if config_settings.par2_enabled:
         if shutil.which("par2") is None:
             errors.append("Binary not found on PATH: par2 (required when PAR2.ENABLED is true)")
 
@@ -1088,7 +1063,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
                 subprocess.run([cmd, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             except Exception:
                 errors.append(f"Failed to run '{cmd} --version'")
-    if getattr(config_settings, "par2_enabled", False) and shutil.which("par2"):
+    if config_settings.par2_enabled and shutil.which("par2"):
         try:
             subprocess.run(["par2", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         except Exception:
@@ -1360,7 +1335,7 @@ def perform_backup(
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
             metrics["archive_name"] = os.path.basename(backup_file)
 
-            if os.path.exists(backup_file + '.1.dar'):
+            if archive_exists(backup_file):
                 msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
                 logger.warning(msg)
                 results.append((msg, 2))
@@ -1374,7 +1349,7 @@ def perform_backup(
                 if args.alternate_reference_archive:
                     latest_base_backup = os.path.join(config_settings.backup_dir, args.alternate_reference_archive)
                     logger.info(f"Using alternate reference archive: {latest_base_backup}")
-                    if not os.path.exists(latest_base_backup + '.1.dar'):
+                    if not archive_exists(latest_base_backup):
                         msg = f"Alternate reference archive: \"{latest_base_backup}.1.dar\" does not exist, skipping..."
                         logger.error(msg)
                         results.append((msg, 1))
@@ -1385,7 +1360,7 @@ def perform_backup(
                             f for f in os.listdir(config_settings.backup_dir)
                             if f.startswith(f"{backup_definition}_{base_backup_type}_") and f.endswith('.1.dar')
                         ],
-                        key=lambda x: datetime.strptime(x.split('_')[-1].split('.')[0], '%Y-%m-%d')
+                        key=lambda x: (p := ArchiveName.from_filename(x)) and p.as_datetime() or datetime.min
                     )
                     if not base_backups:
                         msg = (
@@ -1650,12 +1625,12 @@ def _write_par2_manifest(
 
 def _default_par2_config(config_settings: ConfigSettings) -> dict:
     return {
-        "par2_dir": getattr(config_settings, "par2_dir", None),
-        "par2_ratio_full": getattr(config_settings, "par2_ratio_full", None),
-        "par2_ratio_diff": getattr(config_settings, "par2_ratio_diff", None),
-        "par2_ratio_incr": getattr(config_settings, "par2_ratio_incr", None),
-        "par2_run_verify": getattr(config_settings, "par2_run_verify", None),
-        "par2_enabled": getattr(config_settings, "par2_enabled", True),
+        "par2_dir": config_settings.par2_dir,
+        "par2_ratio_full": config_settings.par2_ratio_full,
+        "par2_ratio_diff": config_settings.par2_ratio_diff,
+        "par2_ratio_incr": config_settings.par2_ratio_incr,
+        "par2_run_verify": config_settings.par2_run_verify,
+        "par2_enabled": config_settings.par2_enabled,
     }
 
 
@@ -1979,7 +1954,7 @@ def clean_restore_test_directory(config_settings: ConfigSettings):
     """
     Cleans up the restore test directory to ensure a clean slate.
     """
-    restore_dir = getattr(config_settings, "test_restore_dir", None)
+    restore_dir = config_settings.test_restore_dir
     if not restore_dir:
         return
 
@@ -2378,12 +2353,7 @@ def main():
             list_contents(args.list_contents, config_settings.backup_dir, args.selection, timeout=config_settings.command_timeout_secs)
         elif args.restore:
             logger.debug(f"Restoring {args.restore} to {restore_dir}")
-            if args.preserve_ownership:
-                ignore_ownership = False
-            elif args.ignore_ownership:
-                ignore_ownership = True
-            else:
-                ignore_ownership = not config_settings.restore_ownership
+            ignore_ownership = resolve_ownership_flag(args, config_settings)
             results.extend(restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection,
                                           ignore_ownership=ignore_ownership,
                                           no_deleted=args.no_deleted))

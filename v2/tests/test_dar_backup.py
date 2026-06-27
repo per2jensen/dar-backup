@@ -32,7 +32,11 @@ def test_verify_filecmp_mismatch_returns_false(env):
         backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=5
+        no_files_verification=5,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
@@ -45,7 +49,7 @@ def test_verify_filecmp_mismatch_returns_false(env):
          patch("dar_backup.dar_backup.get_backed_up_files", return_value=[("/some/file.txt", "10 Mio")]), \
          patch("dar_backup.dar_backup.logger"), \
          patch("builtins.open", mock_open(read_data=mock_definition_content)):
-        
+
         result = verify(args, "mock-backup", env.config_file, config)
         assert not result
         assert result.restore_test_passed is False
@@ -68,7 +72,11 @@ def test_verify_filecmp_permission_error_logged(env):
         backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=5
+        no_files_verification=5,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
@@ -103,7 +111,11 @@ def test_verify_missing_source_file_logs_error(env):
         backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=5
+        no_files_verification=5,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
@@ -188,6 +200,10 @@ def test_verify_success_path_with_verbose_logging(setup_environment, env, monkey
         min_size_verification_mb=0,
         max_size_verification_mb=20,
         no_files_verification=1,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     monkeypatch.setattr(db, "runner", CommandRunner(logger=env.logger, command_logger=env.command_logger))
@@ -787,7 +803,11 @@ def test_verify_raises_error_if_no_root_path(env):
         backup_dir=env.backup_dir,
         min_size_verification_mb=0,
         max_size_verification_mb=20,
-        no_files_verification=1
+        no_files_verification=1,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     # Simulate successful 'dar -t' command with returncode 0
@@ -882,7 +902,7 @@ def test_main_defensive_check_invalid_result_format(env, setup_environment):
     mock_logger = MagicMock()
 
     with patch("dar_backup.dar_backup.generic_backup", return_value="not-a-valid-list"), \
-         patch("dar_backup.dar_backup.setup_logging", return_value=mock_logger), \
+         patch("dar_backup.dar_backup.init_logging", return_value=(mock_logger, "/dev/null")), \
          patch("dar_backup.dar_backup.CommandRunner"), \
          patch("dar_backup.dar_backup.requirements"):
 
@@ -1277,6 +1297,12 @@ def test_generate_par2_files_success_invokes_par2(tmp_path):
         error_correction_percent=10,
         command_timeout_secs=5,
         logfile_location=str(tmp_path / "dar-backup.log"),
+        par2_enabled=True,
+        par2_dir=None,
+        par2_ratio_full=None,
+        par2_ratio_diff=None,
+        par2_ratio_incr=None,
+        par2_run_verify=None,
     )
     args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
 
@@ -1309,6 +1335,12 @@ def test_generate_par2_files_failure_raises_calledprocesserror(tmp_path):
         error_correction_percent=5,
         command_timeout_secs=5,
         logfile_location=str(tmp_path / "dar-backup.log"),
+        par2_enabled=True,
+        par2_dir=None,
+        par2_ratio_full=None,
+        par2_ratio_diff=None,
+        par2_ratio_incr=None,
+        par2_run_verify=None,
     )
     args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
 
@@ -1339,6 +1371,12 @@ def test_generate_par2_files_keeps_partial_par2_and_logs_coverage_on_mid_run_fai
         error_correction_percent=10,
         command_timeout_secs=5,
         logfile_location=str(tmp_path / "dar-backup.log"),
+        par2_enabled=True,
+        par2_dir=None,
+        par2_ratio_full=None,
+        par2_ratio_diff=None,
+        par2_ratio_incr=None,
+        par2_run_verify=None,
     )
     args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
 
@@ -1378,6 +1416,12 @@ def test_generate_par2_files_no_warning_when_first_slice_fails_with_nothing_comp
         error_correction_percent=5,
         command_timeout_secs=5,
         logfile_location=str(tmp_path / "dar-backup.log"),
+        par2_enabled=True,
+        par2_dir=None,
+        par2_ratio_full=None,
+        par2_ratio_diff=None,
+        par2_ratio_incr=None,
+        par2_run_verify=None,
     )
     args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
 

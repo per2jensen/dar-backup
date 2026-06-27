@@ -355,6 +355,61 @@ def derive_trace_log_path(log_file: str) -> str:
     return f"{base}.trace{ext}"
 
 
+def init_logging(
+    config_settings: ConfigSettings,
+    log_level: str,
+    log_to_stdout: bool,
+) -> tuple[logging.Logger, str]:
+    """Derive log paths, validate them, and configure all rotating log handlers.
+
+    Centralises the setup that every entry-point script needs before it can do
+    anything useful: command-output log path derivation, trace log path derivation,
+    and the ``setup_logging()`` call with all parameters drawn from *config_settings*.
+
+    Args:
+        config_settings: Parsed configuration; must have ``logfile_location``
+            containing the substring ``"dar-backup.log"``.
+        log_level: Logging level string accepted by ``setup_logging()``
+            (e.g. ``"info"``, ``"debug"``, ``"trace"``).
+        log_to_stdout: When ``True``, mirror log output to stdout.
+
+    Returns:
+        A ``(logger, trace_log_file)`` tuple where *logger* is the configured
+        main logger and *trace_log_file* is the path to the trace log.
+
+    Raises:
+        SystemExit: If ``logfile_location`` does not contain ``"dar-backup.log"``
+            and therefore the command-output log path cannot be derived.
+    """
+    if config_settings.logfile_location == "/dev/null":
+        # Used in tests to suppress all log output; skip path derivation entirely.
+        command_output_log = "/dev/null"
+    else:
+        command_output_log = config_settings.logfile_location.replace(
+            "dar-backup.log", "dar-backup-commands.log"
+        )
+        if command_output_log == config_settings.logfile_location:
+            print(
+                f"Error: logfile_location in {config_settings.config_file} does not"
+                " contain 'dar-backup.log', exiting",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    trace_log_file = derive_trace_log_path(config_settings.logfile_location)
+    configured_logger = setup_logging(
+        config_settings.logfile_location,
+        command_output_log,
+        log_level,
+        log_to_stdout,
+        logfile_max_bytes=config_settings.logfile_max_bytes,
+        logfile_backup_count=config_settings.logfile_backup_count,
+        trace_log_file=trace_log_file,
+        trace_log_max_bytes=config_settings.trace_log_max_bytes,
+        trace_log_backup_count=config_settings.trace_log_backup_count,
+    )
+    return configured_logger, trace_log_file
+
 
 def get_logger(command_output_logger: bool = False) -> logging.Logger:
     """
@@ -1079,18 +1134,18 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         backup_dir = config.backup_dir
         backup_def = getattr(parsed_args, "backup_def", None)
 
-        # Match pattern for archive base names: e.g. test_FULL_2025-04-01
-        dar_pattern = re.compile(r"^(.*?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2}))\.1\.dar$")
-
         # Step 1: scan backup_dir for .1.dar files
         all_archives = set()
         for fname in os.listdir(backup_dir):
-            match = dar_pattern.match(fname)
-            if match:
-                base = match.group(1)
-                if base.startswith(prefix):
-                    if not backup_def or base.startswith(f"{backup_def}_"):
-                        all_archives.add(base)
+            if not fname.endswith('.1.dar'):
+                continue
+            parsed = ArchiveName.from_filename(fname)
+            if parsed is None:
+                continue
+            base = fname[:-len('.1.dar')]
+            if base.startswith(prefix):
+                if not backup_def or parsed.definition == backup_def:
+                    all_archives.add(base)
 
         # Step 2: exclude ones already present in the .db
         db_path = os.path.join(db_dir, f"{backup_def}.db") if backup_def else None
@@ -1285,6 +1340,62 @@ def normalize_dir(path: str) -> str:
     normalized = str(p)
     return normalized
 
+
+def validate_directory(path: str, name: str, require_write: bool = True) -> Optional[str]:
+    """Validate that a path exists, is a directory, and optionally is writable.
+
+    Args:
+        path: Filesystem path to validate.
+        name: Human-readable label used in error messages.
+        require_write: When True, also verify the directory is writable.
+
+    Returns:
+        None if the directory is valid, or a string describing the first problem found.
+    """
+    if not path:
+        return f"{name} is not set"
+    if not os.path.exists(path):
+        return f"{name} does not exist: {path}"
+    if not os.path.isdir(path):
+        return f"{name} exists but is not a directory: {path}"
+    if require_write and not os.access(path, os.W_OK):
+        return f"{name} is not writable: {path}"
+    return None
+
+
+def resolve_ownership_flag(args, config_settings) -> bool:
+    """Resolve the effective ignore_ownership flag from CLI args and config.
+
+    Priority: ``--preserve-ownership`` > ``--ignore-ownership`` > config default.
+
+    Args:
+        args: Parsed CLI arguments; ``preserve_ownership`` and ``ignore_ownership``
+            attributes are read with a ``False`` default via ``getattr``.
+        config_settings: Configuration object whose ``restore_ownership`` field
+            supplies the default when neither CLI flag is set.
+
+    Returns:
+        True if ownership should be ignored (uid/gid not checked during
+        restore/verify), False if it should be preserved.
+    """
+    if getattr(args, "preserve_ownership", False):
+        return False
+    if getattr(args, "ignore_ownership", False):
+        return True
+    return not config_settings.restore_ownership
+
+
+def archive_exists(base_path: str) -> bool:
+    """Return True if the first dar slice of an archive exists on disk.
+
+    Args:
+        base_path: Archive base path without any slice suffix, e.g.
+            '/backups/media_FULL_2026-01-01'.
+
+    Returns:
+        True when ``<base_path>.1.dar`` is present on the filesystem.
+    """
+    return os.path.exists(f"{base_path}.1.dar")
 
 
 # Reusable pattern for archive file naming

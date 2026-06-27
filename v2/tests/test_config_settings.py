@@ -454,3 +454,39 @@ def test_config_settings_restore_ownership_invalid_value_raises(tmp_path):
     )
     with pytest.raises(ConfigSettingsError):
         ConfigSettings(str(config_path))
+
+
+# ---------------------------------------------------------------------------
+# _get_config_value — tested via the public interface
+# ---------------------------------------------------------------------------
+
+def test_get_config_value_returns_default_when_key_absent(tmp_path):
+    """Absent optional key returns the supplied default without error."""
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path)
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.command_capture_max_bytes == 102400  # default from OPTIONAL_CONFIG_FIELDS
+
+
+def test_get_config_value_converts_present_key(tmp_path):
+    """A present optional key is read, stripped, and converted correctly."""
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"COMMAND_CAPTURE_MAX_BYTES": "  204800  "},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.command_capture_max_bytes == 204800
+
+
+def test_get_config_value_raises_with_key_and_bad_value_in_message(tmp_path):
+    """Conversion failure names both the key and the offending value."""
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"LOGFILE_MAX_BYTES": "not-a-number"},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    message = str(exc_info.value).lower()
+    assert "logfile_max_bytes" in message
+    assert "not-a-number" in message

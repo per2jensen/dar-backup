@@ -35,12 +35,13 @@ class DummyCfg:
         self.logfile_location = os.path.join(backup_dir, "dar-backup.log")
         self.logfile_max_bytes = 1024 * 1024
         self.logfile_no_count = 3
+        self.command_capture_max_bytes = None
 
 def _patch_min_logging_and_runner():
     # prevent real logging/runner init noise
     return patch.multiple(
         installer,
-        setup_logging=MagicMock(),
+        init_logging=MagicMock(return_value=(MagicMock(), "/dev/null")),
         get_logger=MagicMock(return_value=MagicMock()),
         CommandRunner=MagicMock(return_value=MagicMock()),
     )

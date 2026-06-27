@@ -40,3 +40,4 @@ class EnvData():
         self.datestamp = datetime.now().strftime('%Y-%m-%d')
         self.logger = logger
         self.command_logger = command_logger
+        self.manager_db_dir = None

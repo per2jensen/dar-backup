@@ -195,17 +195,11 @@ class ConfigSettings:
 
             # Load optional fields
             for opt in self.OPTIONAL_CONFIG_FIELDS:
-                if self.config.has_option(opt['section'], opt['key']):
-                    raw_value = self.config.get(opt['section'], opt['key'])
-                    try:
-                        value = opt['type'](raw_value.strip())
-                        setattr(self, opt['attr'], value)
-                    except Exception as e:
-                        raise ConfigSettingsError(
-                            f"Failed to parse optional config '{opt['section']}::{opt['key']}': {e}"
-                        ) from e
-                else:
-                    setattr(self, opt['attr'], opt.get('default', None))
+                setattr(
+                    self,
+                    opt['attr'],
+                    self._get_config_value(opt['section'], opt['key'], opt['type'], opt.get('default')),
+                )
 
 
             # Expand paths in all string fields that exist
@@ -236,10 +230,43 @@ class ConfigSettings:
         ]
         return f"<ConfigSettings({', '.join(safe_fields)})>"
 
+    def _get_config_value(self, section: str, key: str, converter, default):
+        """Read an optional config key and convert it with *converter*.
+
+        Args:
+            section: Config file section name.
+            key: Config key within that section.
+            converter: Callable applied to the stripped raw string, e.g. ``int`` or ``str``.
+            default: Value returned when the key is absent from the config.
+
+        Returns:
+            ``converter(raw)`` if the key is present, ``default`` otherwise.
+
+        Raises:
+            ConfigSettingsError: If the key is present but ``converter`` raises.
+        """
+        if not self.config.has_option(section, key):
+            return default
+        raw = self.config.get(section, key).strip()
+        try:
+            return converter(raw)
+        except (ValueError, TypeError) as e:
+            raise ConfigSettingsError(
+                f"Expected valid value for '{key}' in [{section}], got: '{raw}'"
+            ) from e
+
     def _get_optional_str(self, section: str, key: str, default: Optional[str] = None) -> Optional[str]:
-        if self.config.has_option(section, key):
-            return self.config.get(section, key).strip()
-        return default
+        """Read an optional string config value.
+
+        Args:
+            section: Config file section name.
+            key: Config key within that section.
+            default: Value to return when the key is absent.
+
+        Returns:
+            Stripped string value, or *default* if the key is not present.
+        """
+        return self._get_config_value(section, key, str, default)
 
     def _get_int(self, section: str, key: str) -> int:
         """Read a mandatory integer config value and raise ConfigSettingsError with context on failure.
@@ -276,15 +303,7 @@ class ConfigSettings:
         Raises:
             ConfigSettingsError: If the key is present but cannot be parsed as an integer.
         """
-        if self.config.has_option(section, key):
-            raw = self.config.get(section, key).strip()
-            try:
-                return int(raw)
-            except ValueError as e:
-                raise ConfigSettingsError(
-                    f"Expected an integer for '{key}' in [{section}], got: '{raw}'"
-                ) from e
-        return default
+        return self._get_config_value(section, key, int, default)
 
     def _get_optional_bool(self, section: str, key: str, default: Optional[bool] = None) -> Optional[bool]:
         if not self.config.has_option(section, key):
@@ -356,50 +375,11 @@ class ConfigSettings:
         if not backup_definition or not self.config.has_section(backup_definition):
             return par2_config
 
-        section = self.config[backup_definition]
-        for raw_key, raw_value in section.items():
-            key = raw_key.upper()
-            value = raw_value.strip()
-            if not key.startswith("PAR2_"):
-                continue
-            if key == "PAR2_DIR":
-                par2_config["par2_dir"] = value
-            elif key == "PAR2_RATIO_FULL":
-                try:
-                    par2_config["par2_ratio_full"] = int(value)
-                except ValueError as e:
-                    raise ConfigSettingsError(
-                        f"Expected an integer for 'PAR2_RATIO_FULL' in [{backup_definition}], got: '{value}'"
-                    ) from e
-            elif key == "PAR2_RATIO_DIFF":
-                try:
-                    par2_config["par2_ratio_diff"] = int(value)
-                except ValueError as e:
-                    raise ConfigSettingsError(
-                        f"Expected an integer for 'PAR2_RATIO_DIFF' in [{backup_definition}], got: '{value}'"
-                    ) from e
-            elif key == "PAR2_RATIO_INCR":
-                try:
-                    par2_config["par2_ratio_incr"] = int(value)
-                except ValueError as e:
-                    raise ConfigSettingsError(
-                        f"Expected an integer for 'PAR2_RATIO_INCR' in [{backup_definition}], got: '{value}'"
-                    ) from e
-            elif key == "PAR2_RUN_VERIFY":
-                val = value.lower()
-                if val in ('true', '1', 'yes'):
-                    par2_config["par2_run_verify"] = True
-                elif val in ('false', '0', 'no'):
-                    par2_config["par2_run_verify"] = False
-                else:
-                    raise ConfigSettingsError(f"Invalid boolean value for 'PAR2_RUN_VERIFY' in [{backup_definition}]: '{value}'")
-            elif key == "PAR2_ENABLED":
-                val = value.lower()
-                if val in ('true', '1', 'yes'):
-                    par2_config["par2_enabled"] = True
-                elif val in ('false', '0', 'no'):
-                    par2_config["par2_enabled"] = False
-                else:
-                    raise ConfigSettingsError(f"Invalid boolean value for 'PAR2_ENABLED' in [{backup_definition}]: '{value}'")
-
+        s = backup_definition
+        par2_config["par2_dir"] = self._get_config_value(s, "par2_dir", str, par2_config["par2_dir"])
+        par2_config["par2_ratio_full"] = self._get_config_value(s, "par2_ratio_full", int, par2_config["par2_ratio_full"])
+        par2_config["par2_ratio_diff"] = self._get_config_value(s, "par2_ratio_diff", int, par2_config["par2_ratio_diff"])
+        par2_config["par2_ratio_incr"] = self._get_config_value(s, "par2_ratio_incr", int, par2_config["par2_ratio_incr"])
+        par2_config["par2_run_verify"] = self._get_optional_bool(s, "par2_run_verify", par2_config["par2_run_verify"])
+        par2_config["par2_enabled"] = self._get_optional_bool(s, "par2_enabled", par2_config["par2_enabled"])
         return par2_config

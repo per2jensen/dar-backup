@@ -284,11 +284,15 @@ def test_confirmation_no_stops_deleting_full(monkeypatch, capsys):
         def __init__(self):
             self.backup_dir = "."
             self.config = {}
+            self.config_file = "/dev/null"
             self.logfile_location = "/dev/null"
             self.backup_d_dir = "."
-            self.logfile_max_bytes = 26214400  # int, not MagicMock!
+            self.logfile_max_bytes = 26214400
             self.logfile_backup_count = 5
+            self.trace_log_max_bytes = 10485760
+            self.trace_log_backup_count = 1
             self.command_timeout_secs = 30
+            self.command_capture_max_bytes = None
 
     monkeypatch.setattr("sys.argv", ["cleanup", "--cleanup-specific-archives", "example_FULL_2024-01-01", "--test-mode"])
     monkeypatch.setattr("dar_backup.cleanup.delete_archive", lambda *a, **kw: pytest.fail("Should not delete FULL"))
@@ -458,7 +462,7 @@ def test_cleanup_confirmation_timeout(monkeypatch, caplog):
     # This is key: capture logs from this logger
     logger = logging.getLogger("main_logger")
     logger.setLevel(logging.INFO)
-    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logger)
+    monkeypatch.setattr("dar_backup.cleanup.init_logging", lambda *a, **kw: (logger, "/dev/null"))
     monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logger)
 
     monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
@@ -481,7 +485,7 @@ def test_cleanup_confirmation_keyboard_interrupt(monkeypatch, caplog):
     monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(
         backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."
     ))
-    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logging.getLogger("main_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.init_logging", lambda *a, **kw: (logging.getLogger("main_logger"), "/dev/null"))
     monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logging.getLogger("command_output_logger"))
     monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
 
@@ -517,7 +521,7 @@ def test_cleanup_confirmation_none_response(monkeypatch, caplog):
     monkeypatch.setattr("dar_backup.cleanup.ConfigSettings", lambda x: MagicMock(
         backup_dir=".", config={}, logfile_location="/dev/null", backup_d_dir="."
     ))
-    monkeypatch.setattr("dar_backup.cleanup.setup_logging", lambda *a, **kw: logging.getLogger("main_logger"))
+    monkeypatch.setattr("dar_backup.cleanup.init_logging", lambda *a, **kw: (logging.getLogger("main_logger"), "/dev/null"))
     monkeypatch.setattr("dar_backup.cleanup.get_logger", lambda **kw: logging.getLogger("command_output_logger"))
     monkeypatch.setattr("dar_backup.cleanup.CommandRunner", lambda *a, **kw: MagicMock(run=lambda x: MagicMock(returncode=0)))
 
@@ -749,7 +753,7 @@ def test_cleanup_alternate_dir_missing_exits(monkeypatch, caplog, tmp_path):
     monkeypatch.setattr(sys, "argv", ["cleanup", "--alternate-archive-dir", str(missing_dir), "--test-mode"])
     monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
     monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
-    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "init_logging", lambda *a, **k: (test_logger, "/dev/null"))
     monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
     monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
     monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
@@ -788,7 +792,7 @@ def test_cleanup_alternate_dir_not_directory_exits(monkeypatch, caplog, tmp_path
     monkeypatch.setattr(sys, "argv", ["cleanup", "--alternate-archive-dir", str(not_dir), "--test-mode"])
     monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
     monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
-    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "init_logging", lambda *a, **k: (test_logger, "/dev/null"))
     monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
     monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
     monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
@@ -800,7 +804,7 @@ def test_cleanup_alternate_dir_not_directory_exits(monkeypatch, caplog, tmp_path
         cleanup.main()
 
     assert exc.value.code == 1
-    assert "Alternate archive directory is not a directory" in caplog.text
+    assert "Alternate archive directory exists but is not a directory" in caplog.text
 
 
 def test_cleanup_specific_archives_rejects_unsafe_name(monkeypatch, caplog):
@@ -828,7 +832,7 @@ def test_cleanup_specific_archives_rejects_unsafe_name(monkeypatch, caplog):
     )
     monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
     monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: DummyConfig())
-    monkeypatch.setattr(cleanup, "setup_logging", lambda *a, **k: test_logger)
+    monkeypatch.setattr(cleanup, "init_logging", lambda *a, **k: (test_logger, "/dev/null"))
     monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
     monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
     monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
@@ -1002,6 +1006,66 @@ def test_delete_old_backups_rejects_unsafe_archive(monkeypatch, tmp_path):
         )
 
     assert delete_catalog.call_count == 0
+
+
+def test_remove_file_dry_run_returns_true_without_deleting(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    f = tmp_path / "example_FULL_2026-01-01.1.dar"
+    f.write_text("data")
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", lambda *a, **k: pytest.fail("should not delete"))
+
+    result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=True)
+
+    assert result is True
+    assert f.exists()
+    mock_logger.info.assert_called_once_with(f"Dry run: would delete archive slice: {f}")
+
+
+def test_remove_file_deletes_and_returns_true(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    f = tmp_path / "example_FULL_2026-01-01.1.dar"
+    f.write_text("data")
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+
+    result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=False)
+
+    assert result is True
+    assert not f.exists()
+    mock_logger.info.assert_called_once_with(f"Deleted archive slice: {f}")
+
+
+def test_remove_file_unsafe_path_returns_false(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    f = tmp_path / "example_FULL_2026-01-01.1.dar"
+    f.write_text("data")
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", lambda *a, **k: False)
+
+    result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=False)
+
+    assert result is False
+    mock_logger.warning.assert_called_once_with(f"Skipped deleting unsafe archive slice: {f}")
+
+
+def test_remove_file_exception_returns_false(monkeypatch, tmp_path):
+    import dar_backup.cleanup as cleanup
+
+    f = tmp_path / "example_FULL_2026-01-01.1.dar"
+    mock_logger = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", mock_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", MagicMock(side_effect=OSError("disk full")))
+
+    result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=False)
+
+    assert result is False
+    mock_logger.error.assert_called_once_with(f"Error deleting archive slice {f}: disk full")
 
 
 def test_delete_catalog_handles_exception(monkeypatch):

@@ -5,7 +5,7 @@ import fcntl
 import os
 import sys
 import datetime
-from dar_backup.manager import restore_at, main, _restore_with_dar, _pitr_chain_report, relocate_archive_paths, _parse_when, _normalize_when_dt
+from dar_backup.manager import restore_at, main, _restore_with_dar, _pitr_chain_report, relocate_archive_paths, _parse_when, _normalize_when_dt, _resolve_directory_chain
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.command_runner import CommandResult
 import pytest
@@ -27,8 +27,8 @@ def mock_config(tmp_path):
     config = MagicMock(spec=ConfigSettings)
     config.backup_dir = str(tmp_path / "backups")
     config.backup_d_dir = str(tmp_path / "backup.d")
-    # manager_db_dir is optional in the real class, so we simulate getting it
-    # We'll just patch get_db_dir to return a known path
+    config.command_timeout_secs = None
+    config.manager_db_dir = None
     return config
 
 @pytest.fixture
@@ -336,7 +336,7 @@ def test_cli_restore_path_requires_backup_def(capsys):
     
     # Simulate sys.argv
     with patch.object(sys, 'argv', ["manager", "--restore-path", "file.txt"]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
@@ -362,7 +362,7 @@ def test_cli_restore_path_requires_target(capsys):
             "--when", "now",
             "--config-file", "dummy.conf",
          ]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
@@ -383,7 +383,7 @@ def test_cli_pitr_report_does_not_require_target(capsys):
             "--pitr-report",
             "--config-file", "dummy.conf",
          ]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("dar_backup.manager._pitr_chain_report", return_value=0), \
          patch("os.path.exists", return_value=True), \
@@ -407,7 +407,7 @@ def test_cli_pitr_report_first_runs_and_aborts_on_failure():
             "--config-file", "dummy.conf",
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.get_logger"), \
          patch("dar_backup.manager._pitr_chain_report", return_value=1) as mock_report, \
          patch("dar_backup.manager.restore_at", return_value=0) as mock_restore, \
@@ -438,7 +438,7 @@ def test_cli_pitr_report_first_runs_and_restores_on_success():
             "--config-file", "dummy.conf",
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.get_logger"), \
          patch("dar_backup.manager._pitr_chain_report", return_value=0) as mock_report, \
          patch("dar_backup.manager.restore_at", return_value=0) as mock_restore, \
@@ -466,7 +466,7 @@ def test_cli_pitr_report_first_requires_restore_path():
             "--pitr-report-first",
             "--config-file", "dummy.conf",
          ]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
@@ -1017,7 +1017,7 @@ def test_cli_restore_execution(mock_runner):
             "--config-file", "dummy.conf"
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.get_logger"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.restore_at", return_value=0) as mock_restore, \
@@ -1052,7 +1052,7 @@ def test_cli_relocate_requires_backup_def():
             "--relocate-archive-path", "/old", "/new",
             "--config-file", "dummy.conf",
          ]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
@@ -1073,7 +1073,7 @@ def test_cli_relocate_dry_run_executes():
             "--config-file", "dummy.conf",
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.get_logger"), \
          patch("dar_backup.manager.relocate_archive_paths", return_value=0) as mock_relocate, \
          patch("os.path.isfile", return_value=True), \
@@ -1098,7 +1098,7 @@ def test_cli_relocate_dry_run_requires_relocate():
             "--relocate-archive-path-dry-run",
             "--config-file", "dummy.conf",
          ]), \
-         patch("dar_backup.manager.setup_logging"), \
+         patch("dar_backup.manager.init_logging", return_value=(MagicMock(), "/dev/null")), \
          patch("dar_backup.manager.ConfigSettings"), \
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
@@ -1192,7 +1192,7 @@ def test_relocate_archive_paths_list_failure(mock_config, mock_runner, mock_logg
         ret = relocate_archive_paths("def", "/old/path", "/new/path", mock_config, dry_run=False)
 
         assert ret == 2
-        mock_logger.error.assert_any_call('Error listing catalogs for: "/tmp/db_dir/def.db"')
+        mock_logger.error.assert_any_call('%s', 'Error listing catalogs for: "/tmp/db_dir/def.db"')
 
 
 def test_relocate_archive_paths_update_failure(mock_config, mock_runner, mock_logger):
@@ -1215,10 +1215,8 @@ def test_relocate_archive_paths_update_failure(mock_config, mock_runner, mock_lo
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Failed updating archive #%d path to '%s' (returncode=%s).",
-            1,
-            "/new/path",
-            1,
+            '%s',
+            "Failed updating archive #1 path to '/new/path' (returncode=1).",
         )
 
 
@@ -1547,3 +1545,63 @@ def test_restore_with_dar_no_deleted_false_omits_deleted_ignore(mock_config, moc
     assert "--deleted=ignore" not in dar_cmd, (
         f"--deleted=ignore must NOT be in the dar command when no_deleted=False. Command: {dar_cmd}"
     )
+
+
+# ---------------------------------------------------------------------------
+# _resolve_directory_chain unit tests
+# ---------------------------------------------------------------------------
+
+def test_resolve_directory_chain_returns_empty_when_no_full_archive():
+    """Returns ([], []) when _select_archive_chain finds no FULL archive.
+
+    An empty chain signals 'no FULL covers this date' — callers must not
+    proceed with restore.  The missing list is empty because there is nothing
+    to check on disk.
+    """
+    archive_info = []  # no archives at all → _select_archive_chain returns []
+    archive_map: dict = {}
+    when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+    chain, missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
+
+    assert chain == [], "chain must be empty when no FULL archive covers the date"
+    assert missing == [], "missing must be empty when there is no chain to validate"
+
+
+def test_resolve_directory_chain_detects_missing_slice(tmp_path):
+    """Returns a non-empty missing list when a .1.dar slice is absent on disk.
+
+    archive_map points to a non-existent path; _missing_chain_elements must
+    report it so callers can fail fast rather than handing a broken chain to dar.
+    """
+    archive_path = str(tmp_path / "example_FULL_2026-01-29")
+    # .1.dar file does NOT exist on disk
+    archive_map = {1: archive_path}
+    when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+    with patch("dar_backup.manager._select_archive_chain", return_value=[1]):
+        chain, missing = _resolve_directory_chain([], when_dt, archive_map)
+
+    assert chain == [1]
+    assert f"{archive_path}.1.dar" in missing, (
+        "missing must contain the absent .1.dar slice path"
+    )
+
+
+def test_resolve_directory_chain_returns_complete_chain_when_all_present(tmp_path):
+    """Returns (chain, []) when every chain element exists on disk.
+
+    Creates the .1.dar file so _missing_chain_elements finds nothing absent.
+    """
+    archive_path = str(tmp_path / "example_FULL_2026-01-29")
+    slice_path = archive_path + ".1.dar"
+    open(slice_path, "w").close()  # noqa: WPS515 — create the file
+
+    archive_map = {1: archive_path}
+    when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+    with patch("dar_backup.manager._select_archive_chain", return_value=[1]):
+        chain, missing = _resolve_directory_chain([], when_dt, archive_map)
+
+    assert chain == [1]
+    assert missing == [], "missing must be empty when all slices are present on disk"

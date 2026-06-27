@@ -6,7 +6,7 @@ import os
 from . import __about__ as about
 from pathlib import Path
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import setup_logging, get_logger
+from dar_backup.util import init_logging, get_logger
 from dar_backup.command_runner import CommandRunner
 from dar_backup.manager import create_db
 # Always expand manager DB dir correctly, using helper function
@@ -129,19 +129,12 @@ def run_installer(config_file: str, create_db_flag: bool):
 
     print(f"Using config settings: {config_settings}")
 
-    # Set up logging
-    command_log = config_settings.logfile_location.replace("dar-backup.log", "dar-backup-commands.log")
-    logger = setup_logging(
-        config_settings.logfile_location,
-        command_log,
-        log_level="info",
-        log_to_stdout=True,
-    )
+    logger, _ = init_logging(config_settings, log_level="info", log_to_stdout=True)
     command_logger = get_logger(command_output_logger=True)
     runner = CommandRunner(
         logger=logger,
         command_logger=command_logger,
-        default_capture_limit_bytes=getattr(config_settings, "command_capture_max_bytes", None)
+        default_capture_limit_bytes=config_settings.command_capture_max_bytes,
     )
 
 

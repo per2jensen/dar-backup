@@ -48,6 +48,10 @@ def _make_config(env: EnvData, no_files: int = 1) -> SimpleNamespace:
         max_size_verification_mb=20,
         no_files_verification=no_files,
         metrics_db_path=None,
+        restoretest_exclude_prefixes=[],
+        restoretest_exclude_suffixes=[],
+        restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
 

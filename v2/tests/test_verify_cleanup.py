@@ -48,6 +48,7 @@ def test_verify_removes_existing_file_before_restore(env, tmp_path):
         restoretest_exclude_prefixes=[],
         restoretest_exclude_suffixes=[],
         restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     # Mock get_backed_up_files to return our specific file
@@ -111,6 +112,7 @@ def test_verify_warns_when_stale_file_removal_fails(env, tmp_path):
         restoretest_exclude_prefixes=[],
         restoretest_exclude_suffixes=[],
         restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
@@ -163,6 +165,7 @@ def test_verify_restore_command_includes_overwrite_flag(env, tmp_path):
         restoretest_exclude_prefixes=[],
         restoretest_exclude_suffixes=[],
         restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
@@ -207,6 +210,7 @@ def test_verify_runner_exception_logs_error_not_print(env, tmp_path):
         restoretest_exclude_prefixes=[],
         restoretest_exclude_suffixes=[],
         restoretest_exclude_regex=None,
+        restore_ownership=False,
     )
 
     mock_runner = MagicMock()
