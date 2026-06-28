@@ -25,6 +25,10 @@ It automates FULL / DIFF / INCR as independent archive types built on two except
 `dar-backup` wires these two tools together into a fully automated backup system, with every
 archive verified and a random set (configurable) of files restored to a test directory before the job completes.
 
+>**Interested ?**, see the quick guide that shows installation and a test run
+>
+>==>>> [Demo](v2/doc/quick-guide.md)
+
 **Is this for you?**
 
 ✅ You back up irreplaceable data — photos, documents, home-made video — and want to be
