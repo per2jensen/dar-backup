@@ -109,7 +109,7 @@ pytest                   # run the test suite
 Make sure `__about__.py` has the correct version number
 
 ```` bash
-VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')
+VERSION=$(grep -Po '(?<=__version__ = ")[^"]+' src/dar_backup/__about__.py)
 python3 -m build && pip install --force-reinstall dist/dar_backup-${VERSION}-py3-none-any.whl
 ````
 
