@@ -2156,6 +2156,10 @@ def main():
         args.preserve_ownership = False
     if not hasattr(args, "no_deleted"):
         args.no_deleted = False
+    if not hasattr(args, "doc"):
+        args.doc = None
+    if not hasattr(args, "doc_pretty"):
+        args.doc_pretty = None
 
     if args.version:
         show_version()
