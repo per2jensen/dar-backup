@@ -1,6 +1,10 @@
 {
   "annotations": [
     {
+      "date": "2024-08-06",
+      "label": "piwheels first build (v0.5.8)"
+    },
+    {
       "date": "2025-05-17",
       "label": "LinkedIn"
     },
