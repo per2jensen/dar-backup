@@ -53,6 +53,8 @@ Available options:
 --readme-pretty                      Print README.md with Markdown styling and exit
 --changelog                          Print Changelog and exit
 --changelog-pretty                   Print Changelog with Markdown styling and exit
+--doc <name>                         Print a documentation file by name and exit (tab completion lists available docs)
+--doc-pretty <name>                  Print a documentation file with Markdown styling and exit
 -v, --version                         Show version and license information.
 ```
 

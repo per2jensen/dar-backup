@@ -20,6 +20,15 @@ The `dar-backup`, `manager`, and `cleanup` scripts support dynamic tab-completio
 
   manager:  --list-archive-contents, --add-specific-archive (autocomplete those **not** in the catalog database), --remove-specific-archive
 
+- `--doc` and `--doc-pretty` complete from the installed documentation files:
+
+  ```bash
+  dar-backup --doc <TAB>
+  # ⤷ Suggests: cli-reference, config-reference, dar-tips, getting-started, ...
+  dar-backup --doc-pretty rest<TAB>
+  # ⤷ Suggests: restoring
+  ```
+
 - Supports paths like ~ and $HOME correctly
 
 ## Use it

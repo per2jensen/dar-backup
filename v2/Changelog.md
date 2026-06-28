@@ -7,6 +7,10 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Added
 
+- **`--doc` / `--doc-pretty` CLI options** (`dar-backup`) — print any installed documentation file by name and exit.  Tab completion lists available doc names from the installed package (`dar-backup --doc <TAB>`).  Plain and rich-rendered variants mirror the existing `--readme` / `--readme-pretty` pattern.
+
+- **`scripts/copy_docs.sh`** — shared script called by `build.sh`, `release.sh`, and test fixtures to copy user-facing `doc/*.md` files into `src/dar_backup/` for wheel inclusion.  Internal files (`todo.md`, `dev.md`, `dar_manager_w_dst_bug_report.md`, `NFS server notes.md`) are excluded.  Tests in `tests/test_readme_changelog.py` verify the correct set of files is present and absent after the script runs.
+
 - **Structured large-scale test results** (`doc/test-report/large-scale-results.jsonl`) — `large_scale_test.sh` now appends one JSONL record per run containing datestamp, git commit, tool versions (dar-backup, dar, par2, python), OS, kernel, elapsed times, backup sizes, per-tool peak memory, failure count, and pass/fail status.  The file is written to `${RESULTS_DIR}` and mirrored to `doc/test-report/` in the repo so runs are git-tracked.  Four historical runs (2026-06-09 through 2026-06-20) are backfilled.
 
 - **`show_large_scale_results.py`** (`scripts/`) — parses `large-scale-results.jsonl` and prints a fixed-width ASCII table sorted newest-first.  Defaults to `doc/test-report/large-scale-results.jsonl`; accepts an optional path argument.

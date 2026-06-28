@@ -1928,6 +1928,61 @@ def print_readme(path: str = None, pretty: bool = True):
     resolved_path = _resolve_doc_path(path, "README.md")
     print_markdown(str(resolved_path), pretty=pretty)
 
+
+def _list_available_docs() -> list[str]:
+    """Return sorted list of doc names available in the installed package.
+
+    Returns:
+        Sorted list of doc stems (filenames without .md extension),
+        or an empty list if the doc directory cannot be found.
+    """
+    for doc_dir in [
+        Path(__file__).parent / "doc",
+        Path.cwd() / "src" / "dar_backup" / "doc",
+    ]:
+        if doc_dir.is_dir():
+            return sorted(p.stem for p in doc_dir.glob("*.md"))
+    return []
+
+
+def _doc_completer(prefix: str, **kwargs) -> list[str]:
+    """Argcomplete completer for --doc and --doc-pretty.
+
+    Args:
+        prefix: Characters typed so far.
+
+    Returns:
+        Doc stems that start with prefix.
+    """
+    return [name for name in _list_available_docs() if name.startswith(prefix)]
+
+
+def print_doc(name: str, pretty: bool = False) -> None:
+    """Print a documentation file from the installed doc/ directory.
+
+    Args:
+        name: Doc filename stem without .md extension (e.g. 'getting-started').
+        pretty: If True, render with rich Markdown formatting.
+
+    Raises:
+        SystemExit: If the named doc cannot be found.
+    """
+    candidates = [
+        Path(__file__).parent / "doc" / f"{name}.md",
+        Path.cwd() / "src" / "dar_backup" / "doc" / f"{name}.md",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            print_markdown(str(candidate), pretty=pretty)
+            return
+
+    available = _list_available_docs()
+    print(f"❌ Doc '{name}' not found.", file=stderr)
+    if available:
+        print(f"Available docs: {', '.join(available)}", file=stderr)
+    raise SystemExit(1)
+
+
 def list_definitions(backup_d_dir: str, *, allow_unsafe: bool = False) -> List[str]:
     """
     Return backup definition filenames from BACKUP.D_DIR, sorted by name.
@@ -2080,6 +2135,10 @@ def main():
     parser.add_argument("--readme-pretty", action="store_true", help="Print README.md to stdout with Markdown styling and exit.")
     parser.add_argument("--changelog", action="store_true", help="Print Changelog.md to stdout and exit.")
     parser.add_argument("--changelog-pretty", action="store_true", help="Print Changelog.md to stdout with Markdown styling and exit.")
+    doc_arg = parser.add_argument("--doc", metavar="NAME", help="Print a documentation file by name and exit (use tab completion to list available docs).")
+    doc_arg.completer = _doc_completer
+    doc_pretty_arg = parser.add_argument("--doc-pretty", metavar="NAME", help="Print a documentation file with Markdown styling and exit.")
+    doc_pretty_arg.completer = _doc_completer
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
 
     argcomplete.autocomplete(parser)
@@ -2115,6 +2174,12 @@ def main():
         exit(0)
     elif args.changelog_pretty:
         print_changelog(None, pretty=True)
+        exit(0)
+    elif args.doc:
+        print_doc(args.doc, pretty=False)
+        exit(0)
+    elif args.doc_pretty:
+        print_doc(args.doc_pretty, pretty=True)
         exit(0)
 
 
