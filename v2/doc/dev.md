@@ -4,6 +4,7 @@ Back to [README](../../README.md)
 
 - [Development](#development)
   - [Easy development setup](#easy-development-setup)
+  - [Dev version counter (pre-commit hook)](#dev-version-counter-pre-commit-hook)
   - [Activate and run the test suite](#activate-and-run-the-test-suite)
   - [Howto build \& deploy to dev venv](#howto-build--deploy-to-dev-venv)
   - [Test coverage](#test-coverage)
@@ -58,6 +59,44 @@ Example:
   "black>=25.1.0"]
   ```
 
+## Dev version counter (pre-commit hook)
+
+`src/dar_backup/__about__.py` carries a `.devN` suffix between releases — for
+example `"1.1.10.dev5"` — where N is the number of commits since the last
+`v2-X.Y.Z` release tag.  The counter is kept current automatically by a
+pre-commit hook so every committed snapshot has a meaningful, unique version
+string.
+
+**Install once** (from the repo root):
+
+```bash
+ln -sf ../../v2/scripts/pre-commit-version-bump.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+**What the hook does on every commit:**
+
+1. Reads `__version__` from `__about__.py`.
+2. Skips silently if there is no `.dev` suffix (`release.sh` owns that state).
+3. Counts commits since the last `v2-X.Y.Z` tag, adds 1 for the commit in
+   progress, and writes `X.Y.Z.dev<N>` back to `__about__.py`.
+4. Stages the file so the updated counter is part of the commit.
+
+**Fallback:** if no `v2-X.Y.Z` tag exists yet (fresh clone before the first
+release), it counts all commits in history instead.
+
+**Release workflow:**
+
+1. Strip `.devN` from `__about__.py` → `"1.1.10"`.
+2. Commit, tag, run `./release.sh`.
+3. After the release, bump to the next dev version → `"1.1.11.dev0"`.
+4. The hook takes it from there.
+
+The hook lives at `v2/scripts/pre-commit-version-bump.sh` and is tracked in
+git; only the symlink in `.git/hooks/` is local.
+
+---
+
 ## Activate and run the test suite
 
 ```bash
@@ -67,7 +106,7 @@ pytest                   # run the test suite
 
 ## Howto build & deploy to dev venv
 
-Make sure __about__.py has the correct version number
+Make sure `__about__.py` has the correct version number
 
 ```` bash
 VERSION=$(cat src/dar_backup/__about__.py |grep -E -o  '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?')

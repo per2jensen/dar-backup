@@ -231,6 +231,13 @@ print(ns["__version__"])
 PY
 )"
 
+# Refuse to release a development version
+if [[ "$VERSION" =~ \.dev[0-9]+ ]]; then
+    red "❌ Cannot release a dev version: ${VERSION}"
+    echo "  Remove the .dev suffix from src/dar_backup/__about__.py before releasing."
+    exit 1
+fi
+
 EXPECTED_TAG="v2-${VERSION}"
 if [[ "$TAG" != "$EXPECTED_TAG" ]]; then
     red "❌ Error: tag/version mismatch"

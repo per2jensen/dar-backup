@@ -5,6 +5,24 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.10 - not released
 
+### Added
+
+- **Structured large-scale test results** (`doc/test-report/large-scale-results.jsonl`) — `large_scale_test.sh` now appends one JSONL record per run containing datestamp, git commit, tool versions (dar-backup, dar, par2, python), OS, kernel, elapsed times, backup sizes, per-tool peak memory, failure count, and pass/fail status.  The file is written to `${RESULTS_DIR}` and mirrored to `doc/test-report/` in the repo so runs are git-tracked.  Four historical runs (2026-06-09 through 2026-06-20) are backfilled.
+
+- **`show_large_scale_results.py`** (`scripts/`) — parses `large-scale-results.jsonl` and prints a fixed-width ASCII table sorted newest-first.  Defaults to `doc/test-report/large-scale-results.jsonl`; accepts an optional path argument.
+
+- **`pre-commit-version-bump.sh`** (`scripts/`) — git pre-commit hook that keeps the `.devN` counter in `__about__.__version__` current on every commit.  Counts commits since the last `v2-X.Y.Z` release tag (+1 for the commit in progress) and rewrites the suffix accordingly; falls back to total history count if no release tag exists yet.  Skips silently when the version has no `.dev` suffix (release state).  Install with `ln -sf ../../v2/scripts/pre-commit-version-bump.sh .git/hooks/pre-commit`.
+
+### Changed
+
+- **Dev version convention** (`src/dar_backup/__about__.py`) — `__version__` now carries a `.dev0` suffix between releases (e.g. `"1.1.10.dev0"`), making in-development builds clearly distinguishable from released ones.  The pre-commit hook increments the counter automatically; `release.sh` requires the suffix to be absent before proceeding.
+
+- **Release guard against dev versions** (`release.sh`) — exits immediately with a clear error if `__about__.__version__` contains `.devN`, preventing accidental PyPI uploads of development builds.
+
+- **`large_scale_test.sh`** (`scripts/`) — appends a structured JSONL record to `${RESULTS_DIR}/large-scale-results.jsonl` (and mirrors to `doc/test-report/`) at the end of every run.  Uses Python (already a hard dependency) for safe JSON serialisation; a write failure prints a warning to stderr but does not affect the test exit code.
+
+- **`dev.md`** (`doc/`) — documents the pre-commit hook, its one-line install command, and the release/post-release version bump workflow.
+
 ### Updated
 
 - clonepulse now discards a clone # if it is 25x > unique clone #

@@ -445,6 +445,92 @@ echo -e "  ├── par2 engine: ${MAX_PAR2}"
 echo -e "  └── db manager : ${MAX_MANAGER}"
 echo -e "Failures:      ${FAILURES:-0}"
 
+# ── Structured JSON record ────────────────────────────────────────────────────
+# Appends one JSONL line to RESULTS_DIR and mirrors it to the repo doc directory.
+# Python handles all JSON serialisation so version strings with special characters
+# are encoded safely without manual escaping.
+write_json_record() {
+    local full_gb diff_gb db_mb dar_mb_val p2_mb mgr_mb
+    full_gb=$(awk '{print $1}' <<< "${FULL_SIZE:-0}")
+    diff_gb=$(awk '{print $1}' <<< "${DIFF_SIZE:-0}")
+    db_mb=$(awk  '{print $1}' <<< "${MAX_DAR_BACKUP:-N/A}")
+    dar_mb_val=$(awk '{print $1}' <<< "${MAX_DAR:-N/A}")
+    p2_mb=$(awk  '{print $1}' <<< "${MAX_PAR2:-N/A}")
+    mgr_mb=$(awk '{print $1}' <<< "${MAX_MANAGER:-N/A}")
+
+    LST_DATESTAMP="${DATESTAMP:-}" \
+    LST_DATE="${DATE_OF_RUN:-}" \
+    LST_GIT_COMMIT="${GIT_COMMIT:-unknown}" \
+    LST_DAR_BACKUP_VER="${DAR_BACKUP_VERSION:-unknown}" \
+    LST_DAR_VER="${DAR_VERSION:-unknown}" \
+    LST_PAR2_VER="${PAR2_VERSION:-unknown}" \
+    LST_PYTHON_VER="${PYTHON_VERSION:-unknown}" \
+    LST_OS_DESC="${OS_DESC:-unknown}" \
+    LST_KERNEL="${KERNEL:-unknown}" \
+    LST_FULL_ELAPSED="${full_elapsed:-0}" \
+    LST_FULL_GB="${full_gb:-0}" \
+    LST_DIFF_ELAPSED="${diff_elapsed:-0}" \
+    LST_DIFF_GB="${diff_gb:-0}" \
+    LST_DB_MB="${db_mb}" \
+    LST_DAR_MB="${dar_mb_val}" \
+    LST_PAR2_MB="${p2_mb}" \
+    LST_MGR_MB="${mgr_mb}" \
+    LST_FAILURES="${FAILURES:-0}" \
+    LST_RESULTS_DIR="${RESULTS_DIR}" \
+    LST_REPO_DIR="${REPO_DIR:-}" \
+    python3 - << 'PYEOF'
+import json, os
+from pathlib import Path
+
+def to_float(s: str) -> float | None:
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+e = os.environ
+record = {
+    "schema_version": 1,
+    "datestamp":          e["LST_DATESTAMP"],
+    "date":               e["LST_DATE"],
+    "git_commit":         e["LST_GIT_COMMIT"],
+    "dar_backup_version": e["LST_DAR_BACKUP_VER"],
+    "dar_version":        e["LST_DAR_VER"],
+    "par2_version":       e["LST_PAR2_VER"],
+    "python_version":     e["LST_PYTHON_VER"],
+    "os_desc":            e["LST_OS_DESC"],
+    "kernel":             e["LST_KERNEL"],
+    "full_elapsed_s":     int(e["LST_FULL_ELAPSED"]),
+    "full_size_gb":       to_float(e["LST_FULL_GB"]),
+    "diff_elapsed_s":     int(e["LST_DIFF_ELAPSED"]),
+    "diff_size_gb":       to_float(e["LST_DIFF_GB"]),
+    "memory_mb": {
+        "dar_backup": to_float(e["LST_DB_MB"]),
+        "dar":        to_float(e["LST_DAR_MB"]),
+        "par2":       to_float(e["LST_PAR2_MB"]),
+        "manager":    to_float(e["LST_MGR_MB"]),
+    },
+    "failures": int(e["LST_FAILURES"]),
+    "passed":   int(e["LST_FAILURES"]) == 0,
+}
+line = json.dumps(record, separators=(",", ":"))
+
+results_path = Path(e["LST_RESULTS_DIR"]) / "large-scale-results.jsonl"
+with open(results_path, "a") as fh:
+    fh.write(line + "\n")
+
+repo_dir = e.get("LST_REPO_DIR", "")
+if repo_dir:
+    repo_path = Path(repo_dir) / "doc" / "test-report" / "large-scale-results.jsonl"
+    if repo_path.parent.is_dir():
+        with open(repo_path, "a") as fh:
+            fh.write(line + "\n")
+PYEOF
+    info "Structured result written to: ${RESULTS_DIR}/large-scale-results.jsonl"
+    [[ -n "${REPO_DIR:-}" ]] && info "Structured result mirrored to: ${REPO_DIR}/doc/test-report/large-scale-results.jsonl"
+}
+write_json_record || echo "WARNING: failed to write structured JSON record" >&2
+
 # Final status validation routing
 if [ "${FAILURES:-0}" -eq 0 ]; then
     echo -e "\n${GREEN}${BOLD}✓ ALL TESTS PASSED SUCCESSFULLY${RESET}\n"
