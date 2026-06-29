@@ -1029,6 +1029,7 @@ function buildRunRow(r) {
     <td title="inodes excluded by filters" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_excluded != null ? r.inodes_excluded.toLocaleString() : '—'}</td>
     <td class="phases">
       <div class="phase">${chk(r.prereq_status == null ? null : r.prereq_status === 'SUCCESS' ? 1 : 0)}<span>pre</span></div>
+      <div class="phase">${chk(r.catalog_updated)}<span>catalog</span></div>
       <div class="phase">${chk(r.verify_passed)}<span>verify</span></div>
       <div class="phase">${chk(r.restore_test_passed)}<span>restore</span></div>
       <div class="phase">${chk(r.par2_passed)}<span>par2</span></div>
