@@ -83,9 +83,12 @@ def test_verify_removes_existing_file_before_restore(env, tmp_path):
     mock_logger.info.assert_any_call(f"Restoring file: '{file_path}' from backup to: '{restore_dir}' for file comparing")
 
 
-def test_verify_warns_when_stale_file_removal_fails(env, tmp_path):
-    """When os.remove() raises OSError on a stale restore file, verify() must log
-    a warning rather than silently swallowing the error.
+def test_verify_errors_and_skips_when_stale_file_removal_fails(env, tmp_path):
+    """When os.remove() raises OSError on a stale restore file, verify() must:
+    - log at ERROR level (not warning) with a clear message naming the file
+    - mark that file's sample as FAIL
+    - skip the dar restore attempt for that file (dar must NOT be called)
+    - return a failed VerifyResult so the backup is marked as FAILURE
 
     Monkeypatching os.remove is used here because triggering a permission-denied
     or read-only-filesystem error on a specific file cannot be done reliably on
@@ -132,12 +135,23 @@ def test_verify_warns_when_stale_file_removal_fails(env, tmp_path):
          patch("dar_backup.dar_backup.logger") as mock_logger, \
          patch("dar_backup.dar_backup.os.remove", side_effect=remove_raises_for_restore_path), \
          patch("builtins.open", mock_open(read_data=mock_def_content)):
-        verify(args, "mock-backup", env.config_file, config)
+        verify_result = verify(args, "mock-backup", env.config_file, config)
 
-    warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-    assert any("stale" in c.lower() or "could not remove" in c.lower() for c in warning_calls), (
-        f"Expected a warning about the stale file removal failure; got: {warning_calls}"
+    error_calls = [str(call) for call in mock_logger.error.call_args_list]
+    assert any("cannot remove" in c.lower() or "stale" in c.lower() for c in error_calls), (
+        f"Expected an error about the stale file removal failure; got: {error_calls}"
     )
+
+    dar_restore_calls = [
+        call for call in mock_runner.run.call_args_list
+        if call.args and isinstance(call.args[0], list) and call.args[0][:2] == ["dar", "-x"]
+    ]
+    assert not dar_restore_calls, (
+        "dar -x must NOT be called when the stale restore file could not be removed; "
+        f"but runner.run was called with: {[c.args[0] for c in dar_restore_calls]}"
+    )
+
+    assert not verify_result, "verify() must return a failed result when stale file removal fails"
 
 
 def test_verify_restore_command_includes_overwrite_flag(env, tmp_path):

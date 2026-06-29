@@ -93,6 +93,7 @@ def clean_log_file(log_file_path, dry_run=False):
 
     temp_file_path = log_file_path + ".tmp"
 
+    what = f"reading '{log_file_path}'"
     try:
         if dry_run:
             with open(log_file_path, errors="ignore") as infile:
@@ -101,16 +102,18 @@ def clean_log_file(log_file_path, dry_run=False):
                         print(f"Would remove: {line.strip()}")
             return
 
+        what = f"writing temp file '{temp_file_path}'"
         with open(log_file_path, errors="ignore") as infile, open(temp_file_path, "w") as outfile:
             for line in infile:
                 if not _should_remove_line(line):
                     outfile.write(line.rstrip() + "\n")
 
+        what = f"replacing '{log_file_path}' with temp file"
         os.replace(temp_file_path, log_file_path)
         print(f"Successfully cleaned log file: {log_file_path}")
 
-    except Exception as e:
-        print(f"Error processing file: {e}")
+    except OSError as e:
+        print(f"Error {what}: {e}", file=sys.stderr)
         sys.exit(1)
 
 

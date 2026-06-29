@@ -438,7 +438,7 @@ def test_clean_log_file_handles_open_error(tmp_path, monkeypatch, capsys):
     assert exc.value.code == 1
 
     captured = capsys.readouterr()
-    assert "Error processing file" in captured.out + captured.err
+    assert "Error writing temp file" in captured.err
 
 
 # ---------------------------------------------------------------------------

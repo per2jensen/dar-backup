@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import sys
 from . import __about__ as about
 from pathlib import Path
 from dar_backup.config_settings import ConfigSettings
@@ -194,8 +195,8 @@ def main():
 
     if args.config:
         if not os.path.exists(args.config):
-            print(f"❌ Config file does not exist: {args.config}")
-            return
+            print(f"❌ Config file does not exist: {args.config}", file=sys.stderr)
+            sys.exit(1)
         run_installer(args.config, args.create_db)
 
     if args.install_autocompletion:

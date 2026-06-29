@@ -209,7 +209,13 @@ def generic_backup(
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
                 catalog_updated = True
             else:
-                msg = f"Catalog for archive '{backup_file}' not added."
+                msg = (
+                    f"Catalog entry not added for archive '{backup_file}' "
+                    f"(manager returncode={command_result.returncode}). "
+                    f"The archive is safely on disk. To register it manually: "
+                    f"manager --add-specific-archive '{backup_file}' "
+                    f"--config-file '{args.config_file}'"
+                )
                 logger.error(msg)
                 result.append((msg, 1))
 
@@ -634,42 +640,49 @@ def verify(
                 "tested_at":       tested_at,
             }
 
+        _stale_removal_failed = False
         try:
             if os.path.exists(restore_path):
                 try:
                     os.remove(restore_path)
                 except OSError as exc:
-                    logger.warning(
-                        "Could not remove stale restore file '%s': %s — dar will attempt to overwrite it",
-                        restore_path, exc,
-                    )
-            args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
-            ignore_ownership = resolve_ownership_flag(args, config_settings)
-            command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
-            if ignore_ownership:
-                command.append('--comparison-field=ignore-owner')
-            command.extend(['-B', args.darrc, 'restore-options'])
-            args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-            process = runner.run(command, timeout = config_settings.command_timeout_secs)
-            if process.returncode != 0:
-                raise Exception(str(process))
-
-            if not filecmp.cmp(restore_path, source_path, shallow=False):
-                result = False
-                sample["result"] = "FAIL"
-                sample["fail_reason_id"] = RESTORE_FAIL_CONTENT_MISMATCH
-                logger.error(f"Failure: file '{restored_file_path}' did not match the original")
-            else:
-                mismatches = compare_metadata(source_path, restore_path, check_ownership=not ignore_ownership)
-                if mismatches:
                     result = False
                     sample["result"] = "FAIL"
-                    sample["fail_reason_id"] = RESTORE_FAIL_METADATA_MISMATCH
-                    sample["fail_detail"] = "; ".join(mismatches)[:500]
-                    for m in mismatches:
-                        logger.error(f"Metadata failure for '{restored_file_path}': {m}")
+                    sample["fail_reason_id"] = RESTORE_FAIL_PERMISSION_ERROR
+                    sample["fail_detail"] = f"could not remove stale restore file: {exc}"[:500]
+                    logger.error(
+                        "Cannot remove stale restore file '%s': %s — skipping restore-test for this file",
+                        restore_path, exc,
+                    )
+                    _stale_removal_failed = True
+            if not _stale_removal_failed:
+                args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
+                ignore_ownership = resolve_ownership_flag(args, config_settings)
+                command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
+                if ignore_ownership:
+                    command.append('--comparison-field=ignore-owner')
+                command.extend(['-B', args.darrc, 'restore-options'])
+                args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+                process = runner.run(command, timeout = config_settings.command_timeout_secs)
+                if process.returncode != 0:
+                    raise Exception(str(process))
+
+                if not filecmp.cmp(restore_path, source_path, shallow=False):
+                    result = False
+                    sample["result"] = "FAIL"
+                    sample["fail_reason_id"] = RESTORE_FAIL_CONTENT_MISMATCH
+                    logger.error(f"Failure: file '{restored_file_path}' did not match the original")
                 else:
-                    args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
+                    mismatches = compare_metadata(source_path, restore_path, check_ownership=not ignore_ownership)
+                    if mismatches:
+                        result = False
+                        sample["result"] = "FAIL"
+                        sample["fail_reason_id"] = RESTORE_FAIL_METADATA_MISMATCH
+                        sample["fail_detail"] = "; ".join(mismatches)[:500]
+                        for m in mismatches:
+                            logger.error(f"Metadata failure for '{restored_file_path}': {m}")
+                    else:
+                        args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
 
         except KeyboardInterrupt:
             msg = (
@@ -1411,6 +1424,14 @@ def perform_backup(
             # Archive slice count and total size
             dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))
             metrics["num_slices"] = len(dar_slices)
+            # CATALOG phase: only applicable when dar succeeded AND slices are on disk.
+            # If there are no slices, the catalog failure is a consequence of the DAR
+            # failure (nothing to catalog), not an independent CATALOG-phase failure.
+            if (not backup_result.catalog_updated
+                    and backup_result.dar_exit_code in (0, 4, 5)
+                    and metrics["num_slices"] > 0
+                    and metrics["failed_phase"] is None):
+                metrics["failed_phase"] = "CATALOG"
             try:
                 metrics["archive_size_bytes"] = sum(
                     os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
@@ -1681,50 +1702,75 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
     # -B portability flag: paths stored inside each par2 set are still relative to
     # archive_dir, so the files remain relocatable across mount points.
     #
-    # Each slice's par2 set is self-contained: slices 1..N-1 that completed before
-    # a failure still provide real recovery coverage for those slices.  We therefore
-    # do NOT remove partial par2 files on failure — partial coverage is better than
-    # none.  The except block only logs how much coverage exists so operators know
-    # exactly which slices can be recovered.
-    completed_slices = 0
-    try:
-        for counter, slice_file in enumerate(dar_slices, start=1):
-            slice_path = os.path.join(archive_dir, slice_file)
-            par2_path = os.path.join(par2_output_dir, f"{slice_file}.par2")
-            logger.info(f"{counter}/{number_of_slices}: Generating par2 for {slice_file}")
-            if par2_dir:
-                command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
-            else:
-                command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
-            process = runner.run(command, timeout=config_settings.command_timeout_secs)
-            if process.returncode != 0:
-                logger.error(f"Error generating par2 files for {slice_file}")
-                raise subprocess.CalledProcessError(process.returncode, command)
-            completed_slices = counter
-            logger.info(f"{counter}/{number_of_slices}: Done")
+    # Each slice's par2 set is self-contained.  On failure we do NOT abort — we
+    # continue to the remaining slices so 9 out of 10 good redundancy files is
+    # better than stopping at the first failure and producing none.  Failed slices
+    # are collected and reported at the end; the function then raises so the caller
+    # marks this backup as FAILURE while still continuing to the next definition.
+    failed_slices: list[str] = []
+    succeeded_slices: list[str] = []
 
-            if par2_config.get("par2_run_verify"):
-                logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
-                verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
-                verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
-                if verify_process.returncode != 0:
-                    logger.error(
-                        "par2 verify failed for slice: %s (returncode=%s)",
-                        slice_file,
-                        verify_process.returncode,
-                    )
-                    raise subprocess.CalledProcessError(verify_process.returncode, verify_command)
-    except Exception:
-        if completed_slices > 0:
-            logger.warning(
-                "PAR2 generation failed after %d/%d slice(s) for '%s' — "
-                "par2 files for the first %d slice(s) remain on disk and provide partial recovery coverage",
-                completed_slices, number_of_slices, archive_base, completed_slices,
+    for counter, slice_file in enumerate(dar_slices, start=1):
+        slice_path = os.path.join(archive_dir, slice_file)
+        par2_path = os.path.join(par2_output_dir, f"{slice_file}.par2")
+        logger.info(f"{counter}/{number_of_slices}: Generating par2 for {slice_file}")
+        if par2_dir:
+            command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
+        else:
+            command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
+        process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        if process.returncode != 0:
+            logger.error(
+                "%d/%d: par2 create failed for %s (returncode=%d) — continuing to remaining slices",
+                counter, number_of_slices, slice_file, process.returncode,
             )
-        raise
+            failed_slices.append(slice_file)
+            continue
 
-    # One manifest for the whole archive — records all slices and their owning archive.
-    # Written after all slices succeed so a partial run leaves no manifest behind.
+        if par2_config.get("par2_run_verify"):
+            logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
+            verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
+            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+            if verify_process.returncode != 0:
+                logger.error(
+                    "%d/%d: par2 verify failed for %s (returncode=%d) — continuing to remaining slices",
+                    counter, number_of_slices, slice_file, verify_process.returncode,
+                )
+                failed_slices.append(slice_file)
+                continue
+
+        succeeded_slices.append(slice_file)
+        logger.info(f"{counter}/{number_of_slices}: Done")
+
+    if failed_slices:
+        if succeeded_slices:
+            logger.error(
+                "PAR2 generation incomplete for '%s': %d/%d slice(s) failed — %s. "
+                "%d slice(s) have par2 coverage: %s",
+                archive_base, len(failed_slices), number_of_slices, ", ".join(failed_slices),
+                len(succeeded_slices), ", ".join(succeeded_slices),
+            )
+        else:
+            logger.error(
+                "PAR2 generation failed for '%s': all %d slice(s) failed — %s",
+                archive_base, number_of_slices, ", ".join(failed_slices),
+            )
+        # Write a partial manifest so operators can see which slices have coverage.
+        if par2_dir and succeeded_slices:
+            archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
+            manifest_path = os.path.join(par2_output_dir, f"{archive_base}.par2.manifest.ini")
+            _write_par2_manifest(
+                manifest_path=manifest_path,
+                archive_dir_relative=archive_dir_relative,
+                archive_base=archive_base,
+                archive_files=succeeded_slices,
+                dar_backup_version=about.__version__,
+                dar_version=getattr(args, "dar_version", "unknown"),
+            )
+            logger.info("Wrote partial par2 manifest (%d/%d slices): %s", len(succeeded_slices), number_of_slices, manifest_path)
+        raise subprocess.CalledProcessError(1, ["par2", "create"])
+
+    # All slices succeeded — write the full manifest.
     if par2_dir:
         archive_dir_relative = os.path.relpath(archive_dir, par2_dir)
         manifest_path = os.path.join(par2_output_dir, f"{archive_base}.par2.manifest.ini")

@@ -138,3 +138,13 @@ Then reload Zsh:
 ```zsh
 source ~/.zshrc
 ```
+
+## Troubleshooting completions
+
+If tab-completion returns nothing or stops working, check the completer debug log:
+
+```bash
+cat /tmp/dar_backup_completer_$(id -u).log
+```
+
+The completer logger always writes at DEBUG level to this file. Errors such as a missing config file, an unreadable `backup.d/` directory, or a failed `dar_manager --list` call are recorded there as single-line messages — no tracebacks.

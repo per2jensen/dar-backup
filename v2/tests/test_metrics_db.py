@@ -429,9 +429,9 @@ def test_write_metrics_row_invalid_status_swallowed_and_logged(tmp_path):
 
 
 def test_write_metrics_row_invalid_failed_phase_swallowed_and_logged(tmp_path):
-    """failed_phase not in ('DAR','VERIFY','PAR2',NULL) must be swallowed, logged, and insert 0 rows."""
+    """failed_phase with an unrecognised value must be swallowed, logged, and insert 0 rows."""
     db = str(tmp_path / "metrics.db")
-    bad = {**_FULL_METRICS, "failed_phase": "CATALOG"}
+    bad = {**_FULL_METRICS, "failed_phase": "BOGUS"}
     with _mock_logger() as mock_get:
         write_metrics_row(bad, _cfg(db))
         mock_get.return_value.warning.assert_called_once()
@@ -456,7 +456,7 @@ def test_write_metrics_row_warning_status_round_trip(tmp_path):
 # Gap 3 — valid non-NULL failed_phase values round-trip
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("phase", ["DAR", "VERIFY", "PAR2"])
+@pytest.mark.parametrize("phase", ["DAR", "CATALOG", "VERIFY", "PAR2"])
 def test_write_metrics_row_failed_phase_round_trip(tmp_path, phase):
     """Each valid failed_phase value must insert and read back correctly."""
     db = str(tmp_path / "metrics.db")

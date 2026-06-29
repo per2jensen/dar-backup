@@ -73,10 +73,9 @@ def test_write_unit_files_triggers_enable_and_start(monkeypatch, tmp_path):
     venv.mkdir()
     dar_path = "/usr/local/bin"
 
-    mock_run = MagicMock()
+    mock_run = MagicMock(return_value=MagicMock(returncode=0, stderr="", stdout=""))
     monkeypatch.setattr("dar_backup.dar_backup_systemd.subprocess.run", mock_run)
 
-    # Optional: override Path.home() to avoid writing into ~/.config
     monkeypatch.setattr("dar_backup.dar_backup_systemd.Path.home", lambda: tmp_path)
 
     write_unit_files(str(venv), dar_path, install=True)
@@ -92,17 +91,35 @@ def test_write_unit_files_triggers_enable_and_start(monkeypatch, tmp_path):
 def test_enable_and_start_unit_runs_systemctl(monkeypatch):
     calls = []
 
-    def fake_run(cmd, check=False, **kwargs):
-        calls.append((cmd, check))
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return MagicMock(returncode=0, stderr="", stdout="")
 
     monkeypatch.setattr("dar_backup.dar_backup_systemd.subprocess.run", fake_run)
 
     enable_and_start_unit("dar-full-backup.timer")
 
-    assert calls == [
-        (["systemctl", "--user", "enable", "dar-full-backup.timer"], False),
-        (["systemctl", "--user", "start", "dar-full-backup.timer"], False),
-    ]
+    assert ["systemctl", "--user", "enable", "dar-full-backup.timer"] in calls
+    assert ["systemctl", "--user", "start", "dar-full-backup.timer"] in calls
+
+
+def test_run_systemctl_exits_with_error_on_failure(monkeypatch, capsys):
+    """_run_systemctl must print a clear error to stderr and exit(1) on non-zero returncode."""
+    from dar_backup.dar_backup_systemd import _run_systemctl
+
+    monkeypatch.setattr(
+        "dar_backup.dar_backup_systemd.subprocess.run",
+        MagicMock(return_value=MagicMock(returncode=1, stderr="Unit not found", stdout="")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _run_systemctl(["systemctl", "--user", "enable", "foo.timer"])
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "returncode=1" in captured.err
+    assert "Unit not found" in captured.err
 
 
 def test_write_unit_files_no_install_writes_to_cwd(monkeypatch, tmp_path):

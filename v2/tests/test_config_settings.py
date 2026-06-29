@@ -490,3 +490,54 @@ def test_get_config_value_raises_with_key_and_bad_value_in_message(tmp_path):
     message = str(exc_info.value).lower()
     assert "logfile_max_bytes" in message
     assert "not-a-number" in message
+
+
+# ---------------------------------------------------------------------------
+# Error-handling quality — clear messages, no swallowed exceptions
+# ---------------------------------------------------------------------------
+
+def test_config_settings_malformed_file_raises_clear_message(tmp_path):
+    """A config file with no section headers produces a ConfigSettingsError naming the file."""
+    bad_config = tmp_path / "bad.conf"
+    bad_config.write_text("key_without_section = value\n")
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(bad_config))
+    assert str(bad_config) in str(exc_info.value)
+
+
+def test_config_settings_unreadable_file_raises_clear_message(tmp_path):
+    """A config file that exists but cannot be read raises ConfigSettingsError with a clear message."""
+    import os as _os
+    if _os.getuid() == 0:
+        pytest.skip("running as root: permission bits are not enforced")
+    config_path = write_config(tmp_path / "locked.conf", tmp_path)
+    _os.chmod(config_path, 0o000)
+    try:
+        with pytest.raises(ConfigSettingsError) as exc_info:
+            ConfigSettings(str(config_path))
+        message = str(exc_info.value).lower()
+        # configparser.read() silently skips unreadable files; the check at
+        # __post_init__ catches the empty-loaded-files case via RuntimeError.
+        assert "not found" in message or "unreadable" in message or str(config_path) in str(exc_info.value)
+    finally:
+        _os.chmod(config_path, 0o644)
+
+
+def test_config_settings_memory_error_propagates_not_swallowed(tmp_path, monkeypatch):
+    """MemoryError must not be caught and re-wrapped as ConfigSettingsError.
+
+    MemoryError is a subclass of Exception, so the old catch-all would have
+    disguised it as a config error. This test verifies the new handlers let
+    it propagate so the OS/interpreter can handle it correctly.
+    """
+    import configparser as _cp
+    original_read = _cp.ConfigParser.read
+
+    def raise_memory_error(self, *args, **kwargs):
+        raise MemoryError("simulated out-of-memory")
+
+    # Monkeypatching is the only way to trigger MemoryError reliably in tests.
+    monkeypatch.setattr(_cp.ConfigParser, "read", raise_memory_error)
+    config_path = write_config(tmp_path / "cfg.conf", tmp_path)
+    with pytest.raises(MemoryError):
+        ConfigSettings(str(config_path))

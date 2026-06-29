@@ -1065,7 +1065,7 @@ def test_remove_file_exception_returns_false(monkeypatch, tmp_path):
     result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=False)
 
     assert result is False
-    mock_logger.error.assert_called_once_with(f"Error deleting archive slice {f}: disk full")
+    mock_logger.error.assert_called_once_with(f"Error deleting archive slice '{f}': disk full — file remains on disk")
 
 
 def test_delete_catalog_handles_exception(monkeypatch):
@@ -1080,13 +1080,16 @@ def test_delete_catalog_handles_exception(monkeypatch):
     monkeypatch.setattr(
         cleanup,
         "runner",
-        MagicMock(run=MagicMock(side_effect=RuntimeError("boom")))
+        MagicMock(run=MagicMock(side_effect=OSError("No such file or directory: 'manager'")))
     )
 
     result = cleanup.delete_catalog("example", args=SimpleNamespace(config_file="/dev/null"))
 
     assert result is False
-    assert mock_logger.error.called
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("dar files are already deleted" in c for c in error_calls), (
+        f"Expected error naming the consequence; got: {error_calls}"
+    )
 
 
 # ---------------------------------------------------------------------------

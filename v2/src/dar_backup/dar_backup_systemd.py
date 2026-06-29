@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import subprocess
 import argparse
+import sys
 
 SERVICE_TEMPLATE = """[Unit]
 Description=dar-backup {mode}
@@ -111,9 +112,32 @@ def write_unit_file(path, filename, content):
     file_path.write_text(content)
     print(f"Generated {filename}")
 
-def enable_and_start_unit(unit_name):
-    subprocess.run(["systemctl", "--user", "enable", unit_name], check=False)
-    subprocess.run(["systemctl", "--user", "start", unit_name], check=False)
+def _run_systemctl(args: list[str]) -> None:
+    """Run a systemctl command; print a clear error and exit if it fails.
+
+    Args:
+        args: Full argument list, e.g. ["systemctl", "--user", "enable", unit].
+
+    Raises:
+        SystemExit: If the command returns a non-zero exit code.
+    """
+    result = subprocess.run(args, capture_output=True, text=True)
+    if result.returncode != 0:
+        cmd = " ".join(args)
+        print(f"ERROR: '{cmd}' failed (returncode={result.returncode})", file=sys.stderr)
+        if result.stderr.strip():
+            print(result.stderr.strip(), file=sys.stderr)
+        sys.exit(1)
+
+
+def enable_and_start_unit(unit_name: str) -> None:
+    """Enable and start a systemd user unit, exiting on failure.
+
+    Args:
+        unit_name: Name of the systemd unit (e.g. 'dar-full-backup.timer').
+    """
+    _run_systemctl(["systemctl", "--user", "enable", unit_name])
+    _run_systemctl(["systemctl", "--user", "start", unit_name])
 
 def write_unit_files(venv, dar_path, install=False):
     output_path = Path.home() / ".config/systemd/user" if install else Path.cwd()
@@ -134,8 +158,8 @@ def write_unit_files(venv, dar_path, install=False):
         for mode in FLAGS:
             enable_and_start_unit(f"dar-{mode.lower()}-backup.timer")
         enable_and_start_unit("dar-cleanup.timer")
-        subprocess.run(["systemctl", "--user", "daemon-reexec"], check=False)
-        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+        _run_systemctl(["systemctl", "--user", "daemon-reexec"])
+        _run_systemctl(["systemctl", "--user", "daemon-reload"])
         print("Systemd `dar-backup` units and timers installed and user daemon reloaded.")
 
 def main():

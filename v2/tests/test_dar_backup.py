@@ -1355,7 +1355,7 @@ def test_generate_par2_files_keeps_partial_par2_and_logs_coverage_on_mid_run_fai
     """If par2 succeeds for slice 1 but fails for slice 2, the par2 files for
     slice 1 must be KEPT on disk — partial coverage is better than none.
     Each slice's par2 set is self-contained: slice 1's par2 can repair slice 1
-    regardless of whether slice 2 has par2.  A warning must be logged stating
+    regardless of whether slice 2 has par2.  An error must be logged stating
     how many slices were covered so operators know what recovery options exist.
     """
     (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
@@ -1399,15 +1399,59 @@ def test_generate_par2_files_keeps_partial_par2_and_logs_coverage_on_mid_run_fai
         "generate_par2_files() must NOT remove par2 files for completed slices — "
         "partial coverage is better than no coverage"
     )
-    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
-    assert any("1/2" in c or "partial" in c.lower() for c in warning_calls), (
-        f"Expected a warning stating how many slices were covered; got: {warning_calls}"
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("1" in c and "2" in c for c in error_calls), (
+        f"Expected an error stating how many slices were covered; got: {error_calls}"
     )
 
 
-def test_generate_par2_files_no_warning_when_first_slice_fails_with_nothing_completed(tmp_path):
-    """When par2 fails on the very first slice (completed_slices == 0), no
-    partial-coverage warning must be logged and the CalledProcessError must propagate.
+def test_generate_par2_files_continues_to_remaining_slices_after_mid_run_failure(tmp_path):
+    """When slice 2 of 3 fails, par2 must still be attempted for slice 3.
+    9 out of 10 good redundancy files is better than stopping at the first failure.
+    """
+    (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
+    (tmp_path / "example_FULL_2025-01-01.2.dar").write_text("")
+    (tmp_path / "example_FULL_2025-01-01.3.dar").write_text("")
+
+    backup_file = "example_FULL_2025-01-01"
+    cfg = SimpleNamespace(
+        backup_dir=str(tmp_path),
+        error_correction_percent=10,
+        command_timeout_secs=5,
+        logfile_location=str(tmp_path / "dar-backup.log"),
+        par2_enabled=True,
+        par2_dir=None,
+        par2_ratio_full=None,
+        par2_ratio_diff=None,
+        par2_ratio_incr=None,
+        par2_run_verify=None,
+    )
+    args = SimpleNamespace(config_file=str(tmp_path / "dar-backup.conf"))
+
+    call_count = 0
+
+    def run_side_effect(cmd, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        # Slice 2 (second call) fails; slices 1 and 3 succeed.
+        if call_count == 2:
+            return SimpleNamespace(returncode=1, stdout="", stderr="par2 error", stdout_tail="", stderr_tail="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail="")
+
+    with patch.object(db, "runner") as mock_runner, \
+         patch.object(db, "logger", new=MagicMock()):
+        mock_runner.run.side_effect = run_side_effect
+        with pytest.raises(subprocess.CalledProcessError):
+            db.generate_par2_files(backup_file, cfg, args)
+
+    assert mock_runner.run.call_count == 3, (
+        f"Expected par2 to be attempted for all 3 slices, but runner.run was called {mock_runner.run.call_count} time(s)"
+    )
+
+
+def test_generate_par2_files_no_partial_coverage_message_when_all_slices_fail(tmp_path):
+    """When par2 fails on the very first (and only) slice, the error message must
+    say 'all slices failed' — not 'partial coverage' — and CalledProcessError must propagate.
     """
     (tmp_path / "example_FULL_2025-01-01.1.dar").write_text("")
     backup_file = "example_FULL_2025-01-01"
@@ -1433,9 +1477,9 @@ def test_generate_par2_files_no_warning_when_first_slice_fails_with_nothing_comp
         with pytest.raises(subprocess.CalledProcessError):
             db.generate_par2_files(backup_file, cfg, args)
 
-    warning_texts = " ".join(str(c) for c in mock_logger.warning.call_args_list)
-    assert "partial" not in warning_texts.lower(), (
-        "No partial-coverage warning should be emitted when zero slices completed"
+    error_texts = " ".join(str(c) for c in mock_logger.error.call_args_list)
+    assert "partial" not in error_texts.lower(), (
+        "No partial-coverage message should appear when zero slices succeeded"
     )
 
 

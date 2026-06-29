@@ -187,14 +187,17 @@ class TestResolveDbPath:
             result = resolve_db_path(None, str(config_file))
         assert result == str(db_file)
 
-    def test_resolve_db_path_returns_empty_on_config_error(self, tmp_path: pytest.TempPathFactory) -> None:
-        """Returns empty string when ConfigSettings raises an exception."""
+    def test_resolve_db_path_returns_empty_on_config_error(self, tmp_path: pytest.TempPathFactory, capsys) -> None:
+        """Returns empty string when ConfigSettings raises, and prints a warning to stderr."""
         config_file = tmp_path / "dar-backup.conf"
         config_file.touch()
 
         with patch("dar_backup.config_settings.ConfigSettings", side_effect=Exception("bad config")):
             result = resolve_db_path(None, str(config_file))
         assert result == ""
+        captured = capsys.readouterr()
+        assert "could not parse config file" in captured.err
+        assert "bad config" in captured.err
 
 
 # ---------------------------------------------------------------------------
@@ -426,12 +429,13 @@ class TestMain:
             main()
         assert exc_info.value.code == 1
 
-    def test_main_datasette_timeout_still_opens_browser(self, tmp_path: pytest.TempPathFactory) -> None:
-        """Browser is opened even when Datasette does not become ready in time."""
+    def test_main_datasette_timeout_alive_process_still_opens_browser(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Browser is opened when Datasette is alive but slow to respond (poll() is None)."""
         db_file = tmp_path / "metrics.db"
         db_file.touch()
 
         mock_proc = MagicMock()
+        mock_proc.poll.return_value = None  # process still running — just slow
         mock_proc.wait = MagicMock(side_effect=[KeyboardInterrupt, None])
         mock_proc.terminate = MagicMock()
 
@@ -450,6 +454,30 @@ class TestMain:
             main()
 
         mock_browser.assert_called_once()
+
+    def test_main_datasette_crashed_before_ready_exits_nonzero(self, tmp_path: pytest.TempPathFactory) -> None:
+        """If the Datasette process has already exited when the timeout fires, exit with code 1."""
+        db_file = tmp_path / "metrics.db"
+        db_file.touch()
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 1  # process exited with code 1 (crashed)
+
+        with patch("dar_backup.dashboard.check_datasette_installed", return_value=True), \
+             patch("dar_backup.dashboard.resolve_config_file", return_value=str(tmp_path / "c.conf")), \
+             patch("dar_backup.dashboard.resolve_db_path", return_value=str(db_file)), \
+             patch("dar_backup.dashboard.get_dashboard_html_path", return_value=str(tmp_path / "dashboard.html")), \
+             patch("dar_backup.dashboard.find_free_port", return_value=8001), \
+             patch("dar_backup.dashboard.get_datasette_path", return_value="/usr/bin/datasette"), \
+             patch("dar_backup.dashboard.subprocess.Popen", return_value=mock_proc), \
+             patch("dar_backup.dashboard.wait_for_datasette", return_value=False), \
+             patch("webbrowser.open") as mock_browser, \
+             patch("sys.argv", ["dar-backup-dashboard"]), \
+             pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        mock_browser.assert_not_called()
 
     def test_main_kills_datasette_on_terminate_timeout(self, tmp_path: pytest.TempPathFactory) -> None:
         """If Datasette does not terminate within 5s, it is killed."""

@@ -1426,15 +1426,39 @@ def test_add_specific_archive_catalog_list_failure_logs_warning(tmp_path):
     (tmp_path / "example").touch()
     config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
-    with patch("dar_backup.manager.subprocess.run", side_effect=subprocess.CalledProcessError(1, "dar_manager")), \
+    err = subprocess.CalledProcessError(1, "dar_manager")
+    err.stderr = "database not found"
+    with patch("dar_backup.manager.subprocess.run", side_effect=err), \
          patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger") as mock_logger:
         mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
         result = add_specific_archive(archive, config)
 
     assert result == 0
-    mock_logger.warning.assert_called_once_with(
-        "Could not determine latest catalog date for chronological check."
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("Chronological check skipped" in c and "returncode=1" in c for c in warning_calls), (
+        f"Expected warning naming the failure and returncode; got: {warning_calls}"
+    )
+
+
+def test_add_specific_archive_catalog_list_oserror_logs_warning(tmp_path):
+    from dar_backup.manager import add_specific_archive
+
+    archive = "example_FULL_2025-04-01"
+    (tmp_path / f"{archive}.1.dar").touch()
+    (tmp_path / "example").touch()
+    config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
+
+    with patch("dar_backup.manager.subprocess.run", side_effect=OSError("No such file or directory: 'dar_manager'")), \
+         patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger") as mock_logger:
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        result = add_specific_archive(archive, config)
+
+    assert result == 0
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("Chronological check skipped" in c and "dar_manager" in c for c in warning_calls), (
+        f"Expected warning naming dar_manager unavailability; got: {warning_calls}"
     )
 
 

@@ -1235,7 +1235,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
         result = subprocess.run(
             ["dar_manager", "--base", database_path, "--list"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             check=True
         )
@@ -1256,8 +1256,18 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
                     logger.info(f"Archive {archive} skipped due to user declining to add older archive.")
                     return 1
 
-    except subprocess.CalledProcessError:
-        logger.warning("Could not determine latest catalog date for chronological check.")
+    except subprocess.CalledProcessError as e:
+        stderr_detail = e.stderr.strip() if e.stderr else ""
+        detail = f" (returncode={e.returncode}): {stderr_detail}" if stderr_detail else f" (returncode={e.returncode})"
+        logger.warning(
+            "Chronological check skipped: dar_manager --list failed for catalog '%s'%s",
+            database_path, detail,
+        )
+    except OSError as e:
+        logger.warning(
+            "Chronological check skipped: dar_manager not available for catalog '%s': %s",
+            database_path, e,
+        )
 
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
 

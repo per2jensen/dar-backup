@@ -117,18 +117,19 @@ def test_run_installer_blocks_unsafe_path(tmp_path):
 
 # --- main() CLI branches -----------------------------------------------------
 
-def test_installer_main_missing_config_prints_and_returns(monkeypatch, tmp_path, capsys):
-    # Nonexistent file
+def test_installer_main_missing_config_exits_nonzero(monkeypatch, tmp_path, capsys):
     missing = tmp_path / "no.conf"
     monkeypatch.setattr(sys, "argv", ["installer", "--config", str(missing)])
 
-    # Avoid extra side effects of autocompletion checks
     with patch.object(installer, "install_autocompletion"), \
          patch.object(installer, "uninstall_autocompletion"):
-        installer.main()
+        with pytest.raises(SystemExit) as exc:
+            installer.main()
 
-    out = capsys.readouterr().out
-    assert "Config file does not exist" in out
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "Config file does not exist" in captured.err
+    assert "Config file does not exist" not in captured.out
 
 
 def test_installer_main_calls_run_installer(monkeypatch, tmp_path):

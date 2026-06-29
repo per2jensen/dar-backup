@@ -211,14 +211,20 @@ class ConfigSettings:
 
         except ConfigSettingsError:
             raise
+        except OSError as e:
+            raise ConfigSettingsError(
+                f"Cannot read or parse config file '{self.config_file}': {e}"
+            ) from e
+        except configparser.Error as e:
+            raise ConfigSettingsError(
+                f"Cannot parse config file '{self.config_file}': {e}"
+            ) from e
         except RuntimeError as e:
             raise ConfigSettingsError(f"RuntimeError: {e}") from e
         except KeyError as e:
             raise ConfigSettingsError(f"Missing mandatory configuration key: {e}") from e
         except ValueError as e:
             raise ConfigSettingsError(f"Invalid value in config: {e}") from e
-        except Exception as e:
-            raise ConfigSettingsError(f"Unexpected error during config initialization: {e}") from e
 
 
 

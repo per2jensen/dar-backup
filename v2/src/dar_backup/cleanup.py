@@ -76,8 +76,8 @@ def _remove_file(file_path: str, base_dir: Path, label: str, dry_run: bool) -> b
         else:
             logger.warning(f"Skipped deleting unsafe {label}: {file_path}")
         return removed
-    except Exception as e:
-        logger.error(f"Error deleting {label} {file_path}: {e}")
+    except OSError as e:
+        logger.error(f"Error deleting {label} '{file_path}': {e} — file remains on disk")
         return False
 
 
@@ -174,7 +174,11 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
         if dry_run:
             logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
         else:
-            delete_catalog(archive_name, args)
+            if not delete_catalog(archive_name, args):
+                logger.error(
+                    "Catalog entry for '%s' was not removed — archive files are deleted but catalog entry remains",
+                    archive_name,
+                )
 
 
 def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettings = None):
@@ -203,7 +207,11 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
             if dry_run:
                 logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
             else:
-                delete_catalog(archive_name, args)
+                if not delete_catalog(archive_name, args):
+                    logger.error(
+                        "Catalog entry for '%s' was not removed — archive files are deleted but catalog entry remains",
+                        archive_name,
+                    )
     else:
         logger.info("No .dar files matched the regex for deletion.")
 
@@ -218,6 +226,10 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
     """
     command = ["manager", "--remove-specific-archive", catalog_name, "--config-file", args.config_file, '--log-level', 'debug', '--log-stdout']
     logger.info(f"Deleting catalog '{catalog_name}' using config file: '{args.config_file}'")
+    remediate = (
+        f"To fix the stale catalog entry run: "
+        f"manager --remove-specific-archive '{catalog_name}' --config-file '{args.config_file}'"
+    )
     try:
         result:CommandResult = runner.run(command)
         if result.returncode == 0:
@@ -228,10 +240,18 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
             logger.warning(f"catalog '{catalog_name}' not found in the database, skipping deletion")
             return True
         else:
-            logger.error(f"Error deleting catalog {catalog_name}: {result.stderr}")
+            logger.error(
+                "Failed to remove catalog entry for '%s' (returncode=%d): %s — "
+                "dar files are already deleted from disk. %s",
+                catalog_name, result.returncode, result.stderr.strip(), remediate,
+            )
             return False
-    except Exception as e:
-        logger.error(f"Error deleting catalog {catalog_name}: {e}")
+    except OSError as e:
+        logger.error(
+            "Failed to run manager for catalog '%s': %s — "
+            "dar files are already deleted from disk. %s",
+            catalog_name, e, remediate,
+        )
         return False
 
 

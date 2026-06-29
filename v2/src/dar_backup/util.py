@@ -598,7 +598,7 @@ def send_discord_message(
         body = None
         try:
             body = exc.read().decode(errors="replace")
-        except Exception:
+        except OSError:
             body = None
         detail = f" body='{body.strip()}'" if body else ""
         message = f"Discord webhook HTTP error {exc.code}: {exc.reason}{detail}"
@@ -933,8 +933,8 @@ def backup_definition_completer(prefix, parsed_args, **kwargs):
         config = ConfigSettings(config_file)
         backup_d_dir = os.path.expanduser(config.backup_d_dir)
         return [f for f in os.listdir(backup_d_dir) if f.startswith(prefix)]
-    except Exception:
-        completer_logger.exception("backup_definition_completer failed")
+    except Exception as e:
+        completer_logger.debug("backup_definition_completer: %s", e)
         return []
 
 
@@ -1012,8 +1012,8 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
 
         completions = sorted(set(completions), key=sort_key)
         return completions or ["[no matching archives]"]
-    except Exception:
-        completer_logger.exception("list_archive_completer failed")
+    except Exception as e:
+        completer_logger.debug("list_archive_completer: %s", e)
         return []
 
 
@@ -1049,8 +1049,8 @@ def sort_key(archive_name: str):
         date = datetime.strptime(date_str, "%Y-%m-%d")
         completer_logger.debug(f"Archive: {archive_name}, Def: {def_name}, Date: {date}")
         return (def_name, date)
-    except Exception:
-        completer_logger.exception("sort_key failed")
+    except Exception as e:
+        completer_logger.debug("sort_key: could not parse '%s': %s", archive_name, e)
         return (archive_name, datetime.min)
 
 
@@ -1109,8 +1109,8 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
 
         completions = sorted(set(completions), key=sort_key)
         return completions or ["[no matching archives]"]
-    except Exception:
-        completer_logger.exception("archive_content_completer failed")
+    except Exception as e:
+        completer_logger.debug("archive_content_completer: %s", e)
         return []
 
 
@@ -1171,8 +1171,8 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         # Step 3: return filtered list
         candidates = sorted(archive for archive in all_archives if archive not in existing)
         return candidates or ["[no new archives]"]
-    except Exception:
-        completer_logger.exception("add_specific_archive_completer failed")
+    except Exception as e:
+        completer_logger.debug("add_specific_archive_completer: %s", e)
         return []
 
 
@@ -1525,7 +1525,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     par2_duration_secs            REAL,
     status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
     dar_exit_code                 INTEGER,
-    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREREQ', 'DAR', 'VERIFY', 'PAR2')),
+    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREREQ', 'DAR', 'CATALOG', 'VERIFY', 'PAR2')),
     error_summary                 TEXT,
     catalog_updated               INTEGER,
     verify_passed                 INTEGER,
@@ -1681,6 +1681,8 @@ def ensure_metrics_db(db_path: str) -> None:
       - Existing DB: ALTER TABLE ADD COLUMN IF NOT EXISTS is issued for every
         column listed in _METRICS_MIGRATIONS, so columns added after the
         initial release are silently appended without touching existing data.
+      - Structural changes (e.g. updated CHECK constraints) are applied via
+        table recreation when the stored schema no longer matches.
     """
     with closing(sqlite3.connect(db_path)) as conn:
         # WAL mode lets Datasette/sqlite3-CLI read without blocking backup writes.
@@ -1693,6 +1695,32 @@ def ensure_metrics_db(db_path: str) -> None:
                 conn.execute(
                     f"ALTER TABLE backup_runs ADD COLUMN {col_name} {col_type}"
                 )
+
+        # Structural migration: add CATALOG to the failed_phase CHECK constraint.
+        # SQLite cannot ALTER a CHECK constraint, so we recreate the table.
+        # ADD COLUMN migrations above must run first so the old table has all
+        # columns before we copy it.
+        schema_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='backup_runs'"
+        ).fetchone()
+        if schema_row and "'CATALOG'" not in schema_row[0]:
+            old_cols = [row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")]
+            col_list = ", ".join(f'"{c}"' for c in old_cols)
+            # Extract just the CREATE TABLE backup_runs (...); statement from _METRICS_DDL.
+            new_table_ddl = _METRICS_DDL.split("\nCREATE INDEX")[0].strip().replace(
+                "CREATE TABLE IF NOT EXISTS backup_runs",
+                "CREATE TABLE IF NOT EXISTS backup_runs_catalog_mig",
+                1,
+            )
+            conn.executescript(f"""
+                BEGIN;
+                DROP TABLE IF EXISTS backup_runs_catalog_mig;
+                {new_table_ddl}
+                INSERT INTO backup_runs_catalog_mig ({col_list}) SELECT {col_list} FROM backup_runs;
+                DROP TABLE backup_runs;
+                ALTER TABLE backup_runs_catalog_mig RENAME TO backup_runs;
+                COMMIT;
+            """)
 
 
 def write_metrics_row(metrics: dict, config_settings) -> None:

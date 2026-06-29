@@ -98,8 +98,11 @@ def resolve_db_path(arg_db: str | None, config_file: str) -> str:
             db = cfg.metrics_db_path   # already expanded by ConfigSettings.__post_init__
             if db:
                 return db
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                f"Warning: could not parse config file '{config_file}': {e}",
+                file=sys.stderr,
+            )
 
     return ""
 
@@ -230,6 +233,14 @@ def main() -> None:
     # Wait for Datasette to be ready
     ready = wait_for_datasette(port)
     if not ready:
+        if ds.poll() is not None:
+            print(
+                f"Error: Datasette process exited with code {ds.poll()} before becoming ready.\n"
+                "Check that datasette is correctly installed and the database file is valid.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Process is alive but slow \u2014 proceed with a warning
         print(
             f"Warning: Datasette did not respond within {STARTUP_TIMEOUT}s "
             "\u2014 opening browser anyway.",
