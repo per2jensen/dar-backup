@@ -6,7 +6,7 @@ import os
 import re
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
-from typing import Optional, Pattern
+from typing import Optional, Pattern, cast
 
 from dar_backup.exceptions import ConfigSettingsError
 
@@ -386,6 +386,10 @@ class ConfigSettings:
         par2_config["par2_ratio_full"] = self._get_config_value(s, "par2_ratio_full", int, par2_config["par2_ratio_full"])
         par2_config["par2_ratio_diff"] = self._get_config_value(s, "par2_ratio_diff", int, par2_config["par2_ratio_diff"])
         par2_config["par2_ratio_incr"] = self._get_config_value(s, "par2_ratio_incr", int, par2_config["par2_ratio_incr"])
-        par2_config["par2_run_verify"] = self._get_optional_bool(s, "par2_run_verify", par2_config["par2_run_verify"])
-        par2_config["par2_enabled"] = self._get_optional_bool(s, "par2_enabled", par2_config["par2_enabled"])
+        par2_config["par2_run_verify"] = self._get_optional_bool(
+            s, "par2_run_verify", cast(Optional[bool], par2_config["par2_run_verify"])
+        )
+        par2_config["par2_enabled"] = self._get_optional_bool(
+            s, "par2_enabled", cast(Optional[bool], par2_config["par2_enabled"])
+        )
         return par2_config

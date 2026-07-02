@@ -438,8 +438,9 @@ def test_command_runner_check_true_nonzero_returns_stack(tmp_path):
     result = runner.run(["/bin/false"], check=True)
 
     assert result.returncode != 0
-    assert isinstance(result.stack, list)
+    assert isinstance(result.stack, str)
     assert result.stack
+    assert "run" in result.stack
 
 
 def test_command_runner_text_false_returns_bytes(tmp_path):

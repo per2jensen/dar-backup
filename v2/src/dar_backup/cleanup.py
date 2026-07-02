@@ -24,7 +24,7 @@ from inputimeout import inputimeout, TimeoutOccurred
 from pathlib import Path
 from sys import stderr
 from time import time
-from typing import List, NamedTuple, Tuple
+from typing import List, Optional, Tuple, cast
 import glob
 
 
@@ -49,8 +49,13 @@ from dar_backup.util import send_discord_message
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 
-logger = None
-runner = None
+logger = get_logger()
+runner: Optional[CommandRunner] = None
+
+
+def _runner() -> CommandRunner:
+    assert runner is not None, "CommandRunner not initialized; call main() first"
+    return runner
 
 
 def _remove_file(file_path: str, base_dir: Path, label: str, dry_run: bool) -> bool:
@@ -84,8 +89,8 @@ def _remove_file(file_path: str, base_dir: Path, label: str, dry_run: bool) -> b
 def _delete_par2_files(
     archive_name: str,
     backup_dir: str,
-    config_settings: ConfigSettings = None,
-    backup_definition: str = None,
+    config_settings: Optional[ConfigSettings] = None,
+    backup_definition: Optional[str] = None,
     dry_run: bool = False,
 ) -> None:
     if config_settings and hasattr(config_settings, "get_par2_config"):
@@ -123,7 +128,7 @@ def _delete_par2_files(
         _remove_file(file_path, Path(par2_dir), "PAR2 file", dry_run)
 
 
-def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: ConfigSettings = None):
+def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: Optional[ConfigSettings] = None):
     """
     Delete backups older than the specified age in days.
     Only .dar and .par2 files are considered for deletion.
@@ -169,7 +174,8 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
     for archive_name in archives_deleted.keys():
         if not is_archive_name_allowed(archive_name):
             raise ValueError(f"Refusing unsafe archive name: {archive_name}")
-        archive_definition = ArchiveName.parse(archive_name).definition
+        _parsed_name = ArchiveName.parse(archive_name)
+        archive_definition = _parsed_name.definition if _parsed_name else archive_name.split('_')[0]
         _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
         if dry_run:
             logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
@@ -181,7 +187,7 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
                 )
 
 
-def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettings = None):
+def delete_archive(backup_dir, archive_name, args, config_settings: Optional[ConfigSettings] = None):
     """
     Delete all .dar and .par2 files in the backup directory for the given archive name.
 
@@ -220,7 +226,7 @@ def delete_archive(backup_dir, archive_name, args, config_settings: ConfigSettin
     _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
 
 
-def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
+def delete_catalog(catalog_name: str, args: argparse.Namespace) -> bool:
     """
     Call `manager.py` to delete the specified catalog in it's database
     """
@@ -231,10 +237,10 @@ def delete_catalog(catalog_name: str, args: NamedTuple) -> bool:
         f"manager --remove-specific-archive '{catalog_name}' --config-file '{args.config_file}'"
     )
     try:
-        result:CommandResult = runner.run(command)
+        result:CommandResult = _runner().run(command)
         if result.returncode == 0:
             logger.info(f"Deleted catalog '{catalog_name}', using config file: '{args.config_file}'")
-            logger.debug(f"Stdout: manager.py --remove-specific-archive output:\n{result.stdout}")
+            logger.debug(f"Stdout: manager.py --remove-specific-archive output:\n{cast(str, result.stdout)}")
             return True
         elif result.returncode == 2:
             logger.warning(f"catalog '{catalog_name}' not found in the database, skipping deletion")

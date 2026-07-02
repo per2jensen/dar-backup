@@ -40,7 +40,7 @@ from time import time
 from rich.console import Console
 from rich.text import Text
 from dataclasses import dataclass
-from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple
+from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -77,8 +77,13 @@ from dar_backup.util import (
 
 from dar_backup.command_runner import CommandRunner
 
-logger = None
-runner = None
+logger = get_logger()
+runner: Optional[CommandRunner] = None
+
+
+def _runner() -> CommandRunner:
+    assert runner is not None, "CommandRunner not initialized; call main() first"
+    return runner
 
 
 class BackupResult(NamedTuple):
@@ -120,7 +125,7 @@ def _normalize_backup_definition_name(raw_name: str, *, allow_unsafe: bool = Fal
 def generic_backup(
     type: str, command: List[str], backup_file: str, backup_definition: str,
     darrc: str, config_settings: ConfigSettings, args: argparse.Namespace
-) -> List[str]:
+) -> BackupResult:
     """
     Performs a backup using the 'dar' command.
 
@@ -144,7 +149,8 @@ def generic_backup(
         BackupError: If an error leading to a bad backup occurs during the backup process.
 
     Returns:
-        List of tuples (<msg>, <exit_code>) of errors not considered critical enough for raising an exception
+        BackupResult: issues (list of (<msg>, <exit_code>) tuples not considered critical
+        enough for raising an exception), dar_exit_code, catalog_updated, and dar_stats.
     """
 
     result: List[tuple] = []
@@ -155,7 +161,7 @@ def generic_backup(
     logger.info(f"Starting {type} backup for {backup_definition}")
     try:
         try:
-            process = runner.run(command, timeout=config_settings.command_timeout_secs)
+            process = _runner().run(command, timeout=config_settings.command_timeout_secs)
         except Exception as e:
             logger.error("Backup command could not be run for '%s': %s", backup_definition, e)
             raise
@@ -204,7 +210,7 @@ def generic_backup(
 
         if process.returncode in (0, 4, 5):
             add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file]
-            command_result = runner.run(add_catalog_command, timeout = config_settings.command_timeout_secs)
+            command_result = _runner().run(add_catalog_command, timeout = config_settings.command_timeout_secs)
             if command_result.returncode == 0:
                 logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
                 catalog_updated = True
@@ -312,7 +318,7 @@ class DoctypeStripper:
         self.close()
 
 
-def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
+def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, Optional[str]]]:
     """
     Stream file paths and sizes from a DAR XML listing to keep memory usage low.
     """
@@ -342,7 +348,7 @@ def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, str]]:
                 elem.clear()
 
 
-def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str]], config_settings: ConfigSettings):
+def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, Optional[str]]], config_settings: ConfigSettings):
     """Find files within a specified size range.
 
     Args:
@@ -359,13 +365,13 @@ def find_files_between_min_and_max_size(backed_up_files: Iterable[Tuple[str, str
     min_size = config_settings.min_size_verification_mb
     for item in backed_up_files:
         if item is not None and len(item) >= 2 and item[0] is not None and item[1] is not None:
-            logger.trace(f"tuple from dar xml list: {item}")
+            logger.trace(f"tuple from dar xml list: {item}")  # type: ignore[attr-defined]
             file_size = _parse_size_bytes(item[1])
             if file_size is None:
                 logger.warning(f"Unrecognised size string '{item[1]}' for '{item[0]}' — skipping (update _DAR_SIZE_UNITS if dar added a new unit)")
                 continue
             if (min_size * 1024 * 1024) <= file_size <= (max_size * 1024 * 1024):
-                logger.trace(f"File found between min and max sizes: {item}")
+                logger.trace(f"File found between min and max sizes: {item}")  # type: ignore[attr-defined]
                 files.append(item[0])
     return files
 
@@ -462,7 +468,7 @@ def _size_in_verification_range(size_text: str, config_settings: ConfigSettings)
 
 
 def select_restoretest_samples(
-    backed_up_files: Iterable[Tuple[str, str]],
+    backed_up_files: Iterable[Tuple[str, Optional[str]]],
     config_settings: ConfigSettings,
     sample_size: int
 ) -> List[str]:
@@ -540,7 +546,7 @@ def verify(
 
 
     try:
-        process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        process = _runner().run(command, timeout=config_settings.command_timeout_secs)
     except KeyboardInterrupt:
         msg = (
             f"Verification interrupted (Ctrl-C or SIGTERM) for '{backup_file}'. "
@@ -563,7 +569,7 @@ def verify(
 
     # Materialise the generator so it can be iterated twice: once for the size
     # lookup dict and once by select_restoretest_samples.
-    backed_up_files: list[tuple[str, str]] = list(get_backed_up_files(
+    backed_up_files: list[tuple[str, Optional[str]]] = list(get_backed_up_files(
         backup_file,
         config_settings.backup_dir,
         timeout=config_settings.command_timeout_secs
@@ -656,14 +662,16 @@ def verify(
                     )
                     _stale_removal_failed = True
             if not _stale_removal_failed:
-                args.verbose and logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
+                if args.verbose:
+                    logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
                 ignore_ownership = resolve_ownership_flag(args, config_settings)
                 command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
                 if ignore_ownership:
                     command.append('--comparison-field=ignore-owner')
                 command.extend(['-B', args.darrc, 'restore-options'])
-                args.verbose and logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
-                process = runner.run(command, timeout = config_settings.command_timeout_secs)
+                if args.verbose:
+                    logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+                process = _runner().run(command, timeout = config_settings.command_timeout_secs)
                 if process.returncode != 0:
                     raise Exception(str(process))
 
@@ -682,7 +690,8 @@ def verify(
                         for m in mismatches:
                             logger.error(f"Metadata failure for '{restored_file_path}': {m}")
                     else:
-                        args.verbose and logger.info(f"Success: file '{restored_file_path}' matches the original")
+                        if args.verbose:
+                            logger.info(f"Success: file '{restored_file_path}' matches the original")
 
         except KeyboardInterrupt:
             msg = (
@@ -747,7 +756,7 @@ def verify(
 
 
 def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
-                   selection: str = None, ignore_ownership: bool = True, no_deleted: bool = False):
+                   selection: Optional[str] = None, ignore_ownership: bool = True, no_deleted: bool = False):
     """
     Restores a backup file to a specified directory.
 
@@ -794,11 +803,11 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             command.append('--deleted=ignore')
         command.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
         logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
-        process = runner.run(command, timeout = config_settings.command_timeout_secs)
+        process = _runner().run(command, timeout = config_settings.command_timeout_secs)
         if process.returncode == 0:
             logger.info(f"Restore completed successfully to: '{restore_dir}'")
         else:
-            logger.error(f"Restore command failed: \n ==> stdout: {process.stdout}, \n ==> stderr: {process.stderr}")
+            logger.error(f"Restore command failed: \n ==> stdout: {cast(str, process.stdout)}, \n ==> stderr: {cast(str, process.stderr)}")
             raise RestoreError(str(process))
     except subprocess.CalledProcessError as e:
         raise RestoreError(f"Restore command failed: {e}") from e
@@ -818,7 +827,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     return results
 
 
-def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int] = None) -> Iterable[Tuple[str, str]]:
+def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int] = None) -> Iterable[Tuple[str, Optional[str]]]:
     """
     Retrieves the list of backed up files from a DAR archive.
 
@@ -828,7 +837,8 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
         timeout (int, optional): Seconds before the dar process is killed. None means no timeout.
 
     Returns:
-        Iterable[Tuple[str, str]]: Stream of (file path, size) tuples for all backed up files.
+        Iterable[Tuple[str, Optional[str]]]: Stream of (file path, size) tuples for all backed
+        up files; size is None if dar's XML listing omitted the size attribute.
 
     Raises:
         BackupError: If dar returns a non-zero exit code or an unexpected error occurs.
@@ -847,7 +857,7 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
                 if "<!DOCTYPE" not in line:
                     temp_file.write(line + "\n")
 
-            result = runner.stream_command(command, on_line, timeout=timeout)
+            result = _runner().stream_command(command, on_line, timeout=timeout)
     except Exception as e:
         if temp_path:
             try:
@@ -865,10 +875,10 @@ def get_backed_up_files(backup_name: str, backup_dir: str, timeout: Optional[int
                 logger.warning("Could not delete temporary file: %s", temp_path)
         raise BackupError(
             f"Error listing backed up files from DAR archive: '{backup_name}'"
-            f"\nStderr: {result.stderr or ''}"
+            f"\nStderr: {cast(str, result.stderr) or ''}"
         )
 
-    def iter_files() -> Iterator[Tuple[str, str]]:
+    def iter_files() -> Iterator[Tuple[str, Optional[str]]]:
         try:
             yield from iter_files_with_paths_from_xml(temp_path)
         finally:
@@ -908,7 +918,7 @@ def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int
             print(line)
 
     try:
-        result = runner.stream_command(command, on_line, timeout=timeout)
+        result = _runner().stream_command(command, on_line, timeout=timeout)
     except subprocess.CalledProcessError as e:
         (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
         raise BackupError(f"Error listing contents of backup: '{backup_name}'") from e
@@ -929,13 +939,16 @@ def list_contents(backup_name, backup_dir, selection=None, timeout: Optional[int
         (logger or get_logger()).error(f"Error listing contents of backup: '{backup_name}'")
         raise RuntimeError(
             f"Error listing contents of backup: '{backup_name}'"
-            f"\nStderr: {result.stderr or ''}"
+            f"\nStderr: {cast(str, result.stderr) or ''}"
         )
 
 
 
 
-def create_backup_command(backup_type: str, backup_file: str, darrc: str, backup_definition_path: str, latest_base_backup: str = None) -> List[str]:
+def create_backup_command(
+    backup_type: str, backup_file: str, darrc: str, backup_definition_path: str,
+    latest_base_backup: Optional[str] = None
+) -> List[str]:
     """
     Generate the backup command for the specified backup type.
 
@@ -985,7 +998,6 @@ def initialize_runtime_logging(args: argparse.Namespace, config_settings: Config
     to temporary files or stderr so the run can continue.
     """
     global logger, runner
-    logger = None
     runner = None
 
     logger, trace_log_file = init_logging(config_settings, args.log_level, args.log_stdout)
@@ -1003,8 +1015,8 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     """
     Run preflight checks to validate environment before backup.
     """
-    errors = []
-    warnings = []
+    errors: List[str] = []
+    warnings: List[str] = []
     report_logger = logger
 
     def check_dir(name: str, path: str, require_write: bool = True, issues=None):
@@ -1229,7 +1241,7 @@ def perform_backup(
     stats_accumulator: list,
     run_id: Optional[str] = None,
     prereq_status: Optional[str] = None,
-) -> List[str]:
+) -> List[Tuple[str, int]]:
     """
     Perform backup operation.
 
@@ -1415,7 +1427,7 @@ def perform_backup(
                 ]
                 known = [v for v in components if v is not None]
                 if known:
-                    metrics["inodes_total"] = sum(known)
+                    metrics["inodes_total"] = sum(cast(List[int], known))
                     logger.debug(
                         "inodes_total not in dar output (dar < ~2.7.21); "
                         "derived from components: %d", metrics["inodes_total"]
@@ -1429,7 +1441,7 @@ def perform_backup(
             # failure (nothing to catalog), not an independent CATALOG-phase failure.
             if (not backup_result.catalog_updated
                     and backup_result.dar_exit_code in (0, 4, 5)
-                    and metrics["num_slices"] > 0
+                    and cast(int, metrics["num_slices"]) > 0
                     and metrics["failed_phase"] is None):
                 metrics["failed_phase"] = "CATALOG"
             try:
@@ -1572,11 +1584,18 @@ def perform_backup(
                     "error_count": sum(1 for _, code in new_results if code == 1),
                 })
 
-    logger.trace(f"perform_backup() results[]: {results}")
+    logger.trace(f"perform_backup() results[]: {results}")  # type: ignore[attr-defined]
     return results
 
 def _parse_archive_base(backup_file: str) -> str:
     return os.path.basename(backup_file)
+
+
+def _slice_number(pattern: "re.Pattern[str]", filename: str) -> int:
+    """Extract the slice number from a filename already known to match *pattern*."""
+    match = pattern.match(filename)
+    assert match is not None, f"filename does not match slice pattern: {filename}"
+    return int(match.group(1))
 
 
 def _list_dar_slices(archive_dir: str, archive_base: str) -> List[str]:
@@ -1588,7 +1607,7 @@ def _list_dar_slices(archive_dir: str, archive_base: str) -> List[str]:
         if match:
             dar_slices.append(filename)
 
-    dar_slices.sort(key=lambda x: int(pattern.match(x).group(1)))
+    dar_slices.sort(key=lambda x: _slice_number(pattern, x))
     return dar_slices
 
 
@@ -1596,7 +1615,7 @@ def _validate_slice_sequence(dar_slices: List[str], archive_base: str) -> None:
     pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
     if not dar_slices:
         raise RuntimeError(f"No dar slices found for archive base: {archive_base}")
-    slice_numbers = [int(pattern.match(s).group(1)) for s in dar_slices]
+    slice_numbers = [_slice_number(pattern, s) for s in dar_slices]
     expected = list(range(1, max(slice_numbers) + 1))
     if slice_numbers != expected:
         raise RuntimeError(f"Missing dar slices for archive {archive_base}: expected {expected}, got {slice_numbers}")
@@ -1655,7 +1674,7 @@ def _default_par2_config(config_settings: ConfigSettings) -> dict:
     }
 
 
-def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args, backup_definition: str = None):
+def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args, backup_definition: Optional[str] = None):
     """
     Generate PAR2 files for a given backup file in the specified backup directory.
 
@@ -1718,7 +1737,7 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
             command = ['par2', 'create', '-B', archive_dir, f'-r{ratio}', '-q', '-q', par2_path, slice_path]
         else:
             command = ['par2', 'create', f'-r{ratio}', '-q', '-q', slice_path]
-        process = runner.run(command, timeout=config_settings.command_timeout_secs)
+        process = _runner().run(command, timeout=config_settings.command_timeout_secs)
         if process.returncode != 0:
             logger.error(
                 "%d/%d: par2 create failed for %s (returncode=%d) — continuing to remaining slices",
@@ -1730,7 +1749,7 @@ def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args,
         if par2_config.get("par2_run_verify"):
             logger.info(f"{counter}/{number_of_slices}: Verifying par2 for {slice_file}")
             verify_command = ['par2', 'verify', '-B', archive_dir, par2_path]
-            verify_process = runner.run(verify_command, timeout=config_settings.command_timeout_secs)
+            verify_process = _runner().run(verify_command, timeout=config_settings.command_timeout_secs)
             if verify_process.returncode != 0:
                 logger.error(
                     "%d/%d: par2 verify failed for %s (returncode=%d) — continuing to remaining slices",
@@ -1965,12 +1984,12 @@ def _resolve_doc_path(path: Optional[str], filename: str) -> Path:
     return candidates[0]
 
 
-def print_changelog(path: str = None, pretty: bool = True):
+def print_changelog(path: Optional[str] = None, pretty: bool = True):
     resolved_path = _resolve_doc_path(path, "Changelog.md")
     print_markdown(str(resolved_path), pretty=pretty)
 
 
-def print_readme(path: str = None, pretty: bool = True):
+def print_readme(path: Optional[str] = None, pretty: bool = True):
     resolved_path = _resolve_doc_path(path, "README.md")
     print_markdown(str(resolved_path), pretty=pretty)
 

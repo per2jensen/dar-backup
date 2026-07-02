@@ -6,6 +6,7 @@ import os
 import sys
 from . import __about__ as about
 from pathlib import Path
+from typing import Optional
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import init_logging, get_logger
 from dar_backup.command_runner import CommandRunner
@@ -62,7 +63,7 @@ def install_autocompletion():
 
 
 
-def uninstall_autocompletion() -> str:
+def uninstall_autocompletion() -> Optional[str]:
     """Remove previously installed autocompletion block from shell RC file."""
     shell = Path(os.environ.get("SHELL", "")).name
     home = Path.home()
@@ -80,10 +81,10 @@ def uninstall_autocompletion() -> str:
 
     if not rc_file.exists():
         print(f"❌ RC file not found: {rc_file}")
-        return
+        return None
     if rc_file.is_dir():
         print(f"Error: RC path is a directory: {rc_file}")
-        return
+        return None
 
     content = rc_file.read_text()
     if marker not in content:
@@ -108,6 +109,7 @@ def uninstall_autocompletion() -> str:
 
     rc_file.write_text(''.join(new_lines))
     print(f"✔️ Removed autocompletion block from {rc_file}")
+    return None
 
 
 

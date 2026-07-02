@@ -13,10 +13,10 @@ from collections import deque
 try:
     import termios
 except ImportError:
-    termios = None
+    termios = None  # type: ignore[assignment]
 import tempfile
 import time
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, cast
 from dar_backup.util import get_logger
 
 
@@ -119,7 +119,7 @@ class CommandRunner:
                 default_timeout = 30
             if not isinstance(default_timeout, int):
                 default_timeout = 30
-        self.default_timeout = default_timeout
+        self.default_timeout: Optional[int] = default_timeout
         self.default_capture_limit_bytes = default_capture_limit_bytes
 
         if not self.logger or not self.command_logger:
@@ -155,6 +155,28 @@ class CommandRunner:
         print(f"[WARN] Using fallback loggers:\n  Main log: {main_log.name}\n  Command log: {command_log.name}", file=sys.stderr)
 
 
+
+    def _join_lines(self, lines: List[Union[str, bytes]]) -> Union[str, bytes]:
+        """Join captured output chunks, honoring the current text/binary mode.
+
+        stream_output() appends str chunks in text mode and bytes chunks in
+        binary mode (never mixed within one run() call), so the cast here
+        just tells mypy what self._text_mode already guarantees at runtime.
+        """
+        if self._text_mode:
+            return ''.join(cast(List[str], lines))
+        return b''.join(cast(List[bytes], lines))
+
+    def _prefixed_join(self, prefix: str, lines: List[Union[str, bytes]]) -> Union[str, bytes]:
+        """Like _join_lines(), but prepends *prefix* (always given as str).
+
+        Kept as one branch (rather than `prefix_value + self._join_lines(lines)`)
+        because mypy cannot prove both sides of that `+` pick the same union
+        member independently.
+        """
+        if self._text_mode:
+            return prefix + ''.join(cast(List[str], lines))
+        return prefix.encode('utf-8') + b''.join(cast(List[bytes], lines))
 
     def run(
         self,
@@ -219,7 +241,7 @@ class CommandRunner:
 
                 )
             finally:
-                cmd = cmd_sanitized
+                cmd = cmd_sanitized  # type: ignore[assignment]
 
             #command = f"Executing command: {' '.join(cmd)} (timeout={timeout}s)"
             command = f"Executing command: {' '.join(shlex.quote(arg) for arg in cmd)} (timeout={timeout}s)"
@@ -228,8 +250,8 @@ class CommandRunner:
             self.command_logger.info(command)
             self.logger.debug(command)
 
-            stdout_lines = []
-            stderr_lines = []
+            stdout_lines: List[Union[str, bytes]] = []
+            stderr_lines: List[Union[str, bytes]] = []
             truncated_stdout = {"value": False}
             truncated_stderr = {"value": False}
             # Rolling tail buffers: always keep the last 500 lines regardless of
@@ -387,7 +409,11 @@ class CommandRunner:
                 # Prepend the timeout message to the captured stderr.  The
                 # previous str.join() misuse dropped the message entirely when
                 # stderr was empty and interleaved it between chunks otherwise.
-                return CommandResult(-1, ''.join(stdout_lines), log_msg + ''.join(stderr_lines))
+                return CommandResult(
+                    -1,
+                    self._join_lines(stdout_lines),
+                    self._prefixed_join(log_msg, stderr_lines),
+                )
             except KeyboardInterrupt:
                 # Kill the child process and drain threads so callers can log
                 # and flush before the process exits. Without this, background
@@ -402,7 +428,12 @@ class CommandRunner:
                     t.join(timeout=2)
                 log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
                 self.logger.error(log_msg)
-                return CommandResult(-1, ''.join(stdout_lines), log_msg + ''.join(stderr_lines), stack)
+                return CommandResult(
+                    -1,
+                    self._join_lines(stdout_lines),
+                    self._prefixed_join(log_msg, stderr_lines),
+                    stack,
+                )
 
             for t in threads:
                 t.join()
@@ -429,12 +460,8 @@ class CommandRunner:
                     " ".join(shlex.quote(arg) for arg in cmd),
                 )
 
-            if self._text_mode:
-                stdout_combined = ''.join(stdout_lines)
-                stderr_combined = ''.join(stderr_lines)
-            else:
-                stdout_combined = b''.join(stdout_lines)
-                stderr_combined = b''.join(stderr_lines)
+            stdout_combined = self._join_lines(stdout_lines)
+            stderr_combined = self._join_lines(stderr_lines)
 
             note = None
             if truncated_stdout["value"] or truncated_stderr["value"]:
@@ -454,7 +481,7 @@ class CommandRunner:
                     process.returncode,
                     stdout_combined,
                     stderr_combined,
-                    stack=traceback.format_stack(),
+                    stack=''.join(traceback.format_stack()),
                     stdout_tail=stdout_tail,
                     stderr_tail=stderr_tail,
                 )

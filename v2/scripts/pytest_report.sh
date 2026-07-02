@@ -87,6 +87,11 @@ echo "Version:     $VER"
 echo "UTC time:    $TS"
 echo
 
+# 0) Static type check (fails the run on error, same as ruff in release.sh)
+echo "=== mypy ==="
+mypy src/
+echo
+
 # Define coverage output next to the other artifacts
 COV_XML="${OUTDIR}/coverage.xml"
 

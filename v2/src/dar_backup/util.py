@@ -44,8 +44,8 @@ from dataclasses import dataclass
 from typing import ClassVar, List, Optional, Tuple
 
 
-logger=None
-secondary_logger=None
+logger = logging.getLogger("main_logger")
+secondary_logger = logging.getLogger("command_output_logger")
 
 
 _ARCHIVE_PATTERN: re.Pattern = re.compile(
@@ -223,7 +223,7 @@ def setup_logging(
     log_to_stdout: bool = False,
     logfile_max_bytes: int = 26214400,
     logfile_backup_count: int = 5,
-    trace_log_file: str = None,
+    trace_log_file: Optional[str] = None,
     trace_log_max_bytes: int = 10485760,
     trace_log_backup_count: int = 1
 ) -> logging.Logger:
@@ -259,7 +259,7 @@ def setup_logging(
             if self.isEnabledFor(TRACE_LEVEL_NUM):
                 self.log(TRACE_LEVEL_NUM, message, *args, **kws)
 
-        logging.Logger.trace = trace
+        logging.Logger.trace = trace  # type: ignore[attr-defined]
 
         # Main log file handler (clean logs)
         file_handler = RotatingFileHandler(
@@ -436,7 +436,7 @@ def _default_completer_logfile() -> str:
 
 
 # Setup completer logger only once
-def _setup_completer_logger(logfile: str = None):
+def _setup_completer_logger(logfile: Optional[str] = None):
     logger = logging.getLogger("completer")
     if not logger.handlers:
         try:
@@ -571,7 +571,7 @@ def send_discord_message(
     source = "environment" if env_webhook else ("config file" if config_webhook else None)
 
     if not webhook_url:
-        log and log.info("Discord message not sent: DAR_BACKUP_DISCORD_WEBHOOK_URL not configured.")
+        log.info("Discord message not sent: DAR_BACKUP_DISCORD_WEBHOOK_URL not configured.")
         return False
 
     payload = json.dumps({"content": content}).encode("utf-8")
@@ -591,7 +591,7 @@ def send_discord_message(
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds):
             pass
-        log and log.debug(f"Discord webhook message sent using {source}.")
+        log.debug(f"Discord webhook message sent using {source}.")
         return True
     except urllib.error.HTTPError as exc:
         # Attempt to read a short error body for diagnostics
@@ -729,8 +729,8 @@ def requirements(
                     shell=True,
                     start_new_session=True,
                 )
-                stdout_lines = []
-                stderr_lines = []
+                stdout_lines: List[str] = []
+                stderr_lines: List[str] = []
 
                 def read_stream(stream, lines, level):
                     if stream is None:
@@ -1220,7 +1220,7 @@ def print_aligned_settings(
     log: bool = True,
     header: str = "Startup Settings",
     quiet: bool = True,
-    highlight_keywords: List[str] = None
+    highlight_keywords: Optional[List[str]] = None
 ) -> None:
     """
     Print and optionally log settings nicely, using rich for color.
@@ -1238,8 +1238,9 @@ def print_aligned_settings(
     header_line = f"========== {header} =========="
     footer_line = "=" * len(header_line)
 
-    not quiet and console.print(f"[bold cyan]{header_line}[/bold cyan]")
-    if log and logger:
+    if not quiet:
+        console.print(f"[bold cyan]{header_line}[/bold cyan]")
+    if log:
         logger.info(header_line)
 
     for label, text in settings:
@@ -1268,15 +1269,17 @@ def print_aligned_settings(
 
         line_text.append(text, style="white")
 
-        not quiet and console.print(line_text)
+        if not quiet:
+            console.print(line_text)
 
         # Always log clean text (no [!] in log)
         final_line_for_log = f"{padded_label} {text}"
-        if log and logger:
+        if log:
             logger.info(final_line_for_log)
 
-    not quiet and console.print(f"[bold cyan]{footer_line}[/bold cyan]")
-    if log and logger:
+    if not quiet:
+        console.print(f"[bold cyan]{footer_line}[/bold cyan]")
+    if log:
         logger.info(footer_line)
 
 

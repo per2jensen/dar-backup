@@ -200,6 +200,23 @@ Or run the full CI-equivalent report flow (same markers + coverage artifacts):
 ./scripts/pytest_report.sh full
 ````
 
+### Static type checking (mypy)
+
+`scripts/pytest_report.sh` runs `mypy src/` as its first step and aborts
+before pytest starts if mypy reports an error (same gating as `ruff` in
+`release.sh`). This applies to every mode (`fast`, `smoke`, `integration`,
+`full`), and runs identically in the GitHub workflow, since the workflow
+calls this same script.
+
+Plain `pytest` / `pytest -m ...` invocations do **not** run mypy — only
+`scripts/pytest_report.sh` does. To check types on their own:
+
+```` bash
+mypy src/
+````
+
+Config lives in `[tool.mypy]` in `pyproject.toml`.
+
 ---
 
 # PyPI download stats

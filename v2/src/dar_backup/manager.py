@@ -59,7 +59,7 @@ from dar_backup.util import backup_definition_completer, archive_content_complet
 from datetime import datetime, tzinfo
 from sys import stderr
 from time import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, cast
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -67,8 +67,13 @@ SCRIPTPATH = os.path.realpath(__file__)
 SCRIPTDIRPATH = os.path.dirname(SCRIPTPATH)
 DB_SUFFIX = ".db"
 
-logger = None
-runner = None
+logger = get_logger()
+runner: Optional[CommandRunner] = None
+
+
+def _runner() -> CommandRunner:
+    assert runner is not None, "CommandRunner not initialized; call main() first"
+    return runner
 
 
 def _open_command_log(command: List[str]):
@@ -180,7 +185,7 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
             archive_names.append(parts[2].strip())
             archive_lines.append(line)
 
-    result = runner.stream_command(command, on_line, timeout=timeout)
+    result = _runner().stream_command(command, on_line, timeout=timeout)
 
     if result.returncode != 0:
         _log_command_failure(result, f'Error listing catalogs for: "{database_path}"')
@@ -219,7 +224,7 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
     if process.returncode != 0:
         logger.error(f"Error listing catalogs for backup def: '{parsed.definition}'")
         return -1
-    for line in process.stdout.splitlines():
+    for line in cast(str, process.stdout).splitlines():
         # archive_lines from list_catalogs are tab-separated; parts[2] is the
         # archive base name.  An exact string comparison avoids two bugs in the
         # previous regex approach: (a) unescaped special chars in archive names
@@ -268,7 +273,7 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
             print(line)
             found = True
 
-    result = runner.stream_command(command, on_line, timeout=timeout)
+    result = _runner().stream_command(command, on_line, timeout=timeout)
 
     if result.returncode != 0:
         _log_command_failure(result, f'Error listing contents of archive: "{database_path}"')
@@ -292,7 +297,7 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
         logger.error(f'Catalog database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-u', f"{catalog_number}"]
-    process = runner.run(command, capture_output_limit_bytes=-1)
+    process = _runner().run(command, capture_output_limit_bytes=-1)
     if process.returncode != 0:
         _log_command_failure(process, f'Error listing catalogs for: "{database_path}"')
     else:
@@ -310,7 +315,7 @@ def find_file(file, backup_def, config_settings):
         logger.error(f'Database not found: "{database_path}"')
         return 1
     command = ['dar_manager', '--base', database_path, '-f', f"{file}"]
-    process = runner.run(command, capture_output_limit_bytes=-1)
+    process = _runner().run(command, capture_output_limit_bytes=-1)
     if process.returncode != 0:
         _log_command_failure(process, f'Error finding file: {file} in: "{database_path}"')
     else:
@@ -521,7 +526,7 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
 
 
 def _local_tzinfo() -> tzinfo:
-    return datetime.now().astimezone().tzinfo
+    return cast(tzinfo, datetime.now().astimezone().tzinfo)
 
 
 def _normalize_when_dt(dt: datetime) -> datetime:
@@ -613,12 +618,12 @@ def relocate_archive_paths(
         return 1
 
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
-    list_result = runner.run(["dar_manager", "--base", database_path, "--list"], timeout=timeout)
+    list_result = _runner().run(["dar_manager", "--base", database_path, "--list"], timeout=timeout)
     if list_result.returncode != 0:
         _log_command_failure(list_result, f'Error listing catalogs for: "{database_path}"')
         return list_result.returncode
 
-    archive_map = _parse_archive_map(list_result.stdout or "")
+    archive_map = _parse_archive_map(cast(str, list_result.stdout) or "")
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
         return 1
@@ -650,7 +655,7 @@ def relocate_archive_paths(
         logger.info("Archive #%d (%s): %s -> %s", catalog_no, basename, current_dir, new_dir)
         if dry_run:
             continue
-        result = runner.run(
+        result = _runner().run(
             ["dar_manager", "--base", database_path, "-p", str(catalog_no), new_dir],
             timeout=timeout,
         )
@@ -698,6 +703,7 @@ def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt
             last_full_key = (date, order["FULL"], catalog_no)
     if last_full is None:
         return []
+    assert last_full_key is not None  # set together with last_full in the loop above
 
     last_diff = None
     last_diff_key = None
@@ -743,7 +749,7 @@ def _is_directory_in_archive(
     path: str,
     archive_path: str,
     runner: "CommandRunner",
-    timeout: int,
+    timeout: Optional[int],
 ) -> bool:
     """
     Check if path is a directory by inspecting dar -l output for the archive.
@@ -756,7 +762,7 @@ def _is_directory_in_archive(
         path: The relative path to check.
         archive_path: Full path to the dar archive (without slice suffix).
         runner: CommandRunner instance.
-        timeout: Command timeout in seconds.
+        timeout: Command timeout in seconds, or None for no timeout.
 
     Returns:
         True if the path appears as a directory in the archive.
@@ -779,7 +785,7 @@ def _is_directory_in_archive(
     # Look for permission string starting with 'd' on a line ending with the path.
     # dar -l format example:
     #   [Saved][-] [---][ 0%][ ] drwxr-xr-x user group 4 kio ... path/name
-    for line in result.stdout.splitlines():
+    for line in cast(str, result.stdout).splitlines():
         stripped = line.strip()
         if not stripped:
             continue
@@ -793,7 +799,7 @@ def _detect_directory(
     archive_map: Dict[int, str],
     archive_info: List[Tuple[int, datetime, str]],
     runner: "CommandRunner",
-    timeout: int,
+    timeout: Optional[int],
 ) -> bool:
     """
     Determine whether *path* is a directory using filesystem check first,
@@ -804,7 +810,7 @@ def _detect_directory(
         archive_map: Mapping of catalog numbers to archive paths.
         archive_info: Parsed archive info (catalog_no, datetime, type).
         runner: CommandRunner instance.
-        timeout: Command timeout in seconds.
+        timeout: Command timeout in seconds, or None for no timeout.
 
     Returns:
         True if the path is a directory.
@@ -917,8 +923,8 @@ def _pitr_chain_report(
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
-    list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
-    archive_map = _parse_archive_map(list_result.stdout)
+    list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
+    archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
         return 1
@@ -929,7 +935,7 @@ def _pitr_chain_report(
     successes = 0
 
     for path in paths:
-        is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
+        is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout)
         if is_directory:
             logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
             chain, missing = _resolve_directory_chain(archive_info, parsed_date, archive_map)
@@ -955,8 +961,8 @@ def _pitr_chain_report(
                 successes += 1
             continue
 
-        file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-        versions = _parse_file_versions(file_result.stdout)
+        file_result = _runner().run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
+        versions = _parse_file_versions(cast(str, file_result.stdout))
         candidates = [(num, dt) for num, dt in versions if dt <= parsed_date]
         candidates.sort(key=lambda item: item[1], reverse=True)
         logger.info(
@@ -1039,8 +1045,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
-    list_result = runner.run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
-    archive_map = _parse_archive_map(list_result.stdout)
+    list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
+    archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
         return 1
@@ -1055,7 +1061,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
 
     try:
         for path in paths:
-            is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout)
+            is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout)
             if is_directory:
                 logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
                 chain, missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
@@ -1101,9 +1107,9 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         _describe_archive(catalog_no, archive_map, info_by_no),
                         path,
                     )
-                    result = runner.run(cmd, timeout=timeout)
+                    result = _runner().run(cmd, timeout=timeout)
                     if result.returncode != 0:
-                        logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
+                        logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
                         restored = False
                         break
                 if restored:
@@ -1112,8 +1118,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     failures += 1
                 continue
 
-            file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-            versions = _parse_file_versions(file_result.stdout)
+            file_result = _runner().run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
+            versions = _parse_file_versions(cast(str, file_result.stdout))
             candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
             candidates.sort(key=lambda item: item[1], reverse=True)
             logger.debug(
@@ -1158,12 +1164,12 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     path,
                     _describe_archive(catalog_no, archive_map, info_by_no),
                 )
-                result = runner.run(cmd, timeout=timeout)
+                result = _runner().run(cmd, timeout=timeout)
                 if result.returncode == 0:
                     restored = True
                     successes += 1
                     break
-                logger.error(f"dar restore failed for '{path}' from '{archive_path}': {result.stderr}")
+                logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
 
             if not restored:
                 failures += 1
@@ -1196,7 +1202,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     return 0 if failures == 0 else 1
 
 
-def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: str = None) -> int:
+def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: Optional[str] = None) -> int:
     """
     Adds the specified archive to its catalog database. Prompts for confirmation if it's older than existing entries.
 
@@ -1272,7 +1278,7 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
 
     command = ['dar_manager', '--base', database_path, "--add", archive_path, "-Q", "--alter=ignore-order"]
-    process = runner.run(command)
+    process = _runner().run(command)
 
     if process.returncode == 0:
         logger.info(f'"{archive_path}" added to its catalog')
@@ -1288,12 +1294,12 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
 
 
 
-def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings) -> int:
+def add_directory(args: argparse.Namespace, config_settings: ConfigSettings) -> int:
     """
     Loop over the DAR archives in the given directory args.add_dir in increasing order by date and add them to their catalog database.
 
     Args:
-        args (argparse.ArgumentParser): The command-line arguments object containing the add_dir attribute.
+        args (argparse.Namespace): The command-line arguments object containing the add_dir attribute.
         config_settings (ConfigSettings): The configuration settings object.
 
     Returns:
@@ -1307,7 +1313,7 @@ def add_directory(args: argparse.ArgumentParser, config_settings: ConfigSettings
     5. Loops over the sorted DAR archives and adds each archive to its catalog database using the add_specific_archive function.
 
     Example:
-        args = argparse.ArgumentParser()
+        args = parser.parse_args()
         args.add_dir = '/path/to/dar/archives'
         config_settings = ConfigSettings()
         add_directory(args, config_settings)
@@ -1403,7 +1409,7 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
     if cat_no >= 0:
         command = ['dar_manager', '--base', database_path, "--delete", str(cat_no)]
         timeout = _coerce_timeout(config_settings.command_timeout_secs)
-        process: CommandResult = runner.run(command, timeout=timeout)
+        process: CommandResult = _runner().run(command, timeout=timeout)
         logger.info(f"CommandResult: {process}")
     else:
         logger.warning(f"archive: '{archive}' not found in it's catalog database: {database_path}")

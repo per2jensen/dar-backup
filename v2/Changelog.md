@@ -17,6 +17,8 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 - **`pre-commit-version-bump.sh`** (`scripts/`) — git pre-commit hook that keeps the `.devN` counter in `__about__.__version__` current on every commit.  Counts commits since the last `v2-X.Y.Z` release tag (+1 for the commit in progress) and rewrites the suffix accordingly; falls back to total history count if no release tag exists yet.  Skips silently when the version has no `.dev` suffix (release state).  Install with `ln -sf ../../v2/scripts/pre-commit-version-bump.sh .git/hooks/pre-commit`.
 
+- **mypy static type checking** (`scripts/pytest_report.sh`) — runs `mypy src/` as the first step of every mode (`fast`, `smoke`, `integration`, `full`) and aborts before pytest starts on any error, same gating as `ruff` in `release.sh`.  Runs identically in the GitHub workflow since it calls this same script.  Config added in `[tool.mypy]` in `pyproject.toml`, with a per-module override silencing the `inputimeout` missing-stubs warning.
+
 ### Changed
 
 - **Dev version convention** (`src/dar_backup/__about__.py`) — `__version__` now carries a `.dev0` suffix between releases (e.g. `"1.1.10.dev0"`), making in-development builds clearly distinguishable from released ones.  The pre-commit hook increments the counter automatically; `release.sh` requires the suffix to be absent before proceeding.
