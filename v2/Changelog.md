@@ -17,7 +17,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 - **`pre-commit-version-bump.sh`** (`scripts/`) — git pre-commit hook that keeps the `.devN` counter in `__about__.__version__` current on every commit.  Counts commits since the last `v2-X.Y.Z` release tag (+1 for the commit in progress) and rewrites the suffix accordingly; falls back to total history count if no release tag exists yet.  Skips silently when the version has no `.dev` suffix (release state).  Install with `ln -sf ../../v2/scripts/pre-commit-version-bump.sh .git/hooks/pre-commit`.
 
-- **mypy static type checking** (`scripts/pytest_report.sh`) — runs `mypy src/` as the first step of every mode (`fast`, `smoke`, `integration`, `full`) and aborts before pytest starts on any error, same gating as `ruff` in `release.sh`.  Runs identically in the GitHub workflow since it calls this same script.  Config added in `[tool.mypy]` in `pyproject.toml`, with a per-module override silencing the `inputimeout` missing-stubs warning.
+- **mypy static type checking** (`scripts/pytest_report.sh`) — runs `mypy src/` as the first step of every mode (`fast`, `smoke`, `integration`, `full`) and aborts before pytest starts on any error, same gating as `ruff` in `release.sh`.  Runs identically in the GitHub workflow since it calls this same script.  Config added in `[tool.mypy]` in `pyproject.toml`, with a per-module override silencing the `inputimeout` missing-stubs warning.  `types-dateparser` added to the `dev` extras — required for a clean mypy pass; caught by a fresh-venv reproduction of the CI failure after a locally-installed (but undeclared) stub package masked the gap.
 
 ### Changed
 

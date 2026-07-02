@@ -113,6 +113,7 @@ dev = [
   "pytest-json-report",
   "ruff",
   "mypy",
+  "types-dateparser",
   "wheel>=0.45.1",
   "requests>=2.34.2",
   "coverage>=7.13.5",
