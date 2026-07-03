@@ -1,6 +1,6 @@
 # Getting Started
 
-📦 All official dar-backup releases from v2-beta-0.6.18 are signed with GPG — see the
+All official dar-backup releases from v2-beta-0.6.18 are signed with GPG — see the
 [GPG signing key](https://github.com/per2jensen/dar-backup#gpg-signing-key) section.
 
 ## 1 - installation

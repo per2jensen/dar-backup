@@ -31,20 +31,22 @@ archive verified and a random set (configurable) of files restored to a test dir
 
 **Is this for you?**
 
-✅ You back up irreplaceable data — photos, documents, home-made video — and want to be
+- You back up irreplaceable data — photos, documents, home-made video — and want to be
    certain you can restore any file to any point in time, years from now
 
-✅ You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems (Nextcloud, rclone, sshfs) work correctly
+- You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems (Nextcloud, rclone, sshfs) work correctly
 
-✅ You want **bitrot repair** to travel with your archives — onto USB disks, offsite copies, and cloud storage — without depending on the original system
+- You want **bitrot repair** to travel with your archives — onto USB disks, offsite copies, and cloud storage — without depending on the original system
 
-✅ You want unattended, scheduled backups with **Discord notifications** on success or failure
+- You want unattended, scheduled backups with **Discord notifications** on success or failure
 
-✅ You want a transparent, no-lock-in tool built on proven Unix components
+- You want a transparent, no-lock-in tool built on proven Unix components
 
-✗ You need a GUI or Windows support
+Not if you want:
 
-✗ You need **multiple backups per day** — dar-backup is designed around one backup run per day
+- You need a GUI or Windows support
+
+- You need **multiple backups per day** — dar-backup is designed around one backup run per day
    per definition (one FULL, one DIFF, one INCR)
 
 ---
@@ -178,7 +180,7 @@ The result is that recovery confidence does not degrade with distance — distan
 - **1000+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
   restore chains, PITR verification, and edge cases; CI on every push to Github and when done locally
 
-✅ The author has used `dar-backup` ~6 years and has been saved by it multiple times.
+The author has used `dar-backup` ~6 years and has been saved by it multiple times.
 
 > `dar-backup` stands on the shoulders of two projects that do the real work.
 > Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.
@@ -204,7 +206,7 @@ opens the dashboard in your browser:
 
 ---
 
-### 🛡️ Built for Disaster Recovery
+### Built for Disaster Recovery
 
 Unlike traditional backup utilities that fail entirely if a single byte is corrupted, `dar-backup` splits data processing into independent, verifiable layers:
 
@@ -394,7 +396,7 @@ To increase the security and authenticity of dar-backup packages, all releases f
 
 <details>
 
-<summary>🎯 GPG Signing Key Details</summary>
+<summary> GPG Signing Key Details</summary>
 
 ```text
 Name:        Per Jensen (author of dar-backup)
@@ -411,7 +413,7 @@ Subkeys:     ed25519 (S), ed25519 (A), cv25519 (E)
 
 <details>
 
-<summary>🎯 Where to Find Release Signatures</summary>
+<summary> Where to Find Release Signatures</summary>
 
 PyPI does *Not* host .asc Signature Files
 
@@ -423,7 +425,7 @@ Therefore, you will not find `.asc` files on PyPI.
 
 You can always download the signed release artifacts and their `.asc` files from the official GitHub Releases page:
 
-📁 GitHub Releases for `dar-backup`
+GitHub Releases for `dar-backup`
 
 Each release includes:
 
@@ -441,7 +443,7 @@ Each release includes:
 
 <details>
 
-<summary>🎯 How to Verify a Release from GitHub</summary>
+<summary> How to Verify a Release from GitHub</summary>
 
 1. Import the GPG public key:
 
@@ -465,7 +467,7 @@ Each release includes:
    gpg: Good signature from "Per Jensen (author of dar-backup) <dar-backup@pm.me>"
    ```
 
-🛡️ Reminder: Verify the signing subkey
+Reminder: Verify the signing subkey
 
 Only this subkey is used to sign PyPI packages:
 

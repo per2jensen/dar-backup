@@ -33,7 +33,7 @@ pip install dar-backup  # run pip to install `dar-backup` into the virtual envir
 
 <details>
 
-<summary>🎯 Install details</summary>
+<summary> Install details</summary>
 
 ```bash
 (venv) $ pip install dar-backup
@@ -63,7 +63,7 @@ dar-backup --list-contents demo_FULL_$(date '+%F')
 
 <details>
 
-<summary>🎯 --list details</summary>
+<summary> --list details</summary>
 
 ```bash
 (venv) $ demo --install
@@ -137,7 +137,7 @@ find $HOME/dar-backup/restore
 
 <details>
 
-<summary>🎯 --restore details</summary>
+<summary> --restore details</summary>
 
 ```bash
 (venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
@@ -176,7 +176,7 @@ PAR2 enabled:     True
 
 <br>
 
-> ✅ **Next steps**
+> **Next steps**
 >
 > Play with `demo`'s options:
 >
