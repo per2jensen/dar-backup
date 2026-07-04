@@ -116,19 +116,19 @@ dev = [
   "types-dateparser",
   "wheel>=0.45.1",
   "requests>=2.34.2",
-  "coverage>=7.13.5",
+  "coverage>=7.15.0",
   "psutil>=7.0.0",
-  "httpcore>=0.17.3",
+  "httpcore>=1.0.9",
   "h11>=0.16.0",
   "zipp>=4.1.0",
   "anyio>=4.13.0",
-  "pandas>=3.0.2",
-  "matplotlib>=3.10.9",
+  "pandas>=3.0.3",
+  "matplotlib>=3.11.0",
 ]
 
 packaging = [
  "build>=1.2.2",
- "hatchling>=1.27.0",
+ "hatchling>=1.30.1",
  "hatch>=1.17.0",
  "twine>=6.1.0",
 ]
