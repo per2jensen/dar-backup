@@ -32,7 +32,7 @@ gpg_key_url =     "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEF
 
 
 [tool.mypy]
-python_version = "3.11"
+python_version = ">=3.11"
 files = ["src"]
 
 [[tool.mypy.overrides]]
@@ -85,7 +85,9 @@ requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
     'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Topic :: System :: Archiving :: Backup",
