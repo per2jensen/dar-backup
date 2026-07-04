@@ -16,7 +16,7 @@ except ImportError:
     termios = None  # type: ignore[assignment]
 import tempfile
 import time
-from typing import Callable, List, Optional, Union, cast
+from typing import Callable, Dict, IO, List, Optional, Union, cast
 from dar_backup.util import get_logger
 
 
@@ -34,18 +34,38 @@ def _killpg(pid: int) -> None:
 
 
 def is_safe_arg(arg: str) -> bool:
-    """
-    Check if the argument is safe by rejecting dangerous shell characters.
+    """Check if a single command-line argument is safe to pass to a subprocess.
+
+    Rejects characters that carry special meaning to a shell, even though this
+    codebase always invokes subprocesses in list form (never shell=True) — this is
+    defense in depth against an argument that later ends up embedded in a shell
+    string (e.g. a generated systemd unit).
+
+    Args:
+        arg: A single command-line argument to check.
+
+    Returns:
+        True if arg contains none of the disallowed characters, False otherwise.
     """
     # \r enables terminal-overwrite attacks; \x00 truncates strings in C-based programs
     return not re.search(r'[;&|><`$\n\r\x00]', arg)
 
 
 def sanitize_cmd(cmd: List[str]) -> List[str]:
-    """
-    Validate and sanitize a list of command-line arguments.
-    Ensures all elements are strings and do not contain dangerous shell characters.
-    Raises ValueError if any argument is unsafe.
+    """Validate a command-line argument list before it is executed.
+
+    Ensures every element is a string and rejects any that contain a
+    shell-dangerous character (see is_safe_arg).
+
+    Args:
+        cmd: Command and arguments, e.g. ['dar', '-c', archive_path].
+
+    Returns:
+        The same list, unchanged, if every argument is valid.
+
+    Raises:
+        ValueError: If cmd is not a list, contains a non-string element, or
+            contains an argument rejected by is_safe_arg.
     """
 
     if not isinstance(cmd, list):
@@ -57,13 +77,41 @@ def sanitize_cmd(cmd: List[str]) -> List[str]:
             raise ValueError(f"Unsafe argument detected: {arg}")
     return cmd
 
-def _safe_str(s):
+def _safe_str(s: Union[str, bytes]) -> str:
+    """Return a display-safe string for logging, replacing raw bytes with a placeholder.
+
+    Args:
+        s: The value to render, as captured by CommandResult (str in text mode,
+            bytes in binary mode).
+
+    Returns:
+        s unchanged if it is already a str; otherwise a short placeholder naming
+        the byte count, so binary command output never corrupts a log line.
+    """
     if isinstance(s, bytes):
         return f"<{len(s)} bytes of binary data>"
     return s
 
 
 class CommandResult:
+    """Outcome of a single CommandRunner.run()/stream_command() invocation.
+
+    Attributes:
+        returncode: Exit code of the process, or -1 for a synthesized failure
+            (spawn error, timeout, or unexpected exception — see the docstring
+            of run() for the exact -1 cases).
+        stdout: Captured standard output, up to the caller's capture limit.
+        stderr: Captured standard error, up to the caller's capture limit.
+        stack: Formatted traceback string when the result represents an
+            exception, otherwise None.
+        note: Short human-readable annotation, e.g. "stdout truncated", or None.
+        stdout_tail: Rolling tail of the last 500 stdout lines, always populated
+            even when stdout was truncated by capture_output_limit_bytes — used
+            to recover end-of-output summaries (e.g. dar inode statistics) that
+            would otherwise be lost.
+        stderr_tail: Same as stdout_tail, for stderr.
+    """
+
     def __init__(
         self,
         returncode: int,
@@ -79,19 +127,19 @@ class CommandResult:
         self.stderr = stderr
         self.stack = stack
         self.note = note
-        # Rolling tail of the last N lines, always populated even when stdout/stderr
-        # is truncated by capture_output_limit_bytes.  Used to parse end-of-output
-        # summaries (e.g. dar inode statistics) that would otherwise be lost.
         self.stdout_tail = stdout_tail
         self.stderr_tail = stderr_tail
 
 
 
-    def __repr__(self):
-        return f"<CommandResult returncode={self.returncode}\nstdout={self.stdout}\nstderr={self.stderr}\nstack={self.stack}>"
+    def __repr__(self) -> str:
+        return (
+            f"<CommandResult returncode={self.returncode}\n"
+            f"stdout={_safe_str(self.stdout)}\nstderr={_safe_str(self.stderr)}\nstack={self.stack}>"
+        )
 
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             "CommandResult:\n"
             f"  Return code: {self.returncode}\n"
@@ -103,6 +151,25 @@ class CommandResult:
 
 
 class CommandRunner:
+    """Runs subprocesses (dar, dar_manager, par2, ...) with consistent logging,
+    timeout handling, and output capture.
+
+    Every command is executed in list form (never shell=True) after passing
+    through sanitize_cmd(), with LC_ALL=C forced so locale-sensitive tool output
+    stays parseable. run() blocks until completion (or timeout); stream_command()
+    additionally invokes a callback per stdout line as it arrives.
+
+    Attributes:
+        logger: Logger for diagnostic messages about the run itself (start/stop,
+            errors, timeouts).
+        command_logger: Logger that receives the command's own stdout/stderr,
+            line by line.
+        default_timeout: Seconds to wait before killing the process when a call
+            does not pass its own timeout; None disables the timeout entirely.
+        default_capture_limit_bytes: Default cap (in bytes) on how much
+            stdout/stderr is retained in memory per stream; None means no cap.
+    """
+
     def __init__(
         self,
         logger: Optional[logging.Logger] = None,
@@ -128,9 +195,14 @@ class CommandRunner:
         if self.default_timeout is not None and self.default_timeout <= 0:
             self.default_timeout = None
 
-    def logger_fallback(self):
-        """
-        Setup temporary log files
+    def logger_fallback(self) -> None:
+        """Replace missing logger/command_logger with temp-file-backed loggers.
+
+        Called from __init__ when the caller did not supply a usable logger and/or
+        command_logger, so CommandRunner always has somewhere to write instead of
+        raising or silently discarding output. Also resets default_timeout to 30 and
+        prints a one-line [WARN] notice (with the temp file paths) to stderr so the
+        fallback is visible even before any logging is configured.
         """
         main_log = tempfile.NamedTemporaryFile(delete=False)
         command_log = tempfile.NamedTemporaryFile(delete=False)
@@ -191,6 +263,53 @@ class CommandRunner:
         cwd: Optional[str] = None,
         stdin: Optional[int] = subprocess.DEVNULL
     ) -> CommandResult:
+        """Run a command to completion, capturing and logging its output.
+
+        stdout and stderr are read concurrently in background threads while this
+        thread blocks on process.wait(), so large output can never deadlock the
+        pipes. On any internal failure (unsafe argument, spawn error, timeout, or
+        an unexpected exception from the OS) this method does not raise — it
+        returns a CommandResult with returncode=-1 describing what happened.
+
+        Args:
+            cmd: Command and arguments, e.g. ['dar', '-c', archive_path]. Always
+                run in list form (never via a shell); validated by sanitize_cmd()
+                before execution.
+            timeout: Seconds to wait before killing the process. None uses
+                self.default_timeout; a value <= 0 disables the timeout entirely.
+            check: If True and the command exits non-zero, the returned
+                CommandResult additionally carries a captured stack trace (via
+                traceback.format_stack()) for diagnostics. Unlike
+                subprocess.run(check=True), this never raises — the caller must
+                still inspect returncode.
+            capture_output: If True, stdout/stderr are accumulated (up to
+                capture_output_limit_bytes) into the returned CommandResult. If
+                False, output is still logged (when log_output is True) but not
+                retained.
+            capture_output_limit_bytes: Per-stream cap, in bytes, on how much of
+                stdout/stderr is retained. None uses
+                self.default_capture_limit_bytes; a negative value disables the
+                cap. A rolling 500-line tail is always kept regardless of this
+                limit (see CommandResult.stdout_tail/stderr_tail).
+            log_output: If True, every line of stdout/stderr is logged to
+                self.command_logger as it arrives.
+            text: If True, stdout/stderr are decoded as UTF-8 text; if False,
+                raw bytes are kept (see CommandResult.stdout/stderr).
+            cwd: Working directory for the subprocess. None uses the caller's
+                current directory.
+            stdin: File descriptor or special value (e.g. subprocess.DEVNULL)
+                passed as the subprocess's stdin.
+
+        Returns:
+            A CommandResult with the process's real returncode on normal
+            completion, or a synthesized CommandResult with returncode=-1 if the
+            command could not be sanitized, spawned, or timed out.
+
+        Raises:
+            KeyboardInterrupt: Re-raised (after killing the child process and
+                draining the reader threads) if SIGINT arrives while waiting on
+                the process.
+        """
         self._text_mode = text
         if timeout is None:
             timeout = self.default_timeout
@@ -214,6 +333,7 @@ class CommandRunner:
                 if tty_fd is not None:
                     saved_tty_attrs = termios.tcgetattr(tty_fd)
             except Exception:
+                self.logger.debug("Failed to save terminal attributes", exc_info=True)
                 tty_fd = None
                 saved_tty_attrs = None
                 if tty_file:
@@ -301,7 +421,13 @@ class CommandRunner:
                     stack=stack
                 )
 
-            def stream_output(stream, lines, level, truncated_flag, tail_deque):
+            def stream_output(
+                stream: IO[bytes],
+                lines: List[Union[str, bytes]],
+                level: int,
+                truncated_flag: Dict[str, bool],
+                tail_deque: deque,
+            ) -> None:
                 """Read *stream* in 1 KiB chunks, log each complete line, append
                 to *lines* up to *capture_output_limit_bytes*, and unconditionally
                 append every decoded line to *tail_deque* (capped at maxlen=500).
@@ -424,6 +550,7 @@ class CommandRunner:
                 raise
             except Exception as e:
                 stack = traceback.format_exc()
+                process.kill()
                 for t in threads:
                     t.join(timeout=2)
                 log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"

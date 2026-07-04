@@ -136,6 +136,11 @@ class ConfigSettings:
             self.min_size_verification_mb = self._get_int('MISC', 'MIN_SIZE_VERIFICATION_MB')
             self.no_files_verification = self._get_int('MISC', 'NO_FILES_VERIFICATION')
             self.command_timeout_secs = self._get_int('MISC', 'COMMAND_TIMEOUT_SECS')
+            if not (self.command_timeout_secs == -1 or self.command_timeout_secs > 0):
+                raise ConfigSettingsError(
+                    f"COMMAND_TIMEOUT_SECS must be -1 (disable timeout) or > 0, "
+                    f"got: {self.command_timeout_secs}"
+                )
             env_timeout = os.getenv("DAR_BACKUP_COMMAND_TIMEOUT_SECS")
             if env_timeout is not None:
                 self.command_timeout_secs = self._parse_env_timeout(env_timeout)
@@ -149,6 +154,22 @@ class ConfigSettings:
             if self.no_files_verification < 1:
                 raise ConfigSettingsError(
                     f"NO_FILES_VERIFICATION must be >= 1, got: {self.no_files_verification}"
+                )
+
+            if self.max_size_verification_mb <= 0:
+                raise ConfigSettingsError(
+                    f"MAX_SIZE_VERIFICATION_MB must be > 0, got: {self.max_size_verification_mb}"
+                )
+
+            if self.min_size_verification_mb < 0:
+                raise ConfigSettingsError(
+                    f"MIN_SIZE_VERIFICATION_MB must be >= 0, got: {self.min_size_verification_mb}"
+                )
+
+            if self.min_size_verification_mb > self.max_size_verification_mb:
+                raise ConfigSettingsError(
+                    f"MIN_SIZE_VERIFICATION_MB ({self.min_size_verification_mb}) must not "
+                    f"exceed MAX_SIZE_VERIFICATION_MB ({self.max_size_verification_mb})"
                 )
 
             if self.diff_age < 1:

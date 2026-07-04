@@ -86,6 +86,9 @@ This will help you identify files that require manual restoration.
 | `no_files_verification must be >= 1` | `NO_FILES_VERIFICATION = 0` or negative | Set `NO_FILES_VERIFICATION` to a positive integer (e.g. `5`) |
 | `error_correction_percent must be between 1 and 90` | `ERROR_CORRECTION_PERCENT` is 0 or above 90 | Set a value in the range 1–90 (e.g. `5`) |
 | `invalid boolean value for 'enabled'` | `ENABLED` in `[PAR2]` is not `true/false/yes/no/1/0` | Correct the value (e.g. `ENABLED = true`) |
+| `command_timeout_secs must be -1` | `COMMAND_TIMEOUT_SECS` in the config file is `0` or a negative value other than `-1` | Set it to `-1` (no timeout) or a positive integer |
+| `max_size_verification_mb must be > 0` | `MAX_SIZE_VERIFICATION_MB` is `0` or negative | Set it to a positive integer (MB) |
+| `min_size_verification_mb must be` | `MIN_SIZE_VERIFICATION_MB` is negative, or greater than `MAX_SIZE_VERIFICATION_MB` | Set it to `0` or a positive integer that does not exceed `MAX_SIZE_VERIFICATION_MB` |
 | `invalid dar_backup_command_timeout_secs` | The environment variable is set to an invalid value | Unset it or set it to `-1` (no timeout) or a positive integer |
 | `invalid regex` | `RESTORETEST_EXCLUDE_REGEX` contains a malformed regex | Fix or remove the regex pattern |
 | `configuration file not found` | The config file path does not exist | Check `--config-file` or the default path `~/.config/dar-backup/dar-backup.conf` |

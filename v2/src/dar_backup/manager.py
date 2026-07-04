@@ -24,11 +24,11 @@
 import argcomplete
 import argparse
 import fcntl
+import logging
 import os
 import re
 import signal
 import sys
-import subprocess
 import threading
 import shlex
 import dateparser
@@ -59,7 +59,7 @@ from dar_backup.util import backup_definition_completer, archive_content_complet
 from datetime import datetime, tzinfo
 from sys import stderr
 from time import time
-from typing import Dict, List, Tuple, Optional, cast
+from typing import BinaryIO, Dict, List, Tuple, Optional, cast
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -67,16 +67,39 @@ SCRIPTPATH = os.path.realpath(__file__)
 SCRIPTDIRPATH = os.path.dirname(SCRIPTPATH)
 DB_SUFFIX = ".db"
 
+# Module-level by design: tests inject real logger/runner objects via save/restore
+# (see logger_runner_globals_accepted memory) — not a bug.
 logger = get_logger()
 runner: Optional[CommandRunner] = None
 
 
 def _runner() -> CommandRunner:
+    """Return the module-level CommandRunner initialized by main().
+
+    Returns:
+        The active CommandRunner instance.
+
+    Raises:
+        AssertionError: If called before main() has initialized the runner.
+    """
     assert runner is not None, "CommandRunner not initialized; call main() first"
     return runner
 
 
-def _open_command_log(command: List[str]):
+def _open_command_log(command: List[str]) -> Tuple[Optional[BinaryIO], Optional[threading.Lock]]:
+    """Open the command_logger's log file directly and write a command header.
+
+    Locates the file backing the current command_output_logger handler, opens it
+    for appending in binary mode, and writes a timestamped "COMMAND: ..." header
+    line naming the command about to run.
+
+    Args:
+        command: Command and arguments to record in the header line.
+
+    Returns:
+        A (log_file, lock) tuple, or (None, None) if the command_output_logger
+        has no file-backed handler to write into.
+    """
     command_logger = get_logger(command_output_logger=True)
     log_path = None
     for handler in getattr(command_logger, "handlers", []):
@@ -103,7 +126,8 @@ def get_db_dir(config_settings: ConfigSettings) -> str:
     return config_settings.manager_db_dir or config_settings.backup_dir
 
 
-def show_more_help():
+def show_more_help() -> None:
+    """Print the extended --more-help text (currently just the NAME section) to stdout."""
     help_text = f"""
 NAME
     {SCRIPTNAME} - creates/maintains `dar` databases with catalogs for backup definitions
@@ -111,7 +135,25 @@ NAME
     print(help_text)
 
 
-def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) -> int:
+def create_db(backup_def: str, config_settings: ConfigSettings, logger: logging.Logger, runner: CommandRunner) -> int:
+    """Create the catalog database for a backup definition if one doesn't already exist.
+
+    If a database file already exists: an empty (placeholder) file is treated as
+    already-created and skipped; a non-empty file is checked with
+    `dar_manager --check` and skipped if healthy, or renamed aside (with a
+    ".corrupted.<timestamp>" suffix) and recreated if the check fails.
+
+    Args:
+        backup_def: Backup definition name (used as the database's base filename).
+        config_settings: Loaded configuration providing the database directory.
+        logger: Logger for status/error messages.
+        runner: CommandRunner used to invoke dar_manager.
+
+    Returns:
+        0 on success (created, or already present and healthy/empty); the
+        dar_manager process's non-zero return code on failure; 1 if the
+        database directory itself is invalid.
+    """
     db_dir = get_db_dir(config_settings)
 
     error = validate_directory(db_dir, "DB dir")
@@ -155,9 +197,18 @@ def create_db(backup_def: str, config_settings: ConfigSettings, logger, runner) 
     return process.returncode
 
 
-def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output=False) -> CommandResult:
-    """
-    List catalogs from the database for the given backup definition.
+def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_output: bool = False) -> CommandResult:
+    """List catalogs from the database for the given backup definition.
+
+    Archive names are sorted by definition then date. Unless suppress_output is
+    True, each archive name is also printed to stdout.
+
+    Args:
+        backup_def: Backup definition name (identifies the catalog database).
+        config_settings: Loaded configuration providing the database directory
+            and command timeout.
+        suppress_output: When True, do not print archive names to stdout —
+            only return the CommandResult.
 
     Returns:
         A CommandResult containing the raw stdout/stderr and return code.
@@ -208,8 +259,11 @@ def list_catalogs(backup_def: str, config_settings: ConfigSettings, suppress_out
 
 
 def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
-    """
-    Find the catalog number for the given archive name
+    """Find the catalog number for the given archive name.
+
+    Args:
+        archive: Archive base name to look up (e.g. "example_FULL_2026-01-01").
+        config_settings: Loaded configuration providing the database directory.
 
     Returns:
       - the found number, if the archive catalog is present in the database
@@ -240,10 +294,19 @@ def cat_no_for_name(archive: str, config_settings: ConfigSettings) -> int:
 
 
 def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
-    """
-    List the contents of a specific archive, given the archive name.
+    """List the contents of a specific archive, given the archive name.
+
     Prints only actual file entries (lines beginning with '[ Saved ]').
     If none are found, a notice is printed instead.
+
+    Args:
+        archive: Archive base name whose contents should be listed.
+        config_settings: Loaded configuration providing the database directory
+            and command timeout.
+
+    Returns:
+        0 on success, 1 if the archive cannot be parsed/found, or the
+        underlying dar_manager process's non-zero return code on failure.
     """
     parsed = ArchiveName.parse(archive)
     if parsed is None:
@@ -287,8 +350,17 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
 
 
 def list_catalog_contents(catalog_number: int, backup_def: str, config_settings: ConfigSettings)  -> int:
-    """
-    List the contents of catalog # in catalog database for given backup definition
+    """List the contents of a specific catalog number in a backup definition's database.
+
+    Args:
+        catalog_number: Catalog entry number within the database (dar_manager's
+            `-u` argument).
+        backup_def: Backup definition name (identifies the catalog database).
+        config_settings: Loaded configuration providing the database directory.
+
+    Returns:
+        0 on success, 1 if the database does not exist, or the underlying
+        dar_manager process's non-zero return code on failure.
     """
     logger = get_logger()
     database = f"{backup_def}{DB_SUFFIX}"
@@ -305,9 +377,17 @@ def list_catalog_contents(catalog_number: int, backup_def: str, config_settings:
     return process.returncode
 
 
-def find_file(file, backup_def, config_settings):
-    """
-    Find a specific file
+def find_file(file: str, backup_def: str, config_settings: ConfigSettings) -> int:
+    """Find and print the catalog entries for a specific file across all archives.
+
+    Args:
+        file: Relative path (as stored in the catalog) to search for.
+        backup_def: Backup definition name (identifies the catalog database).
+        config_settings: Loaded configuration providing the database directory.
+
+    Returns:
+        0 on success, 1 if the database does not exist, or the underlying
+        dar_manager process's non-zero return code on failure.
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -489,6 +569,15 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
 
 
 def _restore_target_unsafe_reason(target: str) -> Optional[str]:
+    """Check a PITR restore target against an allow/protect list of directory prefixes.
+
+    Args:
+        target: Restore target directory to check (need not exist yet).
+
+    Returns:
+        None if target is safe to restore into; otherwise a human-readable
+        reason string suitable for logging directly.
+    """
     # realpath() resolves symlinks to their canonical path so that a symlink
     # under /home pointing to /etc cannot bypass the protected-prefix check.
     # abspath() would NOT follow symlinks and would leave the check bypassable.
@@ -526,10 +615,21 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
 
 
 def _local_tzinfo() -> tzinfo:
+    """Return the system's current local timezone (via datetime.astimezone())."""
     return cast(tzinfo, datetime.now().astimezone().tzinfo)
 
 
 def _normalize_when_dt(dt: datetime) -> datetime:
+    """Convert a possibly-timezone-aware datetime to naive local time.
+
+    Args:
+        dt: Datetime to normalize; may be naive or timezone-aware.
+
+    Returns:
+        dt unchanged if it is already naive; otherwise dt converted to the
+        local timezone with tzinfo stripped, so it can be compared directly
+        with the naive datetimes parsed from archive names.
+    """
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         return dt
     local_tz = _local_tzinfo()
@@ -537,6 +637,15 @@ def _normalize_when_dt(dt: datetime) -> datetime:
 
 
 def _parse_when(when: str) -> Optional[datetime]:
+    """Parse a natural-language or ISO date/time string for PITR selection.
+
+    Args:
+        when: Date/time expression, e.g. "now", "2 weeks ago", "2026-01-29 15:00".
+
+    Returns:
+        A naive local datetime (see _normalize_when_dt), or None if when
+        could not be parsed.
+    """
     parsed = dateparser.parse(when)
     if not parsed:
         return None
@@ -547,6 +656,16 @@ def _parse_when(when: str) -> Optional[datetime]:
 
 
 def _coerce_timeout(value: Optional[int]) -> Optional[int]:
+    """Normalize a config/CLI timeout value to a valid CommandRunner timeout.
+
+    Args:
+        value: Raw timeout value from ConfigSettings.command_timeout_secs
+            (may be int, str, bool, or None depending on the source).
+
+    Returns:
+        The positive integer timeout in seconds, or None to disable the
+        timeout (for None, non-positive, unparseable, or bool input).
+    """
     if value is None:
         return None
     if isinstance(value, bool):
@@ -578,6 +697,16 @@ def _log_command_failure(result: CommandResult, context: str) -> None:
 
 
 def _parse_archive_map(list_output: str) -> Dict[int, str]:
+    """Parse `dar_manager --list` output into a catalog-number-to-path mapping.
+
+    Args:
+        list_output: Raw stdout from `dar_manager --base <db> --list`.
+
+    Returns:
+        A dict mapping each catalog entry number to its full archive base path
+        (directory + basename, without the ".N.dar" slice suffix). Header and
+        separator lines are skipped.
+    """
     archives: Dict[int, str] = {}
     for line in list_output.splitlines():
         stripped = line.strip()
@@ -594,6 +723,17 @@ def _parse_archive_map(list_output: str) -> Dict[int, str]:
 
 
 def _replace_path_prefix(path: str, old_prefix: str, new_prefix: str) -> Optional[str]:
+    """Rewrite path's leading directory prefix, if it matches old_prefix.
+
+    Args:
+        path: Normalized directory path to check (e.g. an archive's directory).
+        old_prefix: Prefix to look for at the start of path.
+        new_prefix: Replacement for old_prefix.
+
+    Returns:
+        The rewritten path if path equals old_prefix or is nested under it;
+        otherwise None (no match, path is left alone by the caller).
+    """
     old_norm = os.path.normpath(old_prefix)
     new_norm = os.path.normpath(new_prefix)
     if path == old_norm:
@@ -611,6 +751,26 @@ def relocate_archive_paths(
     config_settings: ConfigSettings,
     dry_run: bool = False,
 ) -> int:
+    """Rewrite an archive path prefix in place across a backup definition's catalog DB.
+
+    Used when archives have moved (or a mountpoint changed) after the catalog
+    was built, so the DB's absolute archive paths no longer match reality.
+    Lists all catalog entries, finds those whose directory starts with
+    old_prefix, and rewrites each matching entry via `dar_manager -p`.
+
+    Args:
+        backup_def: Backup definition name (identifies the catalog database).
+        old_prefix: Directory path prefix to replace.
+        new_prefix: Replacement directory path prefix.
+        config_settings: Loaded configuration providing the database directory
+            and command timeout.
+        dry_run: If True, log what would change without calling dar_manager.
+
+    Returns:
+        0 on success (including "nothing matched"); 1 if the database is
+        missing, the catalog could not be listed, or any individual path
+        update failed.
+    """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
     if not os.path.exists(database_path):
@@ -674,6 +834,17 @@ def relocate_archive_paths(
 
 
 def _parse_archive_info(archive_map: Dict[int, str]) -> List[Tuple[int, datetime, str]]:
+    """Extract (catalog number, archive date, archive type) from an archive map.
+
+    Args:
+        archive_map: Mapping of catalog number to archive base path, as
+            returned by _parse_archive_map.
+
+    Returns:
+        A list of (catalog_no, archive_date, archive_type) tuples, one per
+        entry whose basename matches the standard archive naming convention.
+        Entries that don't parse (unexpected name format) are skipped.
+    """
     info: List[Tuple[int, datetime, str]] = []
     for catalog_no, path in archive_map.items():
         base = os.path.basename(path)
@@ -688,6 +859,23 @@ def _parse_archive_info(archive_map: Dict[int, str]) -> List[Tuple[int, datetime
 
 
 def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt: datetime) -> List[int]:
+    """Select the FULL -> DIFF -> INCR archive chain that restores state as of when_dt.
+
+    Only archives with a date at or before when_dt are eligible. Picks the
+    latest eligible FULL as the chain's base, then the latest eligible DIFF
+    taken after that FULL, then the latest eligible INCR taken after that DIFF
+    (or after the FULL, if no DIFF qualifies) — mirroring how DIFF/INCR
+    backups are always taken relative to the most recent FULL/DIFF.
+
+    Args:
+        archive_info: Parsed catalog entries as (catalog_no, date, archive_type),
+            as returned by _parse_archive_info.
+        when_dt: Restore to the state at this point in time.
+
+    Returns:
+        Catalog numbers in apply order: [FULL], optionally + [DIFF], optionally
+        + [INCR]. Empty if no FULL archive is at or before when_dt.
+    """
     order = {"FULL": 0, "DIFF": 1, "INCR": 2}
     candidates = [
         (catalog_no, date, archive_type)
@@ -840,6 +1028,17 @@ def _format_chain_item(
     info_by_no: Dict[int, Tuple[datetime, str]],
     status: str,
 ) -> str:
+    """Format one archive chain entry for the --pitr-report display.
+
+    Args:
+        catalog_no: Catalog number of the chain entry.
+        info_by_no: Maps catalog number to (archive_date, archive_type).
+        status: Availability status to display, e.g. "ok" or "missing".
+
+    Returns:
+        A display string like "#3 DIFF@2026-01-15 10:00:00 [ok]", or
+        "#3 [unknown] [ok]" if catalog_no has no entry in info_by_no.
+    """
     info = info_by_no.get(catalog_no)
     if info:
         dt, archive_type = info
@@ -852,6 +1051,17 @@ def _describe_archive(
     archive_map: Dict[int, str],
     info_by_no: Dict[int, Tuple[datetime, str]],
 ) -> str:
+    """Format one archive for a PITR restore log message.
+
+    Args:
+        catalog_no: Catalog number of the archive.
+        archive_map: Maps catalog number to archive base path.
+        info_by_no: Maps catalog number to (archive_date, archive_type).
+
+    Returns:
+        A display string like "#3 DIFF@2026-01-15 10:00:00 archive_basename",
+        or "#3 unknown" if catalog_no is missing from archive_map.
+    """
     archive_path = archive_map.get(catalog_no)
     base = os.path.basename(archive_path) if archive_path else "unknown"
     info = info_by_no.get(catalog_no)
@@ -863,6 +1073,17 @@ def _describe_archive(
 
 
 def _missing_chain_elements(chain: List[int], archive_map: Dict[int, str]) -> List[str]:
+    """Check which archives in a restore chain are missing from disk or the catalog.
+
+    Args:
+        chain: Catalog numbers in apply order, as returned by _select_archive_chain.
+        archive_map: Maps catalog number to archive base path.
+
+    Returns:
+        A list of human-readable descriptions of missing chain elements
+        (either "catalog #N missing from archive map" or an absent
+        "<archive>.1.dar" slice path); empty if the whole chain is available.
+    """
     missing = []
     for catalog_no in chain:
         archive_path = archive_map.get(catalog_no)
@@ -906,10 +1127,23 @@ def _pitr_chain_report(
     when: str,
     config_settings: ConfigSettings,
 ) -> int:
-    """
-    Report the PITR archive chain that would be used for a restore at `when`,
-    without performing any restore actions. Returns non-zero if required
-    archives are missing or no chain/candidates can be determined.
+    """Report the PITR archive chain that would be used for a restore at `when`.
+
+    Dry-run counterpart of restore_at()/_restore_with_dar(): performs the same
+    directory-vs-file detection and archive chain/version selection, logging
+    what would be used, but never invokes dar.
+
+    Args:
+        backup_def: Backup definition name (identifies the catalog database).
+        paths: One or more file or directory paths as stored in the catalog.
+        when: Date/time string to report "as of" (parsed via _parse_when).
+        config_settings: Loaded configuration used to locate the catalog
+            database and command timeout.
+
+    Returns:
+        0 if a usable chain/version was found for every path; 1 if `when` is
+        missing or unparseable, the catalog can't be read, or any path's
+        chain/version could not be fully resolved.
     """
     if not when:
         logger.error("PITR report requires --when.")
@@ -992,6 +1226,18 @@ def _pitr_chain_report(
 
 
 def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
+    """Parse `dar_manager -f <path>` output into (catalog number, mtime) pairs.
+
+    Args:
+        file_output: Raw stdout from `dar_manager --base <db> -f <path>`,
+            listing every catalog entry that recorded the given file, one
+            per line with a ctime-style timestamp (e.g.
+            "1  Fri Mar 21 06:56:21 2026  saved").
+
+    Returns:
+        A list of (catalog_no, recorded_mtime) tuples for every line that
+        matches the expected format; non-matching lines are skipped.
+    """
     versions: List[Tuple[int, datetime]] = []
     for line in file_output.splitlines():
         stripped = line.strip()
@@ -1010,6 +1256,17 @@ def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
 
 
 def _guess_darrc_path(config_settings: ConfigSettings) -> Optional[str]:
+    """Locate a .darrc file to pass to dar for PITR restore commands.
+
+    Checks next to the config file first, then falls back to the package's
+    installed default .darrc.
+
+    Args:
+        config_settings: Loaded configuration providing the config file path.
+
+    Returns:
+        Path to a usable .darrc file, or None if neither location has one.
+    """
     config_dir = os.path.dirname(config_settings.config_file)
     candidate = os.path.join(config_dir, ".darrc")
     if os.path.exists(candidate):
@@ -1203,12 +1460,23 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
 
 
 def add_specific_archive(archive: str, config_settings: ConfigSettings, directory: Optional[str] = None) -> int:
-    """
-    Adds the specified archive to its catalog database. Prompts for confirmation if it's older than existing entries.
+    """Add the specified archive to its catalog database.
+
+    Prompts for confirmation (see confirm_add_old_archive) if the archive's
+    date is older than the latest entry already in the catalog, to guard
+    against accidentally creating an inconsistent restore chain.
+
+    Args:
+        archive: Archive base name to add (path prefix, if any, is stripped).
+        config_settings: Loaded configuration providing the database and
+            backup.d directories.
+        directory: Directory containing the archive's .1.dar slice. Defaults
+            to config_settings.backup_dir.
 
     Returns:
-        0 on success
-        1 on failure
+        0 on success; 1 if the archive/backup definition can't be found or
+        validated, or the user declines to add an older archive; otherwise
+        the dar_manager `--add` process's own return code.
     """
     # Determine archive path
     if not directory:
@@ -1237,15 +1505,17 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
     database_path = os.path.realpath(os.path.join(get_db_dir(config_settings), database))
 
     # Safety check: is archive older than latest in catalog?
-    try:
-        result = subprocess.run(
-            ["dar_manager", "--base", database_path, "--list"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
+    result = _runner().run(["dar_manager", "--base", database_path, "--list"], timeout=timeout)
+    if result.returncode != 0:
+        stderr_detail = (cast(str, result.stderr) or "").strip()
+        detail = f" (returncode={result.returncode}): {stderr_detail}" if stderr_detail else f" (returncode={result.returncode})"
+        logger.warning(
+            "Chronological check skipped: dar_manager --list failed for catalog '%s'%s",
+            database_path, detail,
         )
-        all_lines = result.stdout.splitlines()
+    else:
+        all_lines = (cast(str, result.stdout) or "").splitlines()
         date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
 
         catalog_dates = [
@@ -1261,19 +1531,6 @@ def add_specific_archive(archive: str, config_settings: ConfigSettings, director
                 if not confirm_add_old_archive(archive, latest_date.strftime("%Y-%m-%d")):
                     logger.info(f"Archive {archive} skipped due to user declining to add older archive.")
                     return 1
-
-    except subprocess.CalledProcessError as e:
-        stderr_detail = e.stderr.strip() if e.stderr else ""
-        detail = f" (returncode={e.returncode}): {stderr_detail}" if stderr_detail else f" (returncode={e.returncode})"
-        logger.warning(
-            "Chronological check skipped: dar_manager --list failed for catalog '%s'%s",
-            database_path, detail,
-        )
-    except OSError as e:
-        logger.warning(
-            "Chronological check skipped: dar_manager not available for catalog '%s': %s",
-            database_path, e,
-        )
 
     logger.info(f'Add "{archive_path}" to catalog: "{database}"')
 
@@ -1366,9 +1623,17 @@ def add_directory(args: argparse.Namespace, config_settings: ConfigSettings) -> 
 
 
 def confirm_add_old_archive(archive_name: str, latest_known_date: str, timeout_secs: int = 20) -> bool:
-    """
-    Confirm with the user if they want to proceed with adding an archive older than the most recent in the catalog.
-    Returns True if the user confirms with "yes", False otherwise.
+    """Prompt the user to confirm adding an archive older than the catalog's latest entry.
+
+    Args:
+        archive_name: Archive base name being added, shown in the prompt.
+        latest_known_date: Date of the latest archive already in the catalog,
+            shown in the prompt for context.
+        timeout_secs: Seconds to wait for input before treating it as declined.
+
+    Returns:
+        True only if the user types "yes" (case-insensitive) before the
+        timeout; False on any other input, timeout, or Ctrl-C.
     """
     try:
         prompt = (
@@ -1392,13 +1657,17 @@ def confirm_add_old_archive(archive_name: str, latest_known_date: str, timeout_s
 
 
 def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> int:
-    """
+    """Remove the specified archive's entry from its catalog database.
+
+    Args:
+        archive: Archive base name to remove.
+        config_settings: Loaded configuration providing the database directory
+            and command timeout.
 
     Returns:
         - 0 if the archive was removed from it's catalog
-        - 1 if there was an error removing the archive
+        - 1 if the archive name is unparseable or dar_manager --delete failed
         - 2 if the archive was not found in the catalog
-
     """
     parsed = ArchiveName.parse(archive)
     if parsed is None:
@@ -1423,17 +1692,26 @@ def remove_specific_archive(archive: str, config_settings: ConfigSettings) -> in
         return 1
 
 
-def build_arg_parser():
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the `manager` CLI argument parser.
+
+    Returns:
+        Configured ArgumentParser with all manager subcommand options
+        (--create-db, --add-specific-archive, --restore-path/--when for PITR,
+        --relocate-archive-path, etc.) and shell-completion hooks attached.
+    """
     parser = argparse.ArgumentParser(description="Creates/maintains `dar` database catalogs")
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--create-db', action='store_true', help='Create missing databases for all backup definitions')
     parser.add_argument('--alternate-archive-dir', type=str, help='Use this directory instead of BACKUP_DIR in config file')
     parser.add_argument('--add-dir', type=str, help='Add all archive catalogs in this directory to databases')
-    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer  # noqa: E501
-    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = add_specific_archive_completer
-    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = archive_content_completer
+    # argcomplete's documented pattern is to set .completer on the Action returned by
+    # add_argument(); argparse.Action's type stub doesn't declare it, hence the ignores below.
+    parser.add_argument('-d', '--backup-def', type=str, help='Restrict to work only on this backup definition').completer = backup_definition_completer  # type: ignore[attr-defined] # noqa: E501
+    parser.add_argument('--add-specific-archive', type=str, help='Add this archive to catalog database').completer = add_specific_archive_completer  # type: ignore[attr-defined]
+    parser.add_argument('--remove-specific-archive', type=str, help='Remove this archive from catalog database').completer = archive_content_completer  # type: ignore[attr-defined]
     parser.add_argument('-l', '--list-catalogs', action='store_true', help='List catalogs in databases for all backup definitions')
-    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer  # noqa: E501
+    parser.add_argument('--list-archive-contents', type=str, help="List contents of the archive's catalog. Argument is the archive name.").completer = archive_content_completer  # type: ignore[attr-defined] # noqa: E501
     parser.add_argument('--find-file', type=str, help="List catalogs containing <path>/file. '-d <definition>' argument is also required")
     parser.add_argument('--restore-path', nargs='+', help="Restore specific path(s) (Point-in-Time Recovery).")
     parser.add_argument('--when', type=str, help="Date/time for restoration (used with --restore-path).")
@@ -1478,7 +1756,18 @@ def build_arg_parser():
     return parser
 
 
-def main():
+def main() -> None:
+    """CLI entrypoint: parse arguments and dispatch to the requested operation.
+
+    Handles --create-db, --add-specific-archive/--add-dir,
+    --remove-specific-archive, --list-catalogs/--list-archive-contents,
+    --find-file, --restore-path/--when (PITR restore or --pitr-report), and
+    --relocate-archive-path. Initializes logging and the module-level
+    logger/runner globals used by the rest of this module.
+
+    Every code path terminates via sys.exit() with an appropriate exit code;
+    this function never returns normally.
+    """
     global logger, runner
 
     MIN_PYTHON_VERSION = (3, 9)
@@ -1564,14 +1853,14 @@ def main():
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
     start_msgs.append(("Config file:", args.config_file))
-    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
+    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))  # type: ignore[func-returns-value]
     start_msgs.append(("Logfile:", config_settings.logfile_location))
-    args.verbose and start_msgs.append(("Trace log:", trace_log_file))
-    args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
-    args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
-    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
-    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive))
-    args.verbose and start_msgs.append(("--relocate-archive-path:", args.relocate_archive_path))
+    args.verbose and start_msgs.append(("Trace log:", trace_log_file))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--relocate-archive-path:", args.relocate_archive_path))  # type: ignore[func-returns-value]
     dar_manager_properties = get_binary_info(command='dar_manager')
     start_msgs.append(("dar_manager:", dar_manager_properties['path']))
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
@@ -1693,7 +1982,8 @@ def main():
             return
 
         if args.remove_specific_archive:
-            return remove_specific_archive(args.remove_specific_archive, config_settings)
+            sys.exit(remove_specific_archive(args.remove_specific_archive, config_settings))
+            return
 
         if args.list_catalogs:
             if args.backup_def:

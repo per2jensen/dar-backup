@@ -16,13 +16,13 @@ LOGFILE_LOCATION=~/.dar-backup.log
 # optional parameters
 # LOGFILE_MAX_BYTES = 26214400  # 25 MB max file size is default, change as neeeded
 # LOGFILE_BACKUP_COUNT = 5      # 5 backup log files is default, change as needed
-MAX_SIZE_VERIFICATION_MB = 20
-MIN_SIZE_VERIFICATION_MB = 1
+MAX_SIZE_VERIFICATION_MB = 20    # must be > 0
+MIN_SIZE_VERIFICATION_MB = 1     # must be >= 0 and <= MAX_SIZE_VERIFICATION_MB
 NO_FILES_VERIFICATION = 5        # must be >= 1; 0 makes restore tests vacuously pass
 # timeout in seconds for backup, test, restore and par2 operations
 # The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
 # If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
-# Use -1 to disable timeouts.
+# Use -1 to disable timeouts. Must be -1 or > 0 — 0 or other negative values are rejected.
 COMMAND_TIMEOUT_SECS = 86400
 
 [DIRECTORIES]

@@ -394,6 +394,29 @@ def test_remove_specific_archive(setup_environment: None, env: EnvData):
     assert process.returncode == 2, "manager did not return 2 due to removing a non-existing archive"
 
 
+def test_remove_specific_archive_direct_invocation_propagates_exit_code(setup_environment: None, env: EnvData):
+    """
+    Regression test: `main()`'s --remove-specific-archive branch must propagate its exit code
+    even when manager.py is invoked directly (bypassing the installed console-script wrapper,
+    which happens to call sys.exit(main())). Previously this branch did a bare `return`, so a
+    direct `python -m dar_backup.manager` invocation always exited 0 regardless of outcome.
+    """
+    non_existing_archive = "example_FULL_1970-01-01"
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "dar_backup.manager",
+            "--remove-specific-archive", non_existing_archive,
+            "--config-file", env.config_file,
+            "--log-level", "trace", "--log-stdout",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2, (
+        f"direct invocation did not propagate exit code 2, got {result.returncode}\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
 
 @pytest.mark.smoke
@@ -1404,18 +1427,19 @@ def test_add_specific_archive_old_archive_declined(tmp_path):
 
     list_output = "1\t/path\texample_FULL_2025-04-10"
 
-    with patch("dar_backup.manager.subprocess.run") as mock_run, \
-         patch("dar_backup.manager.confirm_add_old_archive", return_value=False), \
+    with patch("dar_backup.manager.confirm_add_old_archive", return_value=False), \
          patch("dar_backup.manager.logger") as mock_logger, \
          patch("dar_backup.manager.runner") as mock_runner:
-        mock_run.return_value = SimpleNamespace(stdout=list_output)
+        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout=list_output, stderr="")
         result = add_specific_archive(archive, config)
 
     assert result == 1
     mock_logger.info.assert_any_call(
         f"Archive {archive} skipped due to user declining to add older archive."
     )
-    mock_runner.run.assert_not_called()
+    # Only the chronological check ("--list") ran; declining the prompt must
+    # short-circuit before the final "--add" call.
+    mock_runner.run.assert_called_once()
 
 
 def test_add_specific_archive_catalog_list_failure_logs_warning(tmp_path):
@@ -1426,12 +1450,11 @@ def test_add_specific_archive_catalog_list_failure_logs_warning(tmp_path):
     (tmp_path / "example").touch()
     config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
-    err = subprocess.CalledProcessError(1, "dar_manager")
-    err.stderr = "database not found"
-    with patch("dar_backup.manager.subprocess.run", side_effect=err), \
-         patch("dar_backup.manager.runner") as mock_runner, \
+    chronological_check = SimpleNamespace(returncode=1, stdout="", stderr="database not found")
+    add_result = SimpleNamespace(returncode=0, stdout="", stderr="")
+    with patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger") as mock_logger:
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        mock_runner.run.side_effect = [chronological_check, add_result]
         result = add_specific_archive(archive, config)
 
     assert result == 0
@@ -1449,16 +1472,49 @@ def test_add_specific_archive_catalog_list_oserror_logs_warning(tmp_path):
     (tmp_path / "example").touch()
     config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
-    with patch("dar_backup.manager.subprocess.run", side_effect=OSError("No such file or directory: 'dar_manager'")), \
-         patch("dar_backup.manager.runner") as mock_runner, \
+    chronological_check = SimpleNamespace(
+        returncode=-1, stdout="", stderr="No such file or directory: 'dar_manager'"
+    )
+    add_result = SimpleNamespace(returncode=0, stdout="", stderr="")
+    with patch("dar_backup.manager.runner") as mock_runner, \
          patch("dar_backup.manager.logger") as mock_logger:
-        mock_runner.run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        mock_runner.run.side_effect = [chronological_check, add_result]
         result = add_specific_archive(archive, config)
 
     assert result == 0
     warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
     assert any("Chronological check skipped" in c and "dar_manager" in c for c in warning_calls), (
         f"Expected warning naming dar_manager unavailability; got: {warning_calls}"
+    )
+
+
+def test_add_specific_archive_chronological_check_honors_command_timeout(tmp_path):
+    """
+    The chronological ("--list") safety check must run through CommandRunner with the
+    configured timeout, not the raw subprocess.run() call it previously used (which had no
+    timeout at all and could hang indefinitely on a stuck dar_manager).
+    """
+    from dar_backup.manager import add_specific_archive
+
+    archive = "example_FULL_2025-04-01"
+    (tmp_path / f"{archive}.1.dar").touch()
+    (tmp_path / "example").touch()
+    config = SimpleNamespace(
+        backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None,
+        command_timeout_secs=42,
+    )
+
+    chronological_check = SimpleNamespace(returncode=0, stdout="", stderr="")
+    add_result = SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    with patch("dar_backup.manager.runner") as mock_runner, \
+         patch("dar_backup.manager.logger"):
+        mock_runner.run.side_effect = [chronological_check, add_result]
+        add_specific_archive(archive, config)
+
+    first_call_kwargs = mock_runner.run.call_args_list[0].kwargs
+    assert first_call_kwargs.get("timeout") == 42, (
+        f"expected the chronological check to pass timeout=42, got: {first_call_kwargs}"
     )
 
 

@@ -77,6 +77,8 @@ from dar_backup.util import (
 
 from dar_backup.command_runner import CommandRunner
 
+# Module-level by design: tests inject real logger/runner objects via save/restore
+# (see logger_runner_globals_accepted memory) — not a bug.
 logger = get_logger()
 runner: Optional[CommandRunner] = None
 
@@ -665,7 +667,10 @@ def verify(
                 if args.verbose:
                     logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
                 ignore_ownership = resolve_ownership_flag(args, config_settings)
-                command = ['dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"), '-R', config_settings.test_restore_dir, '--noconf', '-Q']
+                command = [
+                    'dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"),
+                    '-R', config_settings.test_restore_dir, '--noconf', '-Q',
+                ]
                 if ignore_ownership:
                     command.append('--comparison-field=ignore-owner')
                 command.extend(['-B', args.darrc, 'restore-options'])
@@ -1290,7 +1295,7 @@ def perform_backup(
                         f"({_BACKUP_DEFINITION_RULES}). Use {_BACKUP_DEFINITION_OPT_OUT} to disable this check."
                     )
                     logger.error(msg)
-                    results.append((msg, 2))
+                    results.append((msg, 1))
                     continue
                 backup_definitions.append((normalized_name, os.path.join(root, file)))
 
@@ -1309,7 +1314,8 @@ def perform_backup(
         logger.info(_banner_bar)
         try:
             _free_bytes = shutil.disk_usage(config_settings.backup_dir).free
-        except Exception:
+        except OSError as e:
+            logger.warning("Could not determine free space for '%s': %s", config_settings.backup_dir, e)
             _free_bytes = None
         metrics = {
             "backup_definition":             backup_definition,
@@ -2200,7 +2206,10 @@ def main():
     parser.add_argument("--readme-pretty", action="store_true", help="Print README.md to stdout with Markdown styling and exit.")
     parser.add_argument("--changelog", action="store_true", help="Print Changelog.md to stdout and exit.")
     parser.add_argument("--changelog-pretty", action="store_true", help="Print Changelog.md to stdout with Markdown styling and exit.")
-    doc_arg = parser.add_argument("--doc", metavar="NAME", help="Print a documentation file by name and exit (use tab completion to list available docs).")
+    doc_arg = parser.add_argument(
+        "--doc", metavar="NAME",
+        help="Print a documentation file by name and exit (use tab completion to list available docs).",
+    )
     doc_arg.completer = _doc_completer
     doc_pretty_arg = parser.add_argument("--doc-pretty", metavar="NAME", help="Print a documentation file with Markdown styling and exit.")
     doc_pretty_arg.completer = _doc_completer

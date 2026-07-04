@@ -770,6 +770,11 @@ def test_command_runner_termios_none_skips_tty(monkeypatch, tmp_path):
 
 
 def test_command_runner_tty_open_failure_does_not_crash(monkeypatch, tmp_path):
+    """
+    A failure while saving terminal attributes (e.g. /dev/tty cannot be opened) must not
+    crash the command, and must be logged at debug level — mirroring the logged restore-path
+    failure handler for the same tty state.
+    """
     logger, command_logger, _ = _make_loggers(tmp_path)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
@@ -789,12 +794,22 @@ def test_command_runner_tty_open_failure_does_not_crash(monkeypatch, tmp_path):
     monkeypatch.setattr("dar_backup.command_runner.os.path.exists", fake_exists)
     monkeypatch.setattr("builtins.open", fake_open)
 
-    result = runner.run(["echo", "ok"])
+    with patch.object(runner, "logger") as mock_logger:
+        result = runner.run(["echo", "ok"])
 
     assert result.returncode == 0
+    debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+    assert any("Failed to save terminal attributes" in c for c in debug_calls), (
+        f"expected a debug log naming the tty-attribute save failure; got: {debug_calls}"
+    )
 
 
 def test_command_runner_wait_exception_returns_error(tmp_path):
+    """
+    Any exception other than TimeoutExpired/KeyboardInterrupt raised by process.wait()
+    must still kill the child process, matching the TimeoutExpired/KeyboardInterrupt
+    handlers — otherwise the child is left running, never reaped.
+    """
     logger, command_logger, _ = _make_loggers(tmp_path)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
 
@@ -807,16 +822,22 @@ def test_command_runner_wait_exception_returns_error(tmp_path):
 
             self.stdout = io.BytesIO(b"")
             self.stderr = io.BytesIO(b"")
+            self.kill_call_count = 0
 
         def wait(self, timeout=None):
             raise RuntimeError("wait failed")
 
-    with patch("dar_backup.command_runner.subprocess.Popen", return_value=FakeProcess()), \
+        def kill(self):
+            self.kill_call_count += 1
+
+    fake_process = FakeProcess()
+    with patch("dar_backup.command_runner.subprocess.Popen", return_value=fake_process), \
          patch.object(runner, "logger") as mock_logger:
         result = runner.run(["echo", "ok"])
 
     assert result.returncode == -1
     assert result.stack is not None
+    assert fake_process.kill_call_count == 1, "process.kill() must be called on generic exception"
     assert mock_logger.error.called
 
 

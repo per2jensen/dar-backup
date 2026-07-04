@@ -62,6 +62,7 @@ Available options:
 
 - 0: Success.
 - 1: Error (backup/restore/preflight failure).
+  - includes an invalid backup-definition name (see [naming rules](config-reference.md#backup-definition-example)) — as of v2-1.1.10 this is `rc=1` whether the invalid name was given explicitly via `-d` or found while scanning `BACKUP.D_DIR` for an all-definitions run; previously the latter case was only a warning (`rc=2`)
 - 2: Warning (restore test failed or backup already exists and is skipped).
 - 127: Typically an error during startup, file or config value missing
   - if the `dar -t` test fails, exit code 1 is emitted

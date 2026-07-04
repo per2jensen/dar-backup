@@ -22,8 +22,10 @@ import argparse
 import re
 import os
 import sys
+import tempfile
 
 from datetime import datetime
+from typing import Optional, Tuple
 
 from dar_backup import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -49,7 +51,21 @@ CLEAN_MESSAGE_PREFIXES = (
     "</Symlink",
 )
 
-def _split_level_and_message(line):
+def _split_level_and_message(line: str) -> Tuple[Optional[str], Optional[str]]:
+    """Split a log line into its level and message, handling both log formats.
+
+    Two formats are supported: timestamped lines (e.g.
+    "2026-01-01 12:00:00,000 - INFO - <File ...>") and plain "LEVEL - message"
+    lines with no timestamp prefix. A line is treated as timestamped only if
+    its first " - "-separated segment matches a leading YYYY-MM-DD date.
+
+    Args:
+        line: A single log line (trailing newline is stripped internally).
+
+    Returns:
+        A (level, message) tuple, or (None, None) if line contains no " - "
+        separator at all (not a recognizable level/message line).
+    """
     line = line.rstrip("\n")
     if " - " not in line:
         return None, None
@@ -64,15 +80,39 @@ def _split_level_and_message(line):
 
     return level.strip(), message
 
-def _should_remove_line(line):
+def _should_remove_line(line: str) -> bool:
+    """Check whether a log line is verbose dar output that should be stripped.
+
+    Args:
+        line: A single log line to check.
+
+    Returns:
+        True iff line is an INFO-level line whose message starts with one of
+        CLEAN_MESSAGE_PREFIXES (dar's verbose per-file/directory chatter).
+    """
     level, message = _split_level_and_message(line)
     if level != "INFO" or message is None:
         return False
     message = message.lstrip()
     return any(message.startswith(prefix) for prefix in CLEAN_MESSAGE_PREFIXES)
 
-def clean_log_file(log_file_path, dry_run=False):
-    """Removes specific log lines from the given file using a memory-efficient streaming approach."""
+def clean_log_file(log_file_path: str, dry_run: bool = False) -> None:
+    """Strip verbose dar output lines from a log file, streaming line by line.
+
+    The file is rewritten via a temp file in the same directory (tempfile.mkstemp
+    + os.replace) so a failure partway through never leaves the original log
+    file partially modified.
+
+    Args:
+        log_file_path: Path to the log file to clean.
+        dry_run: If True, print which lines would be removed without modifying
+            the file.
+
+    Returns:
+        None. Does not raise on invalid input or I/O failure — instead prints
+        a message and calls sys.exit(): 127 if log_file_path does not exist,
+        1 for a permission error or any other read/write failure.
+    """
 
 
     if not os.path.isfile(log_file_path):
@@ -90,35 +130,54 @@ def clean_log_file(log_file_path, dry_run=False):
 
     if dry_run:
         print(f"Performing a dry run on: {log_file_path}")
-
-    temp_file_path = log_file_path + ".tmp"
-
-    what = f"reading '{log_file_path}'"
-    try:
-        if dry_run:
+        what = f"reading '{log_file_path}'"
+        try:
             with open(log_file_path, errors="ignore") as infile:
                 for line in infile:
                     if _should_remove_line(line):
                         print(f"Would remove: {line.strip()}")
-            return
+        except OSError as e:
+            print(f"Error {what}: {e}", file=sys.stderr)
+            sys.exit(1)
+        return
 
-        what = f"writing temp file '{temp_file_path}'"
-        with open(log_file_path, errors="ignore") as infile, open(temp_file_path, "w") as outfile:
+    dir_name = os.path.dirname(os.path.abspath(log_file_path))
+    tmp_fd, temp_file_path = tempfile.mkstemp(
+        dir=dir_name, prefix=os.path.basename(log_file_path) + "."
+    )
+    replaced = False
+    what = f"writing temp file '{temp_file_path}'"
+    try:
+        with os.fdopen(tmp_fd, "w") as outfile, open(log_file_path, errors="ignore") as infile:
             for line in infile:
                 if not _should_remove_line(line):
                     outfile.write(line.rstrip() + "\n")
 
         what = f"replacing '{log_file_path}' with temp file"
         os.replace(temp_file_path, log_file_path)
+        replaced = True
         print(f"Successfully cleaned log file: {log_file_path}")
 
     except OSError as e:
         print(f"Error {what}: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        if not replaced and os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
 
 
 
-def main():
+def main() -> None:
+    """CLI entrypoint: validate --file path(s) and clean each one.
+
+    Loads config to determine the allowed log directory (defaults to the
+    configured LOGFILE_LOCATION's directory if --file is not given), rejects
+    any path containing ".." or resolving outside that directory, then calls
+    clean_log_file() on each validated path.
+
+    Exits non-zero (127 for a config error, 1 for any validation or cleaning
+    failure) rather than raising; never returns a value on success.
+    """
     parser = argparse.ArgumentParser(
         description="Clean dar-backup log file for `dar` output"
     )

@@ -167,6 +167,68 @@ def test_main_passes_args_to_write_unit_files(monkeypatch):
     assert calls == [("/opt/venv", "/opt/dar", True)]
 
 
+def test_reject_if_shell_unsafe_allows_normal_paths():
+    from dar_backup.dar_backup_systemd import _reject_if_shell_unsafe
+
+    # Must not raise for ordinary paths.
+    _reject_if_shell_unsafe("--venv", "/home/user/tmp/venv")
+    _reject_if_shell_unsafe("--dar-path", "/opt/dar/bin")
+
+
+def test_reject_if_shell_unsafe_rejects_single_quote():
+    from dar_backup.dar_backup_systemd import _reject_if_shell_unsafe
+
+    with pytest.raises(ValueError, match="--venv"):
+        _reject_if_shell_unsafe("--venv", "/home/user/it's-mine/venv")
+
+
+def test_main_rejects_venv_with_single_quote(monkeypatch, capsys):
+    from dar_backup.dar_backup_systemd import main as systemd_main
+
+    called = False
+
+    def fake_write_unit_files(venv, dar_path, install=False):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.write_unit_files", fake_write_unit_files)
+    monkeypatch.setattr(sys, "argv", ["prog", "--venv", "/home/user/it's-mine/venv"])
+
+    with pytest.raises(SystemExit) as exc:
+        systemd_main()
+
+    assert exc.value.code == 1
+    assert not called, "no unit files must be written when --venv is rejected"
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "--venv" in captured.err
+
+
+def test_main_rejects_dar_path_with_single_quote(monkeypatch, capsys):
+    from dar_backup.dar_backup_systemd import main as systemd_main
+
+    called = False
+
+    def fake_write_unit_files(venv, dar_path, install=False):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("dar_backup.dar_backup_systemd.write_unit_files", fake_write_unit_files)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["prog", "--venv", "/opt/venv", "--dar-path", "/opt/it's-dar/bin"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        systemd_main()
+
+    assert exc.value.code == 1
+    assert not called, "no unit files must be written when --dar-path is rejected"
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "--dar-path" in captured.err
+
+
 from dar_backup.dar_backup_systemd import check_locale
 
 

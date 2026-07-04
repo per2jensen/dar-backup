@@ -381,6 +381,107 @@ def test_config_settings_no_files_verification_valid_values_load_cleanly(tmp_pat
 
 
 # ---------------------------------------------------------------------------
+# COMMAND_TIMEOUT_SECS range validation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("timeout", [0, -2])
+def test_config_settings_command_timeout_secs_out_of_range_raises(tmp_path, timeout):
+    """
+    COMMAND_TIMEOUT_SECS = 0 silently becomes an actual 0-second timeout (instant-failing
+    every PREREQ/POSTREQ script); values other than -1 that are <= 0 make no sense.
+    Must be rejected at config load time, mirroring the env-var override's own rule.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides={"COMMAND_TIMEOUT_SECS": str(timeout)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "command_timeout_secs" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("timeout", [-1, 1, 86400])
+def test_config_settings_command_timeout_secs_valid_values_load_cleanly(tmp_path, timeout):
+    """-1 (disabled) and any positive value for COMMAND_TIMEOUT_SECS must be accepted."""
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        misc_overrides={"COMMAND_TIMEOUT_SECS": str(timeout)},
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.command_timeout_secs == timeout
+
+
+# ---------------------------------------------------------------------------
+# MAX_SIZE_VERIFICATION_MB / MIN_SIZE_VERIFICATION_MB range validation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("max_mb", [0, -1])
+def test_config_settings_max_size_verification_mb_out_of_range_raises(tmp_path, max_mb):
+    """
+    MAX_SIZE_VERIFICATION_MB <= 0 makes the restore-test size-range filter match no
+    files — the same silent-vacuous-pass risk NO_FILES_VERIFICATION already guards against.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides={"MAX_SIZE_VERIFICATION_MB": str(max_mb)},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "max_size_verification_mb" in str(exc_info.value).lower()
+
+
+def test_config_settings_min_size_verification_mb_negative_raises(tmp_path):
+    """MIN_SIZE_VERIFICATION_MB must not be negative."""
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides={"MIN_SIZE_VERIFICATION_MB": "-1"},
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "min_size_verification_mb" in str(exc_info.value).lower()
+
+
+def test_config_settings_min_greater_than_max_size_verification_mb_raises(tmp_path):
+    """
+    MIN_SIZE_VERIFICATION_MB > MAX_SIZE_VERIFICATION_MB is an impossible range — no file
+    could ever match — and must be rejected rather than silently starving the restore-test
+    candidate pool.
+    """
+    config_path = write_config(
+        tmp_path / "bad.conf",
+        tmp_path,
+        misc_overrides={
+            "MAX_SIZE_VERIFICATION_MB": "10",
+            "MIN_SIZE_VERIFICATION_MB": "20",
+        },
+    )
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+    assert "min_size_verification_mb" in str(exc_info.value).lower()
+    assert "max_size_verification_mb" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize("min_mb,max_mb", [(0, 20), (0, 1), (5, 5), (1, 100)])
+def test_config_settings_valid_size_verification_range_loads_cleanly(tmp_path, min_mb, max_mb):
+    """Boundary and typical MIN/MAX_SIZE_VERIFICATION_MB combinations must be accepted."""
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        misc_overrides={
+            "MAX_SIZE_VERIFICATION_MB": str(max_mb),
+            "MIN_SIZE_VERIFICATION_MB": str(min_mb),
+        },
+    )
+    cfg = ConfigSettings(str(config_path))
+    assert cfg.max_size_verification_mb == max_mb
+    assert cfg.min_size_verification_mb == min_mb
+
+
+# ---------------------------------------------------------------------------
 # Age warning thresholds
 # ---------------------------------------------------------------------------
 

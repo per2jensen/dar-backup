@@ -240,14 +240,13 @@ def test_add_specific_archive_old_archive_confirmed(tmp_path):
     (tmp_path / "example").touch()
     config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
-    process = SimpleNamespace(returncode=0, stdout="", stderr="")
+    chronological_check = SimpleNamespace(returncode=0, stdout="1\t/path\texample_FULL_2025-02-01", stderr="")
+    add_result = SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    with patch("dar_backup.manager.subprocess.run") as mock_run, \
-         patch("dar_backup.manager.confirm_add_old_archive", return_value=True), \
+    with patch("dar_backup.manager.confirm_add_old_archive", return_value=True), \
          patch("dar_backup.manager.logger", new=MagicMock()), \
          patch("dar_backup.manager.runner") as mock_runner:
-        mock_run.return_value = SimpleNamespace(stdout="1\t/path\texample_FULL_2025-02-01")
-        mock_runner.run.return_value = process
+        mock_runner.run.side_effect = [chronological_check, add_result]
         result = manager.add_specific_archive(archive, config)
 
     assert result == 0
@@ -260,14 +259,13 @@ def test_add_specific_archive_newer_than_catalog_skips_prompt(tmp_path):
     (tmp_path / "example").touch()
     config = SimpleNamespace(backup_dir=tmp_path, backup_d_dir=tmp_path, manager_db_dir=None, command_timeout_secs=None)
 
-    process = SimpleNamespace(returncode=0, stdout="", stderr="")
+    chronological_check = SimpleNamespace(returncode=0, stdout="1\t/path\texample_FULL_2025-02-01", stderr="")
+    add_result = SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    with patch("dar_backup.manager.subprocess.run") as mock_run, \
-         patch("dar_backup.manager.confirm_add_old_archive", side_effect=AssertionError("should not prompt")), \
+    with patch("dar_backup.manager.confirm_add_old_archive", side_effect=AssertionError("should not prompt")), \
          patch("dar_backup.manager.logger", new=MagicMock()), \
          patch("dar_backup.manager.runner") as mock_runner:
-        mock_run.return_value = SimpleNamespace(stdout="1\t/path\texample_FULL_2025-02-01")
-        mock_runner.run.return_value = process
+        mock_runner.run.side_effect = [chronological_check, add_result]
         result = manager.add_specific_archive(archive, config)
 
     assert result == 0

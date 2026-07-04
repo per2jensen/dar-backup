@@ -258,8 +258,79 @@ def test_perform_backup_skips_files_with_underscore_in_directory(env):
 
     assert len(results) == 1
     assert "Skipping backup definition" in results[0][0]
-    assert results[0][1] == 2
+    assert results[0][1] == 1
     mock_logger.error.assert_called_once()
+
+
+def test_perform_backup_invalid_definition_name_does_not_stop_the_scan(env):
+    """
+    An invalid-named file discovered while scanning BACKUP.D_DIR must be skipped as a
+    failure (rc=1) without aborting the run — other, validly-named definitions in the
+    same directory must still be attempted.
+    """
+    args = SimpleNamespace(
+        backup_definition=None,
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.backup_d_dir,
+        backup_dir=env.backup_dir,
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "bad_name.dcf"), "w") as f:
+        f.write("-R /\n")
+    with open(os.path.join(config.backup_d_dir, "gooddef.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    # Pre-create the FULL archive for the valid definition so it hits the cheap
+    # "already exists" skip path (rc=2) instead of needing a real dar run.
+    os.makedirs(config.backup_dir, exist_ok=True)
+    date = datetime.now().strftime('%Y-%m-%d')
+    with open(os.path.join(config.backup_dir, f"gooddef_FULL_{date}.1.dar"), "w") as f:
+        f.write("DAR FILE")
+
+    with patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    assert any("Skipping backup definition" in msg and code == 1 for msg, code in results), (
+        f"expected a rc=1 'skipping' entry for the invalid-named file; got: {results}"
+    )
+    assert any("already exists" in msg and code == 2 for msg, code in results), (
+        f"expected the valid definition to still be attempted (and hit its own skip path); got: {results}"
+    )
+
+
+def test_perform_backup_all_valid_definitions_unaffected(env):
+    """
+    With no invalid-named files present, the naming-validation change must not alter
+    behavior at all — no 'Skipping backup definition' entries should appear.
+    """
+    args = SimpleNamespace(
+        backup_definition=None,
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.backup_d_dir,
+        backup_dir=env.backup_dir,
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "gooddef.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    os.makedirs(config.backup_dir, exist_ok=True)
+    date = datetime.now().strftime('%Y-%m-%d')
+    with open(os.path.join(config.backup_dir, f"gooddef_FULL_{date}.1.dar"), "w") as f:
+        f.write("DAR FILE")
+
+    with patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    assert not any("Skipping backup definition" in msg for msg, _ in results)
+    assert any("already exists" in msg and code == 2 for msg, code in results)
 
 
 def test_normalize_backup_definition_name_accepts_alnum():
@@ -545,6 +616,55 @@ def test_perform_backup_sends_warning_for_existing_backup(env):
     # I should pass a local list `stats = []` and assert on it.
     
     # For now, I will just fix the call signature. I'll need to fix the assertions separately if they fail.
+
+
+def test_perform_backup_logs_warning_when_disk_usage_fails(env, monkeypatch):
+    """
+    A shutil.disk_usage() failure (e.g. the backup dir disappearing between preflight and
+    this call) must be logged, not silently dropped, even though the backup_dir_free_bytes
+    metric legitimately stays None either way.
+
+    Monkeypatched per project convention: reliably forcing a real disk_usage() OSError (e.g.
+    via chmod) is not portable across root/non-root CI environments, unlike a real missing-file
+    getsize() case.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc
+    )
+
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as f:
+        f.write("-R /\n")
+
+    # Pre-create the FULL archive so the run hits the cheap "already exists" skip
+    # path — no real dar invocation needed to exercise the disk_usage() check above it.
+    os.makedirs(config.backup_dir, exist_ok=True)
+    date = datetime.now().strftime('%Y-%m-%d')
+    backup_file_path = os.path.join(config.backup_dir, f"test_FULL_{date}.1.dar")
+    with open(backup_file_path, "w") as f:
+        f.write("DAR FILE")
+
+    def boom_disk_usage(path):
+        raise OSError("simulated disk_usage failure")
+
+    monkeypatch.setattr("dar_backup.dar_backup.shutil.disk_usage", boom_disk_usage)
+
+    with patch("dar_backup.dar_backup.send_discord_message", return_value=True), \
+         patch("dar_backup.dar_backup.logger") as mock_logger:
+        results = perform_backup(args, config, "FULL", [])
+
+    assert results, "perform_backup must still complete and return results"
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("Could not determine free space" in c and config.backup_dir in c for c in warning_calls), (
+        f"expected a warning naming the free-space lookup failure; got: {warning_calls}"
+    )
 
 
 def test_perform_backup_handles_exception_during_processing(env):

@@ -1124,7 +1124,6 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
     try:
         from dar_backup.config_settings import ConfigSettings
         import subprocess
-        import re
         import os
 
         config_file = get_config_file(parsed_args)
@@ -1461,7 +1460,8 @@ def is_under_base_dir(candidate: Path, base_dir: Path) -> bool:
     try:
         base = base_dir.resolve(strict=True)
         resolved = candidate.resolve(strict=False)
-    except Exception:
+    except OSError as e:
+        logger.warning("Cannot resolve '%s' against base '%s': %s", candidate, base_dir, e)
         return False
     return resolved == base or base in resolved.parents
 

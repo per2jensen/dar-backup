@@ -215,6 +215,23 @@ def test_is_under_base_dir_symlink_escape(tmp_path):
     assert util.is_under_base_dir(link, base_dir) is False
 
 
+def test_is_under_base_dir_nonexistent_base_logs_warning(tmp_path, caplog):
+    """
+    A base_dir that cannot be resolved (e.g. it no longer exists) must not silently
+    return False indistinguishably from a genuine "outside the base dir" result — the
+    resolution failure is security-relevant for safe_remove_file()'s containment check
+    and must be logged.
+    """
+    base_dir = tmp_path / "does-not-exist"
+    candidate = tmp_path / "does-not-exist" / "file.txt"
+
+    with caplog.at_level("WARNING"):
+        result = util.is_under_base_dir(candidate, base_dir)
+
+    assert result is False
+    assert any(str(base_dir) in r.message for r in caplog.records)
+
+
 def test_safe_remove_file_deletes_valid(tmp_path):
     util.logger = logging.getLogger("test")
     base_dir = tmp_path / "base"

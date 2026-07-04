@@ -441,6 +441,51 @@ def test_clean_log_file_handles_open_error(tmp_path, monkeypatch, capsys):
     assert "Error writing temp file" in captured.err
 
 
+def test_clean_log_file_no_stray_tempfile_after_success(tmp_path):
+    """
+    A successful clean must leave only the original log file behind — no
+    mkstemp-created temp file left over in the same directory.
+    """
+    log_file = tmp_path / "dar.log"
+    log_file.write_text(_DAR_LOG_CONTENT)
+
+    clean_log_module.clean_log_file(str(log_file))
+
+    assert sorted(os.listdir(tmp_path)) == [log_file.name], (
+        "a stray temp file was left behind after a successful clean"
+    )
+    assert "WARNING - Disk nearly full" in log_file.read_text()
+
+
+def test_clean_log_file_cleans_up_tempfile_on_replace_failure(tmp_path, monkeypatch, capsys):
+    """
+    If os.replace() fails after the temp file has been fully written (e.g. the
+    destination is suddenly on a read-only or full filesystem — not reliably
+    triggerable on real hardware, hence the monkeypatch per project convention),
+    the temp file must be removed and the original log file must be untouched.
+    """
+    log_file = tmp_path / "dar.log"
+    log_file.write_text(_DAR_LOG_CONTENT)
+    original_content = log_file.read_text()
+
+    def boom_replace(*args, **kwargs):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(clean_log_module.os, "replace", boom_replace)
+
+    with pytest.raises(SystemExit) as exc:
+        clean_log_module.clean_log_file(str(log_file))
+    assert exc.value.code == 1
+
+    captured = capsys.readouterr()
+    assert "Error replacing" in captured.err
+
+    assert sorted(os.listdir(tmp_path)) == [log_file.name], (
+        "temp file was not cleaned up after a failed os.replace()"
+    )
+    assert log_file.read_text() == original_content, "original log file must be untouched"
+
+
 # ---------------------------------------------------------------------------
 # In-process tests that cover lines missed because subprocess coverage is not
 # tracked (no sitecustomize.py in the venv).  These call clean_log_file() and
