@@ -170,7 +170,7 @@ def _run_systemctl(args: list[str]) -> None:
     Raises:
         SystemExit: If the command returns a non-zero exit code.
     """
-    result = subprocess.run(args, capture_output=True, text=True)
+    result = subprocess.run(args, capture_output=True, text=True)  # noqa: S603 — fixed systemctl argv built internally, not user-supplied shell input
     if result.returncode != 0:
         cmd = " ".join(args)
         print(f"ERROR: '{cmd}' failed (returncode={result.returncode})", file=sys.stderr)

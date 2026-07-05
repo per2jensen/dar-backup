@@ -136,8 +136,8 @@ def _reset_logger_handlers(target_logger: logging.Logger) -> None:
         target_logger.removeHandler(handler)
         try:
             handler.close()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — logs with context and continues (best-effort handler cleanup)
+            logger.debug("Failed to close log handler %s: %s", handler, exc)
 
 
 def _setup_logging_fallback(exc: Exception) -> logging.Logger:
@@ -179,7 +179,7 @@ def _setup_logging_fallback(exc: Exception) -> logging.Logger:
             f"  Command log: {command_log.name}",
             file=sys.stderr,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — bootstrapping fallback — context is logged unconditionally right after this block
         main_stderr_handler = logging.StreamHandler(sys.stderr)
         command_stderr_handler = logging.StreamHandler(sys.stderr)
         main_stderr_handler.setFormatter(formatter)
@@ -335,15 +335,15 @@ def setup_logging(
             if enc not in ('utf8', 'utf16', 'utf32') and hasattr(_out, 'reconfigure'):
                 try:
                     _out.reconfigure(encoding='utf-8', errors='replace')
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001 — logs with context and continues (best-effort stdout reconfigure)
+                    logger.debug("Failed to reconfigure stdout encoding: %s", exc)
             stdout_handler = logging.StreamHandler(_out)
             stdout_handler.setFormatter(clean_formatter)
             stdout_handler.setLevel(logging.DEBUG if log_level == "debug" else TRACE_LEVEL_NUM if log_level == "trace" else logging.INFO)
             logger.addHandler(stdout_handler)
 
         return logger
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — full traceback printed and a fallback logger is installed
         traceback.print_exc()
         return _setup_logging_fallback(exc)
 
@@ -432,7 +432,7 @@ def _default_completer_logfile() -> str:
     except AttributeError:
         uid = None
     suffix = str(uid) if uid is not None else "unknown"
-    return f"/tmp/dar_backup_completer_{suffix}.log"
+    return os.path.join(tempfile.gettempdir(), f"dar_backup_completer_{suffix}.log")
 
 
 # Setup completer logger only once
@@ -446,7 +446,7 @@ def _setup_completer_logger(logfile: Optional[str] = None):
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.setLevel(logging.DEBUG)
-        except Exception:
+        except Exception:  # noqa: BLE001 — silent by design: this completer logger runs on every shell tab-completion; a NullHandler fallback must not print
             logger.addHandler(logging.NullHandler())
             logger.setLevel(logging.DEBUG)
     return logger
@@ -483,7 +483,7 @@ def get_invocation_command_line() -> str:
             if not content:
                 return "[error: /proc/cmdline is empty]"
             return content.replace(b'\x00', b' ').decode().strip()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — context captured in the returned string
         return f"[error: could not read /proc/[pid]/cmdline: {e}]"
 
 
@@ -493,7 +493,8 @@ def show_scriptname()  -> str:
     """
     try:
         scriptname = os.path.basename(sys.argv[0])
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
+        logger.debug("Could not determine script name from sys.argv[0]: %s", exc)
         scriptname = "unknown"
     return scriptname
 
@@ -532,7 +533,7 @@ def render_discord_report(
     with pkg_resources.as_file(ref) as p:
         template_text = p.read_text(encoding="utf-8")
 
-    env = Environment(
+    env = Environment(  # noqa: S701 — renders a plain-text/markdown Discord message, not HTML; autoescape would corrupt output
         loader=BaseLoader(),
         trim_blocks=True,
         lstrip_blocks=True,
@@ -574,10 +575,18 @@ def send_discord_message(
         log.info("Discord message not sent: DAR_BACKUP_DISCORD_WEBHOOK_URL not configured.")
         return False
 
+    if not webhook_url.startswith(("https://", "http://")):
+        log.error(
+            "Discord message not sent: webhook URL from %s does not start with http(s)://.",
+            source,
+        )
+        return False
+
     payload = json.dumps({"content": content}).encode("utf-8")
     user_agent = f"dar-backup/{about.__version__}"
 
-    request = urllib.request.Request(
+    # Scheme already validated above (http(s):// only) — ruff can't see that statically.
+    request = urllib.request.Request(  # noqa: S310
         webhook_url,
         data=payload,
         headers={
@@ -589,7 +598,7 @@ def send_discord_message(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds):
+        with urllib.request.urlopen(request, timeout=timeout_seconds):  # noqa: S310
             pass
         log.debug(f"Discord webhook message sent using {source}.")
         return True
@@ -603,13 +612,13 @@ def send_discord_message(
         detail = f" body='{body.strip()}'" if body else ""
         message = f"Discord webhook HTTP error {exc.code}: {exc.reason}{detail}"
         if log:
-            log.error(message)
+            log.exception(message)
         else:
             print(message, file=sys.stderr)
     except Exception as exc:
         message = f"Failed to send Discord webhook message: {exc}"
         if log:
-            log.error(message)
+            log.exception(message)
         else:
             print(message, file=sys.stderr)
 
@@ -648,7 +657,7 @@ def get_binary_info(command):
         }
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 — path resolved via shutil.which() above
             [path, '--version'],
             capture_output=True,
             text=True,
@@ -668,7 +677,7 @@ def get_binary_info(command):
             "full_output": combined_output
         }
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — context captured in the returned dict
         return {
             "command": command,
             "path": path,
@@ -721,7 +730,7 @@ def requirements(
                 # fresh process group so that os.killpg() can reap background children
                 # (e.g. `cmd &`) that would otherwise hold the stdout/stderr pipes open
                 # and block the reader-thread join() calls indefinitely.
-                process = subprocess.Popen(
+                process = subprocess.Popen(  # noqa: S602
                     script,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -791,7 +800,7 @@ def requirements(
                         logger.error(f"{type} stderr:\n{stderr_text}")
                     raise RuntimeError(f"{type} {key}: '{script}' failed, return code: {process.returncode}")
             except subprocess.CalledProcessError as e:
-                logger.error(f"Error executing {key}: '{script}': {e}")
+                logger.exception(f"Error executing {key}: '{script}'")
                 if report_out is not None:
                     report_out["status"] = "failure"
                     report_out["failures"].append({"script": key, "message": str(e)})
@@ -933,7 +942,7 @@ def backup_definition_completer(prefix, parsed_args, **kwargs):
         config = ConfigSettings(config_file)
         backup_d_dir = os.path.expanduser(config.backup_d_dir)
         return [f for f in os.listdir(backup_d_dir) if f.startswith(prefix)]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and returns an empty completion list
         completer_logger.debug("backup_definition_completer: %s", e)
         return []
 
@@ -1012,7 +1021,7 @@ def list_archive_completer(prefix, parsed_args, **kwargs):
 
         completions = sorted(set(completions), key=sort_key)
         return completions or ["[no matching archives]"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and returns an empty completion list
         completer_logger.debug("list_archive_completer: %s", e)
         return []
 
@@ -1049,7 +1058,7 @@ def sort_key(archive_name: str):
         date = datetime.strptime(date_str, "%Y-%m-%d")
         completer_logger.debug(f"Archive: {archive_name}, Def: {def_name}, Date: {date}")
         return (def_name, date)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and falls back to a safe sort key
         completer_logger.debug("sort_key: could not parse '%s': %s", archive_name, e)
         return (archive_name, datetime.min)
 
@@ -1067,6 +1076,7 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
         from dar_backup.config_settings import ConfigSettings
         import subprocess
         import os
+        import shutil
 
         # Expand config path
         config_file = get_config_file(parsed_args)
@@ -1083,14 +1093,15 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
         )
 
         completions = []
+        dar_manager_path = shutil.which("dar_manager") or "dar_manager"
 
         for db_path in db_files:
             if not os.path.exists(db_path):
                 continue
 
             try:
-                result = subprocess.run(
-                    ["dar_manager", "--base", db_path, "--list"],
+                result = subprocess.run(  # noqa: S603 — dar_manager_path resolved via shutil.which() above
+                    [dar_manager_path, "--base", db_path, "--list"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True,
@@ -1109,7 +1120,7 @@ def archive_content_completer(prefix, parsed_args, **kwargs):
 
         completions = sorted(set(completions), key=sort_key)
         return completions or ["[no matching archives]"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and returns an empty completion list
         completer_logger.debug("archive_content_completer: %s", e)
         return []
 
@@ -1125,6 +1136,7 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         from dar_backup.config_settings import ConfigSettings
         import subprocess
         import os
+        import shutil
 
         config_file = get_config_file(parsed_args)
         config = ConfigSettings(config_file=config_file)
@@ -1152,8 +1164,9 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
 
         if db_path and os.path.exists(db_path):
             try:
-                result = subprocess.run(
-                    ["dar_manager", "--base", db_path, "--list"],
+                dar_manager_path = shutil.which("dar_manager") or "dar_manager"
+                result = subprocess.run(  # noqa: S603 — dar_manager_path resolved via shutil.which() above
+                    [dar_manager_path, "--base", db_path, "--list"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True,
@@ -1170,7 +1183,7 @@ def add_specific_archive_completer(prefix, parsed_args, **kwargs):
         # Step 3: return filtered list
         candidates = sorted(archive for archive in all_archives if archive not in existing)
         return candidates or ["[no new archives]"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and returns an empty completion list
         completer_logger.debug("add_specific_archive_completer: %s", e)
         return []
 
@@ -1715,15 +1728,19 @@ def ensure_metrics_db(db_path: str) -> None:
                 "CREATE TABLE IF NOT EXISTS backup_runs_catalog_mig",
                 1,
             )
-            conn.executescript(f"""
-                BEGIN;
-                DROP TABLE IF EXISTS backup_runs_catalog_mig;
-                {new_table_ddl}
-                INSERT INTO backup_runs_catalog_mig ({col_list}) SELECT {col_list} FROM backup_runs;
-                DROP TABLE backup_runs;
-                ALTER TABLE backup_runs_catalog_mig RENAME TO backup_runs;
-                COMMIT;
-            """)
+            # col_list/new_table_ddl come from PRAGMA table_info() introspection and a
+            # hardcoded module-level DDL constant — no user input reaches this string,
+            # and SQL identifiers/DDL can't be parameterized anyway.
+            migration_script = "\n".join((
+                "BEGIN;",
+                "DROP TABLE IF EXISTS backup_runs_catalog_mig;",
+                new_table_ddl,
+                f"INSERT INTO backup_runs_catalog_mig ({col_list}) SELECT {col_list} FROM backup_runs;",  # noqa: S608
+                "DROP TABLE backup_runs;",
+                "ALTER TABLE backup_runs_catalog_mig RENAME TO backup_runs;",
+                "COMMIT;",
+            ))
+            conn.executescript(migration_script)
 
 
 def write_metrics_row(metrics: dict, config_settings) -> None:
@@ -1776,7 +1793,7 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
                 metrics,
             )
             conn.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
         log = get_logger() or logging.getLogger(__name__)
         log.warning("Failed to write metrics row: %s", exc)
 
@@ -1833,7 +1850,7 @@ def write_restore_test_samples(
                 rows,
             )
             conn.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
         log = get_logger()
         if log:
             log.warning("Failed to write restore_test_samples: %s", exc)
@@ -1865,7 +1882,7 @@ def update_postreq_status(run_id: str, status: str, config_settings) -> None:
                 (status, run_id),
             )
             conn.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
         log = get_logger()
         if log:
             log.warning("Failed to update postreq_status: %s", exc)

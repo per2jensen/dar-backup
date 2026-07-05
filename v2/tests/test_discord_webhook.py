@@ -229,6 +229,18 @@ class DummyResponse:
         return False
 
 
+def test_send_discord_message_rejects_non_http_scheme(monkeypatch):
+    """A misconfigured webhook URL (e.g. a stray file:// path) must be rejected
+    before ever reaching urlopen, not passed through to the network layer."""
+    def fake_urlopen(request, timeout):
+        raise AssertionError("urlopen must not be called for a non-http(s) webhook URL")
+
+    monkeypatch.setattr(util.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("DAR_BACKUP_DISCORD_WEBHOOK_URL", "file:///etc/passwd")
+
+    assert util.send_discord_message("hello") is False
+
+
 def test_send_discord_message_prefers_env_over_config(monkeypatch):
     captured = {}
 

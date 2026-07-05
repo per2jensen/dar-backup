@@ -60,7 +60,7 @@ def wait_for_datasette(port: int, timeout: int = STARTUP_TIMEOUT) -> bool:
             )
             print(" ready.", flush=True)
             return True
-        except Exception:
+        except Exception:  # noqa: BLE001 — expected transient failure while polling; terminal timeout is already reported below
             time.sleep(0.3)
             if time.time() - last_dot >= 1.0:
                 print(".", end="", flush=True)
@@ -98,7 +98,7 @@ def resolve_db_path(arg_db: str | None, config_file: str) -> str:
             db = cfg.metrics_db_path   # already expanded by ConfigSettings.__post_init__
             if db:
                 return db
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — logs with context (print) and falls back to a safe default
             print(
                 f"Warning: could not parse config file '{config_file}': {e}",
                 file=sys.stderr,
@@ -200,7 +200,7 @@ def main() -> None:
     # Resolve the bundled HTML file
     try:
         html_path = get_dashboard_html_path()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context (print) and exits
         print(f"Error: could not locate dashboard.html: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -220,7 +220,7 @@ def main() -> None:
     print(f"Starting Datasette on http://127.0.0.1:{port} \u2026")
     datasette_bin = get_datasette_path()
     try:
-        ds = subprocess.Popen(
+        ds = subprocess.Popen(  # noqa: S603 — datasette_bin resolved via get_datasette_path(); db_path/html_dir are local paths, not shell input
             [datasette_bin, db_path, "--cors", "-p", str(port),
              "--static", f"dashboard:{html_dir}"],
             stdout=subprocess.DEVNULL,

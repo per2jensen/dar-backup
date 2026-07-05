@@ -209,10 +209,10 @@ def main() -> None:
 
     try:
         config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Config error: {exc}"
         print(msg, file=sys.stderr)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - clean-log: FAILURE - {msg}")
         sys.exit(127)
 
@@ -267,7 +267,7 @@ def main() -> None:
         else:
             print(msg, file=sys.stderr)
 
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - clean-log: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 if __name__ == "__main__":

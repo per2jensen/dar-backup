@@ -59,6 +59,13 @@ jobs:
           fi
           ./build.sh
 
+      - name: Run mypy
+        working-directory: v2
+        run: |
+          set -euo pipefail
+          . venv*/bin/activate
+          mypy src/
+
       - name: Run pytest smoke suite
         working-directory: v2
         run: |
@@ -130,6 +137,13 @@ jobs:
             rm -rf venv*
           fi
           ./build.sh
+
+      - name: Run mypy
+        working-directory: v2
+        run: |
+          set -euo pipefail
+          . venv*/bin/activate
+          mypy src/
 
       - name: Run pytest full suite
         working-directory: v2

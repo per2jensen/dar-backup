@@ -20,6 +20,7 @@ User can set ROOT_DIR, DIR_TO_BACKUP and BACKUP_DIR (destination for backups) vi
 import argparse
 import os
 import sys
+import tempfile
 
 from . import __about__ as about
 from . import util
@@ -70,7 +71,7 @@ def generate_file(args, template: str, file_path: Path, vars_map: Dict[str, str]
         bool: True if the file was generated successfully, False otherwise.
     """
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
-    env = Environment(loader=FileSystemLoader(current_script_dir))
+    env = Environment(loader=FileSystemLoader(current_script_dir))  # noqa: S701 — renders plain-text config files, not HTML; autoescape would corrupt output
     tpl = env.get_template(template)
     rendered = tpl.render(vars_map = vars_map, opts_dict = opts_dict)
     if rendered is None:
@@ -185,11 +186,12 @@ def main():
 
     if args.generate:
         print("Generating backup definition file...")
-        vars_map["DAR_BACKUP_DIR"] = "/tmp"
+        tmp_dir = tempfile.gettempdir()
+        vars_map["DAR_BACKUP_DIR"] = tmp_dir
         args.override = True
-        generate_file(args, "demo_backup_def.j2", Path("/tmp/dar-backup/backup.d/demo"), vars_map, opts_dict)
-        vars_map["CONFIG_DIR"] = "/tmp"
-        generate_file(args, "dar-backup.conf.j2", Path("/tmp/dar-backup.conf"), vars_map, opts_dict)
+        generate_file(args, "demo_backup_def.j2", Path(tmp_dir) / "dar-backup" / "backup.d" / "demo", vars_map, opts_dict)
+        vars_map["CONFIG_DIR"] = tmp_dir
+        generate_file(args, "dar-backup.conf.j2", Path(tmp_dir) / "dar-backup.conf", vars_map, opts_dict)
     elif args.install:
         if not check_directories(args, vars_map):
             print("Error: One or more directories already exist.\nSpecify non-existent directories or use --override to overwrite.")

@@ -249,7 +249,7 @@ def test_restore_at_concurrent_restore_to_same_target_is_blocked(tmp_path, mock_
 
     assert ret == 1
     mock_restore.assert_not_called()
-    error_text = " ".join(str(c) for c in mock_logger.error.call_args_list)
+    error_text = " ".join(str(c) for c in mock_logger.exception.call_args_list)
     assert "concurrent" in error_text.lower() or "locked" in error_text.lower(), (
         f"Expected error mentioning concurrent lock; got: {error_text}"
     )

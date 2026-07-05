@@ -137,7 +137,7 @@ def test_verify_errors_and_skips_when_stale_file_removal_fails(env, tmp_path):
          patch("builtins.open", mock_open(read_data=mock_def_content)):
         verify_result = verify(args, "mock-backup", env.config_file, config)
 
-    error_calls = [str(call) for call in mock_logger.error.call_args_list]
+    error_calls = [str(call) for call in mock_logger.exception.call_args_list]
     assert any("cannot remove" in c.lower() or "stale" in c.lower() for c in error_calls), (
         f"Expected an error about the stale file removal failure; got: {error_calls}"
     )
@@ -207,7 +207,7 @@ def test_verify_restore_command_includes_overwrite_flag(env, tmp_path):
 
 def test_verify_runner_exception_logs_error_not_print(env, tmp_path):
     """When runner.run() itself raises during the dar -t integrity check,
-    verify() must log via logger.error() — not print() — and re-raise.
+    verify() must log via logger.exception() — not print() — and re-raise.
 
     On a systemd service stdout is not captured.  The error message must say
     'verification' not 'backup' so that operators can identify the failing phase.
@@ -235,9 +235,9 @@ def test_verify_runner_exception_logs_error_not_print(env, tmp_path):
         with pytest.raises(OSError):
             verify(args, "mock-backup", env.config_file, config)
 
-    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    error_calls = [str(c) for c in mock_logger.exception.call_args_list]
     assert any("verification" in c.lower() and "could not be run" in c.lower() for c in error_calls), (
-        f"Expected logger.error naming a verification failure; got: {error_calls}"
+        f"Expected logger.exception naming a verification failure; got: {error_calls}"
     )
     assert not any("backup failed" in c.lower() for c in error_calls), (
         "Error message must not say 'backup failed' for a verification-phase failure"

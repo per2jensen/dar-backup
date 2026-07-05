@@ -64,15 +64,15 @@ def sanitize_cmd(cmd: List[str]) -> List[str]:
         The same list, unchanged, if every argument is valid.
 
     Raises:
-        ValueError: If cmd is not a list, contains a non-string element, or
-            contains an argument rejected by is_safe_arg.
+        TypeError: If cmd is not a list, or contains a non-string element.
+        ValueError: If cmd contains an argument rejected by is_safe_arg.
     """
 
     if not isinstance(cmd, list):
-        raise ValueError("Command must be a list of strings")
+        raise TypeError("Command must be a list of strings")
     for arg in cmd:
         if not isinstance(arg, str):
-            raise ValueError(f"Invalid argument type: {arg} (must be string)")
+            raise TypeError(f"Invalid argument type: {arg} (must be string)")
         if not is_safe_arg(arg):
             raise ValueError(f"Unsafe argument detected: {arg}")
     return cmd
@@ -332,7 +332,7 @@ class CommandRunner:
                     tty_fd = sys.stdin.fileno()
                 if tty_fd is not None:
                     saved_tty_attrs = termios.tcgetattr(tty_fd)
-            except Exception:
+            except Exception:  # noqa: BLE001 — logs with context (exc_info) and falls back to a safe default
                 self.logger.debug("Failed to save terminal attributes", exc_info=True)
                 tty_fd = None
                 saved_tty_attrs = None
@@ -345,9 +345,9 @@ class CommandRunner:
 
             try:
                 cmd_sanitized = sanitize_cmd(cmd)
-            except ValueError as e:
+            except (ValueError, TypeError) as e:
                 stack = traceback.format_exc()
-                self.logger.error(f"Command sanitation failed: {e}")
+                self.logger.exception("Command sanitation failed")
                 if isinstance(cmd, list):
                     cmd_text = " ".join(map(str, cmd))
                 else:
@@ -385,7 +385,7 @@ class CommandRunner:
                 use_pipes = capture_output or log_output
                 cmd_env = os.environ.copy()
                 cmd_env["LC_ALL"] = "C"
-                process = subprocess.Popen(
+                process = subprocess.Popen(  # noqa: S603 — cmd already validated by sanitize_cmd() above
                     cmd,
                     stdout=subprocess.PIPE if use_pipes else None,
                     stderr=subprocess.PIPE if use_pipes else None,
@@ -408,10 +408,9 @@ class CommandRunner:
                     cwd or os.getcwd(),
                 )
             except Exception as e:
-                self.logger.error(
-                    "Failed to start command: %s (error=%s)",
+                self.logger.exception(
+                    "Failed to start command: %s",
                     " ".join(shlex.quote(arg) for arg in cmd),
-                    e,
                 )
                 stack = traceback.format_exc()
                 return CommandResult(
@@ -496,7 +495,7 @@ class CommandRunner:
                                     else:
                                         truncated_flag["value"] = True
                             # Avoid logging raw binary data to prevent garbled logs
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 — logs with context and continues
                     self.logger.warning(f"stream_output decode error: {e}")
                 finally:
                     stream.close()
@@ -531,7 +530,7 @@ class CommandRunner:
                     f"Command timed out after {timeout} seconds: {' '.join(cmd)} "
                     f"(pid={pid if pid is not None else 'unknown'}, elapsed={duration:.2f}s):\n"
                 )
-                self.logger.error(log_msg)
+                self.logger.exception(log_msg)
                 # Prepend the timeout message to the captured stderr.  The
                 # previous str.join() misuse dropped the message entirely when
                 # stderr was empty and interleaved it between chunks otherwise.
@@ -554,7 +553,7 @@ class CommandRunner:
                 for t in threads:
                     t.join(timeout=2)
                 log_msg = f"Command execution failed: {' '.join(cmd)} with error: {e}\n"
-                self.logger.error(log_msg)
+                self.logger.exception(log_msg)
                 return CommandResult(
                     -1,
                     self._join_lines(stdout_lines),
@@ -625,12 +624,12 @@ class CommandRunner:
             if termios is not None and saved_tty_attrs is not None and tty_fd is not None:
                 try:
                     termios.tcsetattr(tty_fd, termios.TCSADRAIN, saved_tty_attrs)
-                except Exception:
+                except Exception:  # noqa: BLE001 — logs with context (exc_info) and continues
                     self.logger.debug("Failed to restore terminal attributes", exc_info=True)
             if tty_file is not None:
                 try:
                     tty_file.close()
-                except Exception:
+                except Exception:  # noqa: BLE001 — logs with context (exc_info) and continues
                     self.logger.debug("Failed to close /dev/tty handle", exc_info=True)
 
     def stream_command(
@@ -665,8 +664,8 @@ class CommandRunner:
 
         try:
             cmd = sanitize_cmd(cmd)
-        except ValueError as e:
-            self.logger.error("Command sanitation failed: %s", e)
+        except (ValueError, TypeError) as e:
+            self.logger.exception("Command sanitation failed")
             return CommandResult(returncode=-1, stdout="", stderr=str(e))
 
         cmd_str = " ".join(shlex.quote(arg) for arg in cmd)
@@ -682,7 +681,7 @@ class CommandRunner:
         cmd_env["LC_ALL"] = "C"
 
         try:
-            process = subprocess.Popen(
+            process = subprocess.Popen(  # noqa: S603 — cmd already validated by sanitize_cmd() above
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -693,7 +692,7 @@ class CommandRunner:
                 start_new_session=True,
             )
         except Exception as e:
-            self.logger.error("Failed to start command: %s (error=%s)", cmd_str, e)
+            self.logger.exception("Failed to start command: %s", cmd_str)
             return CommandResult(
                 returncode=-1, stdout="", stderr=str(e),
                 stack=traceback.format_exc()
@@ -701,7 +700,7 @@ class CommandRunner:
 
         def _read_stderr() -> None:
             nonlocal stderr_bytes_seen
-            assert process.stderr is not None
+            assert process.stderr is not None  # noqa: S101 — internal invariant — stderr=PIPE was requested, so this is always set
             while True:
                 chunk = process.stderr.read(1024)
                 if not chunk:
@@ -724,7 +723,7 @@ class CommandRunner:
         stderr_thread.start()
 
         try:
-            assert process.stdout is not None
+            assert process.stdout is not None  # noqa: S101 — internal invariant — stdout=PIPE was requested, so this is always set
             partial = b""
             while True:
                 chunk = process.stdout.read(1024)
@@ -748,7 +747,7 @@ class CommandRunner:
                 _killpg(process.pid)
                 stderr_thread.join(timeout=2)
                 msg = f"Command timed out after {timeout}s: {cmd_str}"
-                self.logger.error(msg)
+                self.logger.exception(msg)
                 return CommandResult(-1, "", msg)
         finally:
             # If the process is still alive (e.g. KeyboardInterrupt arrived while

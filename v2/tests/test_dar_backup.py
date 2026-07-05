@@ -133,7 +133,7 @@ def test_verify_missing_source_file_logs_error(env):
         result = verify(args, "mock-backup", env.config_file, config)
 
         assert not result
-        mock_logger.error.assert_any_call(
+        mock_logger.exception.assert_any_call(
             f"Restore verification failed for '{restored_file}': source file missing: '{source_path}'"
         )
 
@@ -2081,9 +2081,9 @@ def test_perform_backup_fails_when_dar_slice_missing_after_backup(env):
     assert any(code == 1 for _, code in results), (
         "perform_backup() must return an error result when a dar slice is missing"
     )
-    error_calls = [str(c) for c in mock_logger.error.call_args_list]
-    assert any("incomplete" in c.lower() or "missing" in c.lower() for c in error_calls), (
-        f"Expected an error log naming the incomplete archive; got: {error_calls}"
+    exception_calls = [str(c) for c in mock_logger.exception.call_args_list]
+    assert any("incomplete" in c.lower() or "missing" in c.lower() for c in exception_calls), (
+        f"Expected an error log naming the incomplete archive; got: {exception_calls}"
     )
 
 

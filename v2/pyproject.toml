@@ -32,7 +32,7 @@ gpg_key_url =     "https://keys.openpgp.org/vks/v1/by-fingerprint/4592D7396DBAEF
 
 
 [tool.mypy]
-python_version = ">=3.11"
+python_version = "3.11"
 files = ["src"]
 
 [[tool.mypy.overrides]]
@@ -45,7 +45,7 @@ target-version = "py311"
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "UP", "B"]
+select = ["E", "F", "W", "UP", "B", "BLE", "TRY", "DTZ", "S"]
 ignore = [
     # Type-hint modernisation (List→list, Optional→X|None, etc.) — deferred large-scale refactor
     "UP006",
@@ -54,6 +54,15 @@ ignore = [
     "UP045",
     # yield-from inside try/finally — subtle generator semantics change, skip
     "UP028",
+    # Pure control-flow-shape style preferences, no correctness value; high review churn
+    "TRY003",
+    "TRY300",
+    "TRY301",
+    # Archive-filename date parsing is deliberately naive (date-only granularity, no
+    # time-of-day component — see doc/pitr-archive-date-vs-file-mtime.md); forcing
+    # tz-awareness here risks naive/aware comparison TypeErrors for no correctness gain
+    "DTZ007",
+    "DTZ901",
 ]
 
 [project.scripts]

@@ -220,6 +220,13 @@ if ! ruff check src/; then
 fi
 green "✅ ruff check passed"
 
+green "Running mypy check..."
+if ! mypy src/; then
+    red "❌ mypy check failed; fix violations before releasing"
+    exit 1
+fi
+green "✅ mypy check passed"
+
 ########################################
 # Version and tag policy
 ########################################

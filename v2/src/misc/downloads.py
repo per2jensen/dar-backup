@@ -10,7 +10,7 @@ owner = "per2jensen"
 repo = "dar-backup"
 h = {"Accept": "application/vnd.github.v3+json"}
 u = f"https://api.github.com/repos/{owner}/{repo}/releases?per_page=100"
-r = requests.get(u, headers=h).json()
+r = requests.get(u, headers=h, timeout=30).json()
 r.reverse() # older tags first
 for rel in r:
     if rel['assets']:

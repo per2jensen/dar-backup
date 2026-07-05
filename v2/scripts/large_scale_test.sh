@@ -6,27 +6,35 @@
 set -euo pipefail
 
 # ── defaults ────────────────────────────────────────────────────────────────
-DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
-DATE_OF_RUN=$(date '+%Y-%m-%d')  # Pinned once at initialization
-BASE_DIR="/data/tmp/large-scale-test"
-DEFINITION_NAME="large-scale-test"
-DEFINITION_CONTENT=""
-SLICE_SIZE="10G"
-PAR2_RATIO=5
-DO_BITROT=0
-KEEP=0
-TIMEOUT=86400
-SCRIPT_VERSION="4"
-DIFF_PRIMER_DIR=""
-PRIMER_NON_LINK_COUNT=0
-DAR_BACKUP_VERSION=""
-GIT_COMMIT=""
-REPO_DIR=""
-DAR_VERSION=""
-PAR2_VERSION=""
-PYTHON_VERSION=""
-OS_DESC=""
-KERNEL=""
+# All of these are dumped by print_run_variables() near the start of MAIN
+# ORCHESTRATION, into the tee'd $SUMMARY file — so a run's exact configuration
+# and derived paths are always on record, even if --keep wasn't used and the
+# run directory itself is gone afterward. If you add a new top-level variable,
+# add its name to RUN_VARIABLES (below the directory-layout block) too.
+
+DATESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')             # Run identifier: used in RUN_DIR, LOGFILE, SUMMARY filenames, and the JSONL record
+DATE_OF_RUN=$(date '+%Y-%m-%d')                    # Calendar date only (pinned once at startup); matches the date dar-backup encodes in archive filenames
+BASE_DIR="/data/tmp/large-scale-test"               # --base: root directory for runs/, results/, and the diff-primer directory. Must have MIN_FREE_MULTIPLIER x source-size free space
+DEFINITION_NAME="large-scale-test"                  # Backup definition name (also the archive filename prefix); fixed, not currently a CLI option
+DEFINITION_CONTENT=""                               # --definition (required): the backup definition body (-R/-g/etc. lines) supplied by the caller
+SLICE_SIZE="10G"                                    # --slice: dar -s slice size; only injected into DEFINITION_CONTENT if it doesn't already set one
+PAR2_RATIO=5                                        # --par2-ratio: PAR2 ERROR_CORRECTION_PERCENT written into the generated config
+DO_BITROT=0                                         # --bitrot: when 1, runs do_bitrot_test (corrupt + par2 repair) on FULL, DIFF, and INCR
+KEEP=0                                              # --keep: when 1, RUN_DIR is left on disk after the run instead of being deleted by cleanup()
+SMOKETEST=0                                         # --smoketest: when 1, skips mirroring this run's JSONL record into the tracked repo history file
+TIMEOUT=86400                                       # --timeout: COMMAND_TIMEOUT_SECS written into the generated config (dar/par2/manager command timeout, seconds)
+SCRIPT_VERSION="7"                                  # Bumped whenever this script's behavior changes in a way worth tracking alongside JSONL history
+MIN_FREE_MULTIPLIER=2                               # --min-free-multiplier: required free space under BASE_DIR, as a multiple of the estimated source data size
+DIFF_PRIMER_DIR=""                                  # Set below to "${BASE_DIR}/diff-primer"; synthetic data mutated at each phase to exercise DIFF/INCR/restore logic
+PRIMER_NON_LINK_COUNT=0                             # Set by create_diff_primer(); expected-modified-file-count threshold used by verify_diff_contents/verify_incr_contents
+DAR_BACKUP_VERSION=""                               # Set by preflight() from `dar-backup --version`
+GIT_COMMIT=""                                       # Set by preflight() from `git rev-parse --short HEAD` in REPO_DIR
+REPO_DIR=""                                         # Set by preflight() from `pip show dar-backup`'s editable project location; also the JSONL-mirror target (unless SMOKETEST=1)
+DAR_VERSION=""                                      # Set by preflight() from `dar --version`
+PAR2_VERSION=""                                     # Set by preflight() from `par2 --version`
+PYTHON_VERSION=""                                   # Set by preflight() from `python3 --version`
+OS_DESC=""                                          # Set by preflight() from `lsb_release -d`
+KERNEL=""                                           # Set by preflight() from `uname -r`
 
 # ── colours ─────────────────────────────────────────────────────────────────
 RED='\033[31m'; GREEN='\033[32m'
@@ -54,7 +62,9 @@ while [[ $# -gt 0 ]]; do
         --par2-ratio) PAR2_RATIO="$2";         shift 2 ;;
         --bitrot)     DO_BITROT=1;             shift   ;;
         --keep)       KEEP=1;                  shift   ;;
+        --smoketest)  SMOKETEST=1;             shift   ;;
         --timeout)    TIMEOUT="$2";            shift 2 ;;
+        --min-free-multiplier) MIN_FREE_MULTIPLIER="$2"; shift 2 ;;
         --help|-h)    usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
@@ -91,22 +101,104 @@ preflight() {
 }
 preflight
 
+# ── disk-space preflight ──────────────────────────────────────────────────────
+# Estimates the real source data size from the backup definition's -R/-g paths and
+# fails fast if BASE_DIR's filesystem doesn't have MIN_FREE_MULTIPLIER times that much
+# free — a multi-hour run has no business discovering "disk full" three phases in.
+check_disk_space() {
+    local def_file="${BACKUP_D_DIR}/${DEFINITION_NAME}"
+    local root_path; root_path=$(grep -m1 '^-R ' "$def_file" | awk '{print $2}')
+    if [[ -z "$root_path" ]]; then
+        info "No -R root path found in backup definition; skipping disk-space preflight."
+        return
+    fi
+
+    local total_bytes=0
+    local glob_paths; glob_paths=$(grep '^-g ' "$def_file" | awk '{print $2}')
+    if [[ -z "$glob_paths" ]]; then
+        total_bytes=$(du -sb "$root_path" 2>/dev/null | awk '{print $1}')
+    else
+        while IFS= read -r g; do
+            [[ -z "$g" ]] && continue
+            local full_path="${root_path%/}/${g}"
+            if [[ -e "$full_path" ]]; then
+                local sz; sz=$(du -sb "$full_path" 2>/dev/null | awk '{print $1}')
+                total_bytes=$(( total_bytes + ${sz:-0} ))
+            fi
+        done <<< "$glob_paths"
+    fi
+
+    if [[ "${total_bytes:-0}" -le 0 ]]; then
+        info "Could not estimate source data size; skipping disk-space preflight."
+        return
+    fi
+
+    local required_bytes=$(( total_bytes * MIN_FREE_MULTIPLIER ))
+    local available_bytes; available_bytes=$(df --output=avail -B1 "$BASE_DIR" 2>/dev/null | tail -1 | tr -d ' ')
+    if [[ -z "$available_bytes" ]]; then
+        info "Could not determine available disk space for '${BASE_DIR}'; skipping preflight check."
+        return
+    fi
+
+    local total_gb required_gb available_gb
+    total_gb=$(awk -v b="$total_bytes" 'BEGIN{printf "%.2f", b/1024/1024/1024}')
+    required_gb=$(awk -v b="$required_bytes" 'BEGIN{printf "%.2f", b/1024/1024/1024}')
+    available_gb=$(awk -v b="$available_bytes" 'BEGIN{printf "%.2f", b/1024/1024/1024}')
+
+    if [[ "$available_bytes" -lt "$required_bytes" ]]; then
+        echo "ERROR: insufficient disk space under '${BASE_DIR}'."
+        echo "  Source data size: ~${total_gb} GB"
+        echo "  Required (${MIN_FREE_MULTIPLIER}x source, for archive+PAR2+restore copy): ~${required_gb} GB"
+        echo "  Available:        ~${available_gb} GB"
+        exit 1
+    fi
+    info "Disk-space preflight OK: source ~${total_gb} GB, need ~${required_gb} GB (${MIN_FREE_MULTIPLIER}x), have ~${available_gb} GB free under '${BASE_DIR}'."
+}
+
 # ── directory layout ─────────────────────────────────────────────────────────
-RUN_DIR="${BASE_DIR}/runs/${DATESTAMP}"
-BACKUP_DIR="${RUN_DIR}/backups"
-PAR2_DIR="${RUN_DIR}/par2"
-RESTORE_DIR="${RUN_DIR}/restore"
-BACKUP_D_DIR="${RUN_DIR}/backup.d"
-RESULTS_DIR="${BASE_DIR}/results"
-METRICS_DB="${RESULTS_DIR}/dar-backup-metrics.db"
-LOGFILE="${RESULTS_DIR}/large-scale-test-${DATESTAMP}.dar-backup.log"
-SUMMARY="${RESULTS_DIR}/summary-${DATESTAMP}.txt"
-CONFIG_FILE="${RUN_DIR}/dar-backup.conf"
-DARRC="${RUN_DIR}/.darrc"
-RSS_LOGFILE="${RUN_DIR}/rss.log"
-DIFF_PRIMER_DIR="${BASE_DIR}/diff-primer"
+# Note the split: RUN_DIR (backups/par2/restore/backup.d) is deleted by cleanup()
+# unless --keep is given. RESULTS_DIR (and everything under it — LOGFILE, SUMMARY,
+# METRICS_DB, the JSONL history) is NOT under RUN_DIR and always survives — so a
+# run's transcript/log outlives the run, but the actual archives do not unless
+# --keep was used. This is exactly why print_run_variables() below matters: even
+# without --keep, you at least always know what RUN_DIR *was*.
+RUN_DIR="${BASE_DIR}/runs/${DATESTAMP}"             # This run's private working directory; wiped by cleanup() unless --keep
+BACKUP_DIR="${RUN_DIR}/backups"                     # Where the FULL/DIFF/INCR .dar slices are written — gone after the run unless --keep
+PAR2_DIR="${RUN_DIR}/par2"                          # Where PAR2 redundancy files + manifest are written — gone after the run unless --keep
+RESTORE_DIR="${RUN_DIR}/restore"                    # Phase 3a restore target directory — gone after the run unless --keep
+BACKUP_D_DIR="${RUN_DIR}/backup.d"                  # Holds the generated backup definition file (DEFINITION_NAME) — gone after the run unless --keep
+RESULTS_DIR="${BASE_DIR}/results"                   # NOT under RUN_DIR — persists across every run regardless of --keep
+METRICS_DB="${RESULTS_DIR}/dar-backup-metrics.db"   # dar-backup's own METRICS_DB_PATH for this run (persists)
+LOGFILE="${RESULTS_DIR}/large-scale-test-${DATESTAMP}.dar-backup.log"  # dar-backup's own LOGFILE_LOCATION for this run (persists)
+SUMMARY="${RESULTS_DIR}/summary-${DATESTAMP}.txt"   # Full tee'd transcript of this script's own output, including this variable dump (persists)
+CONFIG_FILE="${RUN_DIR}/dar-backup.conf"            # Generated dar-backup.conf for this run — gone after the run unless --keep
+DARRC="${RUN_DIR}/.darrc"                           # Copied/generated .darrc for this run — gone after the run unless --keep
+RSS_LOGFILE="${RUN_DIR}/rss.log"                    # Raw per-process RSS samples written by start_rss_monitor — gone after the run unless --keep
+DIFF_PRIMER_DIR="${BASE_DIR}/diff-primer"           # NOT under RUN_DIR — reused/reset by create_diff_primer() at the start of every run
 
 mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR" "$DIFF_PRIMER_DIR"
+
+# ── variable dump ──────────────────────────────────────────────────────────
+# Explicit list rather than a blanket `set`/`env` dump, so this stays a readable
+# summary of *this script's* configuration and derived paths, not shell noise.
+# Add new top-level variables here when you add them above.
+RUN_VARIABLES=(
+    DATESTAMP DATE_OF_RUN SCRIPT_VERSION
+    BASE_DIR DEFINITION_NAME DEFINITION_CONTENT SLICE_SIZE PAR2_RATIO
+    DO_BITROT KEEP SMOKETEST TIMEOUT MIN_FREE_MULTIPLIER
+    DAR_BACKUP_VERSION GIT_COMMIT REPO_DIR DAR_VERSION PAR2_VERSION
+    PYTHON_VERSION OS_DESC KERNEL
+    RUN_DIR BACKUP_DIR PAR2_DIR RESTORE_DIR BACKUP_D_DIR
+    RESULTS_DIR METRICS_DB LOGFILE SUMMARY CONFIG_FILE DARRC RSS_LOGFILE
+    DIFF_PRIMER_DIR
+)
+
+print_run_variables() {
+    banner "Run configuration"
+    for name in "${RUN_VARIABLES[@]}"; do
+        printf '  %-22s = %s\n' "$name" "${!name}"
+    done
+}
 
 # Tee all output to the summary file from this point forward so every run
 # leaves a self-contained record alongside the structured dar/par2 log.
@@ -123,27 +215,19 @@ stop_rss_monitor() {
     fi
 }
 start_rss_monitor() {
+    # System-wide scan by command name rather than walking the process tree a fixed
+    # two levels deep — simpler, and not blind to a descendant one level deeper than
+    # that (e.g. if dar or par2 ever forks an extra level). On a dedicated test run
+    # there's no realistic risk of an unrelated same-named process polluting the sample.
     (
-        local main_script_pid=$PPID
         while true; do
-            local child_pids; child_pids=$(pgrep -P "$main_script_pid" 2>/dev/null || true)
-            if [[ -n "$child_pids" ]]; then
-                local nested_pids; nested_pids=$(pgrep -P "$(echo "$child_pids" | tr '\n' ',' | sed 's/,$//')" 2>/dev/null || true)
-                child_pids="${child_pids}"$'\n'"${nested_pids}"
-            fi
-
-            for pid in $child_pids; do
-                [[ -z "$pid" || ! -d "/proc/$pid" ]] && continue
-                local cmd; cmd=$(ps -p "$pid" -o comm= 2>/dev/null || true)
-                
+            while read -r pid cmd rss vsz; do
+                [[ -z "$pid" ]] && continue
                 if [[ "$cmd" =~ ^(dar|dar-backup|par2|manager)$ ]]; then
-                    local rss; rss=$(awk '/VmRSS/{print $2}' /proc/"$pid"/status 2>/dev/null || echo 0)
-                    local vsz; vsz=$(awk '/VmPeak/{print $2}' /proc/"$pid"/status 2>/dev/null || echo 0)
-                    
                     [[ "$rss" -gt 0 ]] && printf '%s pid=%-6s rss=%-8s kB peak=%-8s kB cmd=%s\n' \
                         "$(date '+%H:%M:%S')" "$pid" "$rss" "$vsz" "$cmd"
                 fi
-            done
+            done < <(ps -eo pid=,comm=,rss=,vsize= 2>/dev/null)
             sleep 0.5
         done
     ) >> "${RSS_LOGFILE:-/dev/null}" 2>/dev/null &
@@ -210,10 +294,69 @@ verify_diff_contents() {
     local full_base="$1" diff_base="$2" primer_rel="${DIFF_PRIMER_DIR#/}"
     banner "Phase 2b — DIFF contents verification"
     local diff_saved; diff_saved=$(dar -l "${BACKUP_DIR}/${diff_base}" --noconf -am -as -Q 2>/dev/null | grep "\[Saved\]" | grep "${primer_rel}" || true)
-    local modified_count; modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | grep -c "${primer_rel}" 2>/dev/null || echo 0)
-    local new_count; new_count=$(echo "$diff_saved" | grep -c "diff_new_" 2>/dev/null || echo 0)
+    # grep -c already prints "0" (with exit 1) on no match; the `|| true` below only
+    # guards against set -e aborting the script, it must not print a second fallback
+    # value the way `|| echo 0` used to (which silently corrupted the count to "0\n0").
+    local modified_count; modified_count=$(echo "$diff_saved" | grep -v "diff_new_" | { grep -c "${primer_rel}" || true; } 2>/dev/null)
+    local new_count; new_count=$(echo "$diff_saved" | { grep -c "diff_new_" || true; } 2>/dev/null)
     [[ "${modified_count}" -ge "${PRIMER_NON_LINK_COUNT}" ]] && pass "Modified file count OK (${modified_count})" || fail "Modified file count LOW (${modified_count}, expected >=${PRIMER_NON_LINK_COUNT})"
     [[ "${new_count}" -ge 1 ]] && pass "New file count OK" || fail "New file missing from DIFF"
+}
+
+update_incr_primer() {
+    info "Updating diff-primer data for INCR..."
+    find "$DIFF_PRIMER_DIR" -type f | grep -v "link_" | while read -r f; do
+        dd if=/dev/urandom of="$f" bs=$(stat -c%s "$f") count=1 2>/dev/null
+    done || true
+    # Remove one of the two current hardlink names; the underlying inode/content
+    # survives via link_target2.txt, extending the hardlink-tracking chain one tier.
+    rm "${DIFF_PRIMER_DIR}/link_target1.txt"
+    ln "${DIFF_PRIMER_DIR}/link_target2.txt" "${DIFF_PRIMER_DIR}/link_target3.txt"
+    dd if=/dev/urandom of="${DIFF_PRIMER_DIR}/incr_new_$(date +%s).bin" bs=1M count=2 2>/dev/null
+}
+
+verify_incr_contents() {
+    local diff_base="$1" incr_base="$2" primer_rel="${DIFF_PRIMER_DIR#/}"
+    banner "Phase 2c — INCR contents verification"
+    local incr_saved; incr_saved=$(dar -l "${BACKUP_DIR}/${incr_base}" --noconf -am -as -Q 2>/dev/null | grep "\[Saved\]" | grep "${primer_rel}" || true)
+    local modified_count; modified_count=$(echo "$incr_saved" | grep -v "incr_new_" | { grep -c "${primer_rel}" || true; } 2>/dev/null)
+    local new_count; new_count=$(echo "$incr_saved" | { grep -c "incr_new_" || true; } 2>/dev/null)
+    [[ "${modified_count}" -ge "${PRIMER_NON_LINK_COUNT}" ]] && pass "Modified file count OK (${modified_count})" || fail "Modified file count LOW (${modified_count}, expected >=${PRIMER_NON_LINK_COUNT})"
+    [[ "${new_count}" -ge 1 ]] && pass "New file count OK" || fail "New file missing from INCR"
+}
+
+# ── content checksum tracking ─────────────────────────────────────────────────
+# Captures the final source state right before the Phase 3a restore, so the restore
+# can be proven byte-for-byte correct rather than just "produced a file of that name".
+declare -A PRIMER_SHA256
+capture_primer_checksums() {
+    info "Capturing sha256 checksums of current primer files for restore verification..."
+    PRIMER_SHA256=()
+    while IFS= read -r -d '' f; do
+        local rel="${f#"$DIFF_PRIMER_DIR"/}"
+        PRIMER_SHA256["$rel"]=$(sha256sum "$f" | awk '{print $1}')
+    done < <(find "$DIFF_PRIMER_DIR" -type f -print0)
+}
+
+verify_primer_checksums() {
+    banner "Phase 3a — Content checksum verification"
+    local ok=1 checked=0
+    for rel in "${!PRIMER_SHA256[@]}"; do
+        local restored="${RESTORE_PRIMER_PATH}/${rel}"
+        if [[ ! -f "$restored" ]]; then
+            fail "Checksum verification: restored file missing: ${rel}"
+            ok=0
+            continue
+        fi
+        local actual; actual=$(sha256sum "$restored" | awk '{print $1}')
+        if [[ "$actual" == "${PRIMER_SHA256[$rel]}" ]]; then
+            checked=$((checked+1))
+        else
+            fail "Checksum mismatch for ${rel} (expected ${PRIMER_SHA256[$rel]}, got ${actual})"
+            ok=0
+        fi
+    done
+    [[ $ok -eq 1 ]] && pass "All ${checked} restored file(s) match source sha256 checksums"
 }
 
 write_darrc() {
@@ -308,9 +451,12 @@ trap cleanup EXIT
 # ════════════════════════════════════════════════════════════════════════════════
 banner "dar-backup large-scale test  ${DATESTAMP}"
 
-full_elapsed=0; diff_elapsed=0; FULL_BASE=""; DIFF_BASE=""; FULL_SLICES=0
+print_run_variables
 
-write_config; create_diff_primer; write_backup_def; write_darrc; init_manager_db; start_rss_monitor
+full_elapsed=0; diff_elapsed=0; incr_elapsed=0
+FULL_BASE=""; DIFF_BASE=""; INCR_BASE=""; FULL_SLICES=0
+
+write_config; create_diff_primer; write_backup_def; check_disk_space; write_darrc; init_manager_db; start_rss_monitor
 
 # ── PHASE 1 ──
 banner "Phase 1 — FULL backup"
@@ -346,7 +492,31 @@ DIFF_SLICES=$(count_slices "$DIFF_BASE")
 check_dar_integrity  "$DIFF_BASE" "DIFF"
 check_par2_per_slice "$DIFF_BASE" "$DIFF_SLICES"
 check_par2_verify    "$DIFF_BASE" "DIFF"
+[[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$DIFF_BASE"
 verify_diff_contents "$FULL_BASE" "$DIFF_BASE"
+
+# ── PHASE 2c ──
+banner "Phase 2c — INCR backup"
+info "Waiting ~2-3 minutes before mutating data for INCR (keeps primer mtimes cleanly separated in the log)..."
+sleep 150
+update_incr_primer
+t0=$(date +%s)
+if dar-backup -I -d "$DEFINITION_NAME" --config-file "$CONFIG_FILE" --darrc "$DARRC" --log-level debug; then
+    incr_elapsed=$(( $(date +%s) - t0 )); pass "INCR backup completed in ${incr_elapsed}s"
+else
+    exit 1
+fi
+
+INCR_BASE=$(find_archive_base "INCR")
+[[ -z "${INCR_BASE}" ]] && { fail "No INCR base found"; exit 1; }
+INCR_SLICES=$(count_slices "$INCR_BASE")
+check_dar_integrity  "$INCR_BASE" "INCR"
+check_par2_per_slice "$INCR_BASE" "$INCR_SLICES"
+check_par2_verify    "$INCR_BASE" "INCR"
+[[ $DO_BITROT -eq 1 ]] && do_bitrot_test "$INCR_BASE"
+verify_incr_contents "$DIFF_BASE" "$INCR_BASE"
+
+capture_primer_checksums
 
 # ── PHASE 3 ──
 banner "Phase 3a — Point-In-Time Restore Validation (latest state)"
@@ -376,13 +546,25 @@ if [[ -f "${RESTORE_PRIMER_PATH}/link_original.txt" ]]; then
 else
     pass "link_original.txt correctly absent from latest-state restore"
 fi
-if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" && -f "${RESTORE_PRIMER_PATH}/link_target2.txt" ]]; then
-    inode1=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target1.txt")
+if [[ -f "${RESTORE_PRIMER_PATH}/link_target1.txt" ]]; then
+    fail "link_target1.txt present in latest-state restore (should have been deleted by INCR)"
+else
+    pass "link_target1.txt correctly absent from latest-state restore"
+fi
+if [[ -f "${RESTORE_PRIMER_PATH}/link_target2.txt" && -f "${RESTORE_PRIMER_PATH}/link_target3.txt" ]]; then
     inode2=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target2.txt")
-    [[ "$inode1" -eq "$inode2" ]] && pass "Hard Link Inodes match (${inode1})" || fail "Inodes mismatched (Cloned data!)"
+    inode3=$(stat -c %i "${RESTORE_PRIMER_PATH}/link_target3.txt")
+    [[ "$inode2" -eq "$inode3" ]] && pass "Hard Link Inodes match (${inode2})" || fail "Inodes mismatched (Cloned data!)"
 else
     fail "Hard-link targets missing"
 fi
+if compgen -G "${RESTORE_PRIMER_PATH}/incr_new_*.bin" > /dev/null; then
+    pass "INCR-tier new file present in latest-state restore"
+else
+    fail "INCR-tier new file missing from latest-state restore"
+fi
+
+verify_primer_checksums
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
 banner "Summary"
@@ -433,11 +615,13 @@ calc_slice_size() {
 
 FULL_SIZE=$(calc_slice_size "FULL")
 DIFF_SIZE=$(calc_slice_size "DIFF")
+INCR_SIZE=$(calc_slice_size "INCR")
 
 # Compile final analytics screen layout using matched variable casing
 echo -e "dar-backup test pass: ${DATESTAMP:-}"
 echo -e "FULL elapsed: ${full_elapsed:-0}s (~${FULL_SIZE})"
 echo -e "DIFF elapsed: ${diff_elapsed:-0}s (~${DIFF_SIZE})"
+echo -e "INCR elapsed: ${incr_elapsed:-0}s (~${INCR_SIZE})"
 echo -e "Peak Engine Memory Consumption:"
 echo -e "  ├── dar-backup : ${MAX_DAR_BACKUP}"
 echo -e "  ├── dar backend: ${MAX_DAR}"
@@ -450,13 +634,23 @@ echo -e "Failures:      ${FAILURES:-0}"
 # Python handles all JSON serialisation so version strings with special characters
 # are encoded safely without manual escaping.
 write_json_record() {
-    local full_gb diff_gb db_mb dar_mb_val p2_mb mgr_mb
+    local full_gb diff_gb incr_gb db_mb dar_mb_val p2_mb mgr_mb
     full_gb=$(awk '{print $1}' <<< "${FULL_SIZE:-0}")
     diff_gb=$(awk '{print $1}' <<< "${DIFF_SIZE:-0}")
+    incr_gb=$(awk '{print $1}' <<< "${INCR_SIZE:-0}")
     db_mb=$(awk  '{print $1}' <<< "${MAX_DAR_BACKUP:-N/A}")
     dar_mb_val=$(awk '{print $1}' <<< "${MAX_DAR:-N/A}")
     p2_mb=$(awk  '{print $1}' <<< "${MAX_PAR2:-N/A}")
     mgr_mb=$(awk '{print $1}' <<< "${MAX_MANAGER:-N/A}")
+
+    # --smoketest never mirrors into the tracked repo history file: a fast, tiny
+    # synthetic run would otherwise sit alongside real multi-hour/116GB runs and
+    # corrupt the regression-detection trend and show_large_scale_results.py output.
+    local effective_repo_dir="${REPO_DIR:-}"
+    if [[ $SMOKETEST -eq 1 ]]; then
+        effective_repo_dir=""
+        info "Smoketest mode: not mirroring this run into the tracked repo history file."
+    fi
 
     LST_DATESTAMP="${DATESTAMP:-}" \
     LST_DATE="${DATE_OF_RUN:-}" \
@@ -471,13 +665,15 @@ write_json_record() {
     LST_FULL_GB="${full_gb:-0}" \
     LST_DIFF_ELAPSED="${diff_elapsed:-0}" \
     LST_DIFF_GB="${diff_gb:-0}" \
+    LST_INCR_ELAPSED="${incr_elapsed:-0}" \
+    LST_INCR_GB="${incr_gb:-0}" \
     LST_DB_MB="${db_mb}" \
     LST_DAR_MB="${dar_mb_val}" \
     LST_PAR2_MB="${p2_mb}" \
     LST_MGR_MB="${mgr_mb}" \
     LST_FAILURES="${FAILURES:-0}" \
     LST_RESULTS_DIR="${RESULTS_DIR}" \
-    LST_REPO_DIR="${REPO_DIR:-}" \
+    LST_REPO_DIR="${effective_repo_dir}" \
     python3 - << 'PYEOF'
 import json, os
 from pathlib import Path
@@ -490,7 +686,7 @@ def to_float(s: str) -> float | None:
 
 e = os.environ
 record = {
-    "schema_version": 1,
+    "schema_version": 2,
     "datestamp":          e["LST_DATESTAMP"],
     "date":               e["LST_DATE"],
     "git_commit":         e["LST_GIT_COMMIT"],
@@ -504,6 +700,8 @@ record = {
     "full_size_gb":       to_float(e["LST_FULL_GB"]),
     "diff_elapsed_s":     int(e["LST_DIFF_ELAPSED"]),
     "diff_size_gb":       to_float(e["LST_DIFF_GB"]),
+    "incr_elapsed_s":     int(e["LST_INCR_ELAPSED"]),
+    "incr_size_gb":       to_float(e["LST_INCR_GB"]),
     "memory_mb": {
         "dar_backup": to_float(e["LST_DB_MB"]),
         "dar":        to_float(e["LST_DAR_MB"]),
@@ -513,21 +711,76 @@ record = {
     "failures": int(e["LST_FAILURES"]),
     "passed":   int(e["LST_FAILURES"]) == 0,
 }
-line = json.dumps(record, separators=(",", ":"))
 
 results_path = Path(e["LST_RESULTS_DIR"]) / "large-scale-results.jsonl"
+
+# ── Regression check against trailing history (read BEFORE appending this run) ──
+# Warns only — real hardware/environment variance makes a hard fail too noisy here.
+# This is a "look at this before tagging a release" signal, not a pass/fail gate.
+def load_history(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    records = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return records
+
+TREND_WINDOW = 5
+REGRESSION_FACTOR = 1.5
+
+history = [r for r in load_history(results_path) if r.get("passed")]
+recent = history[-TREND_WINDOW:]
+
+def trailing_avg(records: list[dict], key: str, mem_key: str | None = None) -> float | None:
+    values = []
+    for r in records:
+        v = r.get("memory_mb", {}).get(mem_key) if mem_key else r.get(key)
+        if isinstance(v, (int, float)):
+            values.append(v)
+    return sum(values) / len(values) if values else None
+
+def check_regression(label: str, current: float | None, baseline: float | None) -> None:
+    if current is None or baseline is None or baseline <= 0:
+        return
+    if current > baseline * REGRESSION_FACTOR:
+        print(
+            f"WARN  {label} ({current:.1f}) is {current / baseline:.1f}x the "
+            f"trailing {len(recent)}-run average ({baseline:.1f}) — worth a look "
+            f"before tagging a release.",
+            flush=True,
+        )
+
+if recent:
+    check_regression("FULL elapsed (s)", record["full_elapsed_s"], trailing_avg(recent, "full_elapsed_s"))
+    for tool in ("dar_backup", "dar", "par2", "manager"):
+        check_regression(
+            f"Peak {tool} memory (MB)",
+            record["memory_mb"][tool],
+            trailing_avg(recent, "", mem_key=tool),
+        )
+
 with open(results_path, "a") as fh:
-    fh.write(line + "\n")
+    fh.write(json.dumps(record, separators=(",", ":")) + "\n")
 
 repo_dir = e.get("LST_REPO_DIR", "")
 if repo_dir:
     repo_path = Path(repo_dir) / "doc" / "test-report" / "large-scale-results.jsonl"
     if repo_path.parent.is_dir():
         with open(repo_path, "a") as fh:
-            fh.write(line + "\n")
+            fh.write(json.dumps(record, separators=(",", ":")) + "\n")
 PYEOF
     info "Structured result written to: ${RESULTS_DIR}/large-scale-results.jsonl"
-    [[ -n "${REPO_DIR:-}" ]] && info "Structured result mirrored to: ${REPO_DIR}/doc/test-report/large-scale-results.jsonl"
+    if [[ -n "${effective_repo_dir}" ]]; then
+        info "Structured result mirrored to: ${effective_repo_dir}/doc/test-report/large-scale-results.jsonl"
+    fi
+    return 0
 }
 write_json_record || echo "WARNING: failed to write structured JSON record" >&2
 

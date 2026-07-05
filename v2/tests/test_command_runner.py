@@ -417,6 +417,18 @@ def test_sanitize_cmd_accepts_safe_args(safe_arg):
     assert result == ["dar-backup", safe_arg]
 
 
+def test_sanitize_cmd_non_list_raises_type_error():
+    """A non-list cmd is a type mistake, not a value/content problem — TypeError."""
+    with pytest.raises(TypeError, match="Command must be a list of strings"):
+        sanitize_cmd("echo hello")  # type: ignore[arg-type]
+
+
+def test_sanitize_cmd_non_string_element_raises_type_error():
+    """A non-string element is a type mistake, not a value/content problem — TypeError."""
+    with pytest.raises(TypeError, match="Invalid argument type"):
+        sanitize_cmd(["echo", 123])  # type: ignore[list-item]
+
+
 def test_command_runner_log_output_false_logs_only_command_line(tmp_path):
     logger, command_logger, command_log_path = _make_loggers(tmp_path)
     runner = CommandRunner(logger=logger, command_logger=command_logger)
@@ -584,7 +596,7 @@ def test_command_runner_timeout_returns_error(tmp_path):
         result = runner.run(["echo", "hello"], timeout=0.01)
 
     assert result.returncode == -1
-    assert mock_logger.error.called
+    assert mock_logger.exception.called
 
 
 def test_command_runner_negative_timeout_disables_timeout(tmp_path):
@@ -838,7 +850,7 @@ def test_command_runner_wait_exception_returns_error(tmp_path):
     assert result.returncode == -1
     assert result.stack is not None
     assert fake_process.kill_call_count == 1, "process.kill() must be called on generic exception"
-    assert mock_logger.error.called
+    assert mock_logger.exception.called
 
 
 def test_command_result_str_handles_binary():

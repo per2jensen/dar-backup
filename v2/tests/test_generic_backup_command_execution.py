@@ -325,7 +325,7 @@ def test_generic_backup_runner_exception_logs_error_not_print(
     mock_config,
 ):
     """When runner.run() itself raises (e.g. process cannot be spawned),
-    generic_backup() must log via logger.error() and re-raise.
+    generic_backup() must log via logger.exception() and re-raise.
 
     On a systemd service stdout is not captured, so a print() would produce
     no observable record.  This test guards against the print() regressing.
@@ -342,7 +342,7 @@ def test_generic_backup_runner_exception_logs_error_not_print(
     with pytest.raises(BackupError):
         generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", mock_config, args)
 
-    error_calls = [str(c) for c in mock_logger.error.call_args_list]
-    assert any("backup command could not be run" in c.lower() for c in error_calls), (
-        f"Expected logger.error to name the failed backup command; got: {error_calls}"
+    exception_calls = [str(c) for c in mock_logger.exception.call_args_list]
+    assert any("backup command could not be run" in c.lower() for c in exception_calls), (
+        f"Expected logger.exception to name the failed backup command; got: {exception_calls}"
     )

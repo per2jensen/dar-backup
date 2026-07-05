@@ -54,7 +54,7 @@ runner: Optional[CommandRunner] = None
 
 
 def _runner() -> CommandRunner:
-    assert runner is not None, "CommandRunner not initialized; call main() first"
+    assert runner is not None, "CommandRunner not initialized; call main() first"  # noqa: S101 — internal invariant, not user input — module must be initialized by main()
     return runner
 
 
@@ -81,8 +81,8 @@ def _remove_file(file_path: str, base_dir: Path, label: str, dry_run: bool) -> b
         else:
             logger.warning(f"Skipped deleting unsafe {label}: {file_path}")
         return removed
-    except OSError as e:
-        logger.error(f"Error deleting {label} '{file_path}': {e} — file remains on disk")
+    except OSError:
+        logger.exception(f"Error deleting {label} '{file_path}' — file remains on disk")
         return False
 
 
@@ -139,7 +139,9 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
         logger.error(f"Invalid backup type: {backup_type}")
         return
 
-    now = datetime.now()
+    # Must stay naive: compared below against ArchiveName.as_datetime(), which is
+    # also naive (archive filenames carry a calendar date only, no timezone).
+    now = datetime.now()  # noqa: DTZ005
     cutoff_date = now - timedelta(days=age)
 
     archives_deleted = {}
@@ -252,11 +254,11 @@ def delete_catalog(catalog_name: str, args: argparse.Namespace) -> bool:
                 catalog_name, result.returncode, result.stderr.strip(), remediate,
             )
             return False
-    except OSError as e:
-        logger.error(
-            "Failed to run manager for catalog '%s': %s — "
+    except OSError:
+        logger.exception(
+            "Failed to run manager for catalog '%s' — "
             "dar files are already deleted from disk. %s",
-            catalog_name, e, remediate,
+            catalog_name, remediate,
         )
         return False
 
@@ -284,11 +286,21 @@ def confirm_full_archive_deletion(archive_name: str, test_mode=False) -> bool:
 
 
 
-def main():
+def main() -> None:
+    """CLI entrypoint: parse arguments and dispatch to the requested cleanup operation.
+
+    Handles --list, --cleanup-specific-archives (and the positional archive-name
+    list), and the default per-definition DIFF/INCR age-based cleanup. Initializes
+    logging and the module-level logger/runner globals used by the rest of this
+    module.
+
+    Every code path terminates via sys.exit() with an appropriate exit code; this
+    function never returns normally.
+    """
     global logger, runner
 
     parser = argparse.ArgumentParser(description="Cleanup old archives according to AGE configuration.")
-    parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer
+    parser.add_argument('-d', '--backup-definition', help="Specific backup definition to cleanup.").completer = backup_definition_completer  # type: ignore[attr-defined]
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('-v', '--version', action='store_true', help="Show version information.")
     parser.add_argument('--alternate-archive-dir', type=str, help="Cleanup in this directory instead of the default one.")
@@ -299,12 +311,12 @@ def main():
         const="",
         default=None,
         help="Comma separated list of archives to cleanup",
-    ).completer = list_archive_completer
+    ).completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument(
         'cleanup_specific_archives_list',
         nargs='*',
         help=argparse.SUPPRESS,
-    ).completer = list_archive_completer
+    ).completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument('-l', '--list', action='store_true', help="List available archives.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--log-level', type=str, help="`debug` or `trace`, default is `info`", default="info")
@@ -333,10 +345,10 @@ def main():
 
     try:
         config_settings = ConfigSettings(args.config_file)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Config error: {exc}"
         print(msg, file=stderr)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}")
         sys.exit(127)
 
@@ -362,7 +374,7 @@ def main():
         if args.dry_run:
             operation += " (dry run)"
         start_msgs.append(("Operation:", operation))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
         logger.warning("Could not determine operation: %s", exc)
         start_msgs.append(("Operation:", "unknown"))
 
@@ -371,15 +383,15 @@ def main():
     logger.debug(f"`config_settings`:\n{config_settings}")
 
     file_dir =  os.path.normpath(os.path.dirname(__file__))
-    args.verbose and start_msgs.append(("Script directory:", file_dir))
+    args.verbose and start_msgs.append(("Script directory:", file_dir))  # type: ignore[func-returns-value]
     start_msgs.append(("Config file:", args.config_file))
-    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
+    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))  # type: ignore[func-returns-value]
     start_msgs.append(("Logfile:", config_settings.logfile_location))
-    args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
-    args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
-    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
-    args.verbose and start_msgs.append(("--cleanup-specific-archives:", args.cleanup_specific_archives))
-    args.verbose and start_msgs.append(("--dry-run:", args.dry_run))
+    args.verbose and start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--alternate-archive-dir:", str(args.alternate_archive_dir)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--cleanup-specific-archives:", str(args.cleanup_specific_archives)))  # type: ignore[func-returns-value]
+    args.verbose and start_msgs.append(("--dry-run:", str(args.dry_run)))  # type: ignore[func-returns-value]
 
     dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
     print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords, quiet=not args.verbose)
@@ -389,8 +401,8 @@ def main():
         requirements('PREREQ', config_settings)
     except Exception as exc:
         msg = f"PREREQ failed: {exc}"
-        logger.error(msg)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        logger.exception(msg)
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 
@@ -453,7 +465,7 @@ def main():
     except Exception as e:
         msg = f"Unexpected error during cleanup: {e}"
         logger.error(msg, exc_info=True)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 
@@ -462,8 +474,8 @@ def main():
         requirements('POSTREQ', config_settings)
     except Exception as exc:
         msg = f"POSTREQ failed: {exc}"
-        logger.error(msg)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        logger.exception(msg)
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 

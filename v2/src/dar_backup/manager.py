@@ -82,7 +82,7 @@ def _runner() -> CommandRunner:
     Raises:
         AssertionError: If called before main() has initialized the runner.
     """
-    assert runner is not None, "CommandRunner not initialized; call main() first"
+    assert runner is not None, "CommandRunner not initialized; call main() first"  # noqa: S101 — internal invariant, not user input — module must be initialized by main()
     return runner
 
 
@@ -110,7 +110,7 @@ def _open_command_log(command: List[str]) -> Tuple[Optional[BinaryIO], Optional[
         return None, None
     log_file = open(log_path, "ab")
     header = (
-        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - COMMAND: "
+        f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')} - COMMAND: "
         f"{' '.join(map(shlex.quote, command))}\n"
     ).encode("utf-8", errors="replace")
     log_file.write(header)
@@ -473,7 +473,10 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             logger.error(f"Could not parse date: '{when}'")
             return 1
     else:
-        parsed_date = datetime.now()
+        # Must stay naive: compared below (and in _resolve_directory_chain /
+        # PITR version selection) against naive datetimes from _parse_when()
+        # and catalog-listing strptime parsing.
+        parsed_date = datetime.now()  # noqa: DTZ005
         logger.info(
             "Restoring files as of: %s (no --when provided; using current time)",
             parsed_date.strftime("%Y/%m/%d-%H:%M:%S"),
@@ -496,20 +499,20 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             if not os.path.exists(target):
                 try:
                     os.makedirs(target, exist_ok=True)
-                except Exception as e:
-                    logger.error(f"Could not create target directory '{target}': {e}")
+                except Exception:
+                    logger.exception(f"Could not create target directory '{target}'")
                     return 1
                 logger.debug("Created target directory: %s", target)
 
             try:
                 lock_fd = os.open(target, os.O_RDONLY)
-            except OSError as exc:
-                logger.error("Could not open restore target '%s' for locking: %s", target, exc)
+            except OSError:
+                logger.exception("Could not open restore target '%s' for locking", target)
                 return 1
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                logger.error(
+                logger.exception(
                     "Restore target '%s' is locked by a concurrent PITR restore — "
                     "aborting to prevent silent data corruption",
                     target,
@@ -517,8 +520,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
                 os.close(lock_fd)
                 lock_fd = None
                 return 1
-            except OSError as exc:
-                logger.error("Could not lock restore target '%s': %s", target, exc)
+            except OSError:
+                logger.exception("Could not lock restore target '%s'", target)
                 os.close(lock_fd)
                 lock_fd = None
                 return 1
@@ -557,7 +560,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
                 f"paths={paths} target='{target}'. "
                 f"The target directory may be incomplete and must NOT be used."
             )
-            logger.error(msg)
+            logger.exception(msg)
             raise
     finally:
         if lock_fd is not None:
@@ -584,9 +587,11 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
     # realpath() also normalises the path, so normpath() is not needed.
     target_norm = os.path.realpath(target)
 
+    # "/tmp"/"/var/tmp" here are allow-list entries being checked against,
+    # not temp file writes — S108 false positive.
     allow_prefixes = (
-        "/tmp",
-        "/var/tmp",
+        "/tmp",  # noqa: S108
+        "/var/tmp",  # noqa: S108
         "/home",
     )
     if target_norm in allow_prefixes or any(target_norm.startswith(prefix + os.sep) for prefix in allow_prefixes):
@@ -891,7 +896,7 @@ def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt
             last_full_key = (date, order["FULL"], catalog_no)
     if last_full is None:
         return []
-    assert last_full_key is not None  # set together with last_full in the loop above
+    assert last_full_key is not None  # noqa: S101 — internal invariant — set together with last_full earlier in the loop
 
     last_diff = None
     last_diff_key = None
@@ -966,7 +971,7 @@ def _is_directory_in_archive(
             f"'{path}' is a directory in '{archive_path}'. "
             f"Restore is incomplete."
         )
-        logger.error(msg)
+        logger.exception(msg)
         raise
     if result.returncode != 0:
         return False
@@ -1249,7 +1254,8 @@ def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
         try:
             catalog_no = int(match.group(1))
             dt = datetime.strptime(match.group(2), "%a %b %d %H:%M:%S %Y")
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — logs with context and continues
+            logger.debug("Could not parse catalog version line '%s': %s", stripped, exc)
             continue
         versions.append((catalog_no, dt))
     return versions
@@ -1436,7 +1442,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             f"PITR restore interrupted (Ctrl-C or SIGTERM) mid-restore. "
             f"Target directory '{target}' may be incomplete and must NOT be used."
         )
-        logger.error(msg)
+        logger.exception(msg)
         raise
 
     logger.info("PITR restore summary: %d succeeded, %d failed.", successes, failures)
@@ -1445,13 +1451,13 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         sample = ", ".join(missing_list[:3])
         extra = f" (+{len(missing_list) - 3} more)" if len(missing_list) > 3 else ""
         logger.error("Missing archives detected during PITR restore: %s%s", sample, extra)
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
         send_discord_message(
             f"{ts} - manager: PITR restore missing archives ({len(missing_list)} missing).",
             config_settings=config_settings,
         )
     if failures:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
         send_discord_message(
             f"{ts} - manager: PITR restore completed with failures ({failures} failed, {successes} succeeded).",
             config_settings=config_settings,
@@ -1806,10 +1812,10 @@ def main() -> None:
 
     try:
         config_settings = ConfigSettings(args.config_file)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Config error: {exc}"
         print(msg, file=stderr)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - manager: FAILURE - {msg}")
         sys.exit(127)
 
@@ -1846,7 +1852,7 @@ def main() -> None:
             operation = "relocate-archive-path"
         if operation:
             start_msgs.append(("Operation:", operation))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
         logger.warning("Could not determine operation: %s", exc)
         start_msgs.append(("Operation:", "unknown"))
     logger.debug(f"Command line: {get_invocation_command_line()}")
@@ -2045,7 +2051,7 @@ def main() -> None:
     except Exception as e:
         msg = f"Unexpected error during manager operation: {e}"
         logger.error(msg, exc_info=True)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - manager: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 

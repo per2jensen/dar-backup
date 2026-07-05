@@ -84,7 +84,7 @@ runner: Optional[CommandRunner] = None
 
 
 def _runner() -> CommandRunner:
-    assert runner is not None, "CommandRunner not initialized; call main() first"
+    assert runner is not None, "CommandRunner not initialized; call main() first"  # noqa: S101 — internal invariant, not user input — module must be initialized by main()
     return runner
 
 
@@ -164,8 +164,8 @@ def generic_backup(
     try:
         try:
             process = _runner().run(command, timeout=config_settings.command_timeout_secs)
-        except Exception as e:
-            logger.error("Backup command could not be run for '%s': %s", backup_definition, e)
+        except Exception:
+            logger.exception("Backup command could not be run for '%s'", backup_definition)
             raise
 
         dar_exit_code = process.returncode
@@ -232,7 +232,7 @@ def generic_backup(
     except BackupError:
         raise  # pass through without re-wrapping so dar_exit_code is preserved
     except subprocess.CalledProcessError as e:
-        logger.error(f"Backup command failed: {e}")
+        logger.exception("Backup command failed")
         raise BackupError(f"Backup command failed: {e}") from e
     except Exception as e:
         logger.exception("Unexpected error during backup")
@@ -252,7 +252,7 @@ def find_files_with_paths(xml_doc: str):
     """
     #get_logger().debug("Generating list of tuples with file paths and sizes for File elements in dar xml output")
     xml_doc = re.sub(r'<!DOCTYPE[^>]*>', '', xml_doc)
-    root = ET.fromstring(xml_doc)
+    root = ET.fromstring(xml_doc)  # noqa: S314 — dar's own -Txml output, not untrusted external data
 
     files_list = []
 
@@ -328,7 +328,7 @@ def iter_files_with_paths_from_xml(xml_path: str) -> Iterator[Tuple[str, Optiona
     # DoctypeStripper is used as a context manager so the file handle is closed
     # promptly on normal exit, parse error, or abandoned iteration (GeneratorExit).
     with DoctypeStripper(xml_path) as stripper:
-        context = ET.iterparse(stripper, events=("start", "end"))
+        context = ET.iterparse(stripper, events=("start", "end"))  # noqa: S314 — dar's own -Txml output, not untrusted external data
         for event, elem in context:
             if event == "start" and elem.tag == "Directory":
                 dir_name = elem.get("name")
@@ -453,7 +453,7 @@ def _size_in_verification_range(size_text: str, config_settings: ConfigSettings)
     """
     try:
         file_size = _parse_size_bytes(size_text)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default (see comment above)
         # An unexpected internal failure in _parse_size_bytes must not silently
         # empty the sample pool.  Including the file is the conservative fallback:
         # better to verify a file whose size is unknown than to verify nothing.
@@ -496,7 +496,7 @@ def select_restoretest_samples(
         if candidates_seen <= sample_size:
             reservoir.append(path)
         else:
-            idx = random.randint(1, candidates_seen)
+            idx = random.randint(1, candidates_seen)  # noqa: S311 — reservoir sampling for restore-test file selection, not a security context
             if idx <= sample_size:
                 reservoir[idx - 1] = path
     if logger:
@@ -539,9 +539,9 @@ def verify(
         VerifyResult with passed, restore_test_passed, and files_verified fields.
 
     Raises:
-        BackupError: If the backup definition has no -R root path, or the
-                     restore directory cannot be created.
-        Exception: If the dar archive integrity test fails.
+        BackupError: If the backup definition has no -R root path, the
+                     restore directory cannot be created, or the dar archive
+                     integrity test fails.
     """
     result = True
     command = ['dar', '-t', backup_file, '-N', '-Q']
@@ -554,17 +554,17 @@ def verify(
             f"Verification interrupted (Ctrl-C or SIGTERM) for '{backup_file}'. "
             f"Archive integrity is unconfirmed."
         )
-        logger.error(msg)
+        logger.exception(msg)
         raise
-    except Exception as e:
-        logger.error("Verification command could not be run for '%s': %s", backup_file, e)
+    except Exception:
+        logger.exception("Verification command could not be run for '%s'", backup_file)
         raise
 
 
     if process.returncode == 0:
         logger.info("Archive integrity test passed.")
     else:
-        raise Exception(str(process))
+        raise BackupError(str(process))
 
     if args.do_not_compare:
         return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
@@ -583,7 +583,7 @@ def verify(
         size_lookup: dict[str, str] = {
             path: size for path, size in backed_up_files if path and size
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
         logger.warning(f"Failed to build size lookup for metrics; file_size_bytes will be NULL: {exc}")
         size_lookup = {}
 
@@ -637,7 +637,7 @@ def verify(
                 "fail_detail":     None,
                 "tested_at":       tested_at,
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
             logger.warning(f"Failed to initialise metrics sample for '{restored_file_path}': {exc}")
             sample = {
                 "file_path":       restored_file_path,
@@ -658,9 +658,9 @@ def verify(
                     sample["result"] = "FAIL"
                     sample["fail_reason_id"] = RESTORE_FAIL_PERMISSION_ERROR
                     sample["fail_detail"] = f"could not remove stale restore file: {exc}"[:500]
-                    logger.error(
-                        "Cannot remove stale restore file '%s': %s — skipping restore-test for this file",
-                        restore_path, exc,
+                    logger.exception(
+                        "Cannot remove stale restore file '%s' — skipping restore-test for this file",
+                        restore_path,
                     )
                     _stale_removal_failed = True
             if not _stale_removal_failed:
@@ -678,7 +678,7 @@ def verify(
                     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
                 process = _runner().run(command, timeout = config_settings.command_timeout_secs)
                 if process.returncode != 0:
-                    raise Exception(str(process))
+                    raise BackupError(str(process))
 
                 if not filecmp.cmp(restore_path, source_path, shallow=False):
                     result = False
@@ -703,7 +703,7 @@ def verify(
                 f"Verification interrupted (Ctrl-C or SIGTERM) during restore-test of "
                 f"'{restored_file_path}' from '{backup_file}'. Verification is incomplete."
             )
-            logger.error(msg)
+            logger.exception(msg)
             raise
         except PermissionError as exc:
             result = False
@@ -718,18 +718,18 @@ def verify(
             missing_path = exc.filename or "unknown path"
             if missing_path == source_path:
                 sample["fail_reason_id"] = RESTORE_FAIL_SOURCE_MISSING
-                logger.error(
+                logger.exception(
                     f"Restore verification failed for '{restored_file_path}': source file missing: '{source_path}'"
                 )
             elif missing_path == restore_path:
                 sample["fail_reason_id"] = RESTORE_FAIL_RESTORED_MISSING
-                logger.error(
+                logger.exception(
                     f"Restore verification failed for '{restored_file_path}': restored file missing: '{restore_path}'"
                 )
             else:
                 sample["fail_reason_id"] = RESTORE_FAIL_UNKNOWN_ERROR
                 sample["fail_detail"] = f"file not found: {missing_path}"[:500]
-                logger.error(
+                logger.exception(
                     f"Restore verification failed for '{restored_file_path}': file not found: '{missing_path}'"
                 )
         except Exception as exc:
@@ -737,11 +737,11 @@ def verify(
             sample["result"] = "FAIL"
             sample["fail_reason_id"] = RESTORE_FAIL_UNKNOWN_ERROR
             sample["fail_detail"] = str(exc)[:500]
-            logger.error(f"Unexpected error verifying '{restored_file_path}': {exc}")
+            logger.exception(f"Unexpected error verifying '{restored_file_path}'")
 
         try:
             samples.append(sample)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — logs with context and continues
             logger.warning(f"Failed to record metrics sample for '{restored_file_path}': {exc}")
 
     if run_id:
@@ -753,7 +753,7 @@ def verify(
                 samples=samples,
                 config_settings=config_settings,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — logs with context and continues
             logger.warning(f"Failed to write restore-test samples to metrics DB: {exc}")
 
     return VerifyResult(passed=result, restore_test_passed=result, files_verified=len(random_files))
@@ -817,14 +817,14 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     except subprocess.CalledProcessError as e:
         raise RestoreError(f"Restore command failed: {e}") from e
     except OSError as e:
-        logger.error(f"Failed to create restore directory: {e}")
+        logger.exception("Failed to create restore directory")
         raise RestoreError("Could not create restore directory") from e
     except KeyboardInterrupt:
         msg = (
             f"Restore interrupted (Ctrl-C or SIGTERM) for '{backup_name}'. "
             f"The restore directory '{restore_dir}' may be incomplete and must NOT be used."
         )
-        logger.error(msg)
+        logger.exception(msg)
         raise
     except Exception as e:
         raise RestoreError(f"Unexpected error during restore: {e}") from e
@@ -1038,7 +1038,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
         try:
             with open(probe_file, "w", encoding="utf-8") as f:
                 f.write("ok")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — context captured in errors list, reported by the caller
             errors.append(f"Cannot write to {name} ({path}): {exc}")
         finally:
             try:
@@ -1088,16 +1088,18 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
 
     # Binaries respond to --version (basic health)
     for cmd in ("dar",):
-        if shutil.which(cmd):
+        cmd_path = shutil.which(cmd)
+        if cmd_path:
             try:
-                subprocess.run([cmd, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-            except Exception:
-                errors.append(f"Failed to run '{cmd} --version'")
-    if config_settings.par2_enabled and shutil.which("par2"):
+                subprocess.run([cmd_path, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)  # noqa: S603 — cmd_path resolved via shutil.which() above
+            except Exception as exc:  # noqa: BLE001 — any failure to run '--version' is treated the same way; context captured in errors list
+                errors.append(f"Failed to run '{cmd} --version': {exc}")
+    par2_path = shutil.which("par2")
+    if config_settings.par2_enabled and par2_path:
         try:
-            subprocess.run(["par2", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        except Exception:
-            errors.append("Failed to run 'par2 --version'")
+            subprocess.run([par2_path, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)  # noqa: S603 — par2_path resolved via shutil.which() above
+        except Exception as exc:  # noqa: BLE001 — any failure to run '--version' is treated the same way; context captured in errors list
+            errors.append(f"Failed to run 'par2 --version': {exc}")
 
     # Config sanity: backup definition exists if provided
     if args.backup_definition:
@@ -1172,8 +1174,8 @@ def _record_prereq_failure(
     else:
         try:
             definitions = list_definitions(config_settings.backup_d_dir)
-        except Exception as exc:
-            logger.error("_record_prereq_failure: could not list definitions: %s", exc)
+        except Exception:
+            logger.exception("_record_prereq_failure: could not list definitions")
             definitions = []
 
     now = datetime.now(UTC)
@@ -1226,7 +1228,7 @@ def _record_prereq_failure(
         }
         try:
             write_metrics_row(metrics, config_settings)
-        except Exception as metrics_exc:
+        except Exception as metrics_exc:  # noqa: BLE001 — logs with context and continues
             logger.warning("_record_prereq_failure: metrics write failed: %s", metrics_exc)
 
         stats_accumulator.append({
@@ -1362,7 +1364,7 @@ def perform_backup(
 
         backup_file: Optional[str] = None
         try:
-            date = datetime.now().strftime('%Y-%m-%d')
+            date = datetime.now().astimezone().strftime('%Y-%m-%d')
             backup_file = os.path.join(config_settings.backup_dir, f"{backup_definition}_{backup_type}_{date}")
             metrics["archive_name"] = os.path.basename(backup_file)
 
@@ -1454,14 +1456,14 @@ def perform_backup(
                 metrics["archive_size_bytes"] = sum(
                     os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
                 )
-            except OSError as exc:
+            except OSError:
                 # A missing slice means the archive is incomplete — this is a genuine failure.
                 # Re-raise so the backup is marked FAILURE, but log clearly so the blame does
                 # not fall on the dar phase (which already exited successfully).
-                logger.error(
-                    "Archive slice missing or unreadable after dar completed for '%s': %s"
+                logger.exception(
+                    "Archive slice missing or unreadable after dar completed for '%s'"
                     " — archive is incomplete, backup is FAILED",
-                    backup_file, exc,
+                    backup_file,
                 )
                 raise
 
@@ -1521,7 +1523,7 @@ def perform_backup(
                 f"for '{backup_definition}'. "
                 f"Any partial archive slices on disk are INCOMPLETE and must NOT be used for restore."
             )
-            logger.error(msg)
+            logger.exception(msg)
             results.append((msg, 1))
             metrics["failed_phase"] = metrics["failed_phase"] or _current_phase
             metrics["error_summary"] = msg[:500]
@@ -1577,7 +1579,7 @@ def perform_backup(
                         metrics["error_summary"] = first_error[0][:500]
                 try:
                     write_metrics_row(metrics, config_settings)
-                except Exception as metrics_exc:
+                except Exception as metrics_exc:  # noqa: BLE001 — logs with context and continues
                     logger.warning(f"Metrics write failed (backup unaffected): {metrics_exc}")
 
                 # Aggregate stats instead of sending immediately
@@ -1600,7 +1602,7 @@ def _parse_archive_base(backup_file: str) -> str:
 def _slice_number(pattern: "re.Pattern[str]", filename: str) -> int:
     """Extract the slice number from a filename already known to match *pattern*."""
     match = pattern.match(filename)
-    assert match is not None, f"filename does not match slice pattern: {filename}"
+    assert match is not None, f"filename does not match slice pattern: {filename}"  # noqa: S101 — internal invariant — caller guarantees filename already matched pattern
     return int(match.group(1))
 
 
@@ -1854,7 +1856,7 @@ def filter_darrc_file(darrc_path):
 
             return filtered_darrc_path
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — context captured (last_error), re-raised with full detail after the loop
             last_error = e
             if filtered_darrc_path and os.path.exists(filtered_darrc_path):
                 os.remove(filtered_darrc_path)
@@ -2090,7 +2092,8 @@ def clean_restore_test_directory(config_settings: ConfigSettings):
         return
 
     # Safety: Do not delete if it resolves to a critical path
-    critical_paths = ["/", "/home", "/root", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin", "/boot", "/dev", "/proc", "/sys", "/run"]
+    # "/tmp" here is a deny-list entry being checked against, not a temp file write — S108 false positive.
+    critical_paths = ["/", "/home", "/root", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin", "/boot", "/dev", "/proc", "/sys", "/run"]  # noqa: S108
     normalized = os.path.realpath(restore_dir)
 
     # Check exact matches
@@ -2113,9 +2116,9 @@ def clean_restore_test_directory(config_settings: ConfigSettings):
                     os.unlink(item_path)
                 elif os.path.isdir(item_path):
                     shutil.rmtree(item_path)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — logs with context and continues
                 logger.warning(f"Failed to remove {item_path}: {e}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — logs with context and continues
         logger.warning(f"Failed to clean restore directory {restore_dir}: {e}")
 
 def _normalize_restore_dir(path: Optional[str]) -> Optional[str]:
@@ -2137,7 +2140,19 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
     return False
 
 
-def main():
+def main() -> None:
+    """CLI entrypoint: parse arguments and dispatch to the requested operation.
+
+    Handles -F/-D/-I (FULL/DIFF/INCR backup), --list/--list-contents,
+    --list-definitions, --restore (PITR-aware restore), --preflight-check, and
+    the various --readme/--changelog/--doc/--examples/--version print-and-exit
+    flags. Initializes logging and the module-level logger/runner globals used
+    by the rest of this module, acquires the per-config instance lock for
+    backup runs, and runs PREREQ/POSTREQ around the requested operation.
+
+    Every code path terminates via sys.exit()/exit(); this function never
+    returns normally.
+    """
     global logger, runner
     results: List[Tuple[str, int]] = []  # a list of tuples (<msg>, <exit code>)
 
@@ -2158,8 +2173,8 @@ def main():
     parser.add_argument('-F', '--full-backup', action='store_true', help="Perform a full backup.")
     parser.add_argument('-D', '--differential-backup', action='store_true', help="Perform differential backup.")
     parser.add_argument('-I', '--incremental-backup', action='store_true', help="Perform incremental backup.")
-    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer  # noqa: E501
-    parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer
+    parser.add_argument('-d', '--backup-definition', help="Specific 'recipe' to select directories and files.").completer = backup_definition_completer  # type: ignore[attr-defined] # noqa: E501
+    parser.add_argument('--alternate-reference-archive', help="DIFF or INCR compared to specified archive.").completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument('-c', '--config-file', type=str, help="Path to 'dar-backup.conf'", default=None)
     parser.add_argument('--darrc', type=str, help='Optional path to .darrc')
     parser.add_argument(
@@ -2169,8 +2184,8 @@ def main():
         const=True,
         default=False,
         help="List available archives.",
-    ).completer = list_archive_completer
-    parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer
+    ).completer = list_archive_completer  # type: ignore[attr-defined]
+    parser.add_argument('--list-contents', help="List the contents of the specified archive.").completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument('--list-definitions', action='store_true', help="List available backup definitions from BACKUP.D_DIR.")
     parser.add_argument(
         '--allow-unsafe-definition-names',
@@ -2179,7 +2194,7 @@ def main():
     )
     parser.add_argument('--selection', type=str, help="Selection string to pass to 'dar', e.g. --selection=\"-I '*.NEF'\"")
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
-    parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer
+    parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--preflight-check', action='store_true', help="Run preflight checks and exit")
@@ -2210,9 +2225,9 @@ def main():
         "--doc", metavar="NAME",
         help="Print a documentation file by name and exit (use tab completion to list available docs).",
     )
-    doc_arg.completer = _doc_completer
+    doc_arg.completer = _doc_completer  # type: ignore[attr-defined]
     doc_pretty_arg = parser.add_argument("--doc-pretty", metavar="NAME", help="Print a documentation file with Markdown styling and exit.")
-    doc_pretty_arg.completer = _doc_completer
+    doc_pretty_arg.completer = _doc_completer  # type: ignore[attr-defined]
     parser.add_argument('-v', '--version', action='store_true', help="Show version and license information.")
 
     argcomplete.autocomplete(parser)
@@ -2270,10 +2285,10 @@ def main():
     args.config_file = config_settings_path
     try:
         config_settings = ConfigSettings(args.config_file)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Config error: {exc}"
         print(msg, file=stderr)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         # config_settings is unbound here (ConfigSettings() raised), so the
         # webhook can only come from the environment variable; passing the
         # unbound name raised UnboundLocalError and masked the config error.
@@ -2298,8 +2313,8 @@ def main():
         validate_required_directories(config_settings)
     except RuntimeError as exc:
         if logger:
-            logger.error(str(exc))
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+            logger.exception("Required directories not found")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - required directories not found\n---- End of report ----", config_settings=config_settings)
         print(str(exc), file=stderr)
         exit(127)
@@ -2309,7 +2324,7 @@ def main():
     if not ok:
         if logger:
             logger.error("Aborting run because preflight checks failed.")
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed\n---- End of report ----", config_settings=config_settings)
         exit_code = 127 if args.backup_definition else 1
         exit(exit_code)
@@ -2367,7 +2382,7 @@ def main():
                 operation = "restore"
             if operation:
                 start_msgs.append(("Operation:", operation))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
             logger.warning("Could not determine operation: %s", exc)
             start_msgs.append(("Operation:", "unknown"))
         if is_backup_run:
@@ -2393,22 +2408,22 @@ def main():
         start_msgs.append(('Config file:', os.path.abspath(args.config_file)))
         start_msgs.append((".darrc location:", args.darrc))
 
-        args.verbose and args.backup_definition   and start_msgs.append(("Backup definition:", args.backup_definition))
+        args.verbose and args.backup_definition   and start_msgs.append(("Backup definition:", args.backup_definition))  # type: ignore[func-returns-value]
         if args.alternate_reference_archive:
-            args.verbose and start_msgs.append(("Alternate ref archive:", args.alternate_reference_archive))
-        args.verbose and start_msgs.append(("Backup.d dir:", config_settings.backup_d_dir))
-        args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))
+            args.verbose and start_msgs.append(("Alternate ref archive:", args.alternate_reference_archive))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("Backup.d dir:", config_settings.backup_d_dir))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))  # type: ignore[func-returns-value]
 
         restore_dir = args.restore_dir if args.restore_dir else config_settings.test_restore_dir
-        args.verbose and start_msgs.append(("Restore dir:", restore_dir))
+        args.verbose and start_msgs.append(("Restore dir:", restore_dir))  # type: ignore[func-returns-value]
 
-        args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))
-        args.verbose and start_msgs.append(("Trace log:", trace_log_file))
-        args.verbose and start_msgs.append(("Logfile max size (bytes):", config_settings.logfile_max_bytes))
-        args.verbose and start_msgs.append(("Logfile backup count:", config_settings.logfile_backup_count))
+        args.verbose and start_msgs.append(("Logfile location:", config_settings.logfile_location))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("Trace log:", trace_log_file))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))  # type: ignore[func-returns-value]
 
-        args.verbose and start_msgs.append(("PAR2 enabled:", config_settings.par2_enabled))
-        args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))
+        args.verbose and start_msgs.append(("PAR2 enabled:", str(config_settings.par2_enabled)))  # type: ignore[func-returns-value]
+        args.verbose and start_msgs.append(("--do-not-compare:", args.do_not_compare))  # type: ignore[func-returns-value]
 
         highlight_keywords = ["--do-not", "alternate"] # TODO: add more dangerous keywords
         print_aligned_settings(start_msgs, quiet=not args.verbose, highlight_keywords=highlight_keywords)
@@ -2447,7 +2462,7 @@ def main():
                 _err = RuntimeError(
                     f"Another dar-backup instance is already running (lock: {_lock_path})"
                 )
-                logger.error(str(_err))
+                logger.exception(str(_err))
                 _record_prereq_failure(args, config_settings, [], _err, _bt, run_id=run_id)
                 exit(1)
 
@@ -2456,7 +2471,7 @@ def main():
         try:
             requirements('PREREQ', config_settings, report_out=prereq_report)
         except RuntimeError as prereq_err:
-            logger.error("PREREQ failed: %s", prereq_err)
+            logger.exception("PREREQ failed")
             prereq_failed = prereq_err
             results.append((str(prereq_err), 1))
 
@@ -2511,7 +2526,7 @@ def main():
         try:
             requirements('POSTREQ', config_settings, report_out=postreq_report)
         except RuntimeError as postreq_err:
-            logger.error("POSTREQ failed: %s", postreq_err)
+            logger.exception("POSTREQ failed")
             results.append((str(postreq_err), 1))
             postreq_failed = True
 
@@ -2535,7 +2550,7 @@ def main():
     except Exception as e:
         msg = f"Unexpected error: {e}"
         logger.error(msg, exc_info=True)
-        ts = datetime.now().strftime("%Y-%m-%d_%H:%M")
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - {msg}\n---- End of report ----", config_settings=config_settings)
         results.append((repr(e), 1))
     finally:
@@ -2547,7 +2562,7 @@ def main():
                 fcntl.flock(_lock_fh, fcntl.LOCK_UN)
                 _lock_fh.close()
                 logger.debug("Lock released: %s", _lock_path)
-            except Exception as _lock_exc:
+            except Exception as _lock_exc:  # noqa: BLE001 — logs with context and continues (lock release is best-effort)
                 logger.warning("Failed to release instance lock %s: %s", _lock_path, _lock_exc)
         # Clean up
         if filtered_darrc_path and os.path.exists(filtered_darrc_path):

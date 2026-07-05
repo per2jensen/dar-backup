@@ -1065,7 +1065,7 @@ def test_remove_file_exception_returns_false(monkeypatch, tmp_path):
     result = cleanup._remove_file(str(f), tmp_path, "archive slice", dry_run=False)
 
     assert result is False
-    mock_logger.error.assert_called_once_with(f"Error deleting archive slice '{f}': disk full — file remains on disk")
+    mock_logger.exception.assert_called_once_with(f"Error deleting archive slice '{f}' — file remains on disk")
 
 
 def test_delete_catalog_handles_exception(monkeypatch):
@@ -1086,9 +1086,9 @@ def test_delete_catalog_handles_exception(monkeypatch):
     result = cleanup.delete_catalog("example", args=SimpleNamespace(config_file="/dev/null"))
 
     assert result is False
-    error_calls = [str(c) for c in mock_logger.error.call_args_list]
-    assert any("dar files are already deleted" in c for c in error_calls), (
-        f"Expected error naming the consequence; got: {error_calls}"
+    exception_calls = [str(c) for c in mock_logger.exception.call_args_list]
+    assert any("dar files are already deleted" in c for c in exception_calls), (
+        f"Expected error naming the consequence; got: {exception_calls}"
     )
 
 
