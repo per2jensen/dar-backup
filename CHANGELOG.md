@@ -3,6 +3,13 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.10 - 2026-07-07
+
+- BUGFIX: PITR with dar Rootdir different from "/" failed
+- dar-backup --doc option with completion emits chosen documentation
+  - --doc-pretty emits rich text
+- many small fixes after yet another review round, doing them iteratively  
+
 ## v2-1.1.9 - 2026-06-20
 
 - PyPI package now includes all doc/*md user docs

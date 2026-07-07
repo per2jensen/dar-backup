@@ -30,6 +30,7 @@ import pytest
 from dar_backup.manager import (
     _coerce_timeout,
     _describe_archive,
+    _detect_directory,
     _format_chain_item,
     _is_directory_in_archive,
     _is_directory_path,
@@ -39,6 +40,7 @@ from dar_backup.manager import (
     _parse_archive_map,
     _parse_file_versions,
     _parse_when,
+    _resolve_backup_root,
     _restore_target_unsafe_reason,
     _restore_with_dar,
     _select_archive_chain,
@@ -1153,6 +1155,92 @@ class TestIsDirectoryPath:
         test_file = tmp_path / "file.txt"
         test_file.touch()
         assert _is_directory_path(str(test_file)) is False
+
+    def test_relative_path_resolved_against_non_root(self, tmp_path) -> None:
+        """A relative path (as stored in the catalog) must resolve against the
+        backup definition's actual -R root, not a hardcoded '/'.
+
+        This is the exact bug from v2/BUG.txt: a backup taken with -R other
+        than '/' stores catalog paths relative to that root, e.g. 'subdir'
+        for <root>/subdir. Without threading root through, this would check
+        '/subdir' on the live filesystem instead of '<root>/subdir'.
+        """
+        root = tmp_path / "data"
+        (root / "subdir").mkdir(parents=True)
+        assert _is_directory_path("subdir", root=str(root)) is True
+
+    def test_relative_path_not_confused_with_real_root(self, tmp_path) -> None:
+        """A directory that exists under '/' but not under the real -R root
+        must not produce a false positive — proving the old os.sep-hardcoded
+        behavior is actually gone, not just coincidentally still working.
+        """
+        root = tmp_path / "data"
+        root.mkdir()
+        # "tmp" exists under the real filesystem root ('/tmp'), but not under
+        # our fake root — must resolve against root, not '/'.
+        assert _is_directory_path("tmp", root=str(root)) is False
+
+    def test_root_with_spaces_and_non_ascii(self, tmp_path) -> None:
+        """-R roots with spaces and UTF-8 characters must work end-to-end."""
+        root = tmp_path / "backup source café ünïcödé 日本語"
+        (root / "subdir").mkdir(parents=True)
+        assert _is_directory_path("subdir", root=str(root)) is True
+        assert _is_directory_path("does_not_exist", root=str(root)) is False
+
+
+# ===========================================================================
+# _detect_directory
+# ===========================================================================
+
+
+class TestDetectDirectoryRoot:
+    """Tests proving _detect_directory threads root through to the fast path."""
+
+    def test_root_threaded_to_fast_path(self, tmp_path, mock_runner) -> None:
+        """A directory only present under a non-default root must be detected
+        as a directory without needing the dar-catalog fallback at all."""
+        root = tmp_path / "data"
+        (root / "subdir").mkdir(parents=True)
+        result = _detect_directory("subdir", {}, [], mock_runner, 30, root=str(root))
+        assert result is True
+        mock_runner.run.assert_not_called()
+
+    def test_missing_root_falls_back_to_catalog(self, tmp_path, mock_runner) -> None:
+        """When the path doesn't exist under the given root, it must still
+        fall back to dar catalog inspection (unchanged fallback behavior)."""
+        root = tmp_path / "data"
+        root.mkdir()
+        mock_runner.run.return_value = CommandResult(
+            0, "drwxr-xr-x user group 4 kio some/path\n", "", note=None
+        )
+        archive_info = [(1, datetime.datetime(2026, 1, 1), "FULL")]
+        archive_map = {1: "/backups/example_FULL_2026-01-01"}
+        result = _detect_directory("some/path", archive_map, archive_info, mock_runner, 30, root=str(root))
+        assert result is True
+        mock_runner.run.assert_called_once()
+
+
+# ===========================================================================
+# _resolve_backup_root
+# ===========================================================================
+
+
+class TestResolveBackupRoot:
+    """Tests for _resolve_backup_root."""
+
+    def test_resolves_configured_root(self, tmp_path, mock_config) -> None:
+        os.makedirs(mock_config.backup_d_dir, exist_ok=True)
+        with open(os.path.join(mock_config.backup_d_dir, "example"), "w") as f:
+            f.write("-R /data\n-s 10G\n")
+        assert _resolve_backup_root(mock_config, "example") == "/data"
+
+    def test_falls_back_to_root_when_undeterminable(self, tmp_path, mock_config, mock_logger) -> None:
+        """A missing/unreadable backup definition must fall back to '/' (the
+        previously-assumed default) and log a warning, not raise."""
+        with patch("dar_backup.manager.logger", mock_logger):
+            result = _resolve_backup_root(mock_config, "does_not_exist")
+        assert result == os.sep
+        assert mock_logger.warning.called
 
 
 # ===========================================================================

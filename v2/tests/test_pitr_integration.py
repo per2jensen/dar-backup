@@ -3022,3 +3022,187 @@ def test_pitr_timezone_aware_when(setup_environment, env):
         content = f.read()
     assert content == "v2", f"Expected 'v2' from DIFF, got '{content}'"
     env.logger.info("Timezone-aware PITR → v2 (after DIFF) ✓")
+
+
+def test_pitr_restore_path_with_non_root_backup_definition(setup_environment, env):
+    """
+    Regression test for v2/BUG.txt: manager.py's _is_directory_path() hardcoded
+    os.sep, assuming a backup definition's -R was always "/". With a real -R
+    other than "/", the fast filesystem check looks in the wrong place (real
+    "/" instead of the actual -R root) and misdetects a genuine directory as
+    "not a directory".
+
+    _detect_directory()'s archive-catalog fallback only inspects the most
+    recent *FULL* archive, so it cannot mask a mis-detection for a directory
+    that doesn't exist in the FULL at all -- "newdir" here is created entirely
+    in the DIFF and extended in the INCR, so the FULL archive never contains
+    it. dar_manager's own -f lookup *does* track directory paths and reports
+    whichever archive most recently touched "newdir" (the INCR) as its latest
+    version, so pre-fix, PITR silently restores *only* that single archive
+    instead of the correct additive DIFF+INCR chain. Since a differential/
+    incremental archive never carries forward unchanged files, a single-
+    archive (INCR-only) restore of "newdir" would be missing the stable file
+    and the hardlink pair entirely -- exactly the "restored files matched
+    stale content and one hard-linked file went missing entirely" symptom
+    reported in v2/BUG.txt. A correct additive chain restore (DIFF, then INCR
+    on top) produces the full, current set.
+
+    Also exercises a -R root containing a space and non-ASCII (UTF-8)
+    characters -- a real path shape that must not break -R parsing or the
+    restore itself.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+
+    # A source root that is NOT "/", and contains a space + UTF-8 characters.
+    alt_root = os.path.join(env.data_dir, "backup source café ünïcödé 日本語")
+    os.makedirs(alt_root, exist_ok=True)
+
+    backup_def_path = os.path.join(env.backup_d_dir, "altroot")
+    with open(backup_def_path, "w", encoding="utf-8") as f:
+        # Quoted: dar's own -B reference-file parser splits an unquoted -R
+        # value on whitespace (confirmed empirically) -- a path containing a
+        # space *must* be quoted, exactly like get_backup_definition_root()
+        # expects to unquote.
+        f.write(f'-R "{alt_root}"\n-s 10G\n-z6\n-am\n--cache-directory-tagging\n')
+
+    # The shared setup_environment fixture only creates a catalog db for the
+    # "example" definition (present at fixture setup time, before this
+    # definition file existed) -- create one for "altroot" now.
+    r0 = runner.run([
+        "manager", "--create-db", "-d", "altroot",
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r0.returncode == 0, f"manager --create-db (altroot) failed: {r0.stderr}"
+
+    # --- FULL: a stable file elsewhere in alt_root. "newdir" does NOT exist
+    # yet -- the FULL archive must never contain it, so the archive-catalog
+    # fallback (which only inspects the most recent FULL) cannot mask a
+    # mis-detection later.
+    other_file = os.path.join(alt_root, "other.txt")
+    with open(other_file, "w") as f:
+        f.write("unrelated content")
+    clock.touch(other_file, seconds=PITR_STEP_SECONDS)
+
+    full_time = clock.tick(PITR_STEP_SECONDS)
+    full_ts = full_time.strftime("%Y-%m-%d_%H%M%S")
+    full_base = os.path.join(env.backup_dir, f"altroot_FULL_{full_ts}")
+    r = runner.run([
+        "dar", "-c", full_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ], timeout=300)
+    assert r.returncode == 0, f"dar FULL failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", full_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add (FULL) failed: {r2.stderr}"
+
+    # --- DIFF: "newdir" is created here for the first time, with a stable
+    # file, a to-be-modified file, and a hardlinked file pair.
+    newdir = os.path.join(alt_root, "newdir")
+    os.makedirs(newdir, exist_ok=True)
+    stable_path = os.path.join(newdir, "stable.txt")
+    with open(stable_path, "w") as f:
+        f.write("stable content")
+    clock.touch(stable_path, seconds=PITR_STEP_SECONDS)
+    changing_path = os.path.join(newdir, "changing.txt")
+    with open(changing_path, "w") as f:
+        f.write("v1")
+    clock.touch(changing_path, seconds=PITR_STEP_SECONDS)
+    link1 = os.path.join(newdir, "link1.txt")
+    link2 = os.path.join(newdir, "link2.txt")
+    with open(link1, "w") as f:
+        f.write("linked content")
+    clock.touch(link1, seconds=PITR_STEP_SECONDS)
+    os.link(link1, link2)
+
+    diff_time = clock.tick(PITR_STEP_SECONDS)
+    diff_ts = diff_time.strftime("%Y-%m-%d_%H%M%S")
+    diff_base = os.path.join(env.backup_dir, f"altroot_DIFF_{diff_ts}")
+    r = runner.run([
+        "dar", "-c", diff_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        "-A", full_base,
+    ], timeout=300)
+    assert r.returncode == 0, f"dar DIFF failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", diff_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add (DIFF) failed: {r2.stderr}"
+
+    # --- INCR: only "changing.txt" is modified. stable.txt and the hardlink
+    # pair are untouched, so an incremental archive does not carry them --
+    # only the additive DIFF+INCR chain has the complete, current "newdir".
+    with open(changing_path, "w") as f:
+        f.write("v2")
+    clock.touch(changing_path, seconds=PITR_STEP_SECONDS)
+
+    incr_time = clock.tick(PITR_STEP_SECONDS)
+    incr_ts = incr_time.strftime("%Y-%m-%d_%H%M%S")
+    incr_base = os.path.join(env.backup_dir, f"altroot_INCR_{incr_ts}")
+    r = runner.run([
+        "dar", "-c", incr_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+        "-A", diff_base,
+    ], timeout=300)
+    assert r.returncode == 0, f"dar INCR failed: {r.stderr}"
+    r2 = runner.run([
+        "manager", "--add-specific-archive", incr_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert r2.returncode == 0, f"manager add (INCR) failed: {r2.stderr}"
+
+    restore_time = clock.tick(PITR_STEP_SECONDS)
+
+    # --- PITR restore of the directory, as of after the INCR. ---
+    restore_dir = os.path.join(env.test_dir, "restore_altroot")
+    os.makedirs(restore_dir, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "altroot",
+        "--restore-path", "newdir",
+        "--when", restore_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", restore_dir, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"PITR restore of 'newdir' failed: {r.stderr}"
+
+    restored_dir = os.path.join(restore_dir, "newdir")
+    assert os.path.isdir(restored_dir), (
+        f"'newdir' was not restored as a directory -- PITR likely fell back to "
+        f"a single-archive restore attempt instead of the additive chain (the "
+        f"exact bug reported in v2/BUG.txt). restore_dir contents: {os.listdir(restore_dir)}"
+    )
+
+    restored_changing = os.path.join(restored_dir, "changing.txt")
+    assert os.path.exists(restored_changing), "changing.txt missing after restore"
+    with open(restored_changing) as f:
+        assert f.read() == "v2", "changing.txt must show the INCR's latest content"
+
+    restored_stable = os.path.join(restored_dir, "stable.txt")
+    assert os.path.exists(restored_stable), (
+        "stable.txt missing after restore -- a single-archive (INCR-only) "
+        "restore would be missing this, since the INCR never carries forward "
+        "unchanged files. Proves the additive DIFF+INCR chain was used."
+    )
+    with open(restored_stable) as f:
+        assert f.read() == "stable content"
+
+    restored_link1 = os.path.join(restored_dir, "link1.txt")
+    restored_link2 = os.path.join(restored_dir, "link2.txt")
+    assert os.path.exists(restored_link1), "link1.txt missing after restore"
+    assert os.path.exists(restored_link2), (
+        "link2.txt (hardlink) missing after restore -- matches the "
+        "'hard-linked file went missing entirely' symptom from v2/BUG.txt"
+    )
+    assert os.stat(restored_link1).st_ino == os.stat(restored_link2).st_ino, (
+        "link1.txt and link2.txt must share the same inode after restore -- "
+        "the hardlink relationship was not preserved"
+    )
+
+    env.logger.info(
+        "PITR restore-path with non-root (-R) backup definition, including "
+        "spaces/UTF-8, verified correct: additive chain restore used, "
+        "directory + hardlink preserved, no stale/missing content."
+    )

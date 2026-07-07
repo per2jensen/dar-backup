@@ -65,6 +65,7 @@ from dar_backup.util import compare_metadata
 from dar_backup.util import write_restore_test_samples
 from dar_backup.util import validate_directory
 from dar_backup.util import archive_exists
+from dar_backup.util import get_backup_definition_root
 from dar_backup.util import resolve_ownership_flag
 from dar_backup.util import (
     RESTORE_FAIL_CONTENT_MISMATCH,
@@ -599,16 +600,7 @@ def verify(
         return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
     # find Root path in backup definition
-    with open(backup_definition) as f:
-        backup_definition_content = f.readlines()
-        logger.debug(f"Backup definition: '{backup_definition}', content:\n{backup_definition_content}")
-    root_path = None
-    for line in backup_definition_content:
-        line = line.strip()
-        match = re.match(r'^\s*-R\s+(.*)', line)
-        if match:
-            root_path = match.group(1).strip()
-            break
+    root_path = get_backup_definition_root(backup_definition)
     if root_path is None:
         msg = f"No Root (-R) path found in the backup definition file: '{backup_definition}', restore verification skipped"
         raise BackupError(msg)

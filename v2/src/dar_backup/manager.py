@@ -51,6 +51,7 @@ from dar_backup.util import show_scriptname
 from dar_backup.util import validate_directory
 from dar_backup.util import archive_exists
 from dar_backup.util import resolve_ownership_flag
+from dar_backup.util import get_backup_definition_root
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
@@ -925,17 +926,22 @@ def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt
     return chain
 
 
-def _is_directory_path(path: str) -> bool:
+def _is_directory_path(path: str, root: str = os.sep) -> bool:
     """
     Check if path refers to an existing directory on the filesystem.
 
     Args:
-        path: Relative path (rooted at /).
+        path: Relative path, as stored in the DAR catalog (i.e. relative to
+            the backup definition's -R). May also be given as an absolute
+            path, in which case it is resolved as-is, ignoring root.
+        root: The backup definition's -R root. Defaults to "/" — the
+            assumption held (incorrectly, for any other -R) before this
+            parameter was added.
 
     Returns:
         True if the path exists as a directory on the filesystem.
     """
-    return os.path.isdir(os.path.join(os.sep, path))
+    return os.path.isdir(os.path.join(root, path.lstrip(os.sep)))
 
 
 def _is_directory_in_archive(
@@ -993,6 +999,7 @@ def _detect_directory(
     archive_info: List[Tuple[int, datetime, str]],
     runner: "CommandRunner",
     timeout: Optional[int],
+    root: str = os.sep,
 ) -> bool:
     """
     Determine whether *path* is a directory using filesystem check first,
@@ -1004,12 +1011,14 @@ def _detect_directory(
         archive_info: Parsed archive info (catalog_no, datetime, type).
         runner: CommandRunner instance.
         timeout: Command timeout in seconds, or None for no timeout.
+        root: The backup definition's -R root, used to resolve *path* against
+            the live filesystem. Defaults to "/".
 
     Returns:
         True if the path is a directory.
     """
     # Fast path: check filesystem
-    if _is_directory_path(path):
+    if _is_directory_path(path, root):
         return True
 
     # Fallback: inspect the FULL archive via dar -l
@@ -1025,6 +1034,31 @@ def _detect_directory(
     if not full_path:
         return False
     return _is_directory_in_archive(path, full_path, runner, timeout)
+
+
+def _resolve_backup_root(config_settings: ConfigSettings, backup_def: str) -> str:
+    """Determine the -R root used by a backup definition, for directory detection.
+
+    Args:
+        config_settings: Loaded configuration, used to locate the backup
+            definition file (BACKUP.D_DIR/<backup_def>).
+        backup_def: Backup definition name.
+
+    Returns:
+        The -R root path, or "/" if it could not be determined (the file is
+        missing/unreadable or has no -R line) — the previously-assumed
+        default, kept as a safe fallback rather than raising.
+    """
+    backup_def_path = os.path.join(config_settings.backup_d_dir, backup_def)
+    root = get_backup_definition_root(backup_def_path)
+    if root is None:
+        logger.warning(
+            "Could not determine -R root for backup definition '%s'; "
+            "assuming '/' for directory detection.",
+            backup_def,
+        )
+        return os.sep
+    return root
 
 
 
@@ -1162,6 +1196,7 @@ def _pitr_chain_report(
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
+    root = _resolve_backup_root(config_settings, backup_def)
     list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
@@ -1174,7 +1209,7 @@ def _pitr_chain_report(
     successes = 0
 
     for path in paths:
-        is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout)
+        is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout, root)
         if is_directory:
             logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
             chain, missing = _resolve_directory_chain(archive_info, parsed_date, archive_map)
@@ -1308,6 +1343,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
+    root = _resolve_backup_root(config_settings, backup_def)
     list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
     archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
@@ -1324,7 +1360,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
 
     try:
         for path in paths:
-            is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout)
+            is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout, root)
             if is_directory:
                 logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
                 chain, missing = _resolve_directory_chain(archive_info, when_dt, archive_map)

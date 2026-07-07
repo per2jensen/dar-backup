@@ -1413,6 +1413,38 @@ def archive_exists(base_path: str) -> bool:
     return os.path.exists(f"{base_path}.1.dar")
 
 
+def get_backup_definition_root(backup_def_path: str) -> Optional[str]:
+    """Parse the -R root path out of a backup definition file.
+
+    A -R value containing a space must be quoted for dar's own -B reference-file
+    parser to treat it as one argument (dar supports simple, double, and
+    back-quotes there) -- any such surrounding quote pair is stripped here so the
+    returned value is the real filesystem path.
+
+    Args:
+        backup_def_path: Path to the backup definition file, e.g.
+            '/etc/dar-backup/backup.d/media'.
+
+    Returns:
+        The value of the first -R line found (stripped, unquoted), or None if
+        the file cannot be read or contains no -R line.
+    """
+    try:
+        with open(backup_def_path) as f:
+            lines = f.readlines()
+    except OSError as exc:
+        logger.warning("Could not read backup definition '%s' to determine -R root: %s", backup_def_path, exc)
+        return None
+    for line in lines:
+        match = re.match(r'^\s*-R\s+(.*)', line.strip())
+        if match:
+            value = match.group(1).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'", '`'):
+                value = value[1:-1]
+            return value
+    return None
+
+
 # Reusable pattern for archive file naming
 archive_pattern = re.compile(
     r'^.+?_(FULL|DIFF|INCR)_(\d{4}-\d{2}-\d{2})'

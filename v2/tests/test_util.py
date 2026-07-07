@@ -1275,6 +1275,55 @@ def test_archive_exists_returns_false_when_slice_absent(tmp_path):
     assert archive_exists(base) is False
 
 
+def test_get_backup_definition_root_parses_r_line(tmp_path):
+    from dar_backup.util import get_backup_definition_root
+
+    backup_def = tmp_path / "example"
+    backup_def.write_text("-R /data\n-s 10G\n")
+    assert get_backup_definition_root(str(backup_def)) == "/data"
+
+
+def test_get_backup_definition_root_handles_quoted_spaces_and_non_ascii(tmp_path):
+    """A -R value with a space must be quoted for dar's own -B reference-file
+    parser to treat it as one argument (confirmed against real dar: an
+    unquoted value with spaces is split into multiple invalid targets) — the
+    surrounding quotes must be stripped to recover the real filesystem path.
+    """
+    from dar_backup.util import get_backup_definition_root
+
+    root_with_space_and_utf8 = "/mnt/backup source/café ünïcödé 日本語"
+    backup_def = tmp_path / "example"
+    backup_def.write_text(f'-R "{root_with_space_and_utf8}"\n-s 10G\n', encoding="utf-8")
+    assert get_backup_definition_root(str(backup_def)) == root_with_space_and_utf8
+
+
+def test_get_backup_definition_root_handles_single_and_back_quotes(tmp_path):
+    """dar also accepts simple ('arg') and back-quotes (`arg`), per its manual."""
+    from dar_backup.util import get_backup_definition_root
+
+    backup_def = tmp_path / "example"
+    backup_def.write_text("-R 'backup dir'\n", encoding="utf-8")
+    assert get_backup_definition_root(str(backup_def)) == "backup dir"
+
+    backup_def.write_text("-R `backup dir`\n", encoding="utf-8")
+    assert get_backup_definition_root(str(backup_def)) == "backup dir"
+
+
+def test_get_backup_definition_root_returns_none_when_no_r_line(tmp_path):
+    from dar_backup.util import get_backup_definition_root
+
+    backup_def = tmp_path / "example"
+    backup_def.write_text("-s 10G\n-z6\n")
+    assert get_backup_definition_root(str(backup_def)) is None
+
+
+def test_get_backup_definition_root_returns_none_when_file_missing(tmp_path):
+    from dar_backup.util import get_backup_definition_root
+
+    missing = tmp_path / "does_not_exist"
+    assert get_backup_definition_root(str(missing)) is None
+
+
 def test_resolve_ownership_flag_preserve_ownership_wins(tmp_path):
     from types import SimpleNamespace
     from dar_backup.util import resolve_ownership_flag
