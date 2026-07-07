@@ -77,7 +77,7 @@ Schedules are managed by systemd timers (generated for you). Catalogs of every a
 maintained by `dar_manager`, enabling single-file Point-in-Time Recovery without a database
 server.
 
-Version **1.1.9** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
+Version **1.1.10** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
 
 ---
 
