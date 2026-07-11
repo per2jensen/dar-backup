@@ -1,4 +1,9 @@
-__version__ = "1.1.11.dev"
+# After a release, seed the next dev cycle as "X.Y.Z.dev0" (numeric suffix
+# required). scripts/pre-commit-version-bump.sh only increments an existing
+# ".devN" counter on each commit — it won't create one from a bare "X.Y.Z" or
+# a malformed suffix like "X.Y.Z-dev"/"X.Y.Z.dev", so those are silently
+# skipped and the version never advances until re-seeded with ".dev0".
+__version__ = "1.1.11.dev16"
 
 __author__ = "Per Jensen"
 
