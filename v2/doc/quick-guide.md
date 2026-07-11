@@ -168,7 +168,6 @@ dar-backup --list-contents demo_FULL_$(date '+%F')
 
 ```text
 (venv) $ dar-backup --list-contents demo_FULL_$(date '+%F')
-```text
 [Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user	user	2 kio	Sat Jul 11 09:20:03 2026	dir1
 [Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	644 o	Sat Jul 11 09:20:03 2026	dir1/color.jpg
 [Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	41 o	Sat Jul 11 09:20:03 2026	dir1/color.txt
@@ -207,19 +206,24 @@ find /tmp/dar-backup-data-dirs/restore
 ```bash
 (venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
 ========== Startup Settings ==========
-dar-backup.py:    1.1.10
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.19
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /tmp/dar-backup-conf/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-Backup.d dir:     /tmp/dar-backup-conf/backup.d
-Backup dir:       /tmp/dar-backup/backups
-Restore dir:      /tmp/dar-backup-data-dirs/restore
-Logfile location: /tmp/dar-backup/dar-backup.log
-PAR2 enabled:     True
---do-not-compare: False
+dar-backup:               1.1.10
+Operation:                restore
+dar path:                 /home/user/.local/dar/bin/dar
+dar version:              2.7.21
+Script directory:         /home/user/git/dar-backup/v2/src/dar_backup
+Config file:              /tmp/dar-backup-conf/dar-backup.conf
+.darrc location:          /home/user/git/dar-backup/v2/src/dar_backup/.darrc
+Backup.d dir:             /tmp/dar-backup-conf/backup.d
+Backup dir:               /tmp/dar-backup/backups
+Restore dir:              /tmp/dar-backup-data-dirs/restore
+Logfile location:         /tmp/dar-backup/dar-backup.log
+Trace log:                /tmp/dar-backup/dar-backup.trace.log
+Logfile max size (bytes): 26214400
+Logfile backup count:     5
+PAR2 enabled:             True
+--do-not-compare:         [!] False
 ======================================
+Success: all backups completed
 
 
 
