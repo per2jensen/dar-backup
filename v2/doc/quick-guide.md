@@ -4,14 +4,19 @@ The purpose of this quick guide is to show how `dar-backup` works in a few simpl
 
 The package includes a `demo` application that can help you set up `dar-backup` quickly.
 
-> ⚠️ **Assumption**
+> ℹ**The demo never touches your home directory**
 >
-> The demo program uses these directories in your home directory:
+> It only ever creates/uses these 3 directories under `/tmp`:
 >
-> - $HOME/dar-backup
-> - $HOME/.config/dar-backup
+> - `/tmp/dar-backup` — backups and the log file
+> - `/tmp/dar-backup-conf` — `dar-backup.conf` and `backup.d/`
+> - `/tmp/dar-backup-data-dirs` — sample data to back up, and the restore-test area
 >
-> It is assumed they **do not exist** before running the demo.
+> It is assumed they **do not exist** before running the demo. Remove them first with:
+>
+> ```bash
+> demo --cleanup
+> ```
 >
 > Python **>= 3.11** is required
 
@@ -23,7 +28,7 @@ The demo is known to work on an Ubuntu 24.04 clean VM as delivered from `Multipa
 
 ```bash
 sudo apt -y install dar par2 python3 python3-venv
-INSTALL_DIR=/tmp/dar-backup
+INSTALL_DIR=/tmp/dar-backup-venv
 mkdir "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 python3 -m venv venv    # create the virtual environment
@@ -38,87 +43,147 @@ pip install dar-backup  # run pip to install `dar-backup` into the virtual envir
 ```bash
 (venv) $ pip install dar-backup
 ...
-Successfully installed argcomplete-3.6.2 dar-backup-1.1.2 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
+Successfully installed argcomplete-3.6.2 dar-backup-1.1.10 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
 ```
 
 </details>
 
-Setup the demo configurations and show a few operations
-
 <br>
+
+Setup the demo configurations and show a few operations
 
 ```bash
 # See reference section for options tweaking the install
 demo --install
+```
 
+<details>
+
+<summary> --install details</summary>
+
+```bash
+(venv) $ demo --install
+Directories created.
+File generated at '/tmp/dar-backup-conf/backup.d/demo'
+File generated at '/tmp/dar-backup-conf/dar-backup.conf'
+Sample data generated at '/tmp/dar-backup-data-dirs/dir1'
+1. Point dar-backup/manager at the demo config: export DAR_BACKUP_CONFIG_FILE=/tmp/dar-backup-conf/dar-backup.conf
+2. Now run `manager --create-db` to create the catalog database.
+3. Then you can run `dar-backup --full-backup` to create a backup.
+4. List backups with `dar-backup --list`
+5. List contents of a backup with `dar-backup --list-contents <backup-name>`
+```
+
+</details>
+
+<br>
+
+Set the environment variable that points to the config file
+```bash
+# dar-backup.conf isn't in dar-backup's default lookup location ($HOME),
+# so point it there for the rest of this session
+export DAR_BACKUP_CONFIG_FILE=/tmp/dar-backup-conf/dar-backup.conf
+```
+
+<br>
+
+Create the catalog database
+
+```bash
 # create catalog database
-manager --create-db
+manager --create-db  --verbose
+```
 
+<details>
+
+<summary>  create catalog database</summary>
+
+```bash
+(venv) $ manager --create-db  --verbose
+========== Startup Settings ==========
+manager:                   1.1.10
+Operation:                 create-db
+Config file:               /tmp/dar-backup-conf/dar-backup.conf
+Backup dir:                /tmp/dar-backup/backups
+Logfile:                   /tmp/dar-backup/dar-backup.log
+Trace log:                 /tmp/dar-backup/dar-backup.trace.log
+Logfile max size (bytes):  26214400
+Logfile backup count:      5
+--alternate-archive-dir:   
+--remove-specific-archive: 
+--relocate-archive-path:   
+dar_manager:               /home/user/.local/dar/bin/dar_manager
+dar_manager v.:            1.9.0
+======================================
+```
+
+</details>
+
+<br>
+
+Do a FULL backup
+```bash
 # FULL backup as defined in backup definition `demo`
-dar-backup --full-backup
+dar-backup --full-backup  --verbose
+```
 
+<details>
+
+<summary> FULL backup</summary>
+
+```bash
+(venv) $ dar-backup --full-backup  --verbose
+========== Startup Settings ==========
+dar-backup:               1.1.10
+Operation:                FULL backup
+dar path:                 /home/pj/.local/dar/bin/dar
+dar version:              2.7.21
+Script directory:         /home/pj/git/dar-backup/v2/src/dar_backup
+Config file:              /tmp/dar-backup-conf/dar-backup.conf
+.darrc location:          /home/pj/git/dar-backup/v2/src/dar_backup/.darrc
+Backup.d dir:             /tmp/dar-backup-conf/backup.d
+Backup dir:               /tmp/dar-backup/backups
+Restore dir:              /tmp/dar-backup-data-dirs/restore
+Logfile location:         /tmp/dar-backup/dar-backup.log
+Trace log:                /tmp/dar-backup/dar-backup.trace.log
+Logfile max size (bytes): 26214400
+Logfile backup count:     5
+PAR2 enabled:             True
+--do-not-compare:         [!] False
+======================================
+```
+
+</details>
+
+<br>
+
+```bash
 # List the contents of the backup
 dar-backup --list-contents demo_FULL_$(date '+%F')
 ```
 
 <details>
 
-<summary> --list details</summary>
+<summary> --list contents details</summary>
 
-```bash
-(venv) $ demo --install
-Directories created.
-File generated at '/home/user/.config/dar-backup/backup.d/demo'
-File generated at '/home/user/.config/dar-backup/dar-backup.conf'
-1. Now run `manager --create-db` to create the catalog database.
-2. Then you can run `dar-backup --full-backup` to create a backup.
-3. List backups with `dar-backup --list`
-4. List contents of a backup with `dar-backup --list-contents <backup-name>`
-
-
-
-(venv) $ manager --create-db
-========== Startup Settings ==========
-manager.py:     1.1.2
-Config file:    /home/user/.config/dar-backup/dar-backup.conf
-Logfile:        /home/user/dar-backup/dar-backup.log
-dar_manager:    /home/user/.local/dar/bin/dar_manager
-dar_manager v.: 1.9.0
-======================================
-
-
-
-(venv) $ dar-backup --full-backup
-========== Startup Settings ==========
-dar-backup.py:    1.1.2
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.19
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-======================================
-
-
-
+```text
 (venv) $ dar-backup --list-contents demo_FULL_$(date '+%F')
-========== Startup Settings ==========
-dar-backup.py:    1.1.2
-dar path:         /home/user/.local/dar/bin/dar
-dar version:      2.7.19
-Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
-.darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-======================================
-[Saved][-]       [-L-][  49%][ ]  drwx------   user user  8 kio Sat May 17 13:13:59 2025  .config
-[Saved][-]       [-L-][  49%][ ]  drwxrwxr-x   user user  8 kio Tue May  6 20:55:40 2025  .config/dar-backup
-[Saved][-]       [-L-][  48%][ ]  drwxrwxr-x   user user  6 kio Sat May 17 13:26:21 2025  .config/dar-backup/backup.d
-[Saved][ ]       [-L-][  40%][ ]  -rw-rw-r--   user user  764 o Sun Feb 23 21:23:01 2025  .config/dar-backup/backup.d/media-files
-[Saved][ ]       [-L-][  41%][ ]  -rw-rw-r--   user user  933 o Sun Feb 23 21:23:15 2025  .config/dar-backup/backup.d/pCloudDrive
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sun Mar 16 10:40:29 2025  .config/dar-backup/backup.d/test
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  824 o Tue May 13 17:00:52 2025  .config/dar-backup/backup.d/default
-[Saved][ ]       [-L-][  48%][ ]  -rw-rw-r--   user user  1 kio Sat May  3 10:40:33 2025  .config/dar-backup/backup.d/user-homedir
-[Saved][ ]       [-L-][  54%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/backup.d/demo
-[Saved][ ]       [-L-][  55%][ ]  -rw-rw-r--   user user  1 kio Sat May 17 18:17:40 2025  .config/dar-backup/dar-backup.conf
+```text
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user	user	2 kio	Sat Jul 11 09:20:03 2026	dir1
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	644 o	Sat Jul 11 09:20:03 2026	dir1/color.jpg
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	41 o	Sat Jul 11 09:20:03 2026	dir1/color.txt
+[Saved][-]       [---][-----][ ]  lrwxrwxrwx   user	user	0	Sat Jul 11 09:20:03 2026	dir1/dar-backup.conf.symlink
+[Saved][ ]       [-L-][  56%][ ] *-rw-rw-r--   user	user	4 kio	Sat Jul 11 09:20:03 2026	dir1/dar-backup.conf.hardlink
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user	user	1 kio	Sat Jul 11 09:20:03 2026	dir1/dir2
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	644 o	Sat Jul 11 09:20:03 2026	dir1/dir2/color.jpg
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	46 o	Sat Jul 11 09:20:03 2026	dir1/dir2/color.txt
+[Saved][-]       [---][-----][ ]  lrwxrwxrwx   user	user	0	Sat Jul 11 09:20:03 2026	dir1/dir2/dar-backup.conf.symlink
+[Saved][ ]       [-L-][  56%][ ] *-rw-rw-r--   user	user	4 kio	Sat Jul 11 09:20:03 2026	dir1/dir2/dar-backup.conf.hardlink
+[Saved][-]       [-L-][   0%][ ]  drwxrwxr-x   user	user	695 o	Sat Jul 11 09:20:03 2026	dir1/dir2/dir3
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	644 o	Sat Jul 11 09:20:03 2026	dir1/dir2/dir3/color.jpg
+[Saved][ ]       [-L-][     ][ ]  -rw-rw-r--   user	user	51 o	Sat Jul 11 09:20:03 2026	dir1/dir2/dir3/color.txt
+[Saved][-]       [---][-----][ ]  lrwxrwxrwx   user	user	0	Sat Jul 11 09:20:03 2026	dir1/dir2/dir3/dar-backup.conf.symlink
+[Saved][ ]       [-L-][  56%][ ] *-rw-rw-r--   user	user	4 kio	Sat Jul 11 09:20:03 2026	dir1/dir2/dir3/dar-backup.conf.hardlink
 ```
 
 </details>
@@ -132,7 +197,7 @@ Perform a restore and show the restored files
 dar-backup --restore demo_FULL_$(date '+%F') --verbose
 
 # Prove the files have been restored to directory as configured
-find $HOME/dar-backup/restore
+find /tmp/dar-backup-data-dirs/restore
 ```
 
 <details>
@@ -142,34 +207,39 @@ find $HOME/dar-backup/restore
 ```bash
 (venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
 ========== Startup Settings ==========
-dar-backup.py:    1.1.2
+dar-backup.py:    1.1.10
 dar path:         /home/user/.local/dar/bin/dar
 dar version:      2.7.19
 Script directory: /home/user/git/dar-backup/v2/src/dar_backup
-Config file:      /home/user/.config/dar-backup/dar-backup.conf
+Config file:      /tmp/dar-backup-conf/dar-backup.conf
 .darrc location:  /home/user/git/dar-backup/v2/src/dar_backup/.darrc
-Backup.d dir:     /home/user/.config/dar-backup/backup.d
-Backup dir:       /home/user/dar-backup/backups
-Restore dir:      /home/user/dar-backup/restore
-Logfile location: /home/user/dar-backup/dar-backup.log
+Backup.d dir:     /tmp/dar-backup-conf/backup.d
+Backup dir:       /tmp/dar-backup/backups
+Restore dir:      /tmp/dar-backup-data-dirs/restore
+Logfile location: /tmp/dar-backup/dar-backup.log
 PAR2 enabled:     True
 --do-not-compare: False
 ======================================
 
 
 
-(venv) $ find ~/dar-backup/restore/
-/home/user/dar-backup/restore/
-/home/user/dar-backup/restore/.config
-/home/user/dar-backup/restore/.config/dar-backup
-/home/user/dar-backup/restore/.config/dar-backup/backup.d
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/media-files
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/pCloudDrive
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/test
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/default
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/user-homedir
-/home/user/dar-backup/restore/.config/dar-backup/backup.d/demo
-/home/user/dar-backup/restore/.config/dar-backup/dar-backup.conf
+(venv) $ find /tmp/dar-backup-data-dirs/restore/
+/tmp/dar-backup-data-dirs/restore/
+/tmp/dar-backup-data-dirs/restore/dir1
+/tmp/dar-backup-data-dirs/restore/dir1/color.jpg
+/tmp/dar-backup-data-dirs/restore/dir1/color.txt
+/tmp/dar-backup-data-dirs/restore/dir1/dar-backup.conf.symlink
+/tmp/dar-backup-data-dirs/restore/dir1/dar-backup.conf.hardlink
+/tmp/dar-backup-data-dirs/restore/dir1/dir2
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/color.jpg
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/color.txt
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dar-backup.conf.symlink
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dar-backup.conf.hardlink
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dir3
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dir3/color.jpg
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dir3/color.txt
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dir3/dar-backup.conf.symlink
+/tmp/dar-backup-data-dirs/restore/dir1/dir2/dir3/dar-backup.conf.hardlink
 ```
 
 </details>
@@ -184,7 +254,9 @@ PAR2 enabled:     True
 > - --dir-to-backup (perhaps Pictures)
 > - --backup-dir    (perhaps /media/user/big-disk)
 >
-> See log file: `cat "$HOME/dar-backup/dar-backup.log"`
+> See log file: `cat /tmp/dar-backup/dar-backup.log`
+>
+> Remove everything the demo created: `demo --cleanup`
 >
 > Checkout [systemd timers and services](systemd-setup.md)
 >

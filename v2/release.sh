@@ -276,7 +276,7 @@ fi
 # Stamp release date in changelogs and update README version
 ########################################
 if $DRY_RUN; then
-    dryrun "stamp release date in CHANGELOG.md / Changelog.md / README.md for ${VERSION}"
+    dryrun "stamp release date in CHANGELOG.md / Changelog.md / README.md / doc/quick-guide.md for ${VERSION}"
 else
     TODAY="$(date -u +%Y-%m-%d)"
     NOT_RELEASED_PATTERN="## v2-${VERSION}[[:space:]]+ -[[:space:]]+not released"
@@ -293,6 +293,12 @@ else
     if [[ -f "${_readme}" ]]; then
         sed -i -E "s/Version[[:space:]]+\*\*[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\*\*/Version **${VERSION}**/" "${_readme}"
         green "Updated current release version in ${_readme}"
+    fi
+
+    _quickguide="doc/quick-guide.md"
+    if [[ -f "${_quickguide}" ]]; then
+        sed -i -E "s/(dar-backup-)[0-9]+\.[0-9]+\.[0-9]+/\1${VERSION}/g; s/((manager|dar-backup)\.py:[[:space:]]+)[0-9]+\.[0-9]+\.[0-9]+/\1${VERSION}/g" "${_quickguide}"
+        green "Updated dar-backup version references in ${_quickguide}"
     fi
 fi
 
@@ -356,13 +362,13 @@ else
 
     REPORT_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- "${REPORT_PREFIX}")"
     RELEASE_META_STATUS="$(git -C "${REPO_ROOT}" status --porcelain -- \
-        "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" 2>/dev/null || true)"
+        "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" "${REPO_REL}/doc/quick-guide.md" 2>/dev/null || true)"
 
     if [[ -n "${REPORT_STATUS}" || -n "${RELEASE_META_STATUS}" ]]; then
         TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
         git -C "${REPO_ROOT}" add "${REPORT_PREFIX}"
-        # Stage changelog/README changes if present (paths relative to repo root)
-        git -C "${REPO_ROOT}" add -- "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" 2>/dev/null || true
+        # Stage changelog/README/quick-guide changes if present (paths relative to repo root)
+        git -C "${REPO_ROOT}" add -- "CHANGELOG.md" "${REPO_REL}/Changelog.md" "README.md" "${REPO_REL}/README.md" "${REPO_REL}/doc/quick-guide.md" 2>/dev/null || true
         git -C "${REPO_ROOT}" commit -m "release: dar-backup ${VERSION} — stamp date, update README, test-report ${TS}"
         green "Committed release metadata and test reports"
     else
@@ -373,7 +379,7 @@ fi
 ########################################
 # Safety check: only allow tag move if the ONLY changes between
 # the existing tag commit and current HEAD are release-managed files
-# (doc/test-report/, CHANGELOG.md, v2/Changelog.md, README.md).
+# (doc/test-report/, CHANGELOG.md, v2/Changelog.md, README.md, v2/doc/quick-guide.md).
 ########################################
 if $DRY_RUN; then
     dryrun "safety check: verify only release-managed files changed between ${TAG} and HEAD"
@@ -401,7 +407,9 @@ else
                   || ($0 == "README.md") \
                   || (rel != "." && $0 == rel "/Changelog.md") \
                   || (rel != "." && $0 == rel "/README.md") \
-                  || (rel == "." && $0 == "Changelog.md");
+                  || (rel != "." && $0 == rel "/doc/quick-guide.md") \
+                  || (rel == "." && $0 == "Changelog.md") \
+                  || (rel == "." && $0 == "doc/quick-guide.md");
            if (!allowed) print $0
          }'
     )"
