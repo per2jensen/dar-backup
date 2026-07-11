@@ -4,7 +4,7 @@ The purpose of this quick guide is to show how `dar-backup` works in a few simpl
 
 The package includes a `demo` application that can help you set up `dar-backup` quickly.
 
-> **The demo never touches your home directory**
+> **From version 1.1.11 the demo never touches your home directory**
 >
 > It only ever creates/uses these 3 directories under `/tmp`:
 >
