@@ -1453,3 +1453,8 @@ Added release annotation: 2026-07-07 → Rel. 1.1.10
  1 file changed, 51 insertions(+), 47 deletions(-)
 [1;32m✅ Clone annotation committed[0m
 [1;32mCommitting release log...[0m
+[main 3370220] post-release: dar-backup 1.1.10 — release log
+ 1 file changed, 1455 insertions(+)
+ create mode 100644 v2/doc/releases/release-v2-1.1.10.log
+[1;32m✅ Release log committed: doc/releases/release-v2-1.1.10.log[0m
+rmdir: failed to remove 'src/dar_backup/doc': No such file or directory
