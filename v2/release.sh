@@ -486,28 +486,43 @@ else
     echo "About to sign release artifacts with GPG."
     read -r -p "Press Enter to continue (or Ctrl+C to abort)..." _
 
-    for f in "$DIST_DIR"/*.{whl,tar.gz}; do
-        if gpg --batch --yes --detach-sign -a --local-user "$SIGNING_SUBKEY" "$f"; then
-            green "✅ Signed: $f"
-        else
+    # A mistyped/mispasted passphrase must not force a full script restart
+    # (which would mean re-running the full test suite). Retry in place until
+    # the user either succeeds or explicitly chooses to abort.
+    sign_file() {
+        local f="$1"
+        while true; do
+            if gpg --batch --yes --detach-sign -a --local-user "$SIGNING_SUBKEY" "$f"; then
+                green "✅ Signed: $f"
+                return 0
+            fi
             red "❌ GPG signing failed for $f"
-            exit 1
-        fi
+            read -r -p "Wrong passphrase or other GPG error — retry signing '$f'? [Y/n] " choice
+            [[ "$choice" =~ ^[Nn] ]] && return 1
+        done
+    }
+
+    for f in "$DIST_DIR"/*.{whl,tar.gz}; do
+        sign_file "$f" || exit 1
     done
 
     for f in "$DIST_DIR"/*.{whl,tar.gz}; do
-        if gpg --verify "$f.asc" "$f"; then
+        # Capture GPG's machine-readable status lines on fd 3 (separate from
+        # stdout/stderr) so the human-facing --verify output/exit code above
+        # is unaffected; --list-packets' human debug format is not a stable
+        # interface and does not reliably contain a literal "issuer-fpr" token.
+        GPG_STATUS_FILE="$(mktemp)"
+        if gpg --status-fd 3 --verify "$f.asc" "$f" 3>"$GPG_STATUS_FILE"; then
             green "✅ Verified signature: $f.asc"
         else
             red "❌ Signature verification failed: $f.asc"
+            rm -f "$GPG_STATUS_FILE"
             exit 1
         fi
 
-        SIGNER_FPR=$(
-          gpg --list-packets "$f.asc" \
-          | awk '/signature packet/,/hashed subpkt/ { if ($1 == "issuer-fpr") print $2 }' \
-          | head -n1
-        )
+        SIGNER_FPR="$(awk '/^\[GNUPG:\] VALIDSIG/ { print $3; exit }' "$GPG_STATUS_FILE")"
+        rm -f "$GPG_STATUS_FILE"
+
         if [[ -n "$SIGNER_FPR" ]]; then
             echo -e "\n📌 Signed by subkey fingerprint: $SIGNER_FPR\n"
         fi
