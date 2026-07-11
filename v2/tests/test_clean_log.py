@@ -327,6 +327,52 @@ def test_clean_log_uses_config_file_when_no_file_provided(setup_environment, env
     assert "<File should be removed>" not in cleaned
 
 
+def test_clean_log_uses_dar_backup_config_file_env_var(setup_environment, env: EnvData, monkeypatch):
+    """clean-log must respect DAR_BACKUP_CONFIG_FILE, like dar-backup/manager/cleanup/dashboard do."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    logfile_path = os.path.join(env.test_root, "dar-backup.log")
+    os.makedirs(os.path.dirname(logfile_path), exist_ok=True)
+    with open(logfile_path, "w") as f:
+        f.write("INFO - <File should be removed>\nERROR - Keep this\n")
+
+    monkeypatch.setenv("DAR_BACKUP_CONFIG_FILE", env.config_file)
+    command = ["clean-log"]  # no -c/--config-file: must fall back to the env var
+    process = runner.run(command)
+
+    assert process.returncode == 0
+
+    with open(logfile_path) as f:
+        cleaned = f.read()
+
+    assert "ERROR - Keep this" in cleaned
+    assert "<File should be removed>" not in cleaned
+
+
+def test_clean_log_cli_flag_overrides_env_var(setup_environment, env: EnvData, monkeypatch, tmp_path):
+    """-c/--config-file must win over DAR_BACKUP_CONFIG_FILE when both are given."""
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+
+    # Point the env var at a config that doesn't exist; the CLI flag should still win.
+    monkeypatch.setenv("DAR_BACKUP_CONFIG_FILE", str(tmp_path / "nonexistent.conf"))
+
+    logfile_path = os.path.join(env.test_root, "dar-backup.log")
+    os.makedirs(os.path.dirname(logfile_path), exist_ok=True)
+    with open(logfile_path, "w") as f:
+        f.write("INFO - <File should be removed>\nERROR - Keep this\n")
+
+    command = ["clean-log", "-c", env.config_file]
+    process = runner.run(command)
+
+    assert process.returncode == 0
+
+    with open(logfile_path) as f:
+        cleaned = f.read()
+
+    assert "ERROR - Keep this" in cleaned
+    assert "<File should be removed>" not in cleaned
+
+
 def test_clean_log_invalid_empty_filename(setup_environment, env: EnvData):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     command = ["clean-log", "-f", "", "-c", env.config_file]

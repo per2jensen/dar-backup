@@ -29,7 +29,7 @@ from typing import Optional, Tuple
 
 from dar_backup import __about__ as about
 from dar_backup.config_settings import ConfigSettings
-from dar_backup.util import send_discord_message, get_logger
+from dar_backup.util import send_discord_message, get_logger, get_config_file
 
 LICENSE = '''Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
 THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -189,8 +189,9 @@ def main() -> None:
 
     parser.add_argument(
         '-c', '--config-file',
-        type=str, help="Path to 'dar-backup.conf'",
-        default='~/.config/dar-backup/dar-backup.conf')
+        type=str, help="Path to 'dar-backup.conf'. Falls back to the DAR_BACKUP_CONFIG_FILE "
+                       "environment variable, then '~/.config/dar-backup/dar-backup.conf'.",
+        default=None)
 
     parser.add_argument(
         "--dry-run",
@@ -206,9 +207,10 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    args.config_file = get_config_file(args)
 
     try:
-        config_settings = ConfigSettings(os.path.expanduser(os.path.expandvars(args.config_file)))
+        config_settings = ConfigSettings(args.config_file)
     except Exception as exc:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Config error: {exc}"
         print(msg, file=sys.stderr)
