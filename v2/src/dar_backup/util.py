@@ -10,7 +10,6 @@ not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See section 15 and section 16 in the supplied "LICENSE" file
 """
 import typing
-import inspect
 import logging
 import json
 import sqlite3
@@ -456,15 +455,6 @@ completer_logger = _setup_completer_logger()
 completer_logger.debug("Completer logger initialized.")
 
 
-def print_debug(msg):
-    """
-    Print a debug message with the filename and line number of the caller.
-    """
-    frame = inspect.currentframe().f_back
-    print(f"[DEBUG] {frame.f_code.co_filename}:{frame.f_lineno} - {repr(msg)}")
-
-
-
 def get_invocation_command_line() -> str:
     """
     Safely retrieves the exact command line used to invoke the current Python process.
@@ -611,16 +601,10 @@ def send_discord_message(
             body = None
         detail = f" body='{body.strip()}'" if body else ""
         message = f"Discord webhook HTTP error {exc.code}: {exc.reason}{detail}"
-        if log:
-            log.exception(message)
-        else:
-            print(message, file=sys.stderr)
+        log.exception(message)
     except Exception as exc:
         message = f"Failed to send Discord webhook message: {exc}"
-        if log:
-            log.exception(message)
-        else:
-            print(message, file=sys.stderr)
+        log.exception(message)
 
     return False
 
@@ -822,14 +806,6 @@ class BackupError(Exception):
     def __init__(self, msg="", dar_exit_code=None):
         super().__init__(msg)
         self.dar_exit_code = dar_exit_code
-
-class DifferentialBackupError(BackupError):
-    """Exception raised for errors in the differential backup process."""
-    pass
-
-class IncrementalBackupError(BackupError):
-    """Exception raised for errors in the incremental backup process."""
-    pass
 
 class RestoreError(Exception):
     """Exception raised for errors in the restore process."""
@@ -1549,10 +1525,17 @@ def safe_remove_file(path_str: str, *, base_dir: Path) -> bool:
 
 # Allowed archive name:
 #   <definition>_(FULL|DIFF|INCR)_YYYY-MM-DD
-# Example:
+# Examples:
 #   pj-homedir_INCR_2025-11-22
+#   my backup_FULL_2026-01-01   (definition names may contain spaces)
+#
+# The definition group allows spaces because backup definition names have
+# permitted them for years (see _BACKUP_DEFINITION_RE in dar_backup.py). Path
+# separators and ".." are rejected separately in is_archive_name_allowed(); a
+# space cannot form a traversal and is safe in the list-form subprocess calls
+# (sanitize_cmd only rejects shell metacharacters, not spaces).
 _ARCHIVE_NAME_RE = re.compile(
-    r"^(?P<def>[A-Za-z0-9][A-Za-z0-9._-]{0,127})_"
+    r"^(?P<def>[A-Za-z0-9][A-Za-z0-9 ._-]{0,127})_"
     r"(?P<kind>FULL|DIFF|INCR)_"
     r"(?P<date>\d{4}-\d{2}-\d{2})$"
 )
@@ -1826,8 +1809,7 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
             )
             conn.commit()
     except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
-        log = get_logger() or logging.getLogger(__name__)
-        log.warning("Failed to write metrics row: %s", exc)
+        get_logger().warning("Failed to write metrics row: %s", exc)
 
 
 def write_restore_test_samples(
@@ -1883,9 +1865,7 @@ def write_restore_test_samples(
             )
             conn.commit()
     except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
-        log = get_logger()
-        if log:
-            log.warning("Failed to write restore_test_samples: %s", exc)
+        get_logger().warning("Failed to write restore_test_samples: %s", exc)
 
 
 def update_postreq_status(run_id: str, status: str, config_settings) -> None:
@@ -1915,9 +1895,7 @@ def update_postreq_status(run_id: str, status: str, config_settings) -> None:
             )
             conn.commit()
     except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
-        log = get_logger()
-        if log:
-            log.warning("Failed to update postreq_status: %s", exc)
+        get_logger().warning("Failed to update postreq_status: %s", exc)
 
 
 def is_archive_name_allowed(name: str) -> bool:

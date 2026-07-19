@@ -749,7 +749,9 @@ def test_list_contents_raises_backup_error_on_called_process_error(env):
         with pytest.raises(BackupError):
             list_contents(backup_name, backup_dir)
 
-    mock_logger.error.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
+    # list_contents() logs the CalledProcessError branch via logger.exception()
+    # (idiomatic in an except handler; captures the traceback) before re-raising.
+    mock_logger.exception.assert_called_once_with(f"Error listing contents of backup: '{backup_name}'")
 
 
 def test_list_contents_raises_runtime_error_on_generic_exception(env):
@@ -1074,123 +1076,6 @@ def test_test_restore_cli(monkeypatch):
         mock_run.return_value.returncode = 0
         with pytest.raises(SystemExit):
             dar_main()
-
-
-
-from dar_backup.dar_backup import find_files_between_min_and_max_size
-
-
-
-def test_find_files_within_min_max_range(env):
-    files = [
-        ("tiny.txt", "0 o"),
-        ("small.txt", "512 kio"),
-        ("valid1.txt", "1 Mio"),
-        ("valid2.txt", "5 Mio"),
-        ("large.txt", "20 Mio"),
-        ("huge.txt", "2 Gio"),
-    ]
-
-    config = SimpleNamespace(
-        min_size_verification_mb=1,
-        max_size_verification_mb=10,
-        logger=env.logger
-    )
-
-    # Monkey patch the logger inside dar_backup
-    import dar_backup.dar_backup as dar_module
-    dar_module.logger = env.logger
-
-    result = find_files_between_min_and_max_size(files, config)
-
-    assert "valid1.txt" in result
-    assert "valid2.txt" in result
-    assert "tiny.txt" not in result
-    assert "small.txt" not in result
-    assert "large.txt" not in result
-    assert "huge.txt" not in result
-    assert len(result) == 2
-
-
-def test_find_files_unknown_unit_excluded_and_warns(env, caplog):
-    """Files with an unrecognised size unit must be excluded and a WARNING logged.
-
-    _parse_size_bytes() returns None for unknown units; find_files_between_min_and_max_size()
-    must not raise, must not include the file, and must emit a WARNING naming the file and
-    the raw size string so an operator knows to update _DAR_SIZE_UNITS.
-    """
-    import dar_backup.dar_backup as dar_module
-    dar_module.logger = env.logger
-
-    files = [
-        ("good.txt", "5 Mio"),
-        ("bad_unit.txt", "5 XiB"),   # 'XiB' is not in _DAR_SIZE_UNITS
-    ]
-    config = SimpleNamespace(
-        min_size_verification_mb=1,
-        max_size_verification_mb=10,
-        logger=env.logger,
-    )
-
-    with caplog.at_level(logging.WARNING):
-        result = find_files_between_min_and_max_size(files, config)
-
-    assert "good.txt" in result
-    assert "bad_unit.txt" not in result
-    assert any("XiB" in msg and "bad_unit.txt" in msg for msg in caplog.messages), (
-        "Expected a WARNING mentioning the unknown unit and filename"
-    )
-
-
-def test_find_files_boundary_values_excluded(env):
-    """Files exactly at the boundary edge outside [min, max] are excluded."""
-    import dar_backup.dar_backup as dar_module
-    dar_module.logger = env.logger
-
-    files = [
-        ("below.txt", "512 kio"),    # 0.5 MB — below 1 MB minimum
-        ("above.txt", "11 Mio"),     # 11 MB — above 10 MB maximum
-        ("at_min.txt", "1 Mio"),     # exactly at minimum — included
-        ("at_max.txt", "10 Mio"),    # exactly at maximum — included
-    ]
-    config = SimpleNamespace(
-        min_size_verification_mb=1,
-        max_size_verification_mb=10,
-        logger=env.logger,
-    )
-
-    result = find_files_between_min_and_max_size(files, config)
-
-    assert "below.txt" not in result
-    assert "above.txt" not in result
-    assert "at_min.txt" in result
-    assert "at_max.txt" in result
-
-
-def test_filter_restoretest_candidates_case_insensitive():
-    import re
-    from dar_backup.dar_backup import filter_restoretest_candidates
-
-    files = [
-        "Docs/Report.LOG",
-        ".cache/foo.txt",
-        "notes.txt",
-        "dir/Cache/file.tmp",
-        "data.db",
-    ]
-    config = SimpleNamespace(
-        restoretest_exclude_prefixes=[".CACHE/"],
-        restoretest_exclude_suffixes=[".log", ".TMP"],
-        restoretest_exclude_regex=re.compile(r"(^|/)(cache|logs)/", re.IGNORECASE),
-    )
-
-    result = filter_restoretest_candidates(files, config)
-
-    assert "notes.txt" in result
-    assert "data.db" in result
-    assert "Docs/Report.LOG" not in result
-    assert ".cache/foo.txt" not in result
-    assert "dir/Cache/file.tmp" not in result
 
 
 def test_restoretest_filters_and_verifies_all_good_files(monkeypatch, caplog):

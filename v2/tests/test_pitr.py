@@ -532,8 +532,8 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     file_output = (
         "1 Thu Jan 29 15:00:34 2026  saved\n"
@@ -591,8 +591,8 @@ def test_restore_with_dar_directory_logs_chain_details(mock_config, mock_runner,
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -626,8 +626,8 @@ def test_pitr_report_directory_missing_slice_fails(mock_config, mock_runner, moc
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),   # --list
@@ -690,7 +690,7 @@ def test_pitr_report_file_missing_archive_map_entry(mock_config, mock_runner, mo
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -718,7 +718,7 @@ def test_pitr_report_file_missing_slice(mock_config, mock_runner, mock_logger):
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     file_output = "1 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -751,7 +751,7 @@ def test_pitr_report_directory_no_full_archive(mock_config, mock_runner, mock_lo
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),   # --list
@@ -775,7 +775,7 @@ def test_pitr_report_directory_missing_archive_map_entry(mock_config, mock_runne
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),   # --list
@@ -801,7 +801,7 @@ def test_pitr_report_directory_catalog_based_chain(mock_config, mock_runner, moc
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),   # --list
@@ -828,8 +828,8 @@ def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -864,7 +864,7 @@ def test_restore_with_dar_directory_no_full_archive(mock_config, mock_runner, mo
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -890,7 +890,7 @@ def test_restore_with_dar_directory_missing_archive_map_entry(mock_config, mock_
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -920,7 +920,7 @@ def test_restore_with_dar_directory_detected_by_catalog(mock_config, mock_runner
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -953,9 +953,9 @@ def test_restore_with_dar_directory_no_file_versions_uses_chain(
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-10\n"
-        "2 /tmp/backups example_DIFF_2026-01-14\n"
-        "3 /tmp/backups example_INCR_2026-01-25\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-14\n"
+        "3\t/tmp/backups\texample_INCR_2026-01-25\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -1113,9 +1113,9 @@ def test_relocate_archive_paths_dry_run(mock_config, mock_runner, mock_logger):
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /old/path example_FULL_2026-01-29\n"
-        "2 /keep/path example_DIFF_2026-01-29\n"
-        "3 /old/path example_INCR_2026-01-30\n"
+        "1\t/old/path\texample_FULL_2026-01-29\n"
+        "2\t/keep/path\texample_DIFF_2026-01-29\n"
+        "3\t/old/path\texample_INCR_2026-01-30\n"
     )
     mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
 
@@ -1134,9 +1134,9 @@ def test_relocate_archive_paths_apply(mock_config, mock_runner, mock_logger):
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /old/path example_FULL_2026-01-29\n"
-        "2 /keep/path example_DIFF_2026-01-29\n"
-        "3 /old/path example_INCR_2026-01-30\n"
+        "1\t/old/path\texample_FULL_2026-01-29\n"
+        "2\t/keep/path\texample_DIFF_2026-01-29\n"
+        "3\t/old/path\texample_INCR_2026-01-30\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -1162,7 +1162,7 @@ def test_relocate_archive_paths_no_matches(mock_config, mock_runner, mock_logger
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /keep/path example_FULL_2026-01-29\n"
+        "1\t/keep/path\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.return_value = CommandResult(0, list_output, "", note=None)
 
@@ -1199,7 +1199,7 @@ def test_relocate_archive_paths_update_failure(mock_config, mock_runner, mock_lo
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /old/path example_FULL_2026-01-29\n"
+        "1\t/old/path\texample_FULL_2026-01-29\n"
     )
     mock_runner.run.side_effect = [
         CommandResult(0, list_output, "", note=None),
@@ -1238,7 +1238,7 @@ def test_restore_with_dar_file_missing_archive_map_entry(mock_config, mock_runne
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -1268,7 +1268,7 @@ def test_restore_with_dar_file_missing_slice(mock_config, mock_runner, mock_logg
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     file_output = "1 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -1303,7 +1303,7 @@ def test_restore_with_dar_file_restore_failure(mock_config, mock_runner, mock_lo
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
     )
     file_output = "1 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -1475,8 +1475,8 @@ def test_restore_with_dar_no_deleted_injects_deleted_ignore(mock_config, mock_ru
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [
@@ -1515,8 +1515,8 @@ def test_restore_with_dar_no_deleted_false_omits_deleted_ignore(mock_config, moc
     list_output = (
         "archive #   |    path      |    basename\n"
         "------------+--------------+---------------\n"
-        "1 /tmp/backups example_FULL_2026-01-29\n"
-        "2 /tmp/backups example_DIFF_2026-01-29\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+        "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
     )
     file_output = "2 Thu Jan 29 15:00:41 2026  saved\n"
     mock_runner.run.side_effect = [

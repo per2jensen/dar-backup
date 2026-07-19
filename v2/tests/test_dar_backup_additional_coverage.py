@@ -41,23 +41,6 @@ def test_iter_files_with_paths_from_xml_streams_paths(tmp_path):
     assert ("root.log", "78") in result
 
 
-def test_filter_restoretest_candidates_logs_excluded(monkeypatch):
-    logger = MagicMock()
-    monkeypatch.setattr(db, "logger", logger)
-
-    config = SimpleNamespace(
-        restoretest_exclude_prefixes=["skip/"],
-        restoretest_exclude_suffixes=[],
-        restoretest_exclude_regex=None,
-    )
-    files = ["keep/file.txt", "skip/file.txt"]
-
-    result = db.filter_restoretest_candidates(files, config)
-
-    assert result == ["keep/file.txt"]
-    assert any("excluded 1" in call.args[0] for call in logger.debug.call_args_list)
-
-
 def test_select_restoretest_samples_logs_summary(monkeypatch):
     logger = MagicMock()
     monkeypatch.setattr(db, "logger", logger)

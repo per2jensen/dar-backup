@@ -4,10 +4,9 @@ Security tests for XXE (XML External Entity) protection.
 These tests verify that the application's XML parsing code does not expand
 external entities, protecting against CVE-2022-23437 and related XXE attacks.
 
-Three layers are tested:
+Two layers are tested:
   - DoctypeStripper: DOCTYPE declaration is stripped before ET sees the XML.
   - iter_files_with_paths_from_xml: file-based XML listing is safe.
-  - find_files_with_paths: string-based XML listing is safe.
 
 Safe outcome in all cases: ET.ParseError because the entity reference (&xxe;)
 is left undefined after DOCTYPE removal — the entity is never expanded.
@@ -20,7 +19,6 @@ import pytest
 
 from dar_backup.dar_backup import (
     DoctypeStripper,
-    find_files_with_paths,
     iter_files_with_paths_from_xml,
 )
 
@@ -75,17 +73,6 @@ def test_iter_files_with_paths_from_xml_is_safe_against_xxe(tmp_path):
 
     with pytest.raises(ET.ParseError):
         list(iter_files_with_paths_from_xml(str(xml_path)))
-
-
-def test_find_files_with_paths_is_safe_against_xxe():
-    """
-    find_files_with_paths must not expand external entities.
-
-    The regex strips the DOCTYPE declaration; the remaining undefined entity
-    reference causes ET.ParseError — the safe, non-leaking outcome.
-    """
-    with pytest.raises(ET.ParseError):
-        find_files_with_paths(_XXE_PAYLOAD)
 
 
 # ---------------------------------------------------------------------------

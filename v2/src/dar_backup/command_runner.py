@@ -228,25 +228,35 @@ class CommandRunner:
 
 
 
-    def _join_lines(self, lines: List[Union[str, bytes]]) -> Union[str, bytes]:
-        """Join captured output chunks, honoring the current text/binary mode.
+    def _join_lines(self, lines: List[Union[str, bytes]], text_mode: bool) -> Union[str, bytes]:
+        """Join captured output chunks, honoring the run's text/binary mode.
 
         stream_output() appends str chunks in text mode and bytes chunks in
         binary mode (never mixed within one run() call), so the cast here
-        just tells mypy what self._text_mode already guarantees at runtime.
+        just tells mypy what *text_mode* already guarantees at runtime.
+
+        Args:
+            lines: Captured chunks (all str in text mode, all bytes otherwise).
+            text_mode: The run() call's `text` flag, passed in per call rather
+                than stored on self, so concurrent run() calls cannot race.
         """
-        if self._text_mode:
+        if text_mode:
             return ''.join(cast(List[str], lines))
         return b''.join(cast(List[bytes], lines))
 
-    def _prefixed_join(self, prefix: str, lines: List[Union[str, bytes]]) -> Union[str, bytes]:
+    def _prefixed_join(self, prefix: str, lines: List[Union[str, bytes]], text_mode: bool) -> Union[str, bytes]:
         """Like _join_lines(), but prepends *prefix* (always given as str).
 
         Kept as one branch (rather than `prefix_value + self._join_lines(lines)`)
         because mypy cannot prove both sides of that `+` pick the same union
         member independently.
+
+        Args:
+            prefix: Text to prepend (encoded to bytes when *text_mode* is False).
+            lines: Captured chunks (all str in text mode, all bytes otherwise).
+            text_mode: The run() call's `text` flag, passed in per call.
         """
-        if self._text_mode:
+        if text_mode:
             return prefix + ''.join(cast(List[str], lines))
         return prefix.encode('utf-8') + b''.join(cast(List[bytes], lines))
 
@@ -310,7 +320,6 @@ class CommandRunner:
                 draining the reader threads) if SIGINT arrives while waiting on
                 the process.
         """
-        self._text_mode = text
         if timeout is None:
             timeout = self.default_timeout
         if timeout is not None and timeout <= 0:
@@ -449,7 +458,7 @@ class CommandRunner:
                                     self.command_logger.log(level, partial)
                                 tail_deque.append(partial)
                             break
-                        if self._text_mode:
+                        if text:
                             decoded = chunk.decode('utf-8', errors='replace')
                             # Prepend any leftover fragment, split on newlines, and
                             # hold back the final element: it is either "" (trailing
@@ -536,8 +545,8 @@ class CommandRunner:
                 # stderr was empty and interleaved it between chunks otherwise.
                 return CommandResult(
                     -1,
-                    self._join_lines(stdout_lines),
-                    self._prefixed_join(log_msg, stderr_lines),
+                    self._join_lines(stdout_lines, text),
+                    self._prefixed_join(log_msg, stderr_lines, text),
                 )
             except KeyboardInterrupt:
                 # Kill the child process and drain threads so callers can log
@@ -556,8 +565,8 @@ class CommandRunner:
                 self.logger.exception(log_msg)
                 return CommandResult(
                     -1,
-                    self._join_lines(stdout_lines),
-                    self._prefixed_join(log_msg, stderr_lines),
+                    self._join_lines(stdout_lines, text),
+                    self._prefixed_join(log_msg, stderr_lines, text),
                     stack,
                 )
 
@@ -586,8 +595,8 @@ class CommandRunner:
                     " ".join(shlex.quote(arg) for arg in cmd),
                 )
 
-            stdout_combined = self._join_lines(stdout_lines)
-            stderr_combined = self._join_lines(stderr_lines)
+            stdout_combined = self._join_lines(stdout_lines, text)
+            stderr_combined = self._join_lines(stderr_lines, text)
 
             note = None
             if truncated_stdout["value"] or truncated_stderr["value"]:

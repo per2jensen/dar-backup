@@ -2,7 +2,8 @@
 """
 Integration tests: RESTORETEST_EXCLUDE_* config keys in a real backup run.
 
-Finding #1 — The unit tests for filter_restoretest_candidates are thorough,
+Finding #1 — The unit tests for the restore-test exclusion logic
+(select_restoretest_samples / _is_restoretest_candidate) are thorough,
 but no integration test puts RESTORETEST_EXCLUDE_PREFIXES, SUFFIXES, and
 REGEX in an actual config file, runs a full backup, and asserts that those
 paths are never selected as restore-test candidates.

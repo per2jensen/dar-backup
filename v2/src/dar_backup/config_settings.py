@@ -223,12 +223,14 @@ class ConfigSettings:
                 )
 
 
-            # Expand paths in all string fields that exist
-            for field in fields(self):
-                if hasattr(self, field.name):
-                    value = getattr(self, field.name)
+            # Expand paths in all string fields that exist.
+            # Loop var is `f` (not `field`) so it does not shadow the dataclasses
+            # `field` imported at module scope.
+            for f in fields(self):
+                if hasattr(self, f.name):
+                    value = getattr(self, f.name)
                     if isinstance(value, str):
-                        setattr(self, field.name, expanduser(expandvars(value)))
+                        setattr(self, f.name, expanduser(expandvars(value)))
 
         except ConfigSettingsError:
             raise

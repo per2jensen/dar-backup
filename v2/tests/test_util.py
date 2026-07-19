@@ -307,6 +307,20 @@ def test_is_archive_name_allowed_negative():
     assert util.is_archive_name_allowed("-bad_FULL_2024-01-01") is False
 
 
+def test_is_archive_name_allowed_space_in_definition_name():
+    """Backup definition names may contain spaces (allowed for years), so the
+    resulting archive names must pass the cleanup safety gate — while spaces must
+    not smuggle in a path separator, a traversal, or break the _KIND_ structure."""
+    # Positive: space-containing definition names are accepted.
+    assert util.is_archive_name_allowed("my backup_FULL_2026-01-01") is True
+    assert util.is_archive_name_allowed("my photo archive_DIFF_2026-02-15") is True
+    # Negative: a space around a separator or traversal is still rejected.
+    assert util.is_archive_name_allowed("my /etc_FULL_2026-01-01") is False
+    assert util.is_archive_name_allowed("my ..backup_FULL_2026-01-01") is False
+    # Negative: the '_' before the kind is still required — a space there fails.
+    assert util.is_archive_name_allowed("my backup FULL_2026-01-01") is False
+
+
 def test_is_under_base_dir_nested_positive(tmp_path):
     base = tmp_path / "base"
     (base / "a" / "b").mkdir(parents=True)
@@ -486,14 +500,6 @@ def test_is_safe_path_requires_absolute():
     assert util.is_safe_path("/tmp/dir/file.txt") is True
     assert util.is_safe_path("tmp/dir/file.txt") is False
     assert util.is_safe_path("../tmp/file.txt") is False
-
-
-def test_print_debug_includes_filename_and_repr(capsys):
-    util.print_debug("hello")
-    out = capsys.readouterr().out.strip()
-    assert out.startswith("[DEBUG]")
-    assert "test_util.py" in out
-    assert repr("hello") in out
 
 
 def test_show_scriptname_uses_sys_argv(monkeypatch):

@@ -383,15 +383,18 @@ def main() -> None:
     logger.debug(f"`config_settings`:\n{config_settings}")
 
     file_dir =  os.path.normpath(os.path.dirname(__file__))
-    args.verbose and start_msgs.append(("Script directory:", file_dir))  # type: ignore[func-returns-value]
+    if args.verbose:
+        start_msgs.append(("Script directory:", file_dir))
     start_msgs.append(("Config file:", args.config_file))
-    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))  # type: ignore[func-returns-value]
+    if args.verbose:
+        start_msgs.append(("Backup dir:", config_settings.backup_dir))
     start_msgs.append(("Logfile:", config_settings.logfile_location))
-    args.verbose and start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--alternate-archive-dir:", str(args.alternate_archive_dir)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--cleanup-specific-archives:", str(args.cleanup_specific_archives)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--dry-run:", str(args.dry_run)))  # type: ignore[func-returns-value]
+    if args.verbose:
+        start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))
+        start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))
+        start_msgs.append(("--alternate-archive-dir:", str(args.alternate_archive_dir)))
+        start_msgs.append(("--cleanup-specific-archives:", str(args.cleanup_specific_archives)))
+        start_msgs.append(("--dry-run:", str(args.dry_run)))
 
     dangerous_keywords = ["--cleanup", "_FULL_"] # TODO: add more dangerous keywords
     print_aligned_settings(start_msgs, highlight_keywords=dangerous_keywords, quiet=not args.verbose)

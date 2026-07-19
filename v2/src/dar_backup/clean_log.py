@@ -261,13 +261,9 @@ def main() -> None:
             print(f"Dry run complete for: {file_list}")
         else:
             print(f"Log file '{file_list}' has been cleaned successfully.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — CLI-boundary catch: logs with context, reports, and exits
         msg = f"Unexpected error during clean-log: {e}"
-        logger = get_logger()
-        if logger:
-            logger.error(msg, exc_info=True)
-        else:
-            print(msg, file=sys.stderr)
+        get_logger().error(msg, exc_info=True)
 
         ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - clean-log: FAILURE - {msg}", config_settings=config_settings)

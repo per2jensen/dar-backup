@@ -264,6 +264,58 @@ def test_pitr_report_first_restores_after_successful_report(setup_environment, e
     )
 
 
+def test_pitr_restore_works_for_space_containing_definition_name(setup_environment, env: EnvData) -> None:
+    """PITR restore must work for a backup definition whose name contains a space.
+
+    Space-containing definition names have been allowed for years, so the whole
+    chain must handle them.  This drives real dar and dar_manager end-to-end:
+    the archive basename 'my backup_FULL_<date>' must survive
+    `dar_manager --list` parsing so the on-disk slice is found.
+
+    Regression: `_parse_archive_map` split on whitespace and tore the basename
+    into 'path …/my' + 'backup_FULL_<date>', yielding a non-existent path — PITR
+    then reported the slice as missing and the restore failed.
+    """
+    backup_def = "my backup"
+
+    # Add a second definition whose name contains a space, aimed at the same
+    # test data the 'example' definition already backs up.
+    shutil.copyfile(
+        os.path.join(env.backup_d_dir, "example"),
+        os.path.join(env.backup_d_dir, backup_def),
+    )
+
+    # Create its catalog DB, then run a real FULL backup (which also registers
+    # the archive in the catalog via `manager --add-specific-archive`).
+    create = _run_manager(env, ["--create-db", "--backup-def", backup_def])
+    assert create.returncode == 0, f"create-db failed for space-named def:\n{create.stderr}"
+
+    backup = _run_dar_backup(env, ["--full-backup", "-d", backup_def])
+    assert backup.returncode == 0, f"backup failed for space-named def:\n{backup.stderr}"
+
+    # The produced archive basename really does contain the space.
+    archive = _find_archive_name(env.backup_dir, "FULL", backup_def)
+    assert archive.startswith(f"{backup_def}_FULL_"), f"unexpected archive name: {archive!r}"
+
+    # PITR-restore a file from it (latest) into a clean target.
+    file1_relative = os.path.join(env.data_dir.lstrip("/"), "file1.txt")
+    target_dir = os.path.join(env.test_dir, "pitr_space_name_target")
+    os.makedirs(target_dir, exist_ok=True)
+
+    result = _run_manager(env, [
+        "--backup-def", backup_def,
+        "--restore-path", file1_relative,
+        "--target", target_dir,
+    ])
+    assert result.returncode == 0, (
+        f"PITR restore failed for space-named definition '{backup_def}':\n{result.stderr}"
+    )
+
+    restored = os.path.join(target_dir, file1_relative)
+    assert os.path.isfile(restored), f"Restored file not found: {restored}"
+    assert Path(restored).read_text() == "This is file 1."
+
+
 # ---------------------------------------------------------------------------
 # Group B: Backup pipeline
 # ---------------------------------------------------------------------------

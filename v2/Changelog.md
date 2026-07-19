@@ -3,6 +3,29 @@
 
 For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
+## v2-1.1.11 - 2026-07-19
+
+### Fixed
+
+- **PITR broke for backup definition names containing spaces** (`manager.py`) — space-containing definition names have been valid for years, but `_parse_archive_map()` split `dar_manager --list` output on whitespace instead of tab, tearing an archive base name like `my backup_FULL_2026-01-01` apart. PITR then resolved a wrong path and reported the archive slice as "missing", so restore, `--pitr-report`, and `relocate-archive-path` all failed. Now tab-splits, consistent with `list_catalogs()` / `cat_no_for_name()`. Added a real end-to-end integration test that backs up and PITR-restores a space-named definition.
+- **`is_archive_name_allowed()` rejected space-containing archive names** (`util.py`) — cleanup refused to process archives whose (allowed) definition name contained a space. The definition part now permits spaces; path separators and `..` are still rejected.
+- **`manager --list-archive-contents` ignored the "no timeout" setting** (`manager.py`) — an `or 10` forced a 10-second timeout even when `COMMAND_TIMEOUT_SECS = -1` disabled timeouts, killing the listing of large catalogs. Now respects the configured timeout like every other call site.
+- **PITR directory detection could match a path across a component boundary** (`manager.py`) — a query for `Documents/Taxes` could match a directory line ending in `MyDocuments/Taxes`. Matching is now anchored to a real path boundary (`/`, whitespace, or start of line).
+- **`clean-log` now respects `DAR_BACKUP_CONFIG_FILE`** (`clean_log.py`) — config-file resolution now follows the same `-c` → `DAR_BACKUP_CONFIG_FILE` → default precedence as the other tools.
+
+### Changed
+
+- **PITR report and restore now share one archive-selection decision** (`manager.py`) — `--pitr-report` / `--pitr-report-first` and the real restore both route directory-vs-file detection and chain/version selection through a single `_resolve_pitr_path()`, so the report can no longer disagree with what the restore actually does.
+- **`demo` no longer touches `$HOME` at all** — the demo runs entirely within `/tmp` working directories.
+
+### Removed
+
+- **Dead code removed** — unused exceptions `DifferentialBackupError` / `IncrementalBackupError`, test-only helpers (`find_files_with_paths`, `find_files_between_min_and_max_size`, `filter_restoretest_candidates`, `print_debug`), and `restore_backup()`'s always-empty return value.
+
+### Updated
+
+- **Internal cleanups** — removed per-call `_text_mode` state on `CommandRunner` (thread the mode through instead), replaced `expr and list.append(...)` side-effect statements with plain `if` blocks, simplified logger guards that could never be falsy, and renamed a loop variable that shadowed the imported `dataclasses.field`.
+
 ## v2-1.1.10 - 2026-07-07
 
 ### Added

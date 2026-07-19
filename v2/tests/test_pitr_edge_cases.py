@@ -10,13 +10,22 @@ Covers:
   - _restore_target_unsafe_reason: .. traversal, /var/tmp allowed, symlink-like
   - _normalize_when_dt / _parse_when: naive passthrough, tz-aware conversion
   - _coerce_timeout: string, bool, negative, None
-  - _parse_archive_map: spaces in directory path, header-only output
+  - _parse_archive_map: tab-separated parsing, spaces in directory path AND in
+    archive basename (space-containing definition names), leading pad, header-only
   - _restore_with_dar: file restore break-vs-continue on missing archive,
     mixed dir+file in single call, darrc passed to dar command
   - restore_at: path normalization with leading /, ./, ..
   - _missing_chain_elements: all present, some missing, all missing, empty chain
   - _is_directory_path: existing directory, non-existing path, file instead of dir
-  - _is_directory_in_archive: directory found, file found, not found, dar error
+  - _is_directory_in_archive: directory found, file found, not found, dar error,
+    sibling-prefix path not matched (component-boundary check)
+  - _line_path_matches: boundary matching (start/slash/space/tab) vs sibling-prefix
+    and partial-component substrings
+  - _replace_path_prefix: exact match, nested path, trailing slash, sibling-prefix
+    not matched, unrelated path
+  - _resolve_pitr_path: shared detect/select decision used by BOTH the dry-run
+    report and the real restore (directory chain, no-FULL error, missing slice,
+    file candidates ordered latest-first, no-version error)
   - _format_chain_item: with info, without info
   - _describe_archive: with info, without info
 """
@@ -34,13 +43,16 @@ from dar_backup.manager import (
     _format_chain_item,
     _is_directory_in_archive,
     _is_directory_path,
+    _line_path_matches,
     _missing_chain_elements,
     _normalize_when_dt,
     _parse_archive_info,
     _parse_archive_map,
     _parse_file_versions,
     _parse_when,
+    _replace_path_prefix,
     _resolve_backup_root,
+    _resolve_pitr_path,
     _restore_target_unsafe_reason,
     _restore_with_dar,
     _select_archive_chain,
@@ -301,8 +313,8 @@ class TestCatalogBasedRestoreStrategy:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
-            "2 /tmp/backups example_DIFF_2026-01-15\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
         )
         file_output = (
             "1 Fri Jan 10 10:00:00 2026  saved\n"
@@ -347,7 +359,7 @@ class TestCatalogBasedRestoreStrategy:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
         )
         file_output = "1 Fri Jan 10 10:00:00 2026  saved\n"
         mock_runner.run.side_effect = [
@@ -382,8 +394,8 @@ class TestCatalogBasedRestoreStrategy:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
-            "2 /tmp/backups example_DIFF_2026-01-15\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
         )
         mock_runner.run.side_effect = [
             CommandResult(0, list_output, "", note=None),   # --list
@@ -423,7 +435,7 @@ class TestCatalogBasedRestoreStrategy:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
         )
         file_output = "1 Fri Jan 10 10:00:00 2026  saved\n"
         mock_runner.run.side_effect = [
@@ -458,8 +470,8 @@ class TestCatalogBasedRestoreStrategy:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
-            "2 /tmp/backups example_DIFF_2026-01-15\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
         )
         file_output = (
             "1 Fri Jan 10 10:00:00 2026  saved\n"
@@ -702,19 +714,43 @@ class TestParseArchiveMap:
     def test_spaces_in_directory_path(self) -> None:
         """Directory path containing spaces is reconstructed correctly."""
         output = (
-            "1 /tmp/my backups example_FULL_2026-01-15\n"
+            "1\t/tmp/my backups\texample_FULL_2026-01-15\n"
         )
         result = _parse_archive_map(output)
         assert 1 in result
         assert result[1] == "/tmp/my backups/example_FULL_2026-01-15"
+
+    def test_spaces_in_archive_basename(self) -> None:
+        """A backup definition name containing spaces (allowed for years) yields a
+        basename with a space, e.g. 'my backup_FULL_...'.  Tab-splitting must keep
+        it whole so the resolved path points at the real archive.
+
+        Regression: the previous whitespace split tore 'my backup_FULL_2026-01-15'
+        into path '/tmp/backups my' + basename 'backup_FULL_2026-01-15', producing
+        a non-existent path so PITR reported the slice as missing.
+        """
+        output = (
+            "archive #   |    path      |    basename\n"
+            "------------+--------------+---------------\n"
+            "1\t/tmp/backups\tmy backup_FULL_2026-01-15\n"
+        )
+        result = _parse_archive_map(output)
+        assert result == {1: "/tmp/backups/my backup_FULL_2026-01-15"}
+
+    def test_leading_space_and_tab_before_number_handled(self) -> None:
+        """Real dar_manager rows are padded with a leading space+tab; the catalog
+        number must still be recognised once the row is stripped."""
+        output = " \t3\t/tmp/backups\texample_INCR_2026-01-20\n"
+        result = _parse_archive_map(output)
+        assert result == {3: "/tmp/backups/example_INCR_2026-01-20"}
 
     def test_standard_output_parsed(self) -> None:
         """Standard dar_manager --list output is parsed correctly."""
         output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-29\n"
-            "2 /tmp/backups example_DIFF_2026-01-29\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-29\n"
         )
         result = _parse_archive_map(output)
         assert len(result) == 2
@@ -726,8 +762,8 @@ class TestParseArchiveMap:
         assert _parse_archive_map("") == {}
 
     def test_non_numeric_first_field_skipped(self) -> None:
-        """Lines where the first field is not a number are skipped."""
-        output = "abc /tmp/backups example_FULL_2026-01-29\n"
+        """A well-formed row whose first field is not a number is skipped."""
+        output = "abc\t/tmp/backups\texample_FULL_2026-01-29\n"
         assert _parse_archive_map(output) == {}
 
 
@@ -756,7 +792,7 @@ class TestRestoreWithDarFileBreakBehavior:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
         )
         # File exists in catalog #2 (newest, missing from map) and #1 (older, present)
         file_output = (
@@ -799,8 +835,8 @@ class TestRestoreWithDarFileBreakBehavior:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
-            "2 /tmp/backups example_DIFF_2026-01-15\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
         )
         file_output = (
             "1 Fri Jan 10 10:00:00 2026  saved\n"
@@ -851,8 +887,8 @@ class TestRestoreWithDarMixedPaths:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
-            "2 /tmp/backups example_DIFF_2026-01-15\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
         )
         file_output = "2 Wed Jan 15 10:00:00 2026  saved\n"
         mock_runner.run.side_effect = [
@@ -906,7 +942,7 @@ class TestRestoreWithDarDarrc:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
         )
         file_output = "1 Fri Jan 10 10:00:00 2026  saved\n"
         mock_runner.run.side_effect = [
@@ -945,7 +981,7 @@ class TestRestoreWithDarDarrc:
         list_output = (
             "archive #   |    path      |    basename\n"
             "------------+--------------+---------------\n"
-            "1 /tmp/backups example_FULL_2026-01-10\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
         )
         file_output = "1 Fri Jan 10 10:00:00 2026  saved\n"
         mock_runner.run.side_effect = [
@@ -1301,6 +1337,24 @@ class TestIsDirectoryInArchive:
         result = _is_directory_in_archive("path/to/dir", "/archive/path", mock_runner, 30)
         assert result is False
 
+    def test_sibling_prefix_directory_not_matched(self, mock_runner) -> None:
+        """A directory line ending in a sibling path (home/pj/MyDocuments/Taxes)
+        must NOT satisfy a query of 'Documents/Taxes': str.endswith() alone would
+        match, but the match is not on a path-component boundary."""
+        dar_output = "drwxr-xr-x user group 4096 2026-01-01 home/pj/MyDocuments/Taxes"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("Documents/Taxes", "/archive/path", mock_runner, 30)
+        assert result is False
+
+    def test_directory_on_slash_boundary_matched(self, mock_runner) -> None:
+        """The same query matches when preceded by '/', a real component boundary."""
+        dar_output = "drwxr-xr-x user group 4096 2026-01-01 home/pj/Documents/Taxes"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("Documents/Taxes", "/archive/path", mock_runner, 30)
+        assert result is True
+
 
 # ===========================================================================
 # _format_chain_item
@@ -1413,3 +1467,194 @@ class TestSelectArchiveChainAdditional:
         when_dt = datetime.datetime(2026, 1, 15, 12, 0, 0)  # Exactly at INCR
         chain = _select_archive_chain(info, when_dt)
         assert chain == [1, 2, 3], f"Expected [1, 2, 3], got {chain}"
+
+
+# ===========================================================================
+# _line_path_matches
+# ===========================================================================
+
+
+class TestLinePathMatches:
+    """Tests for _line_path_matches path/field-boundary matching.
+
+    Guards the fix that a plain str.endswith() must not match a query path
+    across a component boundary (e.g. 'Documents/Taxes' vs 'MyDocuments/Taxes').
+    """
+
+    def test_whole_line_equals_path(self) -> None:
+        """Path at the very start of the line (nothing preceding) matches."""
+        assert _line_path_matches("Documents/Taxes", "Documents/Taxes") is True
+
+    def test_preceded_by_slash_matches(self) -> None:
+        """A '/' before the match is a real path-component boundary."""
+        assert _line_path_matches("home/pj/Documents/Taxes", "Documents/Taxes") is True
+
+    def test_preceded_by_space_matches(self) -> None:
+        """dar prints the path as the final space-separated field."""
+        line = "drwxr-xr-x user group 4 kio 2026-01-01 Documents/Taxes"
+        assert _line_path_matches(line, "Documents/Taxes") is True
+
+    def test_preceded_by_tab_matches(self) -> None:
+        """A tab is treated as a field boundary too."""
+        assert _line_path_matches("meta\tDocuments/Taxes", "Documents/Taxes") is True
+
+    def test_sibling_prefix_not_matched(self) -> None:
+        """'MyDocuments/Taxes' ends with 'Documents/Taxes' but is a different path."""
+        assert _line_path_matches("home/pj/MyDocuments/Taxes", "Documents/Taxes") is False
+
+    def test_partial_component_not_matched(self) -> None:
+        """A suffix not on a component boundary ('axes' inside 'Taxes') is rejected."""
+        assert _line_path_matches("archive/Taxes", "axes") is False
+
+    def test_line_not_ending_with_path(self) -> None:
+        """No trailing match at all returns False."""
+        assert _line_path_matches("path/to/other", "path/to/dir") is False
+
+    def test_empty_path_returns_false(self) -> None:
+        """An empty path never matches (avoids a vacuous endswith('') == True)."""
+        assert _line_path_matches("anything at all", "") is False
+
+    def test_empty_line_returns_false(self) -> None:
+        """An empty line cannot end with a non-empty path."""
+        assert _line_path_matches("", "Documents/Taxes") is False
+
+
+# ===========================================================================
+# _replace_path_prefix
+# ===========================================================================
+
+
+class TestReplacePathPrefix:
+    """Tests for _replace_path_prefix directory-prefix rewriting (relocate)."""
+
+    def test_exact_match_replaced(self) -> None:
+        """A path equal to old_prefix is rewritten to new_prefix."""
+        assert _replace_path_prefix("/old/path", "/old/path", "/new/path") == "/new/path"
+
+    def test_nested_path_replaced(self) -> None:
+        """A path nested under old_prefix keeps its suffix under new_prefix."""
+        assert _replace_path_prefix("/old/path/sub", "/old/path", "/new/path") == "/new/path/sub"
+
+    def test_trailing_slash_in_old_prefix_normalized(self) -> None:
+        """A trailing slash on old_prefix is normalised away before matching."""
+        assert _replace_path_prefix("/old/path/sub", "/old/path/", "/new/path") == "/new/path/sub"
+
+    def test_unrelated_path_returns_none(self) -> None:
+        """A path that shares no prefix is left alone (None)."""
+        assert _replace_path_prefix("/keep/path", "/old/path", "/new/path") is None
+
+    def test_sibling_prefix_not_matched(self) -> None:
+        """'/mnt/backups' must NOT be rewritten by old_prefix '/mnt/back' — the
+        prefix has to fall on a directory boundary, not a bare substring."""
+        assert _replace_path_prefix("/mnt/backups", "/mnt/back", "/new") is None
+
+    def test_sibling_prefix_nested_not_matched(self) -> None:
+        """'/mnt/backups/x' shares the string '/mnt/back' but is not under it."""
+        assert _replace_path_prefix("/mnt/backups/x", "/mnt/back", "/new") is None
+
+
+# ===========================================================================
+# _resolve_pitr_path — the SHARED detect/select decision
+# ===========================================================================
+
+class TestResolvePitrPath:
+    """Tests for _resolve_pitr_path, the single source of truth for PITR
+    directory-vs-file detection and archive chain/version selection.
+
+    Both _pitr_chain_report (dry run) and _restore_with_dar (real restore) route
+    through this function, so pinning its behaviour here pins theirs: they can no
+    longer drift on which archives a given (path, when) would/will restore.
+    """
+
+    def test_directory_returns_complete_chain_plan(self, tmp_path, mock_runner) -> None:
+        """A directory whose whole chain is on disk yields a chain plan with no
+        error and no missing slices."""
+        full_path = str(tmp_path / "example_FULL_2026-01-29")
+        open(full_path + ".1.dar", "w").close()
+        archive_map = {1: full_path}
+        archive_info = [(1, datetime.datetime(2026, 1, 29, 2, 0, 0), "FULL")]
+        when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=True):
+            plan = _resolve_pitr_path(
+                "some/dir", when_dt, "/db.db", archive_map, archive_info, mock_runner, 30, "/"
+            )
+
+        assert plan.is_directory is True
+        assert plan.chain == [1]
+        assert plan.chain_missing == []
+        assert plan.candidates == []
+        assert plan.error is None
+
+    def test_directory_no_full_returns_error(self, mock_runner) -> None:
+        """A directory with no FULL archive at/before when_dt yields an error plan."""
+        archive_map = {2: "/backups/example_DIFF_2026-01-29"}
+        archive_info = [(2, datetime.datetime(2026, 1, 29), "DIFF")]  # no FULL
+        when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=True):
+            plan = _resolve_pitr_path(
+                "some/dir", when_dt, "/db.db", archive_map, archive_info, mock_runner, 30, "/"
+            )
+
+        assert plan.is_directory is True
+        assert plan.chain == []
+        assert plan.error is not None
+        assert "No FULL archive" in plan.error
+
+    def test_directory_missing_slice_is_reported_in_chain_missing(self, mock_runner) -> None:
+        """A directory whose chain is selected but whose slice is absent from disk
+        yields chain_missing (not an error): the archive is known but unusable."""
+        archive_map = {1: "/backups/example_FULL_2026-01-29"}  # no .1.dar on disk
+        archive_info = [(1, datetime.datetime(2026, 1, 29, 2, 0, 0), "FULL")]
+        when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=True):
+            plan = _resolve_pitr_path(
+                "some/dir", when_dt, "/db.db", archive_map, archive_info, mock_runner, 30, "/"
+            )
+
+        assert plan.is_directory is True
+        assert plan.chain == [1]
+        assert plan.error is None
+        assert plan.chain_missing == ["/backups/example_FULL_2026-01-29.1.dar"]
+
+    def test_file_returns_candidates_sorted_latest_first(self, mock_runner) -> None:
+        """A file yields (catalog_no, date) candidates at/before when_dt, latest
+        first; versions after when_dt are excluded."""
+        # dar_manager -f output: #1 (before when), #3 (before when), #5 (after when).
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved\n"
+            "3 Fri Jan 30 10:00:00 2026  saved\n"
+            "5 Sun Feb 01 09:00:00 2026  saved\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)  # excludes #5 (Feb 01)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db", {}, [], mock_runner, 30, "/"
+            )
+
+        assert plan.is_directory is False
+        assert [num for num, _dt in plan.candidates] == [3, 1], "latest eligible first"
+        assert plan.error is None
+
+    def test_file_no_version_at_or_before_when_returns_error(self, mock_runner) -> None:
+        """A file with no version at/before when_dt yields an error plan."""
+        mock_runner.run.return_value = CommandResult(
+            0, "5 Sun Feb 01 09:00:00 2026  saved\n", "", note=None
+        )
+        when_dt = datetime.datetime(2026, 1, 15, 0, 0, 0)  # before the only version
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db", {}, [], mock_runner, 30, "/"
+            )
+
+        assert plan.is_directory is False
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "No archive version found" in plan.error

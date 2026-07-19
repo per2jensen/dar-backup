@@ -57,6 +57,7 @@ from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
+from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from sys import stderr
 from time import time
@@ -327,7 +328,10 @@ def list_archive_contents(archive: str, config_settings: ConfigSettings) -> int:
 
 
     command = ['dar_manager', '--base', database_path, '-u', f"{cat_no}"]
-    timeout = _coerce_timeout(config_settings.command_timeout_secs) or 10
+    # Respect the configured timeout, including -1 (disabled) which _coerce_timeout
+    # maps to None.  A previous `or 10` here silently forced a 10s timeout even when
+    # the user disabled timeouts, killing --list-archive-contents on large catalogs.
+    timeout = _coerce_timeout(config_settings.command_timeout_secs)
 
     found = False
 
@@ -718,7 +722,13 @@ def _parse_archive_map(list_output: str) -> Dict[int, str]:
         stripped = line.strip()
         if not stripped or stripped.startswith("archive #") or stripped.startswith("-"):
             continue
-        parts = stripped.split()
+        # dar_manager --list is TAB-separated (num, path, basename) — the same
+        # format list_catalogs() and cat_no_for_name() parse.  Split on tab, not
+        # whitespace, so archive basenames or paths that contain spaces stay
+        # intact: backup definition names may contain spaces (e.g. "my backup"),
+        # and a plain .split() would tear "my backup_FULL_2026-01-01" into two
+        # fields, yielding a wrong path whose slice then appears "missing".
+        parts = [p.strip() for p in stripped.split("\t")]
         if len(parts) < 3 or not parts[0].isdigit():
             continue
         num = int(parts[0])
@@ -988,9 +998,34 @@ def _is_directory_in_archive(
         stripped = line.strip()
         if not stripped:
             continue
-        if re.search(r'\bd[rwxXsStT-]{9}\b', stripped) and stripped.rstrip().endswith(path):
+        if not re.search(r'\bd[rwxXsStT-]{9}\b', stripped):
+            continue
+        candidate = stripped.rstrip()
+        if _line_path_matches(candidate, path):
             return True
     return False
+
+
+def _line_path_matches(line: str, path: str) -> bool:
+    """Return True if *line* ends with *path* at a path/field boundary.
+
+    A plain ``line.endswith(path)`` would let a query of "foo/bar" match a
+    directory line ending in "otherfoo/bar".  This requires that the character
+    immediately before the match is the start of the line, a path separator, or
+    whitespace (dar prints the path as the final, space-separated field), so a
+    match only counts on a real path-component boundary.
+
+    Args:
+        line: A single, right-stripped dar -l output line.
+        path: The catalog-relative path being looked for.
+
+    Returns:
+        True if *line* ends with *path* on a component boundary.
+    """
+    if not path or not line.endswith(path):
+        return False
+    preceding = line[: len(line) - len(path)]
+    return preceding == "" or preceding[-1] in ("/", " ", "\t")
 
 
 def _detect_directory(
@@ -1160,6 +1195,100 @@ def _resolve_directory_chain(
     return chain, _missing_chain_elements(chain, archive_map)
 
 
+@dataclass
+class _PitrPathPlan:
+    """The archive-selection decision for a single PITR path.
+
+    Produced by _resolve_pitr_path() and consumed by BOTH the dry-run report
+    (_pitr_chain_report) and the real restore (_restore_with_dar), so the two can
+    never disagree on directory-vs-file detection or which archives are selected.
+    Each caller keeps its own logging/execution; only the *decision* is shared.
+
+    Attributes:
+        path: The catalog-relative path this plan describes.
+        is_directory: True if restored via a FULL→DIFF→INCR chain; False if a
+            single file version is selected.
+        chain: Ordered catalog numbers to apply for a directory restore; empty
+            for a file.
+        chain_missing: Chain slices absent from disk or the catalog (directory
+            restores only, as returned by _resolve_directory_chain); empty for a
+            file or when the whole chain is present.
+        candidates: (catalog_no, archive_date) file versions at or before the
+            requested time, latest first (file restores only); empty for a
+            directory.
+        error: None when a target was selected; otherwise a human-readable reason
+            selection failed (no FULL archive covers the time, or no file version
+            at/before the time).
+    """
+    path: str
+    is_directory: bool
+    chain: List[int]
+    chain_missing: List[str]
+    candidates: List[Tuple[int, datetime]]
+    error: Optional[str]
+
+
+def _resolve_pitr_path(
+    path: str,
+    when_dt: datetime,
+    database_path: str,
+    archive_map: Dict[int, str],
+    archive_info: List[Tuple[int, datetime, str]],
+    runner: "CommandRunner",
+    timeout: Optional[int],
+    root: str,
+) -> _PitrPathPlan:
+    """Decide which archive(s) restore *path* to its state at *when_dt*.
+
+    Single source of truth for PITR directory-vs-file detection and archive
+    chain/version selection.  _pitr_chain_report (dry run) and _restore_with_dar
+    (real restore) both call this so their decisions can never drift; each then
+    applies its own logging and (for restore) dar execution to the result.
+
+    Args:
+        path: Catalog-relative path to resolve.
+        when_dt: Restore-to timestamp (naive local, as used everywhere in PITR).
+        database_path: Path to the backup definition's catalog DB (for the
+            ``dar_manager -f`` file-version lookup).
+        archive_map: Catalog-number → archive base path.
+        archive_info: Parsed (catalog_no, date, type) catalog entries.
+        runner: CommandRunner used for directory detection and file-version lookup.
+        timeout: Command timeout in seconds, or None to disable.
+        root: The backup definition's -R root, for filesystem directory detection.
+
+    Returns:
+        A _PitrPathPlan describing the selected chain (directory) or ordered
+        candidates (file), any missing chain slices, and an error string when
+        nothing could be selected.
+    """
+    is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout, root)
+    if is_directory:
+        chain, chain_missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
+        if not chain:
+            return _PitrPathPlan(
+                path=path, is_directory=True, chain=[], chain_missing=[], candidates=[],
+                error=f"No FULL archive found at or before {when_dt} for '{path}'",
+            )
+        return _PitrPathPlan(
+            path=path, is_directory=True, chain=chain, chain_missing=chain_missing,
+            candidates=[], error=None,
+        )
+
+    file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
+    versions = _parse_file_versions(cast(str, file_result.stdout))
+    candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    if not candidates:
+        return _PitrPathPlan(
+            path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+            error=f"No archive version found for '{path}' at or before {when_dt}",
+        )
+    return _PitrPathPlan(
+        path=path, is_directory=False, chain=[], chain_missing=[],
+        candidates=candidates, error=None,
+    )
+
+
 def _pitr_chain_report(
     backup_def: str,
     paths: List[str],
@@ -1209,17 +1338,19 @@ def _pitr_chain_report(
     successes = 0
 
     for path in paths:
-        is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout, root)
-        if is_directory:
+        # Shared detect/select decision (identical to what _restore_with_dar uses).
+        plan = _resolve_pitr_path(
+            path, parsed_date, database_path, archive_map, archive_info, _runner(), timeout, root
+        )
+        if plan.is_directory:
             logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
-            chain, missing = _resolve_directory_chain(archive_info, parsed_date, archive_map)
-            if not chain:
-                logger.error(f"No FULL archive found at or before {parsed_date} for '{path}'")
+            if plan.error:
+                logger.error(plan.error)
                 failures += 1
                 continue
-            missing_set = set(missing)
+            missing_set = set(plan.chain_missing)
             chain_display_parts = []
-            for catalog_no in chain:
+            for catalog_no in plan.chain:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
                     status = "missing"
@@ -1227,28 +1358,24 @@ def _pitr_chain_report(
                     status = "missing" if f"{archive_path}.1.dar" in missing_set else "ok"
                 chain_display_parts.append(_format_chain_item(catalog_no, info_by_no, status))
             logger.info("PITR chain report for '%s': %s", path, ", ".join(chain_display_parts))
-            if missing:
-                for item in missing:
+            if plan.chain_missing:
+                for item in plan.chain_missing:
                     logger.error("PITR chain report missing archive: %s", item)
                 failures += 1
             else:
                 successes += 1
             continue
 
-        file_result = _runner().run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-        versions = _parse_file_versions(cast(str, file_result.stdout))
-        candidates = [(num, dt) for num, dt in versions if dt <= parsed_date]
-        candidates.sort(key=lambda item: item[1], reverse=True)
         logger.info(
             "PITR chain report candidates for '%s': %s",
             path,
-            ", ".join(f"#{num}@{dt}" for num, dt in candidates) or "<none>",
+            ", ".join(f"#{num}@{dt}" for num, dt in plan.candidates) or "<none>",
         )
-        if not candidates:
-            logger.error(f"No archive version found for '{path}' at or before {parsed_date}")
+        if plan.error:
+            logger.error(plan.error)
             failures += 1
             continue
-        catalog_no, dt = candidates[0]
+        catalog_no, dt = plan.candidates[0]
         archive_path = archive_map.get(catalog_no)
         if not archive_path:
             logger.error("PITR chain report missing archive map entry for #%d (%s)", catalog_no, path)
@@ -1360,16 +1487,18 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
 
     try:
         for path in paths:
-            is_directory = _detect_directory(path, archive_map, archive_info, _runner(), timeout, root)
-            if is_directory:
+            # Shared detect/select decision (identical to what _pitr_chain_report uses).
+            plan = _resolve_pitr_path(
+                path, when_dt, database_path, archive_map, archive_info, _runner(), timeout, root
+            )
+            if plan.is_directory:
                 logger.debug("Path '%s' detected as directory — using archive chain restore.", path)
-                chain, missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
-                if not chain:
-                    logger.error(f"No FULL archive found at or before {when_dt} for '{path}'")
+                if plan.error:
+                    logger.error(plan.error)
                     failures += 1
                     continue
-                if missing:
-                    for item in missing:
+                if plan.chain_missing:
+                    for item in plan.chain_missing:
                         missing_archives.add(item)
                         logger.error("PITR restore missing archive in chain for '%s': %s", path, item)
                     failures += 1
@@ -1377,10 +1506,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 logger.info(
                     "PITR restore directory '%s' using archive chain: %s",
                     path,
-                    ", ".join(_describe_archive(num, archive_map, info_by_no) for num in chain),
+                    ", ".join(_describe_archive(num, archive_map, info_by_no) for num in plan.chain),
                 )
                 restored = True
-                for catalog_no in chain:
+                for catalog_no in plan.chain:
                     archive_path = archive_map.get(catalog_no)
                     if not archive_path:
                         missing_archives.add(f"catalog #{catalog_no} missing from archive map")
@@ -1417,22 +1546,18 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     failures += 1
                 continue
 
-            file_result = _runner().run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-            versions = _parse_file_versions(cast(str, file_result.stdout))
-            candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
-            candidates.sort(key=lambda item: item[1], reverse=True)
             logger.debug(
                 "PITR candidates for '%s': %s",
                 path,
-                ", ".join(f"#{num}@{dt}" for num, dt in candidates) or "<none>",
+                ", ".join(f"#{num}@{dt}" for num, dt in plan.candidates) or "<none>",
             )
-            if not candidates:
-                logger.error(f"No archive version found for '{path}' at or before {when_dt}")
+            if plan.error:
+                logger.error(plan.error)
                 failures += 1
                 continue
 
             restored = False
-            for catalog_no, _dt in candidates:
+            for catalog_no, _dt in plan.candidates:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
                     missing_archives.add(f"catalog #{catalog_no} missing from archive map")
@@ -1895,14 +2020,16 @@ def main() -> None:
     logger.debug(f"`args`:\n{args}")
     logger.debug(f"`config_settings`:\n{config_settings}")
     start_msgs.append(("Config file:", args.config_file))
-    args.verbose and start_msgs.append(("Backup dir:", config_settings.backup_dir))  # type: ignore[func-returns-value]
+    if args.verbose:
+        start_msgs.append(("Backup dir:", config_settings.backup_dir))
     start_msgs.append(("Logfile:", config_settings.logfile_location))
-    args.verbose and start_msgs.append(("Trace log:", trace_log_file))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive))  # type: ignore[func-returns-value]
-    args.verbose and start_msgs.append(("--relocate-archive-path:", args.relocate_archive_path))  # type: ignore[func-returns-value]
+    if args.verbose:
+        start_msgs.append(("Trace log:", trace_log_file))
+        start_msgs.append(("Logfile max size (bytes):", str(config_settings.logfile_max_bytes)))
+        start_msgs.append(("Logfile backup count:", str(config_settings.logfile_backup_count)))
+        start_msgs.append(("--alternate-archive-dir:", args.alternate_archive_dir))
+        start_msgs.append(("--remove-specific-archive:", args.remove_specific_archive))
+        start_msgs.append(("--relocate-archive-path:", args.relocate_archive_path))
     dar_manager_properties = get_binary_info(command='dar_manager')
     start_msgs.append(("dar_manager:", dar_manager_properties['path']))
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
