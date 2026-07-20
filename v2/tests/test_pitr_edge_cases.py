@@ -282,8 +282,8 @@ class TestParseFileVersions:
         """Lines with only whitespace are skipped."""
         assert _parse_file_versions("   \n\n  \n") == []
 
-    def test_malformed_lines_ignored(self) -> None:
-        """Lines that don't match the expected pattern are skipped."""
+    def test_non_catalog_lines_ignored(self) -> None:
+        """Headers and other non-numbered lines are skipped."""
         output = (
             "not a number Thu Jan 29 15:00:34 2026  saved\n"
             "some random text\n"
@@ -291,7 +291,17 @@ class TestParseFileVersions:
         )
         versions = _parse_file_versions(output)
         assert len(versions) == 1
-        assert versions[0][0] == 1
+        assert versions[0].catalog_no == 1
+
+    def test_malformed_numbered_line_raises_value_error(self) -> None:
+        """A numbered row that cannot be interpreted must fail closed."""
+        with pytest.raises(ValueError, match="malformed catalog row"):
+            _parse_file_versions("2 this is not a valid dar_manager row\n")
+
+    def test_unknown_status_raises_value_error(self) -> None:
+        """An unknown DAR path status must not be silently discarded."""
+        with pytest.raises(ValueError, match="unsupported path status 'mystery'"):
+            _parse_file_versions("2 Fri Jan 30 10:00:00 2026  mystery absent\n")
 
     def test_multiple_valid_versions(self) -> None:
         """Multiple valid lines produce the correct list of versions."""
@@ -301,25 +311,26 @@ class TestParseFileVersions:
         )
         versions = _parse_file_versions(output)
         assert len(versions) == 2
-        assert versions[0][0] == 1
-        assert versions[1][0] == 3
+        assert versions[0].catalog_no == 1
+        assert versions[1].catalog_no == 3
 
-    def test_present_entries_are_excluded(self) -> None:
-        """A DIFF/INCR that lists the file as 'present' (unchanged, data NOT
-        re-saved) must not become a version candidate: restoring from it would
-        extract nothing while dar still exits 0.
+    def test_all_supported_path_states_are_preserved(self) -> None:
+        """Saved, present, and removed rows are retained as path history.
 
-        Lines mirror real `dar_manager -f` output, where an unchanged file shows
-        the same recorded date in the later archive but status 'present'.
+        Lines mirror real ``dar_manager -f`` output. ``present`` holds no bytes,
+        while ``removed`` is the tombstone that prevents stale restoration.
         """
         output = (
             " \t1\tMon Jul 20 00:29:21 2026  saved                                 absent  \n"
             " \t2\tMon Jul 20 00:29:21 2026  present                               absent  \n"
+            " \t3\tMon Jul 20 00:29:21 2026  removed                               absent  \n"
         )
         versions = _parse_file_versions(output)
-        assert [num for num, _dt in versions] == [1], (
-            "'present' entry (#2) holds no data and must be excluded"
-        )
+        assert [(entry.catalog_no, entry.status) for entry in versions] == [
+            (1, "saved"),
+            (2, "present"),
+            (3, "removed"),
+        ]
 
     def test_saved_entries_in_real_format_are_kept(self) -> None:
         """Positive counterpart: real-format 'saved' lines from both archives
@@ -329,7 +340,7 @@ class TestParseFileVersions:
             " \t2\tMon Jul 20 00:29:22 2026  saved                                 absent  \n"
         )
         versions = _parse_file_versions(output)
-        assert [num for num, _dt in versions] == [1, 2]
+        assert [entry.catalog_no for entry in versions] == [1, 2]
 
 
 # ===========================================================================
@@ -2031,6 +2042,154 @@ class TestResolvePitrPath:
             "same-date tie-break must prefer DIFF over FULL"
         )
 
+    def test_file_newest_state_removed_returns_error(self, mock_runner) -> None:
+        """A DIFF tombstone makes the path absent instead of selecting stale FULL bytes."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved absent\n"
+            "3 Fri Jan 30 10:00:00 2026  removed absent\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "old.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "archive #3 recorded the path as removed" in plan.error
+
+    def test_file_removal_after_when_keeps_saved_version(self, mock_runner) -> None:
+        """A tombstone in an archive after --when does not alter the earlier captured state."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved absent\n"
+            "5 Sun Feb 01 09:00:00 2026  removed absent\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "old.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert [num for num, _dt in plan.candidates] == [1]
+        assert plan.error is None
+
+    def test_file_newest_state_present_uses_prior_saved_data(self, mock_runner) -> None:
+        """An unchanged path uses bytes from its nearest earlier saved entry."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved absent\n"
+            "3 Thu Jan 29 15:00:34 2026  present absent\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "unchanged.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert [num for num, _dt in plan.candidates] == [1]
+        assert plan.error is None
+
+    def test_file_recreated_after_removal_uses_new_saved_data(self, mock_runner) -> None:
+        """A later saved state starts a valid new incarnation after a tombstone."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved absent\n"
+            "3 Fri Jan 30 10:00:00 2026  removed absent\n"
+            "5 Sun Feb 01 09:00:00 2026  saved absent\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 2, 2)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "recreated.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert [num for num, _dt in plan.candidates] == [5, 1]
+        assert plan.error is None
+
+    def test_file_present_without_saved_data_after_removal_fails_closed(self, mock_runner) -> None:
+        """An inconsistent present state must not cross a removal boundary for bytes."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved absent\n"
+            "3 Fri Jan 30 10:00:00 2026  removed absent\n"
+            "5 Sun Feb 01 09:00:00 2026  present absent\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 2, 2)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "inconsistent.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "removal boundary at archive #3" in plan.error
+
+    def test_file_same_date_diff_removal_wins_over_full_save(self, mock_runner) -> None:
+        """The directory-chain tie-break also makes a same-date DIFF tombstone newest."""
+        archive_map = {
+            1: "/backups/example_FULL_2026-01-29",
+            2: "/backups/example_DIFF_2026-01-29",
+        }
+        archive_info = [
+            (1, datetime.datetime(2026, 1, 29), "FULL"),
+            (2, datetime.datetime(2026, 1, 29), "DIFF"),
+        ]
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 10:00:00 2026  saved absent\n"
+            "2 Thu Jan 29 12:00:00 2026  removed absent\n",
+            "",
+            note=None,
+        )
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "old.txt", datetime.datetime(2026, 1, 29, 18), "/db.db",
+                archive_map, archive_info, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "archive #2 recorded the path as removed" in plan.error
+
+    def test_file_unknown_status_returns_lookup_error(self, mock_runner) -> None:
+        """A future DAR status fails closed at the shared resolver boundary."""
+        mock_runner.run.return_value = CommandResult(
+            0, "1 Thu Jan 29 15:00:34 2026  mystery absent\n", "", note=None
+        )
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", datetime.datetime(2026, 1, 31), "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "unsupported path status 'mystery'" in plan.error
+
     def test_file_unresolvable_catalog_number_returns_error(self, mock_runner) -> None:
         """A catalog number from dar_manager -f with no dated archive entry
         yields an error plan: without its archive date the versions cannot be
@@ -2038,7 +2197,7 @@ class TestResolvePitrPath:
         mock_runner.run.return_value = CommandResult(
             0,
             "1 Thu Jan 29 15:00:34 2026  saved\n"
-            "9 Fri Jan 30 10:00:00 2026  saved\n",  # #9 not in archive_info
+            "9 Fri Jan 30 10:00:00 2026  removed\n",  # #9 not in archive_info
             "",
             note=None,
         )

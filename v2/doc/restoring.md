@@ -75,10 +75,12 @@ deactivate
 
 Each path is processed independently, and both kinds follow the same selection rule —
 **archive creation date at or before `--when`**. Directories apply the full archive
-chain (FULL → DIFF → INCR); files are restored from the newest archive at or before
-`--when` that **saved** the file's data (a DIFF that lists an unchanged file as merely
-"present" is never selected). File mtimes never drive the selection — if you want a
-file version by its *modification time* instead, see
+chain (FULL → DIFF → INCR). For files, the newest eligible catalog state is authoritative:
+`saved` supplies the bytes, `present` uses bytes from the nearest earlier `saved` archive,
+and `removed` means the path is absent and the restore exits non-zero. Recover a deleted
+or renamed-away file intentionally by choosing a `--when` before the archive that recorded
+its removal. File mtimes never drive the selection — if you want a file version by its
+*modification time* instead, see
 [Restore a file by its mtime](#restore-a-file-by-its-mtime-file-version-restore).
 
 Dry-run the archive chain selection before restoring:
@@ -342,7 +344,9 @@ for a single-archive restore.
 
 > **Note:** `--no-deleted` is also available on `manager --restore-path` for PITR
 > restores, though it is rarely needed there since PITR restores an archive chain to
-> a fresh target in the correct order.
+> a fresh target in the correct order. It changes how dar applies deletion records
+> during extraction; it does not make a single-file PITR restore ignore a newer
+> `removed` catalog state.
 
 ---
 

@@ -62,7 +62,7 @@ from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from sys import stderr
 from time import time
-from typing import BinaryIO, Dict, List, Tuple, Optional, cast
+from typing import BinaryIO, Dict, List, Literal, Tuple, Optional, cast
 
 # Constants
 SCRIPTNAME = os.path.basename(__file__)
@@ -1428,6 +1428,23 @@ def _resolve_directory_chain(
 
 
 @dataclass
+class _FileCatalogEntry:
+    """A path-state entry reported by ``dar_manager -f``.
+
+    Attributes:
+        catalog_no: Catalog number containing the path-state record.
+        recorded_mtime: File modification time printed by dar_manager. PITR
+            does not use this value for archive selection.
+        status: Whether the archive saved bytes, recorded the path unchanged,
+            or recorded its removal.
+    """
+
+    catalog_no: int
+    recorded_mtime: datetime
+    status: Literal["saved", "present", "removed"]
+
+
+@dataclass
 class _PitrPathPlan:
     """The archive-selection decision for a single PITR path.
 
@@ -1448,10 +1465,10 @@ class _PitrPathPlan:
         candidates: (catalog_no, archive_date) archives that saved the path's
             data, filtered to archive creation date at or before the requested
             time and ordered newest archive first (file restores only); empty
-            for a directory. Selection is by archive date — the PITR contract —
-            not by the file mtimes that `dar_manager -f` reports; archives
-            listing the file only as "present" (unchanged, no data) are never
-            candidates.
+            for a directory or when the newest eligible state is ``removed``.
+            Selection is by archive date — the PITR contract — not by the file
+            mtimes that `dar_manager -f` reports. A newest state of ``present``
+            selects bytes from the nearest earlier ``saved`` entry.
         error: None when a target was selected; otherwise a human-readable reason
             selection failed (no FULL archive covers the time, no archive at or
             before the time recorded the path, or a recorded version could not
@@ -1483,9 +1500,10 @@ def _resolve_pitr_path(
     applies its own logging and (for restore) dar execution to the result.
 
     Both branches honor the PITR contract: selection is by archive creation
-    date (parsed from the archive name) at or before when_dt.  For files,
-    `dar_manager -f` only identifies which archives saved the path's data;
-    its mtime column plays no part in selection (see
+    date (parsed from the archive name) at or before when_dt. For files,
+    ``dar_manager -f`` identifies the newest captured path state and which
+    earlier archive holds bytes when that state is ``present``. Its mtime
+    column plays no part in selection (see
     doc/pitr-archive-date-vs-file-mtime.md — mtime-based selection would
     resurrect renamed/edited content from archives created after when_dt).
 
@@ -1519,7 +1537,6 @@ def _resolve_pitr_path(
         )
 
     file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
-    versions = _parse_file_versions(cast(str, file_result.stdout))
 
     # dar_manager -f exit codes are unreliable signals (verified empirically):
     # a path absent from the catalog exits 2 with "Non existent file in
@@ -1544,16 +1561,24 @@ def _resolve_pitr_path(
             ),
         )
 
+    try:
+        history = _parse_file_versions(cast(str, file_result.stdout))
+    except ValueError as exc:
+        return _PitrPathPlan(
+            path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+            error=f"Version lookup returned unsupported data for '{path}': {exc}",
+        )
+
     # PITR contract: select by ARCHIVE creation date, exactly like directory
     # chains — never by the recorded file mtime that `dar_manager -f` reports.
     # A version whose mtime predates when_dt may live in an archive created
     # AFTER when_dt (a rename or edit captured by a later DIFF); the contract
     # says that archive did not exist at when_dt and must be excluded.
-    # `dar_manager -f` is used only to learn WHICH archives saved the path's
-    # data (its "present" entries — unchanged file, no data — are already
-    # filtered out by _parse_file_versions).
+    # `dar_manager -f` supplies the captured path state as well as identifying
+    # archives that hold bytes. Ignoring a newer "removed" entry would select
+    # stale bytes from an older FULL and resurrect a deleted or renamed path.
     info_by_no = {catalog_no: (dt, archive_type) for catalog_no, dt, archive_type in archive_info}
-    unresolved = sorted(num for num, _mtime in versions if num not in info_by_no)
+    unresolved = sorted(entry.catalog_no for entry in history if entry.catalog_no not in info_by_no)
     if unresolved:
         nums = ", ".join(f"#{num}" for num in unresolved)
         return _PitrPathPlan(
@@ -1567,22 +1592,67 @@ def _resolve_pitr_path(
         )
 
     eligible = [
-        (num, info_by_no[num][0], info_by_no[num][1])
-        for num, _mtime in versions
-        if info_by_no[num][0] <= when_dt
+        (entry, info_by_no[entry.catalog_no][0], info_by_no[entry.catalog_no][1])
+        for entry in history
+        if info_by_no[entry.catalog_no][0] <= when_dt
     ]
     # Newest archive first; same-date archives tie-break by backup-sequence
     # order then catalog number, matching _select_archive_chain's ordering.
     eligible.sort(
-        key=lambda item: (item[1], _ARCHIVE_TYPE_ORDER.get(item[2], 99), item[0]),
+        key=lambda item: (
+            item[1],
+            _ARCHIVE_TYPE_ORDER.get(item[2], 99),
+            item[0].catalog_no,
+        ),
         reverse=True,
     )
-    candidates = [(num, dt) for num, dt, _archive_type in eligible]
-    if not candidates:
+    if not eligible:
         return _PitrPathPlan(
             path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
             error=f"No archive version found for '{path}' at or before {when_dt}",
         )
+
+    newest_entry, newest_archive_dt, _newest_archive_type = eligible[0]
+    if newest_entry.status == "removed":
+        return _PitrPathPlan(
+            path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+            error=(
+                f"Cannot restore '{path}' at {when_dt}: archive #{newest_entry.catalog_no} "
+                f"recorded the path as removed at {newest_archive_dt}. Use --when before "
+                "that archive to recover an older version."
+            ),
+        )
+
+    if newest_entry.status == "present":
+        saved_source_found = False
+        for entry, _archive_dt, _archive_type in eligible[1:]:
+            if entry.status == "removed":
+                return _PitrPathPlan(
+                    path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+                    error=(
+                        f"Cannot restore '{path}' at {when_dt}: archive "
+                        f"#{newest_entry.catalog_no} records it as present, but no saved "
+                        "data exists after its removal boundary at archive "
+                        f"#{entry.catalog_no}."
+                    ),
+                )
+            if entry.status == "saved":
+                saved_source_found = True
+                break
+        if not saved_source_found:
+            return _PitrPathPlan(
+                path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+                error=(
+                    f"Cannot restore '{path}' at {when_dt}: its newest eligible state is "
+                    "present, but no earlier archive saved its data."
+                ),
+            )
+
+    candidates = [
+        (entry.catalog_no, archive_dt)
+        for entry, archive_dt, _archive_type in eligible
+        if entry.status == "saved"
+    ]
     return _PitrPathPlan(
         path=path, is_directory=False, chain=[], chain_missing=[],
         candidates=candidates, error=None,
@@ -1726,14 +1796,12 @@ def _pitr_chain_report(
     return 0 if failures == 0 else 1
 
 
-def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
-    """Parse `dar_manager -f <path>` output into (catalog number, mtime) pairs.
+def _parse_file_versions(file_output: str) -> List[_FileCatalogEntry]:
+    """Parse ``dar_manager -f <path>`` output into path-state entries.
 
-    Only entries whose data status is ``saved`` are returned: those are the
-    archives that actually hold the file's data.  A DIFF/INCR that did not
-    re-save an unchanged file lists it as ``present`` — restoring from such an
-    archive would extract nothing (dar still exits 0), so ``present`` entries
-    must never become restore candidates.
+    ``saved`` identifies an archive containing bytes, ``present`` records an
+    unchanged path whose bytes remain in an earlier archive, and ``removed``
+    is a tombstone. All three are required to reconstruct the captured state.
 
     Args:
         file_output: Raw stdout from `dar_manager --base <db> -f <path>`,
@@ -1742,30 +1810,45 @@ def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
             "1  Fri Mar 21 06:56:21 2026  saved").
 
     Returns:
-        A list of (catalog_no, recorded_mtime) tuples for every ``saved``
-        line that matches the expected format; ``present`` and other
-        non-matching lines are skipped.
-        Note: PITR selection uses only the catalog numbers — the recorded
-        mtimes are informational (see _resolve_pitr_path).
+        Parsed entries in the order emitted by dar_manager. Recorded mtimes
+        are informational; PITR selection uses archive creation dates.
+
+    Raises:
+        ValueError: If a numbered catalog row is malformed or contains an
+            unsupported status. Failing closed prevents an unrecognized
+            tombstone-like state from resurrecting stale data.
     """
-    versions: List[Tuple[int, datetime]] = []
+    versions: List[_FileCatalogEntry] = []
     for line in file_output.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         match = re.match(
-            r"^(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+saved\b",
+            r"^(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\S+)",
             stripped,
         )
         if not match:
+            if re.match(r"^\d+\b", stripped):
+                raise ValueError(f"malformed catalog row: {stripped!r}")
             continue
+
+        status = match.group(3).lower()
+        if status not in {"saved", "present", "removed"}:
+            raise ValueError(
+                f"unsupported path status {status!r} in catalog row: {stripped!r}"
+            )
         try:
             catalog_no = int(match.group(1))
             dt = datetime.strptime(match.group(2), "%a %b %d %H:%M:%S %Y")
-        except Exception as exc:  # noqa: BLE001 — logs with context and continues
-            logger.debug("Could not parse catalog version line '%s': %s", stripped, exc)
-            continue
-        versions.append((catalog_no, dt))
+        except ValueError as exc:
+            raise ValueError(f"malformed catalog row: {stripped!r}") from exc
+        versions.append(
+            _FileCatalogEntry(
+                catalog_no=catalog_no,
+                recorded_mtime=dt,
+                status=cast(Literal["saved", "present", "removed"], status),
+            )
+        )
     return versions
 
 

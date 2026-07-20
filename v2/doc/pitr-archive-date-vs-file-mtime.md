@@ -34,11 +34,12 @@ last modified. It applies to both restore branches:
 
 - **Directories** are restored by applying the FULL → DIFF → INCR chain of archives
   created at or before `--when`.
-- **Files** are restored from the newest archive created at or before `--when` that
-  **saved** the file's data. `dar_manager -f` is consulted only to learn *which*
-  archives hold the file — the mtimes it reports play no part in selection, and
-  archives that list the file merely as `present` (unchanged, data not re-saved)
-  are never selected.
+- **Files** first use `dar_manager -f` to determine the newest captured path state
+  in an archive created at or before `--when`. If that state is `removed`, the path
+  is absent and PITR exits non-zero without extracting stale bytes. If it is `saved`,
+  that archive supplies the bytes. If it is `present` (unchanged, data not re-saved),
+  PITR walks backward to the nearest earlier `saved` state for the bytes. The mtimes
+  reported by `dar_manager -f` play no part in selection.
 
 ---
 
@@ -67,8 +68,15 @@ With archive-creation-date selection, the Wednesday DIFF has a creation date aft
 Monday request. The DIFF is excluded entirely. You get the Monday FULL state exactly:
 `report.txt` present, `final-report.txt` absent. Correct.
 
-**The same rule applies to deletions, directory restructuring, and any change captured in
-a DIFF that you are trying to exclude from a PITR restore.**
+After the Wednesday DIFF, the states reverse: `report.txt` is `removed` and cannot be
+restored at that time, while `final-report.txt` is `saved` and can be restored. To recover
+the old name intentionally, choose a `--when` before the archive that recorded its
+removal. This same rule applies to deletions, directory restructuring, and other changes
+captured in a DIFF or INCR.
+
+The relevant time is when a backup **captured** the change. If the live file is deleted
+on Tuesday but the deletion is not recorded until Wednesday's DIFF, a `--when` between
+those archives still represents the Monday FULL state and can restore the file.
 
 The failure case is exercised by the integration test
 `test_pitr_integration_rename_mtime_torture` in `v2/tests/test_pitr_integration.py`.

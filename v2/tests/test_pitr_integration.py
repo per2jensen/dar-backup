@@ -2459,8 +2459,8 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
     Pin the PITR contract for single-file restores: selection is by ARCHIVE
     creation date, never by recorded file mtime (doc/pitr-archive-date-vs-file-mtime.md).
 
-    Uses time-suffixed archive names for second-level archive dates. Three scenarios,
-    all with --when between the file edit/rename and the DIFF that captured it:
+    Uses time-suffixed archive names for second-level archive dates. The scenarios
+    cover both sides of the DIFF that captures edits, renames, and deletions:
 
     1. Edit trap: report.txt edited BEFORE --when, DIFF taken AFTER --when.
        mtime-based selection would return the edited v2 from the future DIFF;
@@ -2468,7 +2468,10 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
     2. Rename trap: original.txt renamed (mtime unchanged) after FULL; the new
        name exists only in the future DIFF. mtime-based selection would restore
        it; the contract requires "no version found" (exit 1).
-    3. Positive: --when after the DIFF restores the edited v2.
+    3. Captured-state boundary: the old rename source and a deleted file remain
+       restorable before the DIFF, then become absent after the DIFF.
+    4. Positive: --when after the DIFF restores the edited v2 and rename destination.
+    5. Report and directory restore agree with single-file restore about tombstones.
     """
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
     clock = TestClock()
@@ -2477,14 +2480,18 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
     report_path = os.path.join(env.data_dir, "report.txt")
     original_path = os.path.join(env.data_dir, "original.txt")
     renamed_path = os.path.join(env.data_dir, "renamed.txt")
+    deleted_path = os.path.join(env.data_dir, "deleted.txt")
     with open(report_path, "w") as f:
         f.write("v1 content")
     clock.touch(report_path, seconds=PITR_STEP_SECONDS)
     with open(original_path, "w") as f:
         f.write("rename me")
     clock.touch(original_path, seconds=PITR_STEP_SECONDS)
+    with open(deleted_path, "w") as f:
+        f.write("delete me")
+    clock.touch(deleted_path, seconds=PITR_STEP_SECONDS)
 
-    # FULL captures report.txt v1 and original.txt.
+    # FULL captures report.txt v1, original.txt, and deleted.txt.
     full_time = clock.tick(PITR_STEP_SECONDS)
     full_ts = full_time.strftime("%Y-%m-%d_%H%M%S")
     full_base = os.path.join(env.backup_dir, f"example_FULL_{full_ts}_01")
@@ -2499,18 +2506,19 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
     ], timeout=300)
     assert r.returncode == 0, f"manager add FULL failed: {r.stderr}"
 
-    # Edit report.txt (v2, mtime BEFORE t_between) and rename original.txt
-    # (mtime unchanged, still before the FULL's date).
+    # Edit report.txt (v2, mtime BEFORE t_between), rename original.txt
+    # (mtime unchanged, still before the FULL's date), and delete deleted.txt.
     clock.tick(PITR_STEP_SECONDS)
     with open(report_path, "w") as f:
         f.write("v2 content")
     clock.touch(report_path, seconds=PITR_STEP_SECONDS)
     os.rename(original_path, renamed_path)
+    os.unlink(deleted_path)
 
-    # --when target: after the edit/rename, before the DIFF exists.
+    # --when target: after the live changes, before the DIFF captures them.
     t_between = clock.tick(PITR_STEP_SECONDS)
 
-    # DIFF captures v2 and the rename.
+    # DIFF captures v2, the rename, and the deletion.
     diff_time = clock.tick(PITR_STEP_SECONDS)
     diff_ts = diff_time.strftime("%Y-%m-%d_%H%M%S")
     diff_base = os.path.join(env.backup_dir, f"example_DIFF_{diff_ts}_02")
@@ -2528,7 +2536,9 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
     t_after_diff = clock.tick(PITR_STEP_SECONDS)
 
     report_rel = report_path.lstrip("/")
+    original_rel = original_path.lstrip("/")
     renamed_rel = renamed_path.lstrip("/")
+    deleted_rel = deleted_path.lstrip("/")
 
     # Scenario 1 — edit trap: --when between edit and DIFF must yield v1 (FULL).
     target_v1 = os.path.join(env.test_dir, "restore_contract_v1")
@@ -2568,7 +2578,26 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
         "renamed.txt must NOT be restored for a --when before the rename was captured"
     )
 
-    # Scenario 3 — positive: --when after the DIFF yields the edited v2.
+    # Scenario 3 — captured-state boundary: although the live paths were
+    # renamed/deleted before t_between, no eligible archive recorded that yet.
+    for path_rel, expected_content, target_suffix in (
+        (original_rel, "rename me", "original_before_diff"),
+        (deleted_rel, "delete me", "deleted_before_diff"),
+    ):
+        target_before = os.path.join(env.test_dir, f"restore_contract_{target_suffix}")
+        os.makedirs(target_before, exist_ok=True)
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", path_rel,
+            "--when", t_between.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", target_before, "--log-stdout",
+        ], timeout=300)
+        assert r.returncode == 0, f"captured pre-DIFF state failed for {path_rel}: {r.stderr}"
+        with open(os.path.join(target_before, path_rel)) as f:
+            assert f.read() == expected_content
+
+    # Scenario 4 — positive: --when after the DIFF yields the edited v2.
     target_v2 = os.path.join(env.test_dir, "restore_contract_v2")
     os.makedirs(target_v2, exist_ok=True)
     r = runner.run([
@@ -2585,7 +2614,77 @@ def test_pitr_file_selection_follows_archive_date_contract(setup_environment, en
         f"--when after the DIFF must select it; expected 'v2 content', got {content!r}"
     )
 
-    env.logger.info("PITR file archive-date contract verified: edit trap, rename trap, and post-DIFF selection.")
+    target_renamed_after = os.path.join(env.test_dir, "restore_contract_renamed_after")
+    os.makedirs(target_renamed_after, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", renamed_rel,
+        "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", target_renamed_after, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"rename destination after DIFF failed: {r.stderr}"
+    with open(os.path.join(target_renamed_after, renamed_rel)) as f:
+        assert f.read() == "rename me"
+
+    # Scenario 5 — the DIFF tombstones are authoritative for single-file
+    # restore and both report modes. No stale FULL bytes may be extracted.
+    for path_rel, target_suffix in (
+        (original_rel, "original_after_diff"),
+        (deleted_rel, "deleted_after_diff"),
+    ):
+        target_after = os.path.join(env.test_dir, f"restore_contract_{target_suffix}")
+        os.makedirs(target_after, exist_ok=True)
+        r = runner.run([
+            "manager", "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", path_rel,
+            "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", target_after, "--log-stdout",
+        ], timeout=300)
+        assert r.returncode == 1, f"removed path {path_rel} must fail; got rc={r.returncode}"
+        assert not os.path.lexists(os.path.join(target_after, path_rel))
+
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", original_rel,
+        "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+        "--pitr-report", "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 1, "--pitr-report must reject a renamed-away path"
+
+    report_first_target = os.path.join(env.test_dir, "restore_contract_report_first_removed")
+    os.makedirs(report_first_target, exist_ok=True)
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", original_rel,
+        "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", report_first_target,
+        "--pitr-report-first", "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 1, "--pitr-report-first must stop before restoring a removed path"
+    assert not os.path.lexists(os.path.join(report_first_target, original_rel))
+
+    parent_target = os.path.join(env.test_dir, "restore_contract_parent_after")
+    os.makedirs(parent_target, exist_ok=True)
+    data_rel = env.data_dir.lstrip("/")
+    r = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example",
+        "--restore-path", data_rel,
+        "--when", t_after_diff.strftime("%Y-%m-%d %H:%M:%S"),
+        "--target", parent_target, "--log-stdout",
+    ], timeout=300)
+    assert r.returncode == 0, f"parent directory restore after DIFF failed: {r.stderr}"
+    assert not os.path.lexists(os.path.join(parent_target, original_rel))
+    assert not os.path.lexists(os.path.join(parent_target, deleted_rel))
+    assert os.path.isfile(os.path.join(parent_target, renamed_rel))
+
+    env.logger.info(
+        "PITR file archive-date and path-state contract verified: edit, rename, deletion, reports, and directory parity."
+    )
 
 
 def test_pitr_dir_deleted_before_newer_full_restores_old_chain(setup_environment, env):
