@@ -195,6 +195,171 @@ def test_restore_at_existing_target_paths_abort(tmp_path, mock_config, mock_runn
         mock_runner.run.assert_not_called()
 
 
+def test_restore_at_rejects_absolute_restore_path(tmp_path, mock_config, mock_runner, mock_logger):
+    """An absolute --restore-path is refused before any dar_manager/dar call —
+    catalog paths are always relative, so an absolute path is either operator
+    error or an attempt to make later path handling behave unexpectedly."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+    target = tmp_path / "restore"
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["/etc/passwd"], "now", str(target), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            "Restore path '/etc/passwd' is absolute. Paths must be relative, exactly as stored "
+            "in the catalog (no leading '/')."
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_restore_at_rejects_dotdot_restore_path(tmp_path, mock_config, mock_runner, mock_logger):
+    """A --restore-path containing a '..' component is refused: catalog paths
+    never contain one, so this can only be an attempt to escape the target."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+    target = tmp_path / "restore"
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["tmp/../../etc/passwd"], "now", str(target), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            "Restore path 'tmp/../../etc/passwd' contains a '..' component. Catalog paths never do — "
+            "refusing to restore outside the target."
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_restore_at_rejects_empty_restore_path(tmp_path, mock_config, mock_runner, mock_logger):
+    """A blank --restore-path entry is refused rather than silently skipped
+    or passed through to dar."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+    target = tmp_path / "restore"
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["   "], "now", str(target), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            "Empty restore path given (--restore-path requires relative catalog paths)."
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_restore_at_valid_relative_path_is_not_rejected(tmp_path, mock_config, mock_runner, mock_logger):
+    """Positive counterpart: an ordinary relative path is not blocked by the
+    new validation and reaches the restore call."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+    target = tmp_path / "restore"
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+        ret = restore_at("def", ["tmp/normal/file.txt"], "now", str(target), mock_config)
+
+        assert ret == 0
+        mock_restore.assert_called_once()
+
+
+def test_restore_at_rejects_symlink_ancestor_component_in_target(tmp_path, mock_config, mock_runner, mock_logger):
+    """A symlink planted as an ancestor directory inside the target (e.g.
+    target/tmp -> /etc) must not be restored through: dar would write beneath
+    whatever the symlink resolves to, escaping the target entirely."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    target.mkdir()
+    escape_target = tmp_path / "outside"
+    escape_target.mkdir()
+    (target / "tmp").symlink_to(escape_target, target_is_directory=True)
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["tmp/file.txt"], "now", str(target), mock_config)
+
+        assert ret == 1
+        error_messages = [str(c.args[0]) for c in mock_logger.error.call_args_list]
+        assert any("is a symlink" in msg and str(target / "tmp") in msg for msg in error_messages), (
+            f"expected a symlink-component error naming {target / 'tmp'}, got: {error_messages}"
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_restore_at_rejects_dangling_symlink_leaf_in_target(tmp_path, mock_config, mock_runner, mock_logger):
+    """A dangling symlink at the leaf position (target/tmp/file.txt ->
+    /nonexistent) must be refused even though os.path.exists() reports it as
+    absent — otherwise the pre-existence check would wave it through and dar
+    would create the symlink's target for it."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    (db_dir / "def.db").write_text("")
+
+    target = tmp_path / "restore"
+    (target / "tmp").mkdir(parents=True)
+    dangling_target = tmp_path / "does-not-exist" / "payload.txt"
+    (target / "tmp" / "file.txt").symlink_to(dangling_target)
+    assert not os.path.exists(target / "tmp" / "file.txt"), (
+        "sanity check: os.path.exists() must report the dangling symlink as absent"
+    )
+
+    with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+         patch("dateparser.parse", return_value=datetime.datetime(2023, 1, 1)), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = restore_at("def", ["tmp/file.txt"], "now", str(target), mock_config)
+
+        assert ret == 1
+        error_messages = [str(c.args[0]) for c in mock_logger.error.call_args_list]
+        assert any("is a symlink" in msg and str(target / "tmp" / "file.txt") in msg for msg in error_messages), (
+            f"expected a symlink-component error naming the dangling leaf, got: {error_messages}"
+        )
+        mock_runner.run.assert_not_called()
+
+
+def test_pitr_report_rejects_absolute_restore_path(mock_config, mock_runner, mock_logger):
+    """--pitr-report shares the same path validation as a real restore."""
+    with patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = _pitr_chain_report("def", ["/etc/passwd"], "now", mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            "Restore path '/etc/passwd' is absolute. Paths must be relative, exactly as stored "
+            "in the catalog (no leading '/')."
+        )
+        mock_runner.run.assert_not_called()
+
+
 def test_restore_at_empty_target_allows_restore(tmp_path, mock_config, mock_logger):
     """Test restore proceeds when target does not contain requested paths."""
     db_dir = tmp_path / "db"
@@ -242,7 +407,9 @@ def test_restore_at_concurrent_restore_to_same_target_is_blocked(tmp_path, mock_
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar") as mock_restore:
 
-            ret = restore_at("def", [], "2025-01-01", str(target), mock_config)
+            # Path content is irrelevant to this test (it only exercises the lock);
+            # a valid relative path is used since [] is now rejected by path validation.
+            ret = restore_at("def", ["tmp/file.txt"], "2025-01-01", str(target), mock_config)
     finally:
         fcntl.flock(holder_fd, fcntl.LOCK_UN)
         os.close(holder_fd)
@@ -273,7 +440,9 @@ def test_restore_at_lock_released_after_successful_restore(tmp_path, mock_config
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._restore_with_dar", return_value=0):
 
-        ret = restore_at("def", [], "2025-01-01", str(target), mock_config)
+        # Path content is irrelevant to this test (it only exercises the lock);
+        # a valid relative path is used since [] is now rejected by path validation.
+        ret = restore_at("def", ["tmp/file.txt"], "2025-01-01", str(target), mock_config)
 
     assert ret == 0
 
@@ -565,10 +734,12 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
             and "#2=/tmp/backups/example_DIFF_2026-01-29" in call.args[1]
             for call in debug_calls
         )
+        # Candidates carry the ARCHIVE date (midnight for date-only names),
+        # not the mtime from dar_manager -f output.
         assert any(
             call.args[0] == "PITR candidates for '%s': %s"
             and call.args[1] == "tmp/file.txt"
-            and "#2@2026-01-29 15:00:41" in call.args[2]
+            and "#2@2026-01-29 00:00:00" in call.args[2]
             for call in debug_calls
         )
         info_calls = mock_logger.info.call_args_list
@@ -686,6 +857,29 @@ def test_pitr_report_empty_archive_map(mock_config, mock_runner, mock_logger):
         mock_logger.error.assert_called_with("Could not determine archive list from dar_manager output.")
 
 
+def test_pitr_report_list_command_failure_returns_1(mock_config, mock_runner, mock_logger):
+    """A failed `dar_manager --list` (nonzero rc) fails the report instead of
+    parsing whatever partial output arrived — a truncated archive list could
+    silently select the wrong archive."""
+    mock_runner.run.return_value = CommandResult(
+        1,
+        "1\t/tmp/backups\texample_FULL_2026-01-10\n",  # partial but parseable output
+        "dar_manager: database I/O error",
+        note=None,
+    )
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)):
+
+        ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-01 00:00:00", mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call("%s", 'Error listing archive catalog for: "/tmp/db_dir/def.db"')
+        mock_logger.error.assert_any_call("stderr: %s", "dar_manager: database I/O error")
+
+
 def test_pitr_report_file_missing_archive_map_entry(mock_config, mock_runner, mock_logger):
     list_output = (
         "archive #   |    path      |    basename\n"
@@ -707,10 +901,13 @@ def test_pitr_report_file_missing_archive_map_entry(mock_config, mock_runner, mo
         ret = _pitr_chain_report("def", ["tmp/file.txt"], "2026-01-29 16:00:00", mock_config)
 
         assert ret == 1
+        # Same fail-fast as the real restore: catalog #2 recorded the file but
+        # cannot be resolved to a dated archive, so no version is selected.
         mock_logger.error.assert_any_call(
-            "PITR chain report missing archive map entry for #%d (%s)",
-            2,
-            "tmp/file.txt",
+            "Cannot restore 'tmp/file.txt': catalog number(s) #2 recorded versions of the "
+            "path but could not be resolved to a dated archive from `dar_manager --list` "
+            "output (missing entry or non-standard archive name). PITR cannot order these "
+            "versions by archive date safely — fix the catalog or archive names first."
         )
 
 
@@ -1234,6 +1431,30 @@ def test_restore_with_dar_empty_archive_map(mock_config, mock_runner, mock_logge
         mock_logger.error.assert_called_with("Could not determine archive list from dar_manager output.")
 
 
+def test_restore_with_dar_list_command_failure_returns_1(mock_config, mock_runner, mock_logger):
+    """A failed `dar_manager --list` (nonzero rc) fails the restore instead of
+    selecting archives from partial output."""
+    mock_runner.run.return_value = CommandResult(
+        1,
+        "1\t/tmp/backups\texample_FULL_2026-01-10\n",  # partial but parseable output
+        "dar_manager: database I/O error",
+        note=None,
+    )
+    mock_config.command_timeout_secs = 30
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger):
+
+        ret = _restore_with_dar("def", ["tmp/file.txt"], datetime.datetime(2026, 1, 1), "/tmp/restore", mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call("%s", 'Error listing archive catalog for: "/tmp/db_dir/def.db"')
+        # No dar restore may have been attempted from the partial listing.
+        dar_calls = [c for c in mock_runner.run.call_args_list if c.args[0][0] == "dar"]
+        assert dar_calls == []
+
+
 def test_restore_with_dar_file_missing_archive_map_entry(mock_config, mock_runner, mock_logger):
     list_output = (
         "archive #   |    path      |    basename\n"
@@ -1258,8 +1479,14 @@ def test_restore_with_dar_file_missing_archive_map_entry(mock_config, mock_runne
         ret = _restore_with_dar("def", ["tmp/file.txt"], datetime.datetime(2026, 1, 29, 16, 0, 0), "/tmp/restore", mock_config)
 
         assert ret == 1
+        # Catalog #2 recorded the file but is absent from `dar_manager --list`,
+        # so its archive date is unknown — PITR refuses to select a version
+        # rather than guess (or silently restore the older #1).
         mock_logger.error.assert_any_call(
-            "Archive number 2 missing from archive list; cannot restore 'tmp/file.txt'."
+            "Cannot restore 'tmp/file.txt': catalog number(s) #2 recorded versions of the "
+            "path but could not be resolved to a dated archive from `dar_manager --list` "
+            "output (missing entry or non-standard archive name). PITR cannot order these "
+            "versions by archive date safely — fix the catalog or archive names first."
         )
         mock_discord.assert_called()
 
@@ -1326,6 +1553,16 @@ def test_restore_with_dar_file_restore_failure(mock_config, mock_runner, mock_lo
         assert ret == 1
         mock_logger.error.assert_any_call(
             "dar restore failed for 'tmp/file.txt' from '/tmp/backups/example_FULL_2026-01-29': dar failed"
+        )
+        # Single candidate: the recovery guidance must state there is no older
+        # version to fall back to.
+        mock_logger.error.assert_any_call(
+            "Not falling back to an older version of '%s'. Older versions in the catalog: %s. "
+            "If the slice is damaged, try par2 repair first (see doc/par2.md), then rerun. "
+            "To restore an older version instead, rerun with --when at that version's timestamp, "
+            "into a clean target.",
+            "tmp/file.txt",
+            "<none>",
         )
         mock_discord.assert_called()
 

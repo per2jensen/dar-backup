@@ -126,18 +126,23 @@ def _run_dar_backup(env: EnvData, extra_args: List[str]) -> subprocess.Completed
 # Group A: PITR
 # ---------------------------------------------------------------------------
 
-def test_pitr_restore_file_selects_archive_before_when(setup_environment, env: EnvData) -> None:
+def test_pitr_restore_file_same_day_full_and_diff_selects_diff(setup_environment, env: EnvData) -> None:
     """
-    PITR file restore with --when between FULL and DIFF must restore the
-    FULL-archive version of file1.txt (original content), not the DIFF version.
+    PITR file selection follows the archive-date contract, which for the real
+    pipeline's date-only archive names means second-level precision is not
+    available: a FULL and a DIFF taken on the SAME calendar date both resolve
+    to midnight, so the DIFF is included for any --when on that day — even one
+    recorded between the two backup runs.
 
-    The selection uses dar_manager -f timestamps (file mtime as recorded in the
-    archive). Recording t_between after FULL but before the file is modified
-    guarantees only the FULL archive qualifies as a candidate.
+    This pins the documented same-day limitation (see "Known limitation" in
+    doc/pitr-archive-date-vs-file-mtime.md) against the real backup pipeline.
+    Between-snapshot file PITR across *different* dates is covered with
+    time-suffixed archives in
+    test_pitr_integration.py::test_pitr_file_selection_follows_archive_date_contract.
     """
     run_backup_script("--full-backup", env)
 
-    # Ensure t_between falls strictly between FULL mtime and DIFF mtime.
+    # t_between falls between the FULL and DIFF runs — on the same calendar date.
     time.sleep(2)
     t_between = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     time.sleep(2)
@@ -163,8 +168,9 @@ def test_pitr_restore_file_selects_archive_before_when(setup_environment, env: E
     restored = os.path.join(target_dir, file1_relative)
     assert os.path.isfile(restored), f"Restored file not found: {restored}"
     content = Path(restored).read_text()
-    assert content == "This is file 1.", (
-        f"Expected FULL-archive content 'This is file 1.' but got: {content!r}"
+    assert content == "MODIFIED FOR DIFF", (
+        f"Same-day FULL+DIFF: the DIFF (archive date == FULL's date) is included "
+        f"per the documented limitation; expected 'MODIFIED FOR DIFF' but got: {content!r}"
     )
 
 

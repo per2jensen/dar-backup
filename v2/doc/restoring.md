@@ -73,7 +73,13 @@ manager --config-file <dar-backup.conf> \
 deactivate
 ```
 
-Each path is processed independently. Directories use the full archive chain (FULL → DIFF → INCR); files use version-based selection.
+Each path is processed independently, and both kinds follow the same selection rule —
+**archive creation date at or before `--when`**. Directories apply the full archive
+chain (FULL → DIFF → INCR); files are restored from the newest archive at or before
+`--when` that **saved** the file's data (a DIFF that lists an unchanged file as merely
+"present" is never selected). File mtimes never drive the selection — if you want a
+file version by its *modification time* instead, see
+[Restore a file by its mtime](#restore-a-file-by-its-mtime-file-version-restore).
 
 Dry-run the archive chain selection before restoring:
 
@@ -90,7 +96,11 @@ deactivate
 
 **Notes**:
 
-- `--restore-path` must be a relative path as stored in the catalog (no leading slash).
+- `--restore-path` must be a relative path as stored in the catalog (no leading slash). An
+  absolute path or a `..` component is rejected before any restore is attempted.
+- `--target` is checked for symlinks: if any path component under `--target` matching a
+  requested restore path is a symlink (including a dangling one), the restore is refused
+  rather than potentially writing outside the target. Use a clean/empty `--target`.
 - If a restore path is a **directory** and its name has no file extension, add a trailing `/` to make the intent explicit (e.g., `photos/2026/01/`). This avoids ambiguity with file paths that also lack extensions.
   - Example (directory name has no extension):
     - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - 2026/01/" --when "now" --target /tmp/restore_pitr`
@@ -139,6 +149,50 @@ Example of the issue:
 
 `dar_manager -w` may say "directory did not exist before that time" because the directory mtime is now 11:00+.
 The fallback still restores the correct tree as of 10:30 by applying the archive chain.
+
+### When the selected archive is damaged (fail-fast, no fallback)
+
+PITR file restores try **only the newest archive at or before `--when` that saved
+the file's data**. If `dar` fails to extract it — typically a corrupt or truncated slice —
+the restore **fails with exit code 1**. dar-backup deliberately does *not* fall back
+to an older version: that would deliver stale data behind a success exit code, with
+nothing but a log line to tell you the restore is not what you asked for.
+
+The failure is logged at ERROR level and includes dar's stderr and the older
+versions recorded in the catalog:
+
+```text
+ERROR - dar restore failed for 'data/report.txt' from '/backups/example_DIFF_2026-01-15': CRC error: data corruption
+ERROR - Not falling back to an older version of 'data/report.txt'. Older versions in the catalog: #1@2026-01-10 10:00:00 (example_FULL_2026-01-10). If the slice is damaged, try par2 repair first (see doc/par2.md), then rerun. To restore an older version instead, rerun with --when at that version's timestamp, into a clean target.
+```
+
+Recovery steps, in order of preference:
+
+1. **Repair the damaged slice** — this recovers the version you actually asked for.
+   If you generate PAR2 redundancy files (the default), verify and repair the
+   failing slice, then rerun the *same* restore command:
+
+   ```bash
+   par2 verify <archive>.<slice number>.dar.par2
+   par2 repair <archive>.<slice number>.dar.par2
+   ```
+
+   See [par2.md](par2.md) for both PAR2 storage layouts and full instructions.
+
+2. **If the slice cannot be repaired**, restore an older version — explicitly:
+
+   1. Pick an older version from the ERROR message above: it lists each candidate
+      as `#<catalog>@<archive date> (<archive name>)`. (To see which archives
+      recorded the file at all, `manager --find-file path/to/file.txt -d
+      <definition>` lists them — note its timestamps are recorded file mtimes,
+      which do not drive PITR selection.)
+   2. Rerun the restore with `--when` set at that older version's **archive
+      date**. It must be **before the damaged archive's date** — a `--when` that
+      is merely earlier than your original one can still select the damaged
+      archive again.
+   3. Use a **clean/empty `--target`**: a failed `dar` run may have left partial
+      files in the previous target, and PITR aborts rather than overwrite
+      existing paths.
 
 ## Restore a file by its mtime (file-version restore)
 

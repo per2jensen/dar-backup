@@ -13,6 +13,11 @@ below.
 For every other scenario: pass `--when` with the date/time you want to roll back to and
 dar-backup will select the correct archive chain automatically.
 
+If a restore fails because an archive slice is damaged (dar exits non-zero), PITR
+fails fast instead of silently restoring an older version — see
+[restoring.md](restoring.md#when-the-selected-archive-is-damaged-fail-fast-no-fallback)
+for the recovery steps (par2 repair first, explicit older-version restore second).
+
 ---
 
 ## The PITR contract
@@ -25,7 +30,15 @@ dar-backup's PITR promise is:
 The selection criterion is always: **archive creation date ≤ `--when` date**.
 
 This is anchored to *when the backup ran*, not to when individual files inside it were
-last modified.
+last modified. It applies to both restore branches:
+
+- **Directories** are restored by applying the FULL → DIFF → INCR chain of archives
+  created at or before `--when`.
+- **Files** are restored from the newest archive created at or before `--when` that
+  **saved** the file's data. `dar_manager -f` is consulted only to learn *which*
+  archives hold the file — the mtimes it reports play no part in selection, and
+  archives that list the file merely as `present` (unchanged, data not re-saved)
+  are never selected.
 
 ---
 
@@ -116,5 +129,7 @@ FULL-only state you have two options:
 
 **For test authors:** an automated test that creates both a FULL and a DIFF in the same
 session and then asserts between-snapshot PITR behaviour will always fail for this reason.
-The between-snapshot scenario is only meaningful — and only works — when FULL and DIFF
-are on different calendar dates.
+This applies to file restores as well as directory restores — both select by archive
+date. The between-snapshot scenario is only meaningful — and only works — when FULL and
+DIFF are on different calendar dates (or when archives carry the optional `_HHMMSS` time
+suffix, as the PITR integration tests do).

@@ -425,7 +425,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     Args:
         backup_def: Backup definition name (prefix for the catalog DB, e.g. "example").
         paths: One or more file or directory paths as stored in the DAR catalog
-            (must be relative, e.g. "tmp/unit-test/.../file.txt").
+            (must be relative, e.g. "tmp/unit-test/.../file.txt"; absolute paths
+            or any ``..`` component are rejected — see _restore_paths_invalid_reason).
         when: Date/time string to restore "as of". Parsed via dateparser and
             converted to a datetime for archive selection. If None/empty,
             the latest version is restored.
@@ -463,6 +464,11 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     unsafe_reason = _restore_target_unsafe_reason(target)
     if unsafe_reason:
         logger.error(unsafe_reason)
+        return 1
+
+    invalid_paths_reason = _restore_paths_invalid_reason(paths)
+    if invalid_paths_reason:
+        logger.error(invalid_paths_reason)
         return 1
 
     # Parse date (or default to "now" for latest restore)
@@ -539,6 +545,14 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             for rel_path in normalized_paths:
                 if not rel_path or rel_path == ".":
                     continue
+                # Checked ahead of the exists() test below: a symlink planted
+                # inside the target (mid-path, or a dangling leaf that
+                # os.path.exists() would report as absent) must not silently
+                # redirect dar's writes outside the target.
+                symlink_reason = _symlink_component_reason(target, rel_path)
+                if symlink_reason:
+                    logger.error(symlink_reason)
+                    return 1
                 candidate = os.path.join(target, rel_path)
                 if os.path.exists(candidate):
                     existing.append(rel_path)
@@ -574,6 +588,67 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
                 os.close(lock_fd)
             except OSError:
                 pass
+
+
+def _restore_paths_invalid_reason(paths: List[str]) -> Optional[str]:
+    """Validate --restore-path values before they reach dar.
+
+    Catalog paths are always relative and never contain ``..`` — anything else
+    is either operator error or an attempt to make ``dar -g``/the target
+    pre-checks operate outside the intended tree.
+
+    Args:
+        paths: The --restore-path values as given on the command line.
+
+    Returns:
+        None if every path is acceptable; otherwise a human-readable reason
+        naming the first offending path, suitable for logging directly.
+    """
+    if not paths:
+        return "No restore path given (--restore-path requires at least one path)."
+    for path in paths:
+        if not path or not path.strip():
+            return "Empty restore path given (--restore-path requires relative catalog paths)."
+        if os.path.isabs(path):
+            return (
+                f"Restore path '{path}' is absolute. Paths must be relative, exactly as stored "
+                f"in the catalog (no leading '{os.sep}')."
+            )
+        if ".." in path.split(os.sep):
+            return (
+                f"Restore path '{path}' contains a '..' component. Catalog paths never do — "
+                f"refusing to restore outside the target."
+            )
+    return None
+
+
+def _symlink_component_reason(target: str, rel_path: str) -> Optional[str]:
+    """Check for symlinks on rel_path's component chain inside target.
+
+    A symlink planted inside the restore target (e.g. ``target/data -> /etc``)
+    would redirect dar's writes outside the target; a dangling symlink at the
+    leaf would also slip past an ``os.path.exists`` pre-check. Both are
+    refused.
+
+    Args:
+        target: The restore target directory (assumed lock-checked by caller).
+        rel_path: Normalized relative path about to be restored.
+
+    Returns:
+        None if no component of rel_path inside target is a symlink; otherwise
+        a human-readable reason naming the offending component.
+    """
+    current = target
+    for part in rel_path.split(os.sep):
+        if not part or part == ".":
+            continue
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            return (
+                f"'{current}' inside the restore target is a symlink — restoring through it "
+                f"could write outside the target. Remove it or use a clean/empty target."
+            )
+    return None
 
 
 def _restore_target_unsafe_reason(target: str) -> Optional[str]:
@@ -874,6 +949,14 @@ def _parse_archive_info(archive_map: Dict[int, str]) -> List[Tuple[int, datetime
     return info
 
 
+# Backup-sequence ordering used to tie-break archives that share a date
+# (date-only archive names): a DIFF taken the same day as its FULL sorts after
+# it, an INCR after its DIFF — mirroring the order the backups were taken.
+# Shared by _select_archive_chain (directories) and _resolve_pitr_path (files)
+# so both PITR branches order same-date archives identically.
+_ARCHIVE_TYPE_ORDER: Dict[str, int] = {"FULL": 0, "DIFF": 1, "INCR": 2}
+
+
 def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt: datetime) -> List[int]:
     """Select the FULL -> DIFF -> INCR archive chain that restores state as of when_dt.
 
@@ -892,7 +975,7 @@ def _select_archive_chain(archive_info: List[Tuple[int, datetime, str]], when_dt
         Catalog numbers in apply order: [FULL], optionally + [DIFF], optionally
         + [INCR]. Empty if no FULL archive is at or before when_dt.
     """
-    order = {"FULL": 0, "DIFF": 1, "INCR": 2}
+    order = _ARCHIVE_TYPE_ORDER
     candidates = [
         (catalog_no, date, archive_type)
         for catalog_no, date, archive_type in archive_info
@@ -998,7 +1081,12 @@ def _is_directory_in_archive(
         stripped = line.strip()
         if not stripped:
             continue
-        if not re.search(r'\bd[rwxXsStT-]{9}\b', stripped):
+        # The permission field is whitespace-delimited. A trailing \b must NOT
+        # be used here: modes ending in '-' (700 'drwx------', 750 'drwxr-x---',
+        # 770 'drwxrwx---') have no word boundary between the final '-' and the
+        # following space, so \b silently failed to match exactly those private
+        # directories. The optional '+' tolerates an ACL marker suffix.
+        if not re.search(r'(?:^|\s)d[rwxXsStT-]{9}\+?(?=\s|$)', stripped):
             continue
         candidate = stripped.rstrip()
         if _line_path_matches(candidate, path):
@@ -1035,10 +1123,18 @@ def _detect_directory(
     runner: "CommandRunner",
     timeout: Optional[int],
     root: str = os.sep,
+    when_dt: Optional[datetime] = None,
 ) -> bool:
     """
     Determine whether *path* is a directory using filesystem check first,
     then falling back to dar catalog inspection.
+
+    The fallback inspects the archives of the chain selected for *when_dt*
+    (newest chain member first), NOT simply the newest FULL in the catalog:
+    a directory deleted before the newest FULL — or created only in a DIFF/
+    INCR after its chain's FULL — exists in the when-selected chain but not
+    in the newest FULL, and inspecting the wrong archive would misclassify
+    it as a file (restoring it from a single archive instead of the chain).
 
     Args:
         path: Relative path to check.
@@ -1048,6 +1144,10 @@ def _detect_directory(
         timeout: Command timeout in seconds, or None for no timeout.
         root: The backup definition's -R root, used to resolve *path* against
             the live filesystem. Defaults to "/".
+        when_dt: Restore-to timestamp used to pick which archives to inspect.
+            When None (or when no FULL exists at or before it), the newest
+            FULL overall is inspected as a classification-only fallback —
+            archive *selection* later reports its own precise error.
 
     Returns:
         True if the path is a directory.
@@ -1056,19 +1156,31 @@ def _detect_directory(
     if _is_directory_path(path, root):
         return True
 
-    # Fallback: inspect the FULL archive via dar -l
-    full_archives = [
-        (no, dt) for no, dt, atype in archive_info if atype == "FULL"
-    ]
-    if not full_archives:
-        return False
-    # Use the most recent FULL archive
-    full_archives.sort(key=lambda item: item[1], reverse=True)
-    full_no = full_archives[0][0]
-    full_path = archive_map.get(full_no)
-    if not full_path:
-        return False
-    return _is_directory_in_archive(path, full_path, runner, timeout)
+    # Fallback: inspect archives via dar -l. Prefer the chain selected for
+    # when_dt; inspect newest-first (INCR/DIFF are smaller than the FULL, and
+    # a directory created after the chain's FULL only appears in them).
+    inspect_nos: List[int] = []
+    if when_dt is not None:
+        inspect_nos = list(reversed(_select_archive_chain(archive_info, when_dt)))
+    if not inspect_nos:
+        full_archives = [
+            (no, dt) for no, dt, atype in archive_info if atype == "FULL"
+        ]
+        if not full_archives:
+            return False
+        # Classification-only fallback: the most recent FULL archive.
+        full_archives.sort(key=lambda item: item[1], reverse=True)
+        inspect_nos = [full_archives[0][0]]
+
+    for catalog_no in inspect_nos:
+        archive_path = archive_map.get(catalog_no)
+        if not archive_path:
+            # Missing map entries are a selection-time error, not a
+            # classification concern — try the next chain member.
+            continue
+        if _is_directory_in_archive(path, archive_path, runner, timeout):
+            return True
+    return False
 
 
 def _resolve_backup_root(config_settings: ConfigSettings, backup_def: str) -> str:
@@ -1213,12 +1325,17 @@ class _PitrPathPlan:
         chain_missing: Chain slices absent from disk or the catalog (directory
             restores only, as returned by _resolve_directory_chain); empty for a
             file or when the whole chain is present.
-        candidates: (catalog_no, archive_date) file versions at or before the
-            requested time, latest first (file restores only); empty for a
-            directory.
+        candidates: (catalog_no, archive_date) archives that saved the path's
+            data, filtered to archive creation date at or before the requested
+            time and ordered newest archive first (file restores only); empty
+            for a directory. Selection is by archive date — the PITR contract —
+            not by the file mtimes that `dar_manager -f` reports; archives
+            listing the file only as "present" (unchanged, no data) are never
+            candidates.
         error: None when a target was selected; otherwise a human-readable reason
-            selection failed (no FULL archive covers the time, or no file version
-            at/before the time).
+            selection failed (no FULL archive covers the time, no archive at or
+            before the time recorded the path, or a recorded version could not
+            be resolved to a dated archive).
     """
     path: str
     is_directory: bool
@@ -1245,6 +1362,13 @@ def _resolve_pitr_path(
     (real restore) both call this so their decisions can never drift; each then
     applies its own logging and (for restore) dar execution to the result.
 
+    Both branches honor the PITR contract: selection is by archive creation
+    date (parsed from the archive name) at or before when_dt.  For files,
+    `dar_manager -f` only identifies which archives saved the path's data;
+    its mtime column plays no part in selection (see
+    doc/pitr-archive-date-vs-file-mtime.md — mtime-based selection would
+    resurrect renamed/edited content from archives created after when_dt).
+
     Args:
         path: Catalog-relative path to resolve.
         when_dt: Restore-to timestamp (naive local, as used everywhere in PITR).
@@ -1261,7 +1385,7 @@ def _resolve_pitr_path(
         candidates (file), any missing chain slices, and an error string when
         nothing could be selected.
     """
-    is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout, root)
+    is_directory = _detect_directory(path, archive_map, archive_info, runner, timeout, root, when_dt=when_dt)
     if is_directory:
         chain, chain_missing = _resolve_directory_chain(archive_info, when_dt, archive_map)
         if not chain:
@@ -1276,8 +1400,64 @@ def _resolve_pitr_path(
 
     file_result = runner.run(['dar_manager', '--base', database_path, '-f', path], timeout=timeout)
     versions = _parse_file_versions(cast(str, file_result.stdout))
-    candidates = [(num, dt) for num, dt in versions if dt <= when_dt]
-    candidates.sort(key=lambda item: item[1], reverse=True)
+
+    # dar_manager -f exit codes are unreliable signals (verified empirically):
+    # a path absent from the catalog exits 2 with "Non existent file in
+    # database" (a benign "no versions" answer), while a corrupted/unreadable
+    # database can exit 0 with "Corrupted database" text on stdout when no
+    # terminal is attached. Distinguish the benign case by its marker; treat
+    # every other nonzero exit or error marker as a failed lookup — selecting
+    # from partial output could silently restore the wrong version.
+    combined_output = f"{cast(str, file_result.stdout) or ''}\n{cast(str, file_result.stderr) or ''}"
+    benign_absent = "Non existent file in database" in combined_output
+    if not benign_absent and (
+        file_result.returncode != 0
+        or "Corrupted database" in combined_output
+        or "FATAL error" in combined_output
+    ):
+        detail = (cast(str, file_result.stderr) or cast(str, file_result.stdout) or "").strip()
+        return _PitrPathPlan(
+            path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+            error=(
+                f"Version lookup failed for '{path}': dar_manager -f exited with "
+                f"rc={file_result.returncode}: {detail}"
+            ),
+        )
+
+    # PITR contract: select by ARCHIVE creation date, exactly like directory
+    # chains — never by the recorded file mtime that `dar_manager -f` reports.
+    # A version whose mtime predates when_dt may live in an archive created
+    # AFTER when_dt (a rename or edit captured by a later DIFF); the contract
+    # says that archive did not exist at when_dt and must be excluded.
+    # `dar_manager -f` is used only to learn WHICH archives saved the path's
+    # data (its "present" entries — unchanged file, no data — are already
+    # filtered out by _parse_file_versions).
+    info_by_no = {catalog_no: (dt, archive_type) for catalog_no, dt, archive_type in archive_info}
+    unresolved = sorted(num for num, _mtime in versions if num not in info_by_no)
+    if unresolved:
+        nums = ", ".join(f"#{num}" for num in unresolved)
+        return _PitrPathPlan(
+            path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
+            error=(
+                f"Cannot restore '{path}': catalog number(s) {nums} recorded versions of the "
+                f"path but could not be resolved to a dated archive from `dar_manager --list` "
+                f"output (missing entry or non-standard archive name). PITR cannot order these "
+                f"versions by archive date safely — fix the catalog or archive names first."
+            ),
+        )
+
+    eligible = [
+        (num, info_by_no[num][0], info_by_no[num][1])
+        for num, _mtime in versions
+        if info_by_no[num][0] <= when_dt
+    ]
+    # Newest archive first; same-date archives tie-break by backup-sequence
+    # order then catalog number, matching _select_archive_chain's ordering.
+    eligible.sort(
+        key=lambda item: (item[1], _ARCHIVE_TYPE_ORDER.get(item[2], 99), item[0]),
+        reverse=True,
+    )
+    candidates = [(num, dt) for num, dt, _archive_type in eligible]
     if not candidates:
         return _PitrPathPlan(
             path=path, is_directory=False, chain=[], chain_missing=[], candidates=[],
@@ -1310,11 +1490,17 @@ def _pitr_chain_report(
 
     Returns:
         0 if a usable chain/version was found for every path; 1 if `when` is
-        missing or unparseable, the catalog can't be read, or any path's
-        chain/version could not be fully resolved.
+        missing or unparseable, any path is absolute/empty/contains ``..``,
+        the catalog can't be read, or any path's chain/version could not be
+        fully resolved.
     """
     if not when:
         logger.error("PITR report requires --when.")
+        return 1
+
+    invalid_paths_reason = _restore_paths_invalid_reason(paths)
+    if invalid_paths_reason:
+        logger.error(invalid_paths_reason)
         return 1
 
     parsed_date = _parse_when(when)
@@ -1327,6 +1513,12 @@ def _pitr_chain_report(
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
     root = _resolve_backup_root(config_settings, backup_def)
     list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
+    # A failed listing may still emit parseable partial output — selecting from
+    # a truncated archive list could silently pick the wrong (older) archive,
+    # so fail instead of parsing whatever arrived.
+    if list_result.returncode != 0:
+        _log_command_failure(list_result, f'Error listing archive catalog for: "{database_path}"')
+        return 1
     archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
@@ -1395,22 +1587,34 @@ def _pitr_chain_report(
 def _parse_file_versions(file_output: str) -> List[Tuple[int, datetime]]:
     """Parse `dar_manager -f <path>` output into (catalog number, mtime) pairs.
 
+    Only entries whose data status is ``saved`` are returned: those are the
+    archives that actually hold the file's data.  A DIFF/INCR that did not
+    re-save an unchanged file lists it as ``present`` — restoring from such an
+    archive would extract nothing (dar still exits 0), so ``present`` entries
+    must never become restore candidates.
+
     Args:
         file_output: Raw stdout from `dar_manager --base <db> -f <path>`,
             listing every catalog entry that recorded the given file, one
-            per line with a ctime-style timestamp (e.g.
+            per line with a ctime-style timestamp and a data status (e.g.
             "1  Fri Mar 21 06:56:21 2026  saved").
 
     Returns:
-        A list of (catalog_no, recorded_mtime) tuples for every line that
-        matches the expected format; non-matching lines are skipped.
+        A list of (catalog_no, recorded_mtime) tuples for every ``saved``
+        line that matches the expected format; ``present`` and other
+        non-matching lines are skipped.
+        Note: PITR selection uses only the catalog numbers — the recorded
+        mtimes are informational (see _resolve_pitr_path).
     """
     versions: List[Tuple[int, datetime]] = []
     for line in file_output.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        match = re.match(r"^(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})", stripped)
+        match = re.match(
+            r"^(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+saved\b",
+            stripped,
+        )
         if not match:
             continue
         try:
@@ -1457,6 +1661,11 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     restored for a dated request. It inspects the catalog to choose an archive
     for each path and restores into the provided target directory.
 
+    File paths fail fast: only the newest version at or before when_dt is
+    tried. If its archive is missing or dar fails to extract it, the path is
+    reported as failed — there is deliberately no fallback to an older
+    version, which would silently restore stale data with a success exit code.
+
     Args:
         backup_def: Backup definition name.
         paths: Paths to restore from the catalog.
@@ -1472,6 +1681,12 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     timeout = _coerce_timeout(config_settings.command_timeout_secs)
     root = _resolve_backup_root(config_settings, backup_def)
     list_result = _runner().run(['dar_manager', '--base', database_path, '--list'], timeout=timeout)
+    # A failed listing may still emit parseable partial output — selecting from
+    # a truncated archive list could silently pick the wrong (older) archive,
+    # so fail instead of parsing whatever arrived.
+    if list_result.returncode != 0:
+        _log_command_failure(list_result, f'Error listing archive catalog for: "{database_path}"')
+        return 1
     archive_map = _parse_archive_map(cast(str, list_result.stdout))
     if not archive_map:
         logger.error("Could not determine archive list from dar_manager output.")
@@ -1556,47 +1771,66 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 failures += 1
                 continue
 
-            restored = False
-            for catalog_no, _dt in plan.candidates:
-                archive_path = archive_map.get(catalog_no)
-                if not archive_path:
-                    missing_archives.add(f"catalog #{catalog_no} missing from archive map")
-                    logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
-                    restored = False
-                    break
-                if not archive_exists(archive_path):
-                    missing_archives.add(f"{archive_path}.1.dar")
-                    logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
-                    restored = False
-                    break
-                logger.info(
-                    "PITR restore file '%s' using archive %s.",
-                    path,
-                    _describe_archive(catalog_no, archive_map, info_by_no),
-                )
-                cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
-                if target:
-                    cmd.extend(['-R', target])
-                if ignore_ownership:
-                    cmd.append('--comparison-field=ignore-owner')
-                if no_deleted:
-                    cmd.append('--deleted=ignore')
-                if darrc_path:
-                    cmd.extend(['-B', darrc_path, 'restore-options'])
-                logger.info(
-                    "Restoring '%s' from archive %s using dar.",
-                    path,
-                    _describe_archive(catalog_no, archive_map, info_by_no),
-                )
-                result = _runner().run(cmd, timeout=timeout)
-                if result.returncode == 0:
-                    restored = True
-                    successes += 1
-                    break
-                logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
-
-            if not restored:
+            # Fail-fast policy: only the best candidate (newest version at or
+            # before when_dt) is ever tried.  Falling back to an older version
+            # when this one is missing or fails to extract would silently
+            # restore stale data with a success exit code — the user must
+            # rerun with an earlier --when to get an older version explicitly.
+            catalog_no, _candidate_dt = plan.candidates[0]
+            archive_path = archive_map.get(catalog_no)
+            if not archive_path:
+                missing_archives.add(f"catalog #{catalog_no} missing from archive map")
+                logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
                 failures += 1
+                continue
+            if not archive_exists(archive_path):
+                missing_archives.add(f"{archive_path}.1.dar")
+                logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
+                failures += 1
+                continue
+            logger.info(
+                "PITR restore file '%s' using archive %s.",
+                path,
+                _describe_archive(catalog_no, archive_map, info_by_no),
+            )
+            cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
+            if target:
+                cmd.extend(['-R', target])
+            if ignore_ownership:
+                cmd.append('--comparison-field=ignore-owner')
+            if no_deleted:
+                cmd.append('--deleted=ignore')
+            if darrc_path:
+                cmd.extend(['-B', darrc_path, 'restore-options'])
+            logger.info(
+                "Restoring '%s' from archive %s using dar.",
+                path,
+                _describe_archive(catalog_no, archive_map, info_by_no),
+            )
+            result = _runner().run(cmd, timeout=timeout)
+            if result.returncode != 0:
+                logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
+                # Give the operator everything needed to recover without a doc hunt:
+                # the older versions (with the timestamps a rerun's --when must
+                # target), the par2-repair-first hint, and the clean-target
+                # requirement (a failed dar run may have left partial files that
+                # would trip the pre-existence abort on rerun).
+                older_versions = ", ".join(
+                    f"#{num}@{dt.strftime('%Y-%m-%d %H:%M:%S')} "
+                    f"({os.path.basename(archive_map[num]) if num in archive_map else 'unknown'})"
+                    for num, dt in plan.candidates[1:]
+                ) or "<none>"
+                logger.error(
+                    "Not falling back to an older version of '%s'. Older versions in the catalog: %s. "
+                    "If the slice is damaged, try par2 repair first (see doc/par2.md), then rerun. "
+                    "To restore an older version instead, rerun with --when at that version's timestamp, "
+                    "into a clean target.",
+                    path,
+                    older_versions,
+                )
+                failures += 1
+                continue
+            successes += 1
 
     except KeyboardInterrupt:
         msg = (

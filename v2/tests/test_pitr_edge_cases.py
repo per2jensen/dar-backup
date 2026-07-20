@@ -292,6 +292,33 @@ class TestParseFileVersions:
         assert versions[0][0] == 1
         assert versions[1][0] == 3
 
+    def test_present_entries_are_excluded(self) -> None:
+        """A DIFF/INCR that lists the file as 'present' (unchanged, data NOT
+        re-saved) must not become a version candidate: restoring from it would
+        extract nothing while dar still exits 0.
+
+        Lines mirror real `dar_manager -f` output, where an unchanged file shows
+        the same recorded date in the later archive but status 'present'.
+        """
+        output = (
+            " \t1\tMon Jul 20 00:29:21 2026  saved                                 absent  \n"
+            " \t2\tMon Jul 20 00:29:21 2026  present                               absent  \n"
+        )
+        versions = _parse_file_versions(output)
+        assert [num for num, _dt in versions] == [1], (
+            "'present' entry (#2) holds no data and must be excluded"
+        )
+
+    def test_saved_entries_in_real_format_are_kept(self) -> None:
+        """Positive counterpart: real-format 'saved' lines from both archives
+        are both returned (file changed between FULL and DIFF)."""
+        output = (
+            " \t1\tMon Jul 20 00:29:21 2026  saved                                 absent  \n"
+            " \t2\tMon Jul 20 00:29:22 2026  saved                                 absent  \n"
+        )
+        versions = _parse_file_versions(output)
+        assert [num for num, _dt in versions] == [1, 2]
+
 
 # ===========================================================================
 # _looks_like_directory / _treat_as_directory
@@ -773,21 +800,26 @@ class TestParseArchiveMap:
 
 class TestRestoreWithDarFileBreakBehavior:
     """Tests verifying that file restore fails fast when the best candidate
-    archive is missing, rather than silently falling back to a stale archive.
+    cannot be restored, rather than silently falling back to a stale archive.
 
     Falling back to an older archive without explicit user acknowledgment is
     dangerous: the user would get outdated data with no indication that the
-    restore is incomplete or stale.
+    restore is incomplete or stale.  All three failure modes obey this policy:
+    the candidate's catalog entry missing from the archive map, its .1.dar
+    slice missing from disk, and dar itself failing to extract (e.g. a
+    corrupt or truncated slice).
     """
 
     def test_file_restore_fails_fast_on_missing_archive_map_entry(
         self, mock_config, mock_runner, mock_logger
     ) -> None:
-        """When the best candidate's archive is missing from the map, the restore
-        fails immediately rather than silently falling back to an older archive.
+        """When a catalog number that recorded the file cannot be resolved to a
+        dated archive (missing from `dar_manager --list`), the restore fails
+        immediately rather than silently falling back to an older archive.
 
-        This is intentional safety behavior: restoring from a stale archive
-        without user consent could cause silent data loss.
+        This is intentional safety behavior: without the archive date PITR
+        cannot know whether the unresolvable version is the best candidate, so
+        restoring any other version could silently deliver stale data.
         """
         list_output = (
             "archive #   |    path      |    basename\n"
@@ -817,10 +849,14 @@ class TestRestoreWithDarFileBreakBehavior:
                 "def", ["tmp/file.txt"], when_dt, "/tmp/restore", mock_config
             )
 
-        # Current behavior: fails because it breaks on missing #2 without trying #1
+        # Fails fast: #2 recorded the file but has no dated entry in the
+        # archive list, so no version (not even the resolvable #1) is restored.
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Archive number 2 missing from archive list; cannot restore 'tmp/file.txt'."
+            "Cannot restore 'tmp/file.txt': catalog number(s) #2 recorded versions of the "
+            "path but could not be resolved to a dated archive from `dar_manager --list` "
+            "output (missing entry or non-standard archive name). PITR cannot order these "
+            "versions by archive date safely — fix the catalog or archive names first."
         )
 
     def test_file_restore_fails_fast_on_missing_slice(
@@ -871,6 +907,122 @@ class TestRestoreWithDarFileBreakBehavior:
         mock_logger.error.assert_any_call(
             "Archive slice missing for '/tmp/backups/example_DIFF_2026-01-15.1.dar', cannot restore 'tmp/file.txt'."
         )
+
+    def test_file_restore_dar_failure_on_best_candidate_fails_without_fallback(
+        self, mock_config, mock_runner, mock_logger
+    ) -> None:
+        """When dar itself fails on the best candidate (slice present on disk but
+        e.g. corrupt or truncated), the restore fails with exit code 1 instead of
+        silently falling back to the older candidate #1.
+
+        This is the most insidious failure mode: the archive *exists*, so only
+        dar's non-zero exit reveals the damage.  Restoring the older version
+        with a success exit code would hide the corruption entirely.
+        """
+        list_output = (
+            "archive #   |    path      |    basename\n"
+            "------------+--------------+---------------\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
+        )
+        file_output = (
+            "1 Fri Jan 10 10:00:00 2026  saved\n"
+            "2 Wed Jan 15 10:00:00 2026  saved\n"
+        )
+        # Exactly three results: --list, -f, and ONE dar -x attempt (#2).
+        # A fallback attempt on #1 would exhaust the side_effect list and error.
+        mock_runner.run.side_effect = [
+            CommandResult(0, list_output, "", note=None),               # --list
+            CommandResult(0, file_output, "", note=None),               # -f path
+            CommandResult(1, "", "CRC error: data corruption", note=None),  # dar -x on #2
+        ]
+
+        with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+             patch("dar_backup.manager.runner", mock_runner), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._detect_directory", return_value=False), \
+             patch("dar_backup.manager.send_discord_message") as mock_discord, \
+             patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+             patch("os.path.exists", return_value=True):
+
+            when_dt = datetime.datetime(2026, 1, 20)
+            ret = _restore_with_dar(
+                "def", ["tmp/file.txt"], when_dt, "/tmp/restore", mock_config
+            )
+
+        assert ret == 1, "dar failure on the best candidate must fail the restore"
+        dar_calls = [
+            c for c in mock_runner.run.call_args_list if c.args[0][0] == "dar"
+        ]
+        assert len(dar_calls) == 1, (
+            "Exactly one dar -x attempt: no fallback to the older candidate"
+        )
+        assert dar_calls[0].args[0][2] == "/tmp/backups/example_DIFF_2026-01-15", (
+            "The single attempt must target the newest candidate (#2)"
+        )
+        mock_logger.error.assert_any_call(
+            "dar restore failed for 'tmp/file.txt' from '/tmp/backups/example_DIFF_2026-01-15': "
+            "CRC error: data corruption"
+        )
+        # The recovery guidance must be at ERROR level and name the older
+        # versions with their timestamps — the rerun's --when must be set at
+        # the older version's ARCHIVE date (before the damaged one's), and the
+        # candidate list is otherwise only visible at DEBUG level.
+        mock_logger.error.assert_any_call(
+            "Not falling back to an older version of '%s'. Older versions in the catalog: %s. "
+            "If the slice is damaged, try par2 repair first (see doc/par2.md), then rerun. "
+            "To restore an older version instead, rerun with --when at that version's timestamp, "
+            "into a clean target.",
+            "tmp/file.txt",
+            "#1@2026-01-10 00:00:00 (example_FULL_2026-01-10)",
+        )
+        mock_discord.assert_called()
+
+    def test_file_restore_dar_success_on_best_candidate_restores_newest_version(
+        self, mock_config, mock_runner, mock_logger
+    ) -> None:
+        """Positive counterpart: with two candidates and a healthy newest archive,
+        the restore succeeds with exit code 0 via exactly one dar -x call on the
+        newest candidate — the older candidate is never touched.
+        """
+        list_output = (
+            "archive #   |    path      |    basename\n"
+            "------------+--------------+---------------\n"
+            "1\t/tmp/backups\texample_FULL_2026-01-10\n"
+            "2\t/tmp/backups\texample_DIFF_2026-01-15\n"
+        )
+        file_output = (
+            "1 Fri Jan 10 10:00:00 2026  saved\n"
+            "2 Wed Jan 15 10:00:00 2026  saved\n"
+        )
+        mock_runner.run.side_effect = [
+            CommandResult(0, list_output, "", note=None),   # --list
+            CommandResult(0, file_output, "", note=None),   # -f path
+            CommandResult(0, "ok", "", note=None),          # dar -x on #2
+        ]
+
+        with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+             patch("dar_backup.manager.runner", mock_runner), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager.send_discord_message") as mock_discord, \
+             patch("dar_backup.manager._detect_directory", return_value=False), \
+             patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+             patch("os.path.exists", return_value=True):
+
+            when_dt = datetime.datetime(2026, 1, 20)
+            ret = _restore_with_dar(
+                "def", ["tmp/file.txt"], when_dt, "/tmp/restore", mock_config
+            )
+
+        assert ret == 0
+        dar_calls = [
+            c for c in mock_runner.run.call_args_list if c.args[0][0] == "dar"
+        ]
+        assert len(dar_calls) == 1, "Exactly one dar -x call for a healthy best candidate"
+        assert dar_calls[0].args[0][2] == "/tmp/backups/example_DIFF_2026-01-15", (
+            "The restore must use the newest candidate (#2), not the older FULL"
+        )
+        mock_discord.assert_not_called()
 
 
 # ===========================================================================
@@ -1018,37 +1170,38 @@ class TestRestoreWithDarDarrc:
 class TestRestoreAtPathNormalization:
     """Tests for restore_at handling of unusual path formats."""
 
-    def test_leading_slash_stripped_for_exists_check(
+    def test_leading_slash_now_rejected_as_absolute(
         self, tmp_path, mock_config, mock_logger
     ) -> None:
-        """Paths with leading / are normalized (lstrip) before checking target overlap."""
+        """Paths with a leading / are now rejected outright by
+        _restore_paths_invalid_reason, not silently normalized.
+
+        Superseded behavior: this path used to be lstrip()-ped for the target
+        overlap check only, while the raw (still-absolute-looking) string was
+        passed unmodified to the actual `dar -g` call — an inconsistency
+        between what was checked and what was executed. Rejecting it outright
+        is both simpler and matches the documented contract (restoring.md:
+        "--restore-path must be a relative path ... no leading slash").
+        """
         db_dir = "/tmp/db_dir"
         target = str(tmp_path / "restore")
         os.makedirs(target)
 
-        def _exists(path):
-            if path == os.path.join(db_dir, "def.db"):
-                return True
-            if path == target:
-                return True
-            # The normalized path "tmp/file.txt" under target should NOT exist
-            return False
-
         with patch("dar_backup.manager.get_db_dir", return_value=db_dir), \
-             patch("os.path.exists", side_effect=_exists), \
              patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
             ret = restore_at("def", ["/tmp/file.txt"], "now", target, mock_config)
 
-        assert ret == 0
-        mock_restore.assert_called_once()
+        assert ret == 1
+        mock_restore.assert_not_called()
 
     def test_dot_path_skipped_in_exists_check(
         self, tmp_path, mock_config, mock_logger
     ) -> None:
-        """A path that normalizes to '.' is skipped in the target overlap check."""
+        """A relative path that normalizes to '.' is skipped in the target
+        overlap check (rather than being compared as an empty/'.' candidate)."""
         db_dir = "/tmp/db_dir"
         target = str(tmp_path / "restore")
         os.makedirs(target)
@@ -1066,8 +1219,8 @@ class TestRestoreAtPathNormalization:
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
-            # "." and "/" both normalize to "." after lstrip+normpath → skipped in overlap check.
-            ret = restore_at("def", ["/"], "now", target, mock_config)
+            # "." normalizes to "." after lstrip+normpath → skipped in overlap check.
+            ret = restore_at("def", ["."], "now", target, mock_config)
 
         assert ret == 0
         mock_restore.assert_called_once()
@@ -1256,6 +1409,94 @@ class TestDetectDirectoryRoot:
         mock_runner.run.assert_called_once()
 
 
+class TestDetectDirectoryWhenAware:
+    """Tests for _detect_directory's when_dt-aware catalog fallback.
+
+    The fallback must inspect the archives of the chain selected for when_dt,
+    not blindly the newest FULL in the catalog: a directory deleted before the
+    newest FULL (disaster recovery to an older point in time) or created only
+    in a DIFF exists in the when-selected chain but not in the newest FULL.
+    """
+
+    # Catalog: old chain (FULL Jan10 + DIFF Jan15) and a newer FULL Mar01
+    # taken AFTER the directory was deleted.
+    _MAP = {
+        1: "/backups/example_FULL_2026-01-10",
+        2: "/backups/example_DIFF_2026-01-15",
+        3: "/backups/example_FULL_2026-03-01",
+    }
+    _INFO = [
+        (1, datetime.datetime(2026, 1, 10), "FULL"),
+        (2, datetime.datetime(2026, 1, 15), "DIFF"),
+        (3, datetime.datetime(2026, 3, 1), "FULL"),
+    ]
+
+    @staticmethod
+    def _runner_with_dir_in(archives_with_dir, mock_runner):
+        """Make dar -l report 'old/dir' as a directory only for the given archive paths."""
+        def _run(cmd, timeout=None):
+            archive = cmd[2]  # ['dar', '-l', <archive>, '-g', ...]
+            if archive in archives_with_dir:
+                return CommandResult(0, "drwxr-xr-x user group 4 kio old/dir\n", "", note=None)
+            return CommandResult(0, "", "", note=None)
+        mock_runner.run.side_effect = _run
+        return mock_runner
+
+    def test_dir_deleted_before_newest_full_detected_via_when_chain(self, mock_runner) -> None:
+        """A directory present only in the old FULL+DIFF chain is detected for a
+        when_dt inside that chain — the newest FULL (Mar01) must not be the
+        witness, and must not even be consulted."""
+        runner = self._runner_with_dir_in({self._MAP[1], self._MAP[2]}, mock_runner)
+
+        result = _detect_directory(
+            "old/dir", self._MAP, self._INFO, runner, 30, root="/nonexistent-root",
+            when_dt=datetime.datetime(2026, 1, 20),
+        )
+
+        assert result is True
+        inspected = [c.args[0][2] for c in mock_runner.run.call_args_list]
+        assert self._MAP[3] not in inspected, "newest FULL (after when) must not be inspected"
+
+    def test_dir_created_only_in_diff_detected_via_chain(self, mock_runner) -> None:
+        """A directory created between FULL and DIFF exists only in the DIFF —
+        the chain-aware fallback must find it there."""
+        runner = self._runner_with_dir_in({self._MAP[2]}, mock_runner)
+
+        result = _detect_directory(
+            "old/dir", self._MAP, self._INFO, runner, 30, root="/nonexistent-root",
+            when_dt=datetime.datetime(2026, 1, 20),
+        )
+
+        assert result is True
+
+    def test_dir_in_no_chain_archive_returns_false(self, mock_runner) -> None:
+        """Negative: a path that no chain archive lists as a directory stays a
+        file candidate."""
+        runner = self._runner_with_dir_in(set(), mock_runner)
+
+        result = _detect_directory(
+            "old/dir", self._MAP, self._INFO, runner, 30, root="/nonexistent-root",
+            when_dt=datetime.datetime(2026, 1, 20),
+        )
+
+        assert result is False
+
+    def test_no_full_at_or_before_when_falls_back_to_newest_full(self, mock_runner) -> None:
+        """when_dt before every FULL yields an empty chain; classification falls
+        back to the newest FULL overall (selection later reports its own
+        'no FULL archive' error)."""
+        runner = self._runner_with_dir_in({self._MAP[3]}, mock_runner)
+
+        result = _detect_directory(
+            "old/dir", self._MAP, self._INFO, runner, 30, root="/nonexistent-root",
+            when_dt=datetime.datetime(2025, 12, 1),
+        )
+
+        assert result is True
+        inspected = [c.args[0][2] for c in mock_runner.run.call_args_list]
+        assert inspected == [self._MAP[3]], "only the newest FULL is the classification fallback"
+
+
 # ===========================================================================
 # _resolve_backup_root
 # ===========================================================================
@@ -1301,6 +1542,58 @@ class TestIsDirectoryInArchive:
         mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
 
         result = _is_directory_in_archive("path/to/file", "/archive/path", mock_runner, 30)
+        assert result is False
+
+    def test_private_700_directory_returns_true(self, mock_runner) -> None:
+        """A mode-700 directory ('drwx------') is detected as a directory.
+
+        Regression test: the previous regex ended in \\b, and a permission
+        string ending in '-' has no word boundary before the following
+        whitespace — so exactly the private directories (700/750/770) were
+        misclassified as files.  The line below is copied verbatim from real
+        `dar -l` output (tab-separated fields).
+        """
+        dar_output = (
+            "[Data ][D][ EA  ][FSA][Compr][S]| Permission | User  | Group | Size |  Date  |  filename\n"
+            "[Saved][-]       [-L-][   0%][ ]  drwx------   pj\tpj\t2 o\tSun Jul 19 23:53:14 2026\thome/pj/private"
+        )
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("home/pj/private", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_group_750_directory_returns_true(self, mock_runner) -> None:
+        """A mode-750 directory ('drwxr-x---') is detected as a directory."""
+        dar_output = (
+            "[Saved][-]       [-L-][     ][ ]  drwxr-x---   pj\tpj\t0\tSun Jul 19 23:53:14 2026\tdata/group"
+        )
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("data/group", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_shared_770_directory_returns_true(self, mock_runner) -> None:
+        """A mode-770 directory ('drwxrwx---') is detected as a directory."""
+        dar_output = "drwxrwx--- user group 4096 2026-01-01 path/to/shared"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/to/shared", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_acl_marker_directory_returns_true(self, mock_runner) -> None:
+        """A directory permission string with a trailing ACL marker '+' is detected."""
+        dar_output = "drwxr-xr-x+ user group 4096 2026-01-01 path/with/acl"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/with/acl", "/archive/path", mock_runner, 30)
+        assert result is True
+
+    def test_private_600_file_returns_false(self, mock_runner) -> None:
+        """Negative counterpart: a mode-600 *file* ('-rw-------') stays a file."""
+        dar_output = "-rw------- user group 600 2026-01-01 path/private.key"
+        mock_runner.run.return_value = CommandResult(0, dar_output, "", note=None)
+
+        result = _is_directory_in_archive("path/private.key", "/archive/path", mock_runner, 30)
         assert result is False
 
     def test_dar_output_with_multiple_entries_finds_directory(self, mock_runner) -> None:
@@ -1619,10 +1912,23 @@ class TestResolvePitrPath:
         assert plan.error is None
         assert plan.chain_missing == ["/backups/example_FULL_2026-01-29.1.dar"]
 
+    # Shared file-branch fixtures: archives #1 FULL@Jan29, #3 DIFF@Jan30,
+    # #5 DIFF@Feb01, dated via their names as in production.
+    _FILE_ARCHIVE_MAP = {
+        1: "/backups/example_FULL_2026-01-29",
+        3: "/backups/example_DIFF_2026-01-30",
+        5: "/backups/example_DIFF_2026-02-01",
+    }
+    _FILE_ARCHIVE_INFO = [
+        (1, datetime.datetime(2026, 1, 29), "FULL"),
+        (3, datetime.datetime(2026, 1, 30), "DIFF"),
+        (5, datetime.datetime(2026, 2, 1), "DIFF"),
+    ]
+
     def test_file_returns_candidates_sorted_latest_first(self, mock_runner) -> None:
-        """A file yields (catalog_no, date) candidates at/before when_dt, latest
-        first; versions after when_dt are excluded."""
-        # dar_manager -f output: #1 (before when), #3 (before when), #5 (after when).
+        """A file yields (catalog_no, archive_date) candidates for archives
+        created at/before when_dt, newest archive first; archives created after
+        when_dt are excluded regardless of the mtimes dar_manager -f reports."""
         mock_runner.run.return_value = CommandResult(
             0,
             "1 Thu Jan 29 15:00:34 2026  saved\n"
@@ -1631,27 +1937,181 @@ class TestResolvePitrPath:
             "",
             note=None,
         )
-        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)  # excludes #5 (Feb 01)
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)  # excludes #5 (archive Feb 01)
 
         with patch("dar_backup.manager._detect_directory", return_value=False):
             plan = _resolve_pitr_path(
-                "some/file.txt", when_dt, "/db.db", {}, [], mock_runner, 30, "/"
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
             )
 
         assert plan.is_directory is False
-        assert [num for num, _dt in plan.candidates] == [3, 1], "latest eligible first"
+        assert [num for num, _dt in plan.candidates] == [3, 1], "newest archive first"
+        # The dates carried in candidates are ARCHIVE dates, not -f mtimes.
+        assert [dt for _num, dt in plan.candidates] == [
+            datetime.datetime(2026, 1, 30),
+            datetime.datetime(2026, 1, 29),
+        ]
         assert plan.error is None
 
-    def test_file_no_version_at_or_before_when_returns_error(self, mock_runner) -> None:
-        """A file with no version at/before when_dt yields an error plan."""
+    def test_file_old_mtime_in_later_archive_is_excluded(self, mock_runner) -> None:
+        """PITR contract: a version with an OLD mtime recorded in an archive
+        created AFTER when_dt must be excluded.
+
+        This is the rename/edit trap from doc/pitr-archive-date-vs-file-mtime.md:
+        a rename keeps the original mtime, so mtime-based selection would
+        resurrect content from an archive that did not exist at when_dt.
+        Selection must use the archive date (#5 = Feb 01), not the mtime (Jan 28).
+        """
         mock_runner.run.return_value = CommandResult(
-            0, "5 Sun Feb 01 09:00:00 2026  saved\n", "", note=None
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved\n"
+            "5 Wed Jan 28 08:00:00 2026  saved\n",  # mtime BEFORE when — archive AFTER when
+            "",
+            note=None,
         )
-        when_dt = datetime.datetime(2026, 1, 15, 0, 0, 0)  # before the only version
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)
 
         with patch("dar_backup.manager._detect_directory", return_value=False):
             plan = _resolve_pitr_path(
-                "some/file.txt", when_dt, "/db.db", {}, [], mock_runner, 30, "/"
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert [num for num, _dt in plan.candidates] == [1], (
+            "#5's archive postdates when_dt: its old-mtime version must not be a candidate"
+        )
+        assert plan.error is None
+
+    def test_file_same_date_full_and_diff_prefers_diff(self, mock_runner) -> None:
+        """Same-date FULL and DIFF (date-only names) tie-break by backup order:
+        the DIFF is the newer capture and must rank first, matching
+        _select_archive_chain's ordering for directories."""
+        archive_map = {
+            1: "/backups/example_FULL_2026-01-29",
+            2: "/backups/example_DIFF_2026-01-29",
+        }
+        archive_info = [
+            (1, datetime.datetime(2026, 1, 29), "FULL"),
+            (2, datetime.datetime(2026, 1, 29), "DIFF"),
+        ]
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 10:00:00 2026  saved\n"
+            "2 Thu Jan 29 12:00:00 2026  saved\n",
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 29, 18, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db",
+                archive_map, archive_info, mock_runner, 30, "/"
+            )
+
+        assert [num for num, _dt in plan.candidates] == [2, 1], (
+            "same-date tie-break must prefer DIFF over FULL"
+        )
+
+    def test_file_unresolvable_catalog_number_returns_error(self, mock_runner) -> None:
+        """A catalog number from dar_manager -f with no dated archive entry
+        yields an error plan: without its archive date the versions cannot be
+        ordered safely, so nothing is restored."""
+        mock_runner.run.return_value = CommandResult(
+            0,
+            "1 Thu Jan 29 15:00:34 2026  saved\n"
+            "9 Fri Jan 30 10:00:00 2026  saved\n",  # #9 not in archive_info
+            "",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "#9" in plan.error
+        assert "could not be resolved to a dated archive" in plan.error
+
+    def test_file_absent_from_catalog_rc2_is_benign(self, mock_runner) -> None:
+        """dar_manager -f exits 2 with 'Non existent file in database' for a
+        path the catalog never recorded — that is a benign 'no versions'
+        answer, not a lookup failure (message must stay actionable)."""
+        mock_runner.run.return_value = CommandResult(
+            2, "", "FATAL error, aborting operation: Non existent file in database", note=None
+        )
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "never/backed/up.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "No archive version found" in plan.error
+        assert "Version lookup failed" not in plan.error
+
+    def test_file_lookup_corrupt_db_with_rc0_returns_lookup_error(self, mock_runner) -> None:
+        """A corrupted database can make dar_manager -f exit 0 with 'Corrupted
+        database' text and no version lines (verified empirically, no-tty
+        case). This must surface as a failed lookup — not as the misleading
+        'No archive version found'."""
+        corrupt_text = "Corrupted database :Error reading database /db.db : Cannot open file"
+        mock_runner.run.return_value = CommandResult(0, corrupt_text, corrupt_text, note=None)
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == []
+        assert plan.error is not None
+        assert "Version lookup failed" in plan.error
+        assert "Corrupted database" in plan.error
+
+    def test_file_lookup_nonzero_rc_returns_lookup_error(self, mock_runner) -> None:
+        """Any other nonzero dar_manager -f exit fails the lookup: partial
+        output must not silently become the version list."""
+        mock_runner.run.return_value = CommandResult(
+            5,
+            "1 Thu Jan 29 15:00:34 2026  saved\n",  # partial but parseable
+            "dar_manager: I/O error reading database",
+            note=None,
+        )
+        when_dt = datetime.datetime(2026, 1, 31, 0, 0, 0)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
+            )
+
+        assert plan.candidates == [], "partial output must not become candidates"
+        assert plan.error is not None
+        assert "Version lookup failed" in plan.error
+        assert "rc=5" in plan.error
+
+    def test_file_no_version_at_or_before_when_returns_error(self, mock_runner) -> None:
+        """A file recorded only in archives created after when_dt yields an
+        error plan."""
+        mock_runner.run.return_value = CommandResult(
+            0, "5 Sun Feb 01 09:00:00 2026  saved\n", "", note=None
+        )
+        when_dt = datetime.datetime(2026, 1, 15, 0, 0, 0)  # before archive #5 (Feb 01)
+
+        with patch("dar_backup.manager._detect_directory", return_value=False):
+            plan = _resolve_pitr_path(
+                "some/file.txt", when_dt, "/db.db",
+                self._FILE_ARCHIVE_MAP, self._FILE_ARCHIVE_INFO, mock_runner, 30, "/"
             )
 
         assert plan.is_directory is False
