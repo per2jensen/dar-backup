@@ -22,6 +22,9 @@
 # - The full pytest suite is executed via scripts/pytest_report.sh (mode: full).
 # - Test reports (JSON + TXT) are generated and committed under doc/test-report/
 #   if and only if they changed.
+# - The PyPI-facing README.md (v2/README.md) has its relative links/images
+#   rewritten to absolute GitHub URLs pinned to the release tag, so the
+#   PyPI project page never shows 404s for links that only work on GitHub.
 # - Build artifacts are created from the tagged commit only.
 # - All artifacts are cryptographically signed and verified before upload.
 # - On successful upload, build-history.json and the clone-pulse annotation are
@@ -311,10 +314,20 @@ trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"; rm -f src/dar_backup/doc/*; rmdir 
 
 if $DRY_RUN; then
     dryrun "refresh v2/README.md from root README.md for PyPI description"
+    dryrun "rewrite relative links in v2/README.md to absolute GitHub URLs pinned to ${TAG} (scripts/rewrite_readme_links.py)"
     dryrun "copy docs into src/dar_backup/ for wheel inclusion (scripts/copy_docs.sh)"
 else
     cp ../README.md README.md  ||
         { red "❌ Error: Failed to refresh README.md from root"; exit 1; }
+
+    # PyPI embeds README.md verbatim as the long description and has no
+    # notion of "relative to this GitHub repo" — relative links/images that
+    # work fine on GitHub 404 on the PyPI project page. Rewrite them to
+    # absolute GitHub URLs pinned to this release's tag; the root README.md
+    # (GitHub's copy, with working relative links) is left untouched.
+    python3 scripts/rewrite_readme_links.py --input README.md --output README.md --ref "${TAG}" ||
+        { red "❌ Error: rewrite_readme_links.py failed"; exit 1; }
+    green "Rewrote relative links in README.md to absolute GitHub URLs (ref: ${TAG})"
 
     scripts/copy_docs.sh || { red "❌ Error: copy_docs.sh failed"; exit 1; }
 fi
