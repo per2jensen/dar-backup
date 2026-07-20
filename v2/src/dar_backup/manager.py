@@ -50,6 +50,7 @@ from dar_backup.util import print_aligned_settings
 from dar_backup.util import show_scriptname
 from dar_backup.util import validate_directory
 from dar_backup.util import archive_exists
+from dar_backup.util import inspect_archive_slices
 from dar_backup.util import resolve_ownership_flag
 from dar_backup.util import get_backup_definition_root
 
@@ -1268,7 +1269,8 @@ def _missing_chain_elements(chain: List[int], archive_map: Dict[int, str]) -> Li
     Returns:
         A list of human-readable descriptions of missing chain elements
         (either "catalog #N missing from archive map" or an absent
-        "<archive>.1.dar" slice path); empty if the whole chain is available.
+        "<archive>.1.dar" slice path); empty if the preliminary check passes.
+        PITR callers additionally run full slice-set validation before restore.
     """
     missing = []
     for catalog_no in chain:
@@ -1279,6 +1281,123 @@ def _missing_chain_elements(chain: List[int], archive_map: Dict[int, str]) -> Li
         if not archive_exists(archive_path):
             missing.append(f"{archive_path}.1.dar")
     return missing
+
+
+_PITR_SLICE_PROBE_PATH = ".dar-backup-internal-slice-validation-probe"
+
+
+def _pitr_archive_sequence_error(archive_path: str) -> Optional[str]:
+    """Return why DAR slice filenames do not form a sequence from slice 1.
+
+    Args:
+        archive_path: DAR archive base path without a slice suffix.
+
+    Returns:
+        None for one unambiguous numeric sequence beginning at 1; otherwise a
+        human-readable failure reason.
+    """
+    try:
+        inventory = inspect_archive_slices(archive_path)
+    except (OSError, ValueError) as exc:
+        return f"Could not inspect DAR slices for '{archive_path}': {exc}"
+
+    if not inventory.slice_paths:
+        return f"Archive '{archive_path}' has no DAR slices"
+    if inventory.invalid_numbers:
+        numbers = ", ".join(str(number) for number in inventory.invalid_numbers)
+        return f"Archive '{archive_path}' has invalid DAR slice number(s): {numbers}"
+    if inventory.duplicate_numbers:
+        numbers = ", ".join(str(number) for number in inventory.duplicate_numbers)
+        return f"Archive '{archive_path}' has duplicate DAR slice number(s): {numbers}"
+    if inventory.missing_numbers:
+        missing = ", ".join(str(number) for number in inventory.missing_numbers)
+        found = ", ".join(str(number) for number in inventory.slice_numbers)
+        return (
+            f"Archive '{archive_path}' has an incomplete DAR slice sequence: "
+            f"missing slice number(s) {missing}; found {found}"
+        )
+    return None
+
+
+def _pitr_archive_validation_error(
+    archive_path: str,
+    command_runner: CommandRunner,
+    timeout: Optional[int],
+    darrc_path: Optional[str],
+) -> Optional[str]:
+    """Return why a DAR archive is unsafe for PITR, or None when usable.
+
+    The filesystem inventory detects a missing first or interior slice. A
+    filtered ``dar -l`` then loads the archive catalogue without emitting its
+    contents; DAR rejects the highest available slice when it is not marked as
+    the archive's final slice. Together these checks prove slice completeness
+    without the full payload scan performed by ``dar -t``.
+
+    Args:
+        archive_path: DAR archive base path without a slice suffix.
+        command_runner: CommandRunner used for the final-slice catalogue probe.
+        timeout: Command timeout in seconds, or None to disable it.
+        darrc_path: Optional darrc containing the restore-options section.
+
+    Returns:
+        None when the slice sequence is complete and DAR accepts the final
+        catalogue; otherwise a human-readable failure reason.
+    """
+    sequence_error = _pitr_archive_sequence_error(archive_path)
+    if sequence_error:
+        return sequence_error
+
+    cmd = [
+        'dar', '-l', archive_path, '-g', _PITR_SLICE_PROBE_PATH,
+        '-q', '--noconf', '-Q',
+    ]
+    if darrc_path:
+        cmd.extend(['-B', darrc_path, 'restore-options'])
+    result = command_runner.run(
+        cmd,
+        timeout=timeout,
+        capture_output_limit_bytes=8192,
+        log_output=False,
+    )
+    if result.returncode == 0:
+        return None
+
+    detail = (cast(str, result.stderr) or cast(str, result.stdout) or "").strip()
+    detail_suffix = f": {detail}" if detail else ""
+    return (
+        f"Archive '{archive_path}' failed the DAR final-slice catalogue check "
+        f"(dar -l rc={result.returncode}){detail_suffix}"
+    )
+
+
+def _cached_pitr_archive_validation_error(
+    archive_path: str,
+    command_runner: CommandRunner,
+    timeout: Optional[int],
+    darrc_path: Optional[str],
+    cache: Dict[str, Optional[str]],
+) -> Optional[str]:
+    """Validate a PITR archive once per manager invocation.
+
+    Args:
+        archive_path: DAR archive base path without a slice suffix.
+        command_runner: CommandRunner used for DAR catalogue probes.
+        timeout: Command timeout in seconds, or None to disable it.
+        darrc_path: Optional darrc containing the restore-options section.
+        cache: Per-invocation mapping of archive paths to validation results.
+
+    Returns:
+        Cached or newly computed validation error; None means the archive is
+        safe to use.
+    """
+    if archive_path not in cache:
+        cache[archive_path] = _pitr_archive_validation_error(
+            archive_path,
+            command_runner,
+            timeout,
+            darrc_path,
+        )
+    return cache[archive_path]
 
 
 def _resolve_directory_chain(
@@ -1299,7 +1418,8 @@ def _resolve_directory_chain(
     Returns:
         A (chain, missing) tuple. chain is the ordered list of catalog numbers
         to apply (empty when no FULL archive covers when_dt). missing lists any
-        chain elements whose .1.dar slices are absent on disk.
+        chain elements whose .1.dar slices are absent on disk; PITR execution
+        performs complete slice-set validation separately.
     """
     chain = _select_archive_chain(archive_info, when_dt)
     if not chain:
@@ -1526,6 +1646,8 @@ def _pitr_chain_report(
 
     archive_info = _parse_archive_info(archive_map)
     info_by_no = {catalog_no: (dt, archive_type) for catalog_no, dt, archive_type in archive_info}
+    darrc_path = _guess_darrc_path(config_settings)
+    validation_cache: Dict[str, Optional[str]] = {}
     failures = 0
     successes = 0
 
@@ -1540,19 +1662,32 @@ def _pitr_chain_report(
                 logger.error(plan.error)
                 failures += 1
                 continue
-            missing_set = set(plan.chain_missing)
             chain_display_parts = []
+            chain_errors = []
             for catalog_no in plan.chain:
                 archive_path = archive_map.get(catalog_no)
                 if not archive_path:
                     status = "missing"
+                    chain_errors.append(f"catalog #{catalog_no} missing from archive map")
                 else:
-                    status = "missing" if f"{archive_path}.1.dar" in missing_set else "ok"
+                    validation_error = _cached_pitr_archive_validation_error(
+                        archive_path,
+                        _runner(),
+                        timeout,
+                        darrc_path,
+                        validation_cache,
+                    )
+                    status = "invalid" if validation_error else "ok"
+                    if validation_error:
+                        chain_errors.append(validation_error)
                 chain_display_parts.append(_format_chain_item(catalog_no, info_by_no, status))
             logger.info("PITR chain report for '%s': %s", path, ", ".join(chain_display_parts))
-            if plan.chain_missing:
-                for item in plan.chain_missing:
-                    logger.error("PITR chain report missing archive: %s", item)
+            if chain_errors:
+                for item in chain_errors:
+                    if item.startswith("catalog #"):
+                        logger.error("PITR chain report missing archive: %s", item)
+                    else:
+                        logger.error("PITR chain report unusable archive: %s", item)
                 failures += 1
             else:
                 successes += 1
@@ -1573,8 +1708,15 @@ def _pitr_chain_report(
             logger.error("PITR chain report missing archive map entry for #%d (%s)", catalog_no, path)
             failures += 1
             continue
-        if not archive_exists(archive_path):
-            logger.error("PITR chain report missing archive slice: %s", f"{archive_path}.1.dar")
+        validation_error = _cached_pitr_archive_validation_error(
+            archive_path,
+            _runner(),
+            timeout,
+            darrc_path,
+            validation_cache,
+        )
+        if validation_error:
+            logger.error("PITR chain report unusable archive: %s", validation_error)
             failures += 1
             continue
         logger.info("PITR chain report selected archive #%d (%s) for '%s'.", catalog_no, dt, path)
@@ -1696,6 +1838,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     info_by_no = {catalog_no: (dt, archive_type) for catalog_no, dt, archive_type in archive_info}
 
     darrc_path = _guess_darrc_path(config_settings)
+    validation_cache: Dict[str, Optional[str]] = {}
     failures = 0
     successes = 0
     missing_archives = set()
@@ -1712,10 +1855,28 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     logger.error(plan.error)
                     failures += 1
                     continue
-                if plan.chain_missing:
-                    for item in plan.chain_missing:
+                chain_errors = []
+                for catalog_no in plan.chain:
+                    archive_path = archive_map.get(catalog_no)
+                    if not archive_path:
+                        chain_errors.append(f"catalog #{catalog_no} missing from archive map")
+                        continue
+                    validation_error = _cached_pitr_archive_validation_error(
+                        archive_path,
+                        _runner(),
+                        timeout,
+                        darrc_path,
+                        validation_cache,
+                    )
+                    if validation_error:
+                        chain_errors.append(validation_error)
+                if chain_errors:
+                    for item in chain_errors:
                         missing_archives.add(item)
-                        logger.error("PITR restore missing archive in chain for '%s': %s", path, item)
+                        if item.startswith("catalog #"):
+                            logger.error("PITR restore missing archive in chain for '%s': %s", path, item)
+                        else:
+                            logger.error("PITR restore unusable archive in chain for '%s': %s", path, item)
                     failures += 1
                     continue
                 logger.info(
@@ -1731,9 +1892,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
                         restored = False
                         break
-                    if not archive_exists(archive_path):
-                        missing_archives.add(f"{archive_path}.1.dar")
-                        logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot complete restore.")
+                    sequence_error = _pitr_archive_sequence_error(archive_path)
+                    if sequence_error:
+                        missing_archives.add(sequence_error)
+                        logger.error("%s; cannot complete restore for '%s'.", sequence_error, path)
                         restored = False
                         break
                     cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
@@ -1753,6 +1915,16 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     result = _runner().run(cmd, timeout=timeout)
                     if result.returncode != 0:
                         logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
+                        restored = False
+                        break
+                    sequence_error = _pitr_archive_sequence_error(archive_path)
+                    if sequence_error:
+                        missing_archives.add(sequence_error)
+                        logger.error(
+                            "%s; a slice disappeared while restoring '%s'. Target may be incomplete.",
+                            sequence_error,
+                            path,
+                        )
                         restored = False
                         break
                 if restored:
@@ -1783,9 +1955,16 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 logger.error(f"Archive number {catalog_no} missing from archive list; cannot restore '{path}'.")
                 failures += 1
                 continue
-            if not archive_exists(archive_path):
-                missing_archives.add(f"{archive_path}.1.dar")
-                logger.error(f"Archive slice missing for '{archive_path}.1.dar', cannot restore '{path}'.")
+            validation_error = _cached_pitr_archive_validation_error(
+                archive_path,
+                _runner(),
+                timeout,
+                darrc_path,
+                validation_cache,
+            )
+            if validation_error:
+                missing_archives.add(validation_error)
+                logger.error("%s; cannot restore '%s'.", validation_error, path)
                 failures += 1
                 continue
             logger.info(
@@ -1827,6 +2006,16 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     "into a clean target.",
                     path,
                     older_versions,
+                )
+                failures += 1
+                continue
+            sequence_error = _pitr_archive_sequence_error(archive_path)
+            if sequence_error:
+                missing_archives.add(sequence_error)
+                logger.error(
+                    "%s; a slice disappeared while restoring '%s'. Target may be incomplete.",
+                    sequence_error,
+                    path,
                 )
                 failures += 1
                 continue
@@ -2121,7 +2310,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--pitr-report-first',
         action='store_true',
-        help="Run PITR chain report before restore and abort if missing archives.",
+        help="Run PITR chain report before restore and abort if archives are missing or incomplete.",
     )
     parser.add_argument(
         '--relocate-archive-path',

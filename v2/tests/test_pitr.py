@@ -29,7 +29,20 @@ def mock_config(tmp_path):
     config.backup_d_dir = str(tmp_path / "backup.d")
     config.command_timeout_secs = None
     config.manager_db_dir = None
+    config.config_file = str(tmp_path / "dar-backup.conf")
     return config
+
+
+@pytest.fixture(autouse=True)
+def isolate_archive_validation():
+    """Keep selection tests independent from real DAR slice validation.
+
+    These tests use synthetic archive paths and mocked command output. Slice
+    inventory and DAR catalogue behavior are covered by dedicated real tests.
+    """
+    with patch("dar_backup.manager._pitr_archive_validation_error", return_value=None), \
+         patch("dar_backup.manager._pitr_archive_sequence_error", return_value=None):
+        yield
 
 @pytest.fixture
 def mock_runner():
@@ -809,18 +822,24 @@ def test_pitr_report_directory_missing_slice_fails(mock_config, mock_runner, moc
             return False
         return True
 
+    missing_error = "Archive '/tmp/backups/example_DIFF_2026-01-29' has no DAR slices"
+
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._detect_directory", return_value=True), \
+         patch(
+             "dar_backup.manager._pitr_archive_validation_error",
+             side_effect=lambda archive, *_args: missing_error if "_DIFF_" in archive else None,
+         ), \
          patch("os.path.exists", side_effect=_exists):
 
         ret = _pitr_chain_report("def", ["tmp/dir"], "2026-01-29 16:00:00", mock_config)
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "PITR chain report missing archive: %s",
-            "/tmp/backups/example_DIFF_2026-01-29.1.dar",
+            "PITR chain report unusable archive: %s",
+            missing_error,
         )
 
 
@@ -928,10 +947,13 @@ def test_pitr_report_file_missing_slice(mock_config, mock_runner, mock_logger):
             return False
         return True
 
+    missing_error = "Archive '/tmp/backups/example_FULL_2026-01-29' has no DAR slices"
+
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._detect_directory", return_value=False), \
+         patch("dar_backup.manager._pitr_archive_validation_error", return_value=missing_error), \
          patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 29, 16, 0, 0)), \
          patch("os.path.exists", side_effect=_exists):
 
@@ -939,8 +961,8 @@ def test_pitr_report_file_missing_slice(mock_config, mock_runner, mock_logger):
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "PITR chain report missing archive slice: %s",
-            "/tmp/backups/example_FULL_2026-01-29.1.dar",
+            "PITR chain report unusable archive: %s",
+            missing_error,
         )
 
 
@@ -1038,11 +1060,17 @@ def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner
             return False
         return True
 
+    missing_error = "Archive '/tmp/backups/example_DIFF_2026-01-29' has no DAR slices"
+
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
          patch("dar_backup.manager._detect_directory", return_value=True), \
+         patch(
+             "dar_backup.manager._pitr_archive_validation_error",
+             side_effect=lambda archive, *_args: missing_error if "_DIFF_" in archive else None,
+         ), \
          patch("dar_backup.manager.send_discord_message"), \
          patch("os.path.exists", side_effect=_exists):
 
@@ -1051,9 +1079,9 @@ def test_restore_with_dar_directory_missing_chain_fails(mock_config, mock_runner
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "PITR restore missing archive in chain for '%s': %s",
+            "PITR restore unusable archive in chain for '%s': %s",
             "tmp/dir",
-            "/tmp/backups/example_DIFF_2026-01-29.1.dar",
+            missing_error,
         )
 
 
@@ -1509,19 +1537,24 @@ def test_restore_with_dar_file_missing_slice(mock_config, mock_runner, mock_logg
             return False
         return True
 
+    missing_error = "Archive '/tmp/backups/example_FULL_2026-01-29' has no DAR slices"
+
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
          patch("dar_backup.manager.logger", mock_logger), \
          patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+         patch("dar_backup.manager._pitr_archive_validation_error", return_value=missing_error), \
          patch("os.path.exists", side_effect=_exists):
 
         ret = _restore_with_dar("def", ["tmp/file.txt"], datetime.datetime(2026, 1, 29, 16, 0, 0), "/tmp/restore", mock_config)
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Archive slice missing for '/tmp/backups/example_FULL_2026-01-29.1.dar', cannot restore 'tmp/file.txt'."
+            "%s; cannot restore '%s'.",
+            missing_error,
+            "tmp/file.txt",
         )
         mock_discord.assert_called()
 

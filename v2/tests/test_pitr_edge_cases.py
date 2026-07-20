@@ -75,7 +75,19 @@ def mock_config(tmp_path):
     config.backup_dir = str(tmp_path / "backups")
     config.backup_d_dir = str(tmp_path / "backup.d")
     config.command_timeout_secs = 30
+    config.config_file = str(tmp_path / "dar-backup.conf")
     return config
+
+
+@pytest.fixture(autouse=True)
+def isolate_archive_validation():
+    """Keep catalog-selection edge tests independent from real slice checks.
+
+    Real slice inventory and DAR final-slice behavior are covered separately.
+    """
+    with patch("dar_backup.manager._pitr_archive_validation_error", return_value=None), \
+         patch("dar_backup.manager._pitr_archive_sequence_error", return_value=None):
+        yield
 
 
 @pytest.fixture
@@ -889,12 +901,15 @@ class TestRestoreWithDarFileBreakBehavior:
                 return False
             return True
 
+        missing_error = "Archive '/tmp/backups/example_DIFF_2026-01-15' has no DAR slices"
+
         with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
              patch("dar_backup.manager.runner", mock_runner), \
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._detect_directory", return_value=False), \
              patch("dar_backup.manager.send_discord_message"), \
              patch("dar_backup.manager._guess_darrc_path", return_value=None), \
+             patch("dar_backup.manager._pitr_archive_validation_error", return_value=missing_error), \
              patch("os.path.exists", side_effect=_exists):
 
             when_dt = datetime.datetime(2026, 1, 20)
@@ -905,7 +920,9 @@ class TestRestoreWithDarFileBreakBehavior:
         # Current behavior: fails because it breaks on missing slice without trying #1
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Archive slice missing for '/tmp/backups/example_DIFF_2026-01-15.1.dar', cannot restore 'tmp/file.txt'."
+            "%s; cannot restore '%s'.",
+            missing_error,
+            "tmp/file.txt",
         )
 
     def test_file_restore_dar_failure_on_best_candidate_fails_without_fallback(

@@ -1281,6 +1281,67 @@ def test_archive_exists_returns_false_when_slice_absent(tmp_path):
     assert archive_exists(base) is False
 
 
+def test_inspect_archive_slices_contiguous_zero_padded_sequence_is_valid(tmp_path):
+    """Zero-padded DAR names are ordered numerically and accepted."""
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    for number in (1, 2, 3):
+        (tmp_path / f"mydef_FULL_2026-01-01.{number:03d}.dar").touch()
+
+    inventory = util.inspect_archive_slices(base)
+
+    assert inventory.slice_numbers == (1, 2, 3)
+    assert inventory.is_contiguous_from_one is True
+
+
+def test_inspect_archive_slices_missing_interior_number_is_reported(tmp_path):
+    """A gap between the first and highest slice is reported explicitly."""
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    (tmp_path / "mydef_FULL_2026-01-01.1.dar").touch()
+    (tmp_path / "mydef_FULL_2026-01-01.3.dar").touch()
+
+    inventory = util.inspect_archive_slices(base)
+
+    assert inventory.missing_numbers == (2,)
+    assert inventory.is_contiguous_from_one is False
+
+
+def test_inspect_archive_slices_duplicate_numeric_alias_is_reported(tmp_path):
+    """Two filenames representing the same slice number are ambiguous."""
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    (tmp_path / "mydef_FULL_2026-01-01.1.dar").touch()
+    (tmp_path / "mydef_FULL_2026-01-01.01.dar").touch()
+
+    inventory = util.inspect_archive_slices(base)
+
+    assert inventory.duplicate_numbers == (1,)
+    assert inventory.is_contiguous_from_one is False
+
+
+def test_inspect_archive_slices_zero_number_and_missing_first_are_reported(tmp_path):
+    """Slice zero cannot stand in for DAR's required first slice."""
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    (tmp_path / "mydef_FULL_2026-01-01.0.dar").touch()
+
+    inventory = util.inspect_archive_slices(base)
+
+    assert inventory.invalid_numbers == (0,)
+    assert inventory.missing_numbers == (1,)
+    assert inventory.is_contiguous_from_one is False
+
+
+def test_inspect_archive_slices_ignores_similar_non_slice_names(tmp_path):
+    """Hidden and parity files are not mistaken for DAR slices."""
+    base = str(tmp_path / "mydef_FULL_2026-01-01")
+    (tmp_path / "mydef_FULL_2026-01-01.1.dar").touch()
+    (tmp_path / "mydef_FULL_2026-01-01.2.dar.hidden").touch()
+    (tmp_path / "mydef_FULL_2026-01-01.1.dar.par2").touch()
+
+    inventory = util.inspect_archive_slices(base)
+
+    assert inventory.slice_numbers == (1,)
+    assert inventory.is_contiguous_from_one is True
+
+
 def test_get_backup_definition_root_parses_r_line(tmp_path):
     from dar_backup.util import get_backup_definition_root
 

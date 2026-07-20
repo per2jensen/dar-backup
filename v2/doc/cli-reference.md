@@ -101,8 +101,8 @@ Available options:
 --preserve-ownership                 Force uid/gid restoration for this run (overrides config; root only; mutually exclusive with --ignore-ownership).
 --ignore-ownership                   Force uid/gid to be ignored for this run (overrides RESTORE_OWNERSHIP = yes in config; mutually exclusive with --preserve-ownership).
 --no-deleted                         Do not process deletion records from DIFF/INCR archives (passes --deleted=ignore to dar). Useful when restoring a DIFF or INCR archive directly to an empty directory.
---pitr-report                        Report PITR archive chain for --restore-path/--when without restoring.
---pitr-report-first                  Run PITR chain report before restore and abort if missing archives.
+--pitr-report                        Report and validate the PITR archive chain without restoring.
+--pitr-report-first                  Validate the PITR chain before restore; abort if archives are missing or incomplete.
 --relocate-archive-path <old> <new>  Rewrite archive path prefix in the catalog DB (requires --backup-def).
 --relocate-archive-path-dry-run      Show archive path changes without applying them (use with --relocate-archive-path).
 --verbose                            Enable verbose output.

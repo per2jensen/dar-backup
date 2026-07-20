@@ -1559,17 +1559,44 @@ def test_pitr_multislice_archive(setup_environment, env):
     )
     env.logger.info("FULL multi-slice archive confirmed: at least 2 slices present")
 
-    # Prove that restored content lives in slice 2+, not just in .1.dar:
-    # Hide .2.dar, attempt restore, then verify that at least one file is
-    # absent or has wrong content in the probe directory.  dar -x with -Q
-    # returns 0 even when slices are missing (graceful partial restore), so
-    # we cannot rely on the return code — we check the actual content.
+    # Prove the underlying DAR hazard, then require every manager entry point
+    # to reject the same incomplete archive before writing restore output.
     slice2_hidden = slice2_full + ".hidden"
     os.rename(slice2_full, slice2_hidden)
     try:
+        raw_probe_dir = os.path.join(env.test_dir, "restore_ms_raw_probe")
+        os.makedirs(raw_probe_dir, exist_ok=True)
+        raw_result = runner.run([
+            "dar", "-x", full_archive,
+            "-wa", "-g", data_dir_for_dar,
+            "--noconf", "-Q", "-R", raw_probe_dir,
+        ], timeout=300)
+        assert raw_result.returncode == 0, (
+            "Regression precondition changed: dar -x should still return zero "
+            "for this missing interior-slice case"
+        )
+        raw_probe_data_dir = os.path.join(raw_probe_dir, data_dir_for_dar)
+        raw_probe_incomplete = False
+        for name, seed in [
+            ("slice_a.bin", 0xAA),
+            ("slice_b.bin", 0xBB),
+            ("slice_c.bin", 0xCC),
+        ]:
+            probe_path = os.path.join(raw_probe_data_dir, name)
+            if not os.path.exists(probe_path):
+                raw_probe_incomplete = True
+                break
+            with open(probe_path, "rb") as probe_file:
+                restored_bytes = probe_file.read()
+            expected_bytes = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
+            if restored_bytes != expected_bytes:
+                raw_probe_incomplete = True
+                break
+        assert raw_probe_incomplete, "Raw DAR probe unexpectedly restored complete data"
+
         probe_dir = os.path.join(env.test_dir, "restore_ms_probe")
         os.makedirs(probe_dir, exist_ok=True)
-        runner.run([
+        restore_result = runner.run([
             "manager",
             "--config-file", env.config_file,
             "--backup-def", "example",
@@ -1578,31 +1605,61 @@ def test_pitr_multislice_archive(setup_environment, env):
             "--target", probe_dir,
             "--log-stdout",
         ], timeout=300)
-        # Check whether the probe restore is incomplete (file absent or wrong bytes).
-        probe_data_dir = os.path.join(probe_dir, data_dir_for_dar)
-        probe_incomplete = False
-        for name, seed in [("slice_a.bin", 0xAA), ("slice_b.bin", 0xBB), ("slice_c.bin", 0xCC)]:
-            expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
-            fpath = os.path.join(probe_data_dir, name)
-            if not os.path.exists(fpath):
-                probe_incomplete = True
-                env.logger.info(
-                    "Probe (without .2.dar): '%s' absent — content lives in later slices", name
-                )
-                break
-            with open(fpath, "rb") as f:
-                if f.read() != expected:
-                    probe_incomplete = True
-                    env.logger.info(
-                        "Probe (without .2.dar): '%s' has wrong content — spans multiple slices", name
-                    )
-                    break
-        assert probe_incomplete, (
-            "Probe restore with .2.dar absent returned correct content for all files — "
-            "content may not actually span multiple slices; try a smaller slice size"
+        assert restore_result.returncode == 1
+        assert not os.path.lexists(os.path.join(probe_dir, data_dir_for_dar))
+
+        report_result = runner.run([
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", data_dir_for_dar,
+            "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+            "--pitr-report",
+            "--log-stdout",
+        ], timeout=300)
+        assert report_result.returncode == 1
+
+        report_first_dir = os.path.join(env.test_dir, "restore_ms_report_first")
+        os.makedirs(report_first_dir, exist_ok=True)
+        report_first_result = runner.run([
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", data_dir_for_dar,
+            "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+            "--target", report_first_dir,
+            "--pitr-report-first",
+            "--log-stdout",
+        ], timeout=300)
+        assert report_first_result.returncode == 1
+        assert not os.path.lexists(
+            os.path.join(report_first_dir, data_dir_for_dar)
         )
     finally:
         os.rename(slice2_hidden, slice2_full)  # always restore the slice
+
+    # Filename contiguity cannot identify a missing tail slice. The DAR
+    # catalogue probe must reject the highest remaining slice as non-final.
+    full_slices = sorted(
+        glob.glob(f"{full_archive}.*.dar"),
+        key=lambda path: int(path.rsplit(".", 2)[1]),
+    )
+    final_slice = full_slices[-1]
+    final_slice_hidden = final_slice + ".hidden"
+    os.rename(final_slice, final_slice_hidden)
+    try:
+        final_report_result = runner.run([
+            "manager",
+            "--config-file", env.config_file,
+            "--backup-def", "example",
+            "--restore-path", data_dir_for_dar,
+            "--when", t0.strftime("%Y-%m-%d %H:%M:%S"),
+            "--pitr-report",
+            "--log-stdout",
+        ], timeout=300)
+        assert final_report_result.returncode == 1
+    finally:
+        os.rename(final_slice_hidden, final_slice)
 
     # --- T1: modify all files → DIFF backup ---
     write_binary_file("slice_a.bin", seed=0x11)
@@ -1619,13 +1676,14 @@ def test_pitr_multislice_archive(setup_environment, env):
     )
     env.logger.info("DIFF multi-slice archive confirmed: at least 2 slices present")
 
-    # Same proof for the DIFF archive.
+    # A broken DIFF must reject the whole selected chain before the intact FULL
+    # is applied to the target.
     slice2_diff_hidden = slice2_diff + ".hidden"
     os.rename(slice2_diff, slice2_diff_hidden)
     try:
         probe_dir_diff = os.path.join(env.test_dir, "restore_ms_probe_diff")
         os.makedirs(probe_dir_diff, exist_ok=True)
-        runner.run([
+        diff_restore_result = runner.run([
             "manager",
             "--config-file", env.config_file,
             "--backup-def", "example",
@@ -1634,28 +1692,8 @@ def test_pitr_multislice_archive(setup_environment, env):
             "--target", probe_dir_diff,
             "--log-stdout",
         ], timeout=300)
-        probe_data_dir_diff = os.path.join(probe_dir_diff, data_dir_for_dar)
-        probe_diff_incomplete = False
-        for name, seed in [("slice_a.bin", 0x11), ("slice_b.bin", 0x22), ("slice_c.bin", 0x33)]:
-            expected = bytes([(seed + i) % 256 for i in range(FILE_SIZE)])
-            fpath = os.path.join(probe_data_dir_diff, name)
-            if not os.path.exists(fpath):
-                probe_diff_incomplete = True
-                env.logger.info(
-                    "Probe DIFF (without .2.dar): '%s' absent — content in later slices", name
-                )
-                break
-            with open(fpath, "rb") as f:
-                if f.read() != expected:
-                    probe_diff_incomplete = True
-                    env.logger.info(
-                        "Probe DIFF (without .2.dar): '%s' wrong content — spans slices", name
-                    )
-                    break
-        assert probe_diff_incomplete, (
-            "Probe DIFF restore with .2.dar absent returned correct content — "
-            "DIFF content may not span multiple slices; try a smaller slice size"
-        )
+        assert diff_restore_result.returncode == 1
+        assert not os.path.lexists(os.path.join(probe_dir_diff, data_dir_for_dar))
     finally:
         os.rename(slice2_diff_hidden, slice2_diff)
 

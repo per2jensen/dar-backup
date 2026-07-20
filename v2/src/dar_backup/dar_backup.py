@@ -65,6 +65,7 @@ from dar_backup.util import compare_metadata
 from dar_backup.util import write_restore_test_samples
 from dar_backup.util import validate_directory
 from dar_backup.util import archive_exists
+from dar_backup.util import inspect_archive_slices
 from dar_backup.util import get_backup_definition_root
 from dar_backup.util import resolve_ownership_flag
 from dar_backup.util import (
@@ -1518,16 +1519,17 @@ def _slice_number(pattern: "re.Pattern[str]", filename: str) -> int:
 
 
 def _list_dar_slices(archive_dir: str, archive_base: str) -> List[str]:
-    pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
-    dar_slices: List[str] = []
+    """List DAR slice filenames in numeric order.
 
-    for filename in os.listdir(archive_dir):
-        match = pattern.match(filename)
-        if match:
-            dar_slices.append(filename)
+    Args:
+        archive_dir: Directory containing the archive slices.
+        archive_base: Archive basename without a slice suffix.
 
-    dar_slices.sort(key=lambda x: _slice_number(pattern, x))
-    return dar_slices
+    Returns:
+        Matching slice filenames ordered by numeric slice number.
+    """
+    inventory = inspect_archive_slices(os.path.join(archive_dir, archive_base))
+    return [os.path.basename(path) for path in inventory.slice_paths]
 
 
 def _validate_slice_sequence(dar_slices: List[str], archive_base: str) -> None:

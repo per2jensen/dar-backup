@@ -106,8 +106,9 @@ deactivate
     - `manager --backup-def <definition> --restore-path "Automatic Upload/Per - 2026/01/" --when "now" --target /tmp/restore_pitr`
 - `--target` is required to avoid accidental restores into the current working directory.
 - Protected targets are blocked (e.g., `/etc`, `/usr`, `/bin`, `/var`, `/root`, `/boot`, `/lib`, `/proc`, `/sys`, `/dev`).
-- `--pitr-report` does a **dry-run** chain selection; if it reports missing archives, a restore will fail until the catalog is rebuilt or missing archives are restored.
-- `--pitr-report-first` runs the same chain report before a restore and aborts if any archive is missing (useful as a safety preflight).
+- `--pitr-report` does a **dry-run** chain selection and validates every selected DAR slice set. It requires a contiguous sequence beginning at slice 1 and asks DAR to confirm that the highest available slice is the archive's real final slice. If an archive is missing or incomplete, the report exits non-zero.
+- `--pitr-report-first` runs the same chain and slice validation before a restore and aborts if any selected archive is missing or incomplete (useful as a safety preflight).
+- PITR slice validation is deliberately lighter than a full archive-integrity scan: it proves that all slices are present, but it does not checksum every archived byte. Use `dar -t <archive-base> -N -Q` when a full integrity test is required.
 - `--when` accepts natural-language date expressions via `dateparser`. Examples:
   - `"now"`
   - `"2 weeks ago"`
@@ -118,7 +119,9 @@ deactivate
   - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look "too new".
 - Missing archives:
   - PITR uses the latest FULL, the latest DIFF after that FULL, and the latest INCR after that DIFF.
-  - If any archive slice in that chain is missing on disk, PITR restore **fails** and logs which archive slices are missing.
+  - Before restoring a directory, PITR validates every archive in the selected chain. A missing interior slice or missing final slice makes the restore **fail before the first archive in that chain is applied**.
+  - Single-file restores perform the same validation on their selected archive.
+  - Slice filenames are checked again around extraction so a slice disappearing during the operation cannot produce a manager success exit code. If an I/O failure happens after extraction starts, treat the target as incomplete and retry into a clean target.
   - A short Discord notice is sent (if configured) so missing archives are visible immediately.
 - Relocating archive paths in the catalog:
   - The catalog stores **absolute archive paths**. If archives move (or a mountpoint changes), the catalog will still point to the old path.
@@ -132,8 +135,8 @@ deactivate
     - `manager --relocate-archive-path /home/pj/mnt/dar /mnt/dar --backup-def pCloudDrive`
   - Alternative quick fix: create a symlink from the old path to the new path.
 - Rebuilding a catalog after archive loss:
-  - If PITR fails due to missing archives, the catalog may no longer match what is actually on disk.
-  - You can rebuild the catalog from the remaining archives and then retry PITR (with the understanding that older restore points may no longer be possible).
+  - Rebuilding a catalog does **not** repair an incomplete multi-slice archive. Restore the missing slices or use PAR2 repair first.
+  - If the damaged archive is intentionally abandoned, rebuild the catalog without that archive and retry PITR, understanding that its restore points and dependent chains may no longer be available.
   - Example:
     - `manager --create-db --config-file <dar-backup.conf>`
     - `manager --add-dir <backup_dir> --backup-def <definition> --config-file <dar-backup.conf>`

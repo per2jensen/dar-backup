@@ -1389,6 +1389,104 @@ def archive_exists(base_path: str) -> bool:
     return os.path.exists(f"{base_path}.1.dar")
 
 
+@dataclass(frozen=True)
+class ArchiveSliceInventory:
+    """Describe the DAR slice files currently present for an archive.
+
+    Attributes:
+        slice_paths: Matching slice paths, ordered by numeric slice number.
+        slice_numbers: Numeric slice numbers in the same order as ``slice_paths``.
+        missing_numbers: Numbers absent between slice 1 and the highest positive
+            slice number found. Contains 1 when no positive slice exists.
+        duplicate_numbers: Numeric slice numbers represented by more than one
+            filename, such as both ``.1.dar`` and ``.01.dar``.
+        invalid_numbers: Slice numbers DAR cannot use in a normal archive; at
+            present this contains any discovered slice numbered zero.
+    """
+
+    slice_paths: Tuple[str, ...]
+    slice_numbers: Tuple[int, ...]
+    missing_numbers: Tuple[int, ...]
+    duplicate_numbers: Tuple[int, ...]
+    invalid_numbers: Tuple[int, ...]
+
+    @property
+    def is_contiguous_from_one(self) -> bool:
+        """Return whether filenames form one unambiguous sequence from slice 1.
+
+        Returns:
+            True when at least one slice exists and there are no missing,
+            duplicate, or invalid slice numbers.
+        """
+        return bool(self.slice_paths) and not (
+            self.missing_numbers or self.duplicate_numbers or self.invalid_numbers
+        )
+
+
+def inspect_archive_slices(base_path: str) -> ArchiveSliceInventory:
+    """Inspect DAR slice filenames belonging to an archive base path.
+
+    Only exact ``<base>.<digits>.dar`` matches are included. Numeric ordering
+    makes the result work with both ordinary and zero-padded DAR slice names.
+
+    Args:
+        base_path: Archive base path without a slice suffix.
+
+    Returns:
+        An ArchiveSliceInventory describing the matching files and any numeric
+        sequence defects.
+
+    Raises:
+        ValueError: If ``base_path`` is not a non-empty string or has no base
+            filename component.
+        OSError: If the archive directory cannot be read.
+    """
+    if not isinstance(base_path, str) or not base_path.strip():
+        raise ValueError("Archive base path must be a non-empty string")
+
+    archive_base = os.path.basename(base_path)
+    if not archive_base:
+        raise ValueError(f"Archive base path has no filename component: {base_path!r}")
+
+    archive_dir = os.path.dirname(base_path) or os.curdir
+    pattern = re.compile(rf"{re.escape(archive_base)}\.([0-9]+)\.dar$")
+    numbered_paths: List[Tuple[int, str]] = []
+    with os.scandir(archive_dir) as entries:
+        for entry in entries:
+            match = pattern.fullmatch(entry.name)
+            if match is None:
+                continue
+            numbered_paths.append((int(match.group(1)), entry.path))
+
+    numbered_paths.sort(key=lambda item: (item[0], item[1]))
+    slice_numbers = tuple(number for number, _path in numbered_paths)
+    slice_paths = tuple(path for _number, path in numbered_paths)
+
+    seen_numbers: set[int] = set()
+    duplicate_numbers: set[int] = set()
+    for number in slice_numbers:
+        if number in seen_numbers:
+            duplicate_numbers.add(number)
+        seen_numbers.add(number)
+
+    invalid_numbers = tuple(sorted(number for number in seen_numbers if number < 1))
+    positive_numbers = {number for number in seen_numbers if number >= 1}
+    highest_number = max(positive_numbers, default=0)
+    missing_numbers = tuple(
+        number for number in range(1, highest_number + 1) if number not in positive_numbers
+    )
+    if highest_number == 0:
+        missing_numbers = (1,)
+
+    return ArchiveSliceInventory(
+        slice_paths=slice_paths,
+        slice_numbers=slice_numbers,
+        missing_numbers=missing_numbers,
+        duplicate_numbers=tuple(sorted(duplicate_numbers)),
+        invalid_numbers=invalid_numbers,
+    )
+
+
 def get_backup_definition_root(backup_def_path: str) -> Optional[str]:
     """Parse the -R root path out of a backup definition file.
 
