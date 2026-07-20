@@ -56,12 +56,16 @@ def test_generic_backup_dar_exit_5_source_unreadable_completes(
     """
     dar exit code 5 means some source files were unreadable during the backup
     (filesystem error or file changed).  This is NOT a hard failure — the
-    archive is usable and the catalog must still be updated.
+    archive is usable and must be returned to the pipeline for verification.
+    Catalog registration happens only after that verification succeeds.
     """
-    mock_runner.run.side_effect = [
-        MagicMock(returncode=5, stdout="", stderr="some files not saved", stdout_tail="", stderr_tail=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
-    ]
+    mock_runner.run.return_value = MagicMock(
+        returncode=5,
+        stdout="",
+        stderr="some files not saved",
+        stdout_tail="",
+        stderr_tail="",
+    )
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
     command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
@@ -70,8 +74,7 @@ def test_generic_backup_dar_exit_5_source_unreadable_completes(
     result = generic_backup("FULL", command, "backup_test", "/mock/data", "/mock/.darrc", _mock_config, args)
 
     assert result.dar_exit_code == 5
-    assert result.catalog_updated is True, "Catalog must be updated even when dar exits 5"
-    assert result.issues == [], "Exit code 5 is a warning, not an issue tuple"
+    assert mock_runner.run.call_count == 1, "Catalog registration must be deferred until verification"
 
 
 @pytest.mark.component
@@ -89,10 +92,13 @@ def test_generic_backup_dar_exit_5_logs_warning_not_error(
     dar exit code 5 must produce a WARNING log entry so operators can see
     that some files were skipped.  It must never be silently swallowed.
     """
-    mock_runner.run.side_effect = [
-        MagicMock(returncode=5, stdout="", stderr="", stdout_tail="", stderr_tail=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
-    ]
+    mock_runner.run.return_value = MagicMock(
+        returncode=5,
+        stdout="",
+        stderr="",
+        stdout_tail="",
+        stderr_tail="",
+    )
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
     command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]

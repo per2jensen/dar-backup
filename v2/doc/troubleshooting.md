@@ -143,6 +143,18 @@ Now all is well again :-)
 
 ---
 
+## Backup failure with DAR error code 4
+
+DAR returns code 4 when an operation is aborted. This commonly happens when DAR asks a
+question while running non-interactively—for example, a passphrase or slice-confirmation
+prompt—or when the process receives an interrupt or termination signal.
+
+`dar-backup` treats code 4 as a hard failure. It does not verify, register, or generate
+PAR2 files for the aborted archive, so PITR cannot select it. DAR may leave partial `.dar`
+slices on disk; keep them only for diagnosis and do not add them manually to the manager
+catalog. After correcting the prompt or configuration problem, move or remove the partial
+slices before retrying the same dated backup.
+
 ## Backup warning about error code 5
 
 `dar-backup` treats this as a warning because a usable dar backup (usually) is the result.

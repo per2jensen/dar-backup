@@ -91,10 +91,11 @@ def _runner() -> CommandRunner:
 
 
 class BackupResult(NamedTuple):
-    issues: List[tuple]     # list of (<msg>, <exit_code>) tuples
-    dar_exit_code: int      # raw dar return code; -1 if dar never ran
-    catalog_updated: bool   # True if archive was added to dar_manager catalog
-    dar_stats: dict         # parsed inode counters from dar summary; values are int | None
+    """Return the DAR-phase status and parsed inode statistics."""
+
+    dar_exit_code: int  # raw dar return code; -1 if dar never ran
+    dar_stats: dict[str, Optional[int]]
+
 
 @dataclass
 class VerifyResult:
@@ -126,6 +127,91 @@ def _normalize_backup_definition_name(raw_name: str, *, allow_unsafe: bool = Fal
         return None
     return stem
 
+
+def _log_partial_backup_slices(backup_file: str, dar_exit_code: int) -> None:
+    """Log any archive slices left behind by an unsuccessful DAR run.
+
+    Args:
+        backup_file: Archive base path without a slice suffix.
+        dar_exit_code: Nonzero exit code returned by DAR.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If ``backup_file`` is empty or ``dar_exit_code`` is zero.
+    """
+    if not backup_file:
+        raise ValueError("backup_file must not be empty")
+    if dar_exit_code == 0:
+        raise ValueError("dar_exit_code must be nonzero for a partial backup")
+
+    partial_slices = sorted(glob.glob(f"{backup_file}.*.dar"))
+    if not partial_slices:
+        return
+    logger.error(
+        "PARTIAL BACKUP on disk — dar failed (exit code %d) but left %d slice(s) behind. "
+        "These files are INCOMPLETE and must NOT be used for restore: %s",
+        dar_exit_code,
+        len(partial_slices),
+        partial_slices,
+    )
+
+
+def _register_backup_catalog(
+    backup_file: str,
+    config_settings: ConfigSettings,
+    args: argparse.Namespace,
+) -> Tuple[bool, Optional[Tuple[str, int]]]:
+    """Register a verified archive in its manager catalog.
+
+    Args:
+        backup_file: Verified archive base path without a slice suffix.
+        config_settings: Configuration providing the command timeout.
+        args: Parsed CLI arguments providing the config-file path.
+
+    Returns:
+        A pair of ``(catalog_updated, issue)``. ``issue`` is None on success;
+        otherwise it is the error tuple consumed by the CLI result aggregator.
+
+    Raises:
+        ValueError: If ``backup_file`` or ``args.config_file`` is empty.
+    """
+    if not backup_file:
+        raise ValueError("backup_file must not be empty")
+    config_file = getattr(args, "config_file", None)
+    if not config_file:
+        raise ValueError("args.config_file must not be empty")
+
+    add_catalog_command = [
+        "manager",
+        "--add-specific-archive",
+        backup_file,
+        "--config-file",
+        config_file,
+    ]
+    command_result = _runner().run(
+        add_catalog_command,
+        timeout=config_settings.command_timeout_secs,
+    )
+    if command_result.returncode == 0:
+        logger.info(
+            "Catalog for verified archive '%s' added successfully to its manager.",
+            backup_file,
+        )
+        return True, None
+
+    msg = (
+        f"Catalog entry not added for verified archive '{backup_file}' "
+        f"(manager returncode={command_result.returncode}). "
+        f"The verified archive is safely on disk. To register it manually: "
+        f"manager --add-specific-archive '{backup_file}' "
+        f"--config-file '{config_file}'"
+    )
+    logger.error(msg)
+    return False, (msg, 1)
+
+
 def generic_backup(
     type: str, command: List[str], backup_file: str, backup_definition: str,
     darrc: str, config_settings: ConfigSettings, args: argparse.Namespace
@@ -147,20 +233,19 @@ def generic_backup(
                                  directories to include or exclude.
         darrc (str): The path to the '.darrc' configuration file.
         config_settings (ConfigSettings): An instance of the ConfigSettings class.
+        args: Parsed command-line arguments. Retained for call-site compatibility;
+            catalog registration is performed later by ``perform_backup``.
 
 
     Raises:
         BackupError: If an error leading to a bad backup occurs during the backup process.
 
     Returns:
-        BackupResult: issues (list of (<msg>, <exit_code>) tuples not considered critical
-        enough for raising an exception), dar_exit_code, catalog_updated, and dar_stats.
+        BackupResult: The accepted DAR exit code and parsed inode statistics.
     """
 
-    result: List[tuple] = []
     dar_exit_code: int = -1
-    catalog_updated: bool = False
-    dar_stats: dict = {}
+    dar_stats: dict[str, Optional[int]] = {}
 
     logger.info(f"Starting {type} backup for {backup_definition}")
     try:
@@ -186,11 +271,18 @@ def generic_backup(
         if process.returncode == 0:
             logger.info(f"{type} backup completed successfully.")
         elif process.returncode == 4:
-            logger.warning(
-                f"{type} backup: dar exited with code 4 — dar had a question but was run "
-                f"non-interactively and aborted. Check for interactive prompts (e.g. passphrase, "
-                f"slice confirmation) that need to be suppressed in the configuration. "
-                f"Archive may be incomplete."
+            logger.error(
+                "%s backup: dar exited with code 4 — the operation was aborted. "
+                "Check for interactive prompts (for example passphrase or slice confirmation) "
+                "that must be suppressed in non-interactive configuration. Any archive slices "
+                "left behind are incomplete, will not be verified or cataloged, and must be "
+                "moved or removed before retrying.",
+                type,
+            )
+            _log_partial_backup_slices(backup_file, process.returncode)
+            raise BackupError(
+                "dar aborted with exit code 4; archive is incomplete",
+                dar_exit_code=process.returncode,
             )
         elif process.returncode == 5:
             logger.warning(
@@ -200,36 +292,13 @@ def generic_backup(
             )
         else:
             # Exit codes 1, 2, 3, 6, 7, 8, 9 are genuine failures
-            partial_slices = sorted(glob.glob(f"{backup_file}.*.dar"))
-            if partial_slices:
-                logger.error(
-                    "PARTIAL BACKUP on disk — dar failed (exit code %d) but left %d slice(s) behind. "
-                    "These files are INCOMPLETE and must NOT be used for restore: %s",
-                    process.returncode, len(partial_slices), partial_slices
-                )
+            _log_partial_backup_slices(backup_file, process.returncode)
             raise BackupError(
                 f"dar exited with code {process.returncode}",
                 dar_exit_code=process.returncode,
             )
 
-        if process.returncode in (0, 4, 5):
-            add_catalog_command = ['manager', '--add-specific-archive' ,backup_file, '--config-file', args.config_file]
-            command_result = _runner().run(add_catalog_command, timeout = config_settings.command_timeout_secs)
-            if command_result.returncode == 0:
-                logger.info(f"Catalog for archive '{backup_file}' added successfully to its manager.")
-                catalog_updated = True
-            else:
-                msg = (
-                    f"Catalog entry not added for archive '{backup_file}' "
-                    f"(manager returncode={command_result.returncode}). "
-                    f"The archive is safely on disk. To register it manually: "
-                    f"manager --add-specific-archive '{backup_file}' "
-                    f"--config-file '{args.config_file}'"
-                )
-                logger.error(msg)
-                result.append((msg, 1))
-
-        return BackupResult(issues=result, dar_exit_code=dar_exit_code, catalog_updated=catalog_updated, dar_stats=dar_stats)
+        return BackupResult(dar_exit_code=dar_exit_code, dar_stats=dar_stats)
 
     except BackupError:
         raise  # pass through without re-wrapping so dar_exit_code is preserved
@@ -1322,13 +1391,12 @@ def perform_backup(
 
             # --- DAR phase ---
             _t0 = datetime.now(UTC)
+            # Once DAR starts, the archive is explicitly unpublished until a
+            # later successful verification and catalog phase prove otherwise.
+            metrics["catalog_updated"] = 0
             backup_result = generic_backup(backup_type, command, backup_file, backup_definition_path, args.darrc, config_settings, args)
             metrics["dar_duration_secs"] = (datetime.now(UTC) - _t0).total_seconds()
             metrics["dar_exit_code"]     = backup_result.dar_exit_code
-            metrics["catalog_updated"]   = 1 if backup_result.catalog_updated else 0
-            if backup_result.dar_exit_code != 0 and metrics["failed_phase"] is None:
-                metrics["failed_phase"] = "DAR"
-            results.extend(backup_result.issues)
 
             # Inode stats parsed from dar's summary output; any unparsed field stays None
             metrics.update(backup_result.dar_stats)
@@ -1356,14 +1424,6 @@ def perform_backup(
             # Archive slice count and total size
             dar_slices = _list_dar_slices(config_settings.backup_dir, os.path.basename(backup_file))
             metrics["num_slices"] = len(dar_slices)
-            # CATALOG phase: only applicable when dar succeeded AND slices are on disk.
-            # If there are no slices, the catalog failure is a consequence of the DAR
-            # failure (nothing to catalog), not an independent CATALOG-phase failure.
-            if (not backup_result.catalog_updated
-                    and backup_result.dar_exit_code in (0, 4, 5)
-                    and cast(int, metrics["num_slices"]) > 0
-                    and metrics["failed_phase"] is None):
-                metrics["failed_phase"] = "CATALOG"
             try:
                 metrics["archive_size_bytes"] = sum(
                     os.path.getsize(os.path.join(config_settings.backup_dir, s)) for s in dar_slices
@@ -1394,12 +1454,32 @@ def perform_backup(
             metrics["files_verified"] = verify_result.files_verified if verify_result.files_verified > 0 else None
             if verify_result:
                 logger.info("Verification completed successfully.")
+
+                # --- CATALOG phase ---
+                # Registration is deliberately after verification. Publishing
+                # an archive earlier creates a window where PITR can select a
+                # backup that the same pipeline later rejects.
+                _current_phase = "CATALOG"
+                catalog_updated, catalog_issue = _register_backup_catalog(
+                    backup_file,
+                    config_settings,
+                    args,
+                )
+                metrics["catalog_updated"] = 1 if catalog_updated else 0
+                if catalog_issue is not None:
+                    results.append(catalog_issue)
+                    if metrics["failed_phase"] is None:
+                        metrics["failed_phase"] = "CATALOG"
             else:
                 msg = f"Verification of '{backup_file}' failed."
                 logger.error(msg)
                 results.append((msg, 1))
                 if metrics["failed_phase"] is None:
                     metrics["failed_phase"] = "VERIFY"
+                logger.error(
+                    "Catalog registration skipped for '%s' because verification failed.",
+                    backup_file,
+                )
 
             # --- PAR2 phase ---
             _current_phase = "PAR2"

@@ -7,8 +7,8 @@ Each test exercises real dar / dar_manager binaries and asserts on observable
 filesystem or database state rather than on mocked stubs.
 
 Tests are paired with their mock counterparts:
-  - test_generic_backup_creates_archive_and_updates_catalog
-      → complements test_generic_backup_success
+  - test_generic_backup_creates_archive_without_publishing_before_verification
+      → complements test_generic_backup_success_returns_dar_result_without_catalog_registration
   - test_generic_backup_dar_stats_come_from_real_dar_output
       → complements test_generic_backup_dar_stats_parsed
   - test_manager_add_specific_archive_registers_in_catalog
@@ -32,10 +32,12 @@ Tests are paired with their mock counterparts:
 import contextlib
 import os
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Generator
 
@@ -49,6 +51,7 @@ import dar_backup.dar_backup as db
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.dar_backup import create_backup_command
+from dar_backup.util import BackupError
 from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
 
@@ -168,13 +171,16 @@ def _catalog_contains(env: EnvData, archive_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_generic_backup_creates_archive_and_updates_catalog(setup_environment, env: EnvData) -> None:
+def test_generic_backup_creates_archive_without_publishing_before_verification(
+    setup_environment,
+    env: EnvData,
+) -> None:
     """
     generic_backup() called directly with a real dar command must create
-    the .1.dar slice on disk and register the archive in the dar_manager
-    catalog (catalog_updated == True).
+    the .1.dar slice on disk without registering it in dar_manager.
 
-    Complements test_generic_backup_success which mocks every subprocess.
+    Catalog publication belongs to perform_backup() after verification, so a
+    direct DAR-phase call must not expose an unverified restore point to PITR.
     """
     from datetime import datetime
 
@@ -199,9 +205,61 @@ def test_generic_backup_creates_archive_and_updates_catalog(setup_environment, e
     assert os.path.exists(backup_file + ".1.dar"), (
         f"Expected .1.dar slice on disk after generic_backup: {backup_file}.1.dar"
     )
-    assert result.catalog_updated is True, (
-        "generic_backup() must set catalog_updated=True when dar_manager "
-        "successfully adds the archive"
+    assert result.dar_exit_code == 0
+    assert not _catalog_contains(env, os.path.basename(backup_file)), (
+        "generic_backup() must not publish an archive before verification"
+    )
+
+
+def test_generic_backup_exit_4_valid_archive_remains_outside_catalog(
+    setup_environment,
+    env: EnvData,
+) -> None:
+    """An aborted DAR result must not publish even a structurally valid archive.
+
+    A real wrapper runs DAR to successful completion, leaving a valid archive,
+    then deliberately exits 4. This deterministically exercises the dangerous
+    case without mocking subprocess behavior: the old implementation added the
+    valid archive to dar_manager despite the aborted status.
+    """
+    real_dar = shutil.which("dar")
+    assert real_dar is not None, "dar must be installed for this integration test"
+
+    wrapper = Path(env.test_dir) / "dar-exit-4-wrapper"
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"{shlex.quote(real_dar)} \"$@\"\n"
+        "exit 4\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+    config = ConfigSettings(env.config_file)
+    date = db.datetime.now().strftime("%Y-%m-%d")
+    backup_file = os.path.join(config.backup_dir, f"example_FULL_{date}")
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    args = SimpleNamespace(config_file=env.config_file, darrc=env.dar_rc)
+    command = create_backup_command("FULL", backup_file, env.dar_rc, backup_def_path)
+    command[0] = str(wrapper)
+
+    with _module_context(env), pytest.raises(BackupError) as exc_info:
+        db.generic_backup(
+            "FULL",
+            command,
+            backup_file,
+            backup_def_path,
+            env.dar_rc,
+            config,
+            args,
+        )
+
+    assert exc_info.value.dar_exit_code == 4
+    assert os.path.exists(backup_file + ".1.dar"), (
+        "the wrapper must leave a real archive so catalog exclusion is meaningful"
+    )
+    assert not _catalog_contains(env, os.path.basename(backup_file)), (
+        "an archive from a DAR process that exited 4 must remain outside PITR catalog"
     )
 
 

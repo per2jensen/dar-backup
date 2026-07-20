@@ -231,9 +231,9 @@ Errors writing metrics are logged as `WARNING` and never abort a backup.
 | --- | --- | --- |
 | `status` | TEXT | `SUCCESS`, `WARNING`, or `FAILURE`. |
 | `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.). |
-| `failed_phase` | TEXT | `DAR`, `VERIFY`, or `PAR2` — set when a phase fails; NULL on success. |
+| `failed_phase` | TEXT | `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL on success. |
 | `error_summary` | TEXT | Short human-readable description of the first error encountered, or NULL. |
-| `catalog_updated` | INTEGER | `1` if the dar manager catalog was updated successfully, `0` otherwise. |
+| `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or was skipped because DAR aborted or verification failed. |
 | `verify_passed` | INTEGER | `1` if the archive integrity test passed. |
 | `restore_test_passed` | INTEGER | `1` if the restore test passed. |
 | `par2_passed` | INTEGER | `1` if par2 file generation succeeded. |

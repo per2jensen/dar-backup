@@ -462,13 +462,15 @@ def test_perform_backup_handles_failed_verification(env):
         f.write("DAR FILE")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=False, restore_test_passed=False, files_verified=3)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog") as mock_catalog, \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
         results = perform_backup(args, config, "FULL", [])
 
     assert any("Verification of" in r[0] for r in results)
+    mock_catalog.assert_not_called()
 
 
 def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
@@ -491,7 +493,8 @@ def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
         f.write("-R /\n")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", return_value=(True, None)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
@@ -525,7 +528,8 @@ def test_perform_backup_succeeds_when_metrics_db_path_is_none(env):
         f.write("-R /\n")
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", return_value=(True, None)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
@@ -564,17 +568,24 @@ def test_perform_backup_runs_par2_after_verify(env):
         call_order.append("par2")
         return None
 
+    def fake_catalog(*args, **kwargs):
+        """Record deferred catalog registration and report success."""
+        call_order.append("catalog")
+        return True, None
+
     with patch("dar_backup.dar_backup.verify", side_effect=fake_verify), \
          patch("dar_backup.dar_backup.generate_par2_files", side_effect=fake_par2), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", side_effect=fake_catalog), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.send_discord_message", return_value=True), \
          patch("dar_backup.dar_backup.logger"):
         perform_backup(args, config, "FULL", [])
 
     assert "verify" in call_order
+    assert "catalog" in call_order
     assert "par2" in call_order
-    assert call_order.index("verify") < call_order.index("par2")
+    assert call_order == ["verify", "catalog", "par2"]
 
 
 def test_perform_backup_sends_warning_for_existing_backup(env):
@@ -864,16 +875,14 @@ def test_generic_backup_warns_on_returncode_5(env):
         
         result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
 
-        assert isinstance(result.issues, list)
         assert result.dar_exit_code == 5
+        assert mock_runner.run.call_count == 1
         warning_texts = " ".join(str(c) for c in mock_logger.warning.call_args_list)
         assert "some files were not saved" in warning_texts
 
 
 
 def test_catalog_add_failure_handled(env):
-    from dar_backup.dar_backup import generic_backup
-
     args = SimpleNamespace(
         darrc=env.dar_rc,
         config_file=env.config_file,
@@ -885,24 +894,25 @@ def test_catalog_add_failure_handled(env):
         command_timeout_secs=10
     )
 
-    # simulate backup succeeded (0) but catalog failed (1)
     mock_runner = MagicMock()
-    mock_runner.run.side_effect = [
-        SimpleNamespace(returncode=0, stdout="ok", stderr="", stdout_tail="", stderr_tail=""),
-        SimpleNamespace(returncode=1, stdout="", stderr="manager failed", stdout_tail="", stderr_tail="")
-    ]
+    mock_runner.run.return_value = SimpleNamespace(
+        returncode=1,
+        stdout="",
+        stderr="manager failed",
+        stdout_tail="",
+        stderr_tail="",
+    )
 
     with patch("dar_backup.dar_backup.runner", mock_runner), \
          patch("dar_backup.dar_backup.get_logger"), \
          patch("dar_backup.dar_backup.logger") as mock_logger:
 
-        result = generic_backup("FULL", ["dar", "-c"], "backup", "example.dcf", env.dar_rc, config, args)
+        catalog_updated, issue = db._register_backup_catalog("backup", config, args)
 
-        assert len(result.issues) == 1
-        assert result.issues[0][1] == 1
-        assert "not added" in result.issues[0][0]
-        assert result.dar_exit_code == 0
-        assert result.catalog_updated is False
+        assert catalog_updated is False
+        assert issue is not None
+        assert issue[1] == 1
+        assert "not added" in issue[0]
         mock_logger.error.assert_called()
 
 
@@ -1954,7 +1964,8 @@ def test_perform_backup_fails_when_dar_slice_missing_after_backup(env):
         return 1024
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", return_value=(True, None)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
@@ -2012,7 +2023,8 @@ def test_perform_backup_succeeds_when_par2_file_disappears_after_generation(env)
         return ["test_FULL_2026-05-05.1.dar"]  # for the _existing_slices check in finally
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", return_value=(True, None)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \
@@ -2080,7 +2092,8 @@ def test_perform_backup_par2_size_partial_when_one_file_missing(env):
         return ["test_FULL_2026-05-05.1.dar"]
 
     with patch("dar_backup.dar_backup.verify", return_value=VerifyResult(passed=True, restore_test_passed=True, files_verified=1)), \
-         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(issues=[], dar_exit_code=0, catalog_updated=True, dar_stats={})), \
+         patch("dar_backup.dar_backup.generic_backup", return_value=BackupResult(dar_exit_code=0, dar_stats={})), \
+         patch("dar_backup.dar_backup._register_backup_catalog", return_value=(True, None)), \
          patch("dar_backup.dar_backup.create_backup_command", return_value=["dar", "-c"]), \
          patch("dar_backup.dar_backup.generate_par2_files"), \
          patch("dar_backup.dar_backup._list_dar_slices", return_value=["test_FULL_2026-05-05.1.dar"]), \

@@ -441,9 +441,9 @@ def test_catalog_add_fails_when_db_is_readonly(
     Steps:
       1. Run a full backup (creates the FULL archive and the catalog DB).
       2. Make the catalog DB file read-only.
-      3. Run a DIFF backup — dar creates the DIFF archive but manager cannot
-         write to the readonly catalog → generic_backup records a code=1 issue
-         → dar-backup exits 1.
+      3. Run a DIFF backup — dar creates and verifies the DIFF archive, but the
+         deferred catalog phase cannot write to the read-only database, so
+         dar-backup exits 1.
       4. Assert: DIFF slices exist on disk, exit code is 1.
       5. Restore DB permissions and verify the DIFF archive is not in the catalog.
 
@@ -728,11 +728,12 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
       7. Wait for dar-backup to exit.
       8. Assert: non-zero exit code.
       9. Assert: metrics row has status='FAILURE' and restore_test_passed=0.
+      10. Assert: the rejected archive was never published to the PITR catalog.
 
     TIMING NOTE: stability is detected via 3 consecutive size-equal polls (50 ms
-    each).  After dar closes the archive, the subsequent manager subprocess and
-    dar -t / dar -x calls add ≥0.7 s before verify() reads source files, so the
-    corruption reliably wins the race even on fast NVMe hardware.
+    each). After dar closes the archive, the subsequent dar -t, listing, and
+    dar -x calls give the corruption time to land before verify() reads source
+    files.
     """
     db_path = _inject_metrics_db(env)
     _create_restore_test_definition(env)
@@ -759,8 +760,8 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
     # Detecting the file appearing is not enough — on a fast NVMe dar can finish
     # writing and complete verify() before Python's poll loop fires.  Waiting for
     # size stability is the precise signal that dar just closed the archive; the
-    # subsequent manager subprocess (~0.5 s) and dar -t / dar -x calls give at
-    # least 0.7 s for the source-file corruption to land before verify() reads them.
+    # subsequent dar -t, listing, and dar -x calls give the source-file
+    # corruption time to land before verify() reads them.
     deadline = time.time() + 120
     dar_appeared = False
     last_size = -1
@@ -807,4 +808,23 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
     )
     assert row["restore_test_passed"] == 0, (
         f"Expected restore_test_passed=0 but got {row['restore_test_passed']}"
+    )
+    assert row["catalog_updated"] == 0, (
+        "A verification-failed archive must record catalog_updated=0"
+    )
+
+    archive_name = _find_archive_name(
+        env.backup_dir,
+        "FULL",
+        _RESTORE_TEST_DEF_NAME,
+    )
+    catalog_path = os.path.join(env.backup_dir, f"{_RESTORE_TEST_DEF_NAME}.db")
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    catalog_result = runner.run(
+        ["dar_manager", "--base", catalog_path, "--list"],
+        timeout=60,
+    )
+    assert catalog_result.returncode == 0, catalog_result.stderr
+    assert archive_name not in catalog_result.stdout, (
+        f"verification-failed archive '{archive_name}' must remain outside PITR catalog"
     )

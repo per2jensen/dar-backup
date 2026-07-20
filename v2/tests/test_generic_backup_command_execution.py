@@ -58,7 +58,7 @@ def mock_config():
 @patch("dar_backup.dar_backup.logger", new_callable=MagicMock)
 @patch("dar_backup.dar_backup.os.path.exists")
 @patch("dar_backup.dar_backup.runner")
-def test_generic_backup_success(
+def test_generic_backup_success_returns_dar_result_without_catalog_registration(
     mock_runner,
     mock_exists,
     mock_logger,
@@ -72,12 +72,13 @@ def test_generic_backup_success(
     mock_exists.return_value = False
 
     # Setup mocked runner behavior
-    mock_runner.run.side_effect = [
-        # First call simulates successful `dar` run
-        MagicMock(returncode=0, stdout="stdout", stderr="", stdout_tail="", stderr_tail=""),
-        # Second call simulates successful catalog update
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail="")
-    ]
+    mock_runner.run.return_value = MagicMock(
+        returncode=0,
+        stdout="stdout",
+        stderr="",
+        stdout_tail="",
+        stderr_tail="",
+    )
 
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -92,10 +93,8 @@ def test_generic_backup_success(
     result = generic_backup(backup_type, command, backup_file, backup_definition, darrc, mock_config, args)
 
     # Assert
-    assert isinstance(result.issues, list)
     assert result.dar_exit_code == 0
-    assert result.catalog_updated is True
-    assert mock_runner.run.call_count == 2
+    assert mock_runner.run.call_count == 1
     mock_logger.info.assert_called()
 
 
@@ -124,12 +123,14 @@ def test_generic_backup_dar_stats_captured_from_stderr(
     for stderr must still populate dar_stats correctly.
     """
     mock_exists.return_value = False
-    mock_runner.run.side_effect = [
-        # dar run: summary in stderr tail (as captured by rolling tail buffer)
-        MagicMock(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail=_DAR_SUMMARY),
-        # catalog update
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
-    ]
+    # DAR run: summary in stderr tail (as captured by rolling tail buffer).
+    mock_runner.run.return_value = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="",
+        stdout_tail="",
+        stderr_tail=_DAR_SUMMARY,
+    )
 
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -166,11 +167,14 @@ def test_generic_backup_dar_stats_captured_from_stdout(
     must be populated correctly.
     """
     mock_exists.return_value = False
-    mock_runner.run.side_effect = [
-        # dar run: summary in stdout tail (as captured by rolling tail buffer)
-        MagicMock(returncode=0, stdout="", stderr="", stdout_tail=_DAR_SUMMARY, stderr_tail=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
-    ]
+    # DAR run: summary in stdout tail (as captured by rolling tail buffer).
+    mock_runner.run.return_value = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="",
+        stdout_tail=_DAR_SUMMARY,
+        stderr_tail="",
+    )
 
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -203,10 +207,13 @@ def test_generic_backup_dar_stats_all_none_when_no_output(
     be None — never KeyError, never crash.
     """
     mock_exists.return_value = False
-    mock_runner.run.side_effect = [
-        MagicMock(returncode=0, stdout="", stderr="", stdout_tail="", stderr_tail=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr="", stdout_tail="", stderr_tail=""),
-    ]
+    mock_runner.run.return_value = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="",
+        stdout_tail="",
+        stderr_tail="",
+    )
 
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
@@ -248,12 +255,13 @@ def test_generic_backup_warns_when_inodes_saved_none_after_success(
     for exit_code in (0, 5):
         mock_logger.reset_mock()
         mock_exists.return_value = False
-        mock_runner.run.side_effect = [
-            MagicMock(returncode=exit_code, stdout="", stderr="",
-                      stdout_tail="", stderr_tail=""),
-            MagicMock(returncode=0, stdout="catalog added", stderr="",
-                      stdout_tail="", stderr_tail=""),
-        ]
+        mock_runner.run.return_value = MagicMock(
+            returncode=exit_code,
+            stdout="",
+            stderr="",
+            stdout_tail="",
+            stderr_tail="",
+        )
         args = MagicMock()
         args.config_file = "/mock/dar-backup.conf"
         command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
@@ -288,12 +296,13 @@ def test_generic_backup_no_inodes_warning_when_stats_parsed(
     When inodes_saved is successfully parsed no warning about it must be logged.
     """
     mock_exists.return_value = False
-    mock_runner.run.side_effect = [
-        MagicMock(returncode=0, stdout="", stderr="",
-                  stdout_tail=_DAR_SUMMARY, stderr_tail=""),
-        MagicMock(returncode=0, stdout="catalog added", stderr="",
-                  stdout_tail="", stderr_tail=""),
-    ]
+    mock_runner.run.return_value = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="",
+        stdout_tail=_DAR_SUMMARY,
+        stderr_tail="",
+    )
     args = MagicMock()
     args.config_file = "/mock/dar-backup.conf"
     command = ["dar", "-c", "backup_test", "-R", "/mock/data", "-B", "/mock/.darrc"]
