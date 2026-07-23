@@ -61,13 +61,13 @@
       "label": "Rel. 1.1.10"
     },
     {
-      "date": "2026-06-06",
-      "label": "Daily max: 170"
+      "date": "2026-07-21",
+      "label": "Daily max: 196"
     }
   ],
-  "total_clones": 13641,
-  "total_clones_raw": 15646,
-  "unique_clones": 6887,
+  "total_clones": 13837,
+  "total_clones_raw": 15842,
+  "unique_clones": 6900,
   "discard": [
     {
       "date": "2026-06-24",
@@ -2281,6 +2281,11 @@
       "timestamp": "2026-07-20T00:00:00Z",
       "count": 40,
       "uniques": 20
+    },
+    {
+      "timestamp": "2026-07-21T00:00:00Z",
+      "count": 196,
+      "uniques": 13
     }
   ]
 }
