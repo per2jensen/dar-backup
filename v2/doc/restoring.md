@@ -116,6 +116,11 @@ deactivate
   - `"2 weeks ago"`
   - `"2025-10-05 14:30"`
   - `yesterday 23:00`
+- A `--when` value without an offset is interpreted as local wall-clock time.
+  A timezone-aware value such as `2025-12-31T23:00:00Z` or
+  `2026-07-01T12:00:00+05:45` is converted to the system's local archive
+  calendar using the timezone rules in effect at the requested instant. This
+  includes historical DST changes and timezones with non-hour offsets.
 - PITR restores use the catalog to select the correct archive chain (FULL → DIFF → INCR) and then restore **directly with `dar`** in that order.
   - This avoids interactive `dar_manager` prompts (e.g., non‑monotonic mtimes often seen on pCloud/FUSE).
   - Directories can get a **new mtime** when files inside them are added/removed; the chain restore ensures the correct tree is rebuilt even if mtimes look "too new".

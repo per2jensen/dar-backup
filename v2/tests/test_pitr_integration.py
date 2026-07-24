@@ -3472,13 +3472,18 @@ def test_pitr_timezone_aware_when(setup_environment, env):
     clock = TestClock()
     backup_def_path = os.path.join(env.backup_d_dir, "example")
 
-    from datetime import timezone
+    from datetime import UTC
 
     def local_to_utc_str(dt: datetime) -> str:
-        """Convert a naive local datetime to a UTC offset string that _normalize_when_dt() understands."""
-        local_tz = datetime.now(timezone.utc).astimezone().tzinfo
-        aware_local = dt.replace(tzinfo=local_tz)
-        utc_dt = aware_local.astimezone(timezone.utc)
+        """Convert a naive local datetime to an explicit UTC string.
+
+        Args:
+            dt: Naive datetime interpreted in the system's local timezone.
+
+        Returns:
+            UTC timestamp accepted by ``_normalize_when_dt()``.
+        """
+        utc_dt = dt.astimezone(UTC)
         return utc_dt.strftime("%Y-%m-%d %H:%M:%S+00:00")
 
     for name in os.listdir(env.data_dir):

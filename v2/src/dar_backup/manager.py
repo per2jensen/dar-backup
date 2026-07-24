@@ -59,7 +59,7 @@ from dar_backup.command_runner import CommandResult
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime
 from sys import stderr
 from time import time
 from typing import BinaryIO, Dict, List, Literal, Tuple, Optional, cast
@@ -700,11 +700,6 @@ def _restore_target_unsafe_reason(target: str) -> Optional[str]:
     return None
 
 
-def _local_tzinfo() -> tzinfo:
-    """Return the system's current local timezone (via datetime.astimezone())."""
-    return cast(tzinfo, datetime.now().astimezone().tzinfo)
-
-
 def _normalize_when_dt(dt: datetime) -> datetime:
     """Convert a possibly-timezone-aware datetime to naive local time.
 
@@ -718,8 +713,11 @@ def _normalize_when_dt(dt: datetime) -> datetime:
     """
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         return dt
-    local_tz = _local_tzinfo()
-    return dt.astimezone(local_tz).replace(tzinfo=None)
+    # With no explicit target timezone, astimezone() asks the operating system
+    # for the local UTC offset at dt's instant. Reusing datetime.now()'s tzinfo
+    # would instead freeze today's offset and apply the wrong historical DST
+    # rule when the requested restore point is in another season.
+    return dt.astimezone().replace(tzinfo=None)
 
 
 def _parse_when(when: str) -> Optional[datetime]:
