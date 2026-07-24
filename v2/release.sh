@@ -315,7 +315,8 @@ trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"; rm -f src/dar_backup/doc/*; rmdir 
 if $DRY_RUN; then
     dryrun "refresh v2/README.md from root README.md for PyPI description"
     dryrun "rewrite relative links in v2/README.md to absolute GitHub URLs pinned to ${TAG} (scripts/rewrite_readme_links.py)"
-    dryrun "copy docs into src/dar_backup/ for wheel inclusion (scripts/copy_docs.sh)"
+    dryrun "copy all non-excluded user docs into src/dar_backup/ for wheel inclusion (scripts/copy_docs.sh)"
+    dryrun "verify restoring.md, restoring-pitr.md, and restoring-advanced.md are in the wheel staging tree"
 else
     cp ../README.md README.md  ||
         { red "❌ Error: Failed to refresh README.md from root"; exit 1; }
@@ -330,6 +331,17 @@ else
     green "Rewrote relative links in README.md to absolute GitHub URLs (ref: ${TAG})"
 
     scripts/copy_docs.sh || { red "❌ Error: copy_docs.sh failed"; exit 1; }
+
+    # copy_docs.sh uses a negative exclusion list. These three files form one
+    # operator-facing restore guide, so fail the release if a future packaging
+    # change copies only part of the set.
+    for _restore_doc in restoring.md restoring-pitr.md restoring-advanced.md; do
+        if [[ ! -f "src/dar_backup/doc/${_restore_doc}" ]]; then
+            red "❌ Error: restore guide missing from wheel staging: ${_restore_doc}"
+            exit 1
+        fi
+    done
+    green "Verified complete restore guide in wheel staging"
 fi
 
 

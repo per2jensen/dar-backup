@@ -846,7 +846,7 @@ def test_restore_backup_oserror(tmp_path):
     with patch("os.makedirs", side_effect=OSError("Permission denied")), \
          patch.object(db, "runner", new=MagicMock()), \
          patch.object(db, "logger", new=MagicMock()):
-        with pytest.raises(RestoreError, match="Could not create restore directory"):
+        with pytest.raises(RestoreError, match="Could not create restore target"):
             restore_backup(backup_name, config, str(restore_dir), darrc)
 
 
@@ -1226,6 +1226,89 @@ def test_restore_backup_selection_and_darrc(tmp_path, selection, expect_tokens):
             assert tok in called_cmd
         if selection is None:
             assert "--selections" not in called_cmd
+
+
+def test_restore_backup_nonempty_target_aborts_without_running_dar(tmp_path: Path) -> None:
+    """Direct archive restore requires an empty target and preserves its data."""
+    config = _make_restore_config(str(tmp_path / "backups"))
+    restore_dir = tmp_path / "restore"
+    restore_dir.mkdir()
+    existing_file = restore_dir / "existing.txt"
+    existing_file.write_text("existing", encoding="utf-8")
+    mock_runner = MagicMock()
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        with pytest.raises(RestoreError, match="not empty"):
+            restore_backup(
+                "example_FULL_2026-01-01",
+                config,
+                str(restore_dir),
+                "/fake/.darrc",
+            )
+
+    assert existing_file.read_text(encoding="utf-8") == "existing"
+    mock_runner.run.assert_not_called()
+
+
+def test_restore_backup_protected_target_aborts_without_running_dar(tmp_path: Path) -> None:
+    """Direct archive restore applies shared protected-directory policy."""
+    config = _make_restore_config(str(tmp_path / "backups"))
+    mock_runner = MagicMock()
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        with pytest.raises(RestoreError, match="protected system directory"):
+            restore_backup(
+                "example_FULL_2026-01-01",
+                config,
+                "/root",
+                "/fake/.darrc",
+            )
+
+    mock_runner.run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        "-R /tmp/redirect",
+        "-R/tmp/redirect",
+        "--fs-root /tmp/redirect",
+        "--fs-root=/tmp/redirect",
+        "-B /tmp/options",
+        "--batch=/tmp/options",
+        "-E command",
+        "--execute=command",
+        "-F command",
+        "--ref-execute=command",
+        "--execute-ref=command",
+    ],
+)
+def test_restore_backup_selection_rejects_target_and_command_control_options(
+    tmp_path: Path,
+    selection: str,
+) -> None:
+    """Raw selection cannot redirect the target or load executable options."""
+    config = _make_restore_config(str(tmp_path / "backups"))
+    restore_dir = tmp_path / "restore"
+    mock_runner = MagicMock()
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        with pytest.raises(RestoreError, match="Unsafe DAR option"):
+            restore_backup(
+                "example_FULL_2026-01-01",
+                config,
+                str(restore_dir),
+                "/fake/.darrc",
+                selection=selection,
+            )
+
+    mock_runner.run.assert_not_called()
 
 
 # 4) print_markdown(): missing file exits with code 1 and prints error

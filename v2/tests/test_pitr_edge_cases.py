@@ -33,6 +33,7 @@ Covers:
 from unittest.mock import MagicMock, patch
 import datetime
 import os
+from pathlib import Path
 
 import pytest
 
@@ -53,13 +54,13 @@ from dar_backup.manager import (
     _replace_path_prefix,
     _resolve_backup_root,
     _resolve_pitr_path,
-    _restore_target_unsafe_reason,
     _restore_with_dar,
     _select_archive_chain,
     restore_at,
 )
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.command_runner import CommandResult
+from dar_backup.restore_target_safety import restore_target_unsafe_reason
 
 pytestmark = pytest.mark.unit
 
@@ -567,47 +568,47 @@ class TestRestoreTargetUnsafeReason:
 
     def test_var_tmp_is_allowed(self) -> None:
         """Restore target under /var/tmp is safe."""
-        assert _restore_target_unsafe_reason("/var/tmp/restore") is None
+        assert restore_target_unsafe_reason("/var/tmp/restore") is None
 
     def test_home_subdir_is_allowed(self) -> None:
         """Restore target under /home is safe."""
-        assert _restore_target_unsafe_reason("/home/user/restore") is None
+        assert restore_target_unsafe_reason("/home/user/restore") is None
 
     def test_tmp_subdir_is_allowed(self) -> None:
         """Restore target under /tmp is safe."""
-        assert _restore_target_unsafe_reason("/tmp/pitr_restore") is None
+        assert restore_target_unsafe_reason("/tmp/pitr_restore") is None
 
     def test_root_is_blocked(self) -> None:
         """Restore target / is blocked."""
-        result = _restore_target_unsafe_reason("/")
+        result = restore_target_unsafe_reason("/")
         assert result is not None
         assert "protected" in result
 
     def test_etc_is_blocked(self) -> None:
         """Restore target /etc is blocked."""
-        result = _restore_target_unsafe_reason("/etc")
+        result = restore_target_unsafe_reason("/etc")
         assert result is not None
 
     def test_subdir_of_protected_is_blocked(self) -> None:
         """Restore target /usr/local is blocked (under /usr)."""
-        result = _restore_target_unsafe_reason("/usr/local")
+        result = restore_target_unsafe_reason("/usr/local")
         assert result is not None
         assert "protected" in result
 
     def test_dot_dot_traversal_under_home_into_etc(self) -> None:
         """/home/user/../../etc resolves to /etc and is blocked."""
-        result = _restore_target_unsafe_reason("/home/user/../../etc")
+        result = restore_target_unsafe_reason("/home/user/../../etc")
         assert result is not None
 
     def test_dot_dot_traversal_staying_in_home(self) -> None:
         """/home/user/../otheruser stays under /home and is allowed."""
-        result = _restore_target_unsafe_reason("/home/user/../otheruser")
+        result = restore_target_unsafe_reason("/home/user/../otheruser")
         assert result is None
 
     def test_var_is_blocked_but_var_tmp_is_not(self) -> None:
         """/var itself is protected, but /var/tmp is allowed."""
-        assert _restore_target_unsafe_reason("/var") is not None
-        assert _restore_target_unsafe_reason("/var/tmp") is None
+        assert restore_target_unsafe_reason("/var") is not None
+        assert restore_target_unsafe_reason("/var/tmp") is None
 
     def test_var_tmp_prefix_without_separator_is_blocked(self) -> None:
         """/var/tmpfoo must not be treated as a sub-directory of /var/tmp.
@@ -617,12 +618,12 @@ class TestRestoreTargetUnsafeReason:
         protected system directory) and must be blocked.  The new check uses
         prefix + os.sep, so only paths genuinely beneath /var/tmp/ pass.
         """
-        result = _restore_target_unsafe_reason("/var/tmpfoo")
+        result = restore_target_unsafe_reason("/var/tmpfoo")
         assert result is not None
 
     def test_var_tmp_with_separator_still_allowed(self) -> None:
         """/var/tmp/restore is genuinely under /var/tmp and must remain allowed."""
-        assert _restore_target_unsafe_reason("/var/tmp/restore") is None
+        assert restore_target_unsafe_reason("/var/tmp/restore") is None
 
     def test_symlink_into_protected_dir_is_blocked(self, tmp_path) -> None:
         """A symlink under a safe prefix that resolves to a protected dir must be blocked.
@@ -634,7 +635,7 @@ class TestRestoreTargetUnsafeReason:
         """
         link = tmp_path / "link_to_etc"
         link.symlink_to("/etc")
-        result = _restore_target_unsafe_reason(str(link))
+        result = restore_target_unsafe_reason(str(link))
         assert result is not None, (
             "A symlink into /etc must be blocked; abspath() would have allowed it"
         )
@@ -648,7 +649,7 @@ class TestRestoreTargetUnsafeReason:
         link.symlink_to(safe_target)
         # tmp_path is under /tmp — realpath() resolves the link to the real
         # path under /tmp, which is in the allow-list.
-        assert _restore_target_unsafe_reason(str(link)) is None
+        assert restore_target_unsafe_reason(str(link)) is None
 
 
 # ===========================================================================
@@ -1225,33 +1226,154 @@ class TestRestoreAtPathNormalization:
         assert ret == 1
         mock_restore.assert_not_called()
 
-    def test_dot_path_skipped_in_exists_check(
-        self, tmp_path, mock_config, mock_logger
+    @pytest.mark.parametrize("restore_path", [".", "./", "./."])
+    @pytest.mark.parametrize("entry_kind", ["file", "hidden-file", "dangling-symlink"])
+    def test_dot_equivalent_path_nonempty_target_aborts(
+        self,
+        restore_path: str,
+        entry_kind: str,
+        tmp_path: Path,
+        mock_config: MagicMock,
+        mock_logger: MagicMock,
     ) -> None:
-        """A relative path that normalizes to '.' is skipped in the target
-        overlap check (rather than being compared as an empty/'.' candidate)."""
-        db_dir = "/tmp/db_dir"
-        target = str(tmp_path / "restore")
-        os.makedirs(target)
+        """A root selection refuses every kind of existing target entry."""
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "def.db").touch()
+        target_path = tmp_path / "restore"
+        target_path.mkdir()
 
-        def _exists(path):
-            if path == os.path.join(db_dir, "def.db"):
-                return True
-            if path == target:
-                return True
-            return False
+        if entry_kind == "file":
+            (target_path / "existing.txt").write_text("existing", encoding="utf-8")
+        elif entry_kind == "hidden-file":
+            (target_path / ".existing").write_text("existing", encoding="utf-8")
+        else:
+            (target_path / "dangling").symlink_to(tmp_path / "missing")
 
-        with patch("dar_backup.manager.get_db_dir", return_value=db_dir), \
-             patch("os.path.exists", side_effect=_exists), \
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
              patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
              patch("dar_backup.manager.logger", mock_logger), \
              patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
 
-            # "." normalizes to "." after lstrip+normpath → skipped in overlap check.
-            ret = restore_at("def", ["."], "now", target, mock_config)
+            ret = restore_at("def", [restore_path], "now", str(target_path), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            f"Restore target '{target_path}' is not empty. This restore can write anywhere under the target, "
+            "so it refuses to continue. Use a clean/empty target."
+        )
+        mock_restore.assert_not_called()
+
+    @pytest.mark.parametrize("restore_path", [".", "./", "./."])
+    def test_dot_equivalent_path_empty_target_restores(
+        self,
+        restore_path: str,
+        tmp_path: Path,
+        mock_config: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        """A root selection remains supported when its target is empty."""
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "def.db").touch()
+        target_path = tmp_path / "restore"
+        target_path.mkdir()
+
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+             patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+            ret = restore_at("def", [restore_path], "now", str(target_path), mock_config)
 
         assert ret == 0
         mock_restore.assert_called_once()
+
+    @pytest.mark.parametrize("protected_target", ["/root", "/sbin"])
+    def test_dot_path_target_symlink_to_protected_directory_aborts(
+        self,
+        protected_target: str,
+        tmp_path: Path,
+        mock_config: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        """A target symlink resolving to a protected directory is rejected."""
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "def.db").touch()
+        target_link = tmp_path / "restore-link"
+        target_link.symlink_to(protected_target, target_is_directory=True)
+
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+             patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+            ret = restore_at("def", ["."], "now", str(target_link), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_called_once()
+        mock_restore.assert_not_called()
+
+    def test_dot_path_target_symlink_to_allowed_nonempty_directory_aborts(
+        self,
+        tmp_path: Path,
+        mock_config: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        """An allowed target symlink cannot bypass the root empty-target guard."""
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "def.db").touch()
+        destination = tmp_path / "allowed-destination"
+        destination.mkdir()
+        (destination / "existing.txt").write_text("existing", encoding="utf-8")
+        target_link = tmp_path / "restore-link"
+        target_link.symlink_to(destination, target_is_directory=True)
+
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+             patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+
+            ret = restore_at("def", ["."], "now", str(target_link), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            f"Restore target '{target_link}' is not empty. This restore can write anywhere under the target, "
+            "so it refuses to continue. Use a clean/empty target."
+        )
+        mock_restore.assert_not_called()
+
+    def test_dot_path_target_scan_failure_aborts(
+        self,
+        tmp_path: Path,
+        mock_config: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        """A target scan failure aborts instead of assuming the target is empty."""
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "def.db").touch()
+        target_path = tmp_path / "restore"
+        target_path.mkdir()
+
+        # Mocking is appropriate here because a reliable scandir-level OS
+        # failure cannot be induced portably without changing test-runner
+        # privileges or filesystem state.
+        with patch("dar_backup.manager.get_db_dir", return_value=str(db_dir)), \
+             patch("dateparser.parse", return_value=datetime.datetime(2026, 1, 1)), \
+             patch("dar_backup.manager.logger", mock_logger), \
+             patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore, \
+             patch("dar_backup.manager.os.scandir", side_effect=PermissionError("denied")):
+
+            ret = restore_at("def", ["."], "now", str(target_path), mock_config)
+
+        assert ret == 1
+        mock_logger.error.assert_any_call(
+            f"Could not inspect restore target '{target_path}': denied"
+        )
+        mock_restore.assert_not_called()
 
     def test_existing_target_path_aborts(
         self, tmp_path, mock_config, mock_logger
@@ -1260,6 +1382,9 @@ class TestRestoreAtPathNormalization:
         db_dir = "/tmp/db_dir"
         target = str(tmp_path / "restore")
         os.makedirs(target)
+        os.makedirs(os.path.join(target, "data"))
+        with open(os.path.join(target, "data/file.txt"), "w") as file_handle:
+            file_handle.write("existing")
 
         def _exists(path):
             if path == os.path.join(db_dir, "def.db"):
@@ -1279,11 +1404,8 @@ class TestRestoreAtPathNormalization:
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
-            "without overwriting existing files. Use a clean/empty target.",
-            target,
-            "data/file.txt",
-            "",
+            f"Restore target '{target}' already contains path(s) to restore: data/file.txt. "
+            "For safety, restores abort without overwriting existing files. Use a clean/empty target."
         )
 
 

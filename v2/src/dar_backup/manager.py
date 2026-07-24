@@ -23,7 +23,6 @@
 
 import argcomplete
 import argparse
-import fcntl
 import logging
 import os
 import re
@@ -56,6 +55,10 @@ from dar_backup.util import get_backup_definition_root
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
+from dar_backup.restore_target_safety import ExistingDataPolicy
+from dar_backup.restore_target_safety import RestoreTargetError
+from dar_backup.restore_target_safety import RestoreTargetPolicy
+from dar_backup.restore_target_safety import prepare_restore_target
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
 from dataclasses import dataclass
@@ -462,10 +465,6 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     if not target:
         logger.error("Restore target directory is required (--target).")
         return 1
-    unsafe_reason = _restore_target_unsafe_reason(target)
-    if unsafe_reason:
-        logger.error(unsafe_reason)
-        return 1
 
     invalid_paths_reason = _restore_paths_invalid_reason(paths)
     if invalid_paths_reason:
@@ -494,101 +493,52 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             parsed_date.strftime("%Y/%m/%d-%H:%M:%S"),
         )
 
-    # Target directory handling: pass -R and -n via dar_manager's -e option so dar
-    # rebases paths and fails fast instead of prompting to overwrite.
-    #
-    # An exclusive flock on the target directory is held from just after makedirs
-    # through to the end of _restore_with_dar().  This prevents two concurrent
-    # dar-backup PITR processes from both passing the pre-existence check and then
-    # interleaving dar writes into the same target — an event that would produce
-    # silently corrupted output with no error logged.  The lock is cooperative:
-    # it stops concurrent dar-backup processes but cannot block unrelated processes
-    # that happen to write into the directory without acquiring the lock.
-    lock_fd: Optional[int] = None
+    # Root/tree selection can write anywhere below the target and therefore
+    # requires an empty destination. Specific PITR paths retain the narrower
+    # no-overlap policy. Both policies independently reject protected targets.
+    normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
+    existing_data_policy = (
+        ExistingDataPolicy.REQUIRE_EMPTY
+        if "." in normalized_paths
+        else ExistingDataPolicy.REJECT_SELECTED_PATHS
+    )
+    target_policy = RestoreTargetPolicy(existing_data=existing_data_policy)
+    logger.debug(
+        "PITR target directory: %s (cwd=%s) policy=%s paths=%d sample=%s",
+        target,
+        os.getcwd(),
+        existing_data_policy.value,
+        len(normalized_paths),
+        normalized_paths[:3],
+    )
+
     try:
-        if target:
-            logger.debug("PITR target directory: %s (cwd=%s)", target, os.getcwd())
-            if not os.path.exists(target):
-                try:
-                    os.makedirs(target, exist_ok=True)
-                except Exception:
-                    logger.exception(f"Could not create target directory '{target}'")
-                    return 1
-                logger.debug("Created target directory: %s", target)
-
+        with prepare_restore_target(target, target_policy, normalized_paths):
+            # PITR restore: select archives by creation date and restore with
+            # dar directly. dar_manager -w is intentionally not used.
             try:
-                lock_fd = os.open(target, os.O_RDONLY)
-            except OSError:
-                logger.exception("Could not open restore target '%s' for locking", target)
-                return 1
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                logger.exception(
-                    "Restore target '%s' is locked by a concurrent PITR restore — "
-                    "aborting to prevent silent data corruption",
+                return _restore_with_dar(
+                    backup_def,
+                    paths,
+                    parsed_date,
                     target,
+                    config_settings,
+                    ignore_ownership=ignore_ownership,
+                    no_deleted=no_deleted,
                 )
-                os.close(lock_fd)
-                lock_fd = None
-                return 1
-            except OSError:
-                logger.exception("Could not lock restore target '%s'", target)
-                os.close(lock_fd)
-                lock_fd = None
-                return 1
-
-            # Fail fast if any requested paths already exist under target.
-            normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
-            if normalized_paths:
-                logger.debug("Normalized restore paths count=%d sample=%s", len(normalized_paths), normalized_paths[:3])
-            existing = []
-            for rel_path in normalized_paths:
-                if not rel_path or rel_path == ".":
-                    continue
-                # Checked ahead of the exists() test below: a symlink planted
-                # inside the target (mid-path, or a dangling leaf that
-                # os.path.exists() would report as absent) must not silently
-                # redirect dar's writes outside the target.
-                symlink_reason = _symlink_component_reason(target, rel_path)
-                if symlink_reason:
-                    logger.error(symlink_reason)
-                    return 1
-                candidate = os.path.join(target, rel_path)
-                if os.path.exists(candidate):
-                    existing.append(rel_path)
-            if existing:
-                sample = ", ".join(existing[:3])
-                extra = f" (+{len(existing) - 3} more)" if len(existing) > 3 else ""
-                logger.error(
-                    "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
-                    "without overwriting existing files. Use a clean/empty target.",
-                    target,
-                    sample,
-                    extra,
+            except KeyboardInterrupt:
+                msg = (
+                    f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
+                    f"paths={paths} target='{target}'. "
+                    f"The target directory may be incomplete and must NOT be used."
                 )
-                return 1
-
-        # PITR restore: select archives by creation date and restore with dar directly.
-        # dar_manager -w is intentionally NOT used here; see docstring for the full rationale.
-        try:
-            return _restore_with_dar(backup_def, paths, parsed_date, target, config_settings,
-                                     ignore_ownership=ignore_ownership, no_deleted=no_deleted)
-        except KeyboardInterrupt:
-            msg = (
-                f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
-                f"paths={paths} target='{target}'. "
-                f"The target directory may be incomplete and must NOT be used."
-            )
-            logger.exception(msg)
-            raise
-    finally:
-        if lock_fd is not None:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                os.close(lock_fd)
-            except OSError:
-                pass
+                logger.exception(msg)
+                raise
+    except RestoreTargetError as exc:
+        # A policy rejection is expected operator feedback; a traceback would
+        # add noise without diagnostic value.
+        logger.error(str(exc))  # noqa: TRY400
+        return 1
 
 
 def _restore_paths_invalid_reason(paths: List[str]) -> Optional[str]:
@@ -620,83 +570,6 @@ def _restore_paths_invalid_reason(paths: List[str]) -> Optional[str]:
                 f"Restore path '{path}' contains a '..' component. Catalog paths never do — "
                 f"refusing to restore outside the target."
             )
-    return None
-
-
-def _symlink_component_reason(target: str, rel_path: str) -> Optional[str]:
-    """Check for symlinks on rel_path's component chain inside target.
-
-    A symlink planted inside the restore target (e.g. ``target/data -> /etc``)
-    would redirect dar's writes outside the target; a dangling symlink at the
-    leaf would also slip past an ``os.path.exists`` pre-check. Both are
-    refused.
-
-    Args:
-        target: The restore target directory (assumed lock-checked by caller).
-        rel_path: Normalized relative path about to be restored.
-
-    Returns:
-        None if no component of rel_path inside target is a symlink; otherwise
-        a human-readable reason naming the offending component.
-    """
-    current = target
-    for part in rel_path.split(os.sep):
-        if not part or part == ".":
-            continue
-        current = os.path.join(current, part)
-        if os.path.islink(current):
-            return (
-                f"'{current}' inside the restore target is a symlink — restoring through it "
-                f"could write outside the target. Remove it or use a clean/empty target."
-            )
-    return None
-
-
-def _restore_target_unsafe_reason(target: str) -> Optional[str]:
-    """Check a PITR restore target against an allow/protect list of directory prefixes.
-
-    Args:
-        target: Restore target directory to check (need not exist yet).
-
-    Returns:
-        None if target is safe to restore into; otherwise a human-readable
-        reason string suitable for logging directly.
-    """
-    # realpath() resolves symlinks to their canonical path so that a symlink
-    # under /home pointing to /etc cannot bypass the protected-prefix check.
-    # abspath() would NOT follow symlinks and would leave the check bypassable.
-    # realpath() also normalises the path, so normpath() is not needed.
-    target_norm = os.path.realpath(target)
-
-    # "/tmp"/"/var/tmp" here are allow-list entries being checked against,
-    # not temp file writes — S108 false positive.
-    allow_prefixes = (
-        "/tmp",  # noqa: S108
-        "/var/tmp",  # noqa: S108
-        "/home",
-    )
-    if target_norm in allow_prefixes or any(target_norm.startswith(prefix + os.sep) for prefix in allow_prefixes):
-        return None
-
-    protected_prefixes = (
-        "/bin",
-        "/sbin",
-        "/usr",
-        "/etc",
-        "/lib",
-        "/lib64",
-        "/boot",
-        "/proc",
-        "/sys",
-        "/dev",
-        "/var",
-        "/root",
-    )
-    if target_norm == "/" or target_norm in protected_prefixes:
-        return f"Restore target '{target_norm}' is a protected system directory. Choose a safer location."
-    if any(target_norm.startswith(prefix + os.sep) for prefix in protected_prefixes):
-        return f"Restore target '{target_norm}' is under a protected system directory. Choose a safer location."
-
     return None
 
 

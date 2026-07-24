@@ -78,6 +78,10 @@ from dar_backup.util import (
 )
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.restore_target_safety import ExistingDataPolicy
+from dar_backup.restore_target_safety import RestoreTargetError
+from dar_backup.restore_target_safety import RestoreTargetPolicy
+from dar_backup.restore_target_safety import prepare_restore_target
 
 # Module-level by design: tests inject real logger/runner objects via save/restore
 # (see logger_runner_globals_accepted memory) — not a bug.
@@ -751,6 +755,46 @@ def verify(
 
 
 
+def _parse_restore_selection(selection: Optional[str]) -> List[str]:
+    """Parse direct-restore selection options and reject control injection.
+
+    Args:
+        selection: Raw ``--selection`` value, or None.
+
+    Returns:
+        Shell-split DAR selection tokens.
+
+    Raises:
+        RestoreError: If quoting is invalid or an option could redirect the
+            validated target, load arbitrary batch options, or execute a
+            command.
+    """
+    if selection is None:
+        return []
+    if not selection.strip():
+        raise RestoreError("--selection must not be empty")
+
+    try:
+        tokens = shlex.split(selection)
+    except ValueError as exc:
+        raise RestoreError(f"Invalid --selection quoting: {exc}") from exc
+
+    forbidden_long_options = (
+        "--fs-root",
+        "--batch",
+        "--execute",
+        "--ref-execute",
+        "--execute-ref",
+    )
+    forbidden_short_prefixes = ("-R", "-B", "-E", "-F")
+    for token in tokens:
+        if token in forbidden_long_options or any(token.startswith(option + "=") for option in forbidden_long_options):
+            raise RestoreError(f"Unsafe DAR option in --selection: {token}")
+        if any(token.startswith(prefix) for prefix in forbidden_short_prefixes):
+            raise RestoreError(f"Unsafe DAR option in --selection: {token}")
+    return tokens
+
+
 def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
                    selection: Optional[str] = None, ignore_ownership: bool = True, no_deleted: bool = False) -> None:
     """
@@ -772,6 +816,10 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         RestoreError: If the restore command fails or the restore directory cannot be created.
     """
     try:
+        if not restore_dir:
+            raise RestoreError("Restore directory ('-R <dir>') not specified")
+        selection_criteria = _parse_restore_selection(selection)
+
         if ignore_ownership and os.getuid() == 0:
             logger.warning(
                 "Running as root but ownership restoration is disabled. "
@@ -783,27 +831,30 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         command = ['dar', '-x', backup_file, '-wa', '--noconf', '-Q']
         if "_FULL_" in backup_name:
             command.append('-D')
-        if restore_dir:
-            if not os.path.exists(restore_dir):
-                os.makedirs(restore_dir)
-            command.extend(['-R', restore_dir])
-        else:
-            raise RestoreError("Restore directory ('-R <dir>') not specified")
-        if selection:
-            selection_criteria = shlex.split(selection)
+        command.extend(['-R', restore_dir])
+        if selection_criteria:
             command.extend(selection_criteria)
         if ignore_ownership:
             command.append('--comparison-field=ignore-owner')
         if no_deleted:
             command.append('--deleted=ignore')
         command.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
-        logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
-        process = _runner().run(command, timeout = config_settings.command_timeout_secs)
-        if process.returncode == 0:
-            logger.info(f"Restore completed successfully to: '{restore_dir}'")
-        else:
-            logger.error(f"Restore command failed: \n ==> stdout: {cast(str, process.stdout)}, \n ==> stderr: {cast(str, process.stderr)}")
-            raise RestoreError(str(process))
+        target_policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.REQUIRE_EMPTY)
+        with prepare_restore_target(restore_dir, target_policy):
+            logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
+            process = _runner().run(command, timeout=config_settings.command_timeout_secs)
+            if process.returncode == 0:
+                logger.info(f"Restore completed successfully to: '{restore_dir}'")
+            else:
+                logger.error(f"Restore command failed: \n ==> stdout: {cast(str, process.stdout)}, \n ==> stderr: {cast(str, process.stderr)}")
+                raise RestoreError(str(process))
+    except RestoreTargetError as e:
+        # A policy rejection is expected operator feedback; a traceback would
+        # add noise without diagnostic value.
+        logger.error("Restore target safety check failed: %s", e)  # noqa: TRY400
+        raise RestoreError(str(e)) from e
+    except RestoreError:
+        raise
     except subprocess.CalledProcessError as e:
         raise RestoreError(f"Restore command failed: {e}") from e
     except OSError as e:

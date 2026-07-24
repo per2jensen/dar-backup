@@ -223,7 +223,7 @@ Unlike traditional backup utilities that fail entirely if a single byte is corru
 | [Quick Guide](v2/doc/quick-guide.md) | Get started in minutes using the demo app |
 | [Getting Started](v2/doc/getting-started.md) | Manual setup for a real installation |
 | [Configuration Reference](v2/doc/config-reference.md) | Config file, .darrc, backup definitions, config history |
-| [Restoring](v2/doc/restoring.md) | Point-in-Time Recovery (PITR), restore examples |
+| [Restoring](v2/doc/restoring.md) | Choose a restore method, understand target safety, and follow restore examples |
 | [PAR2 Redundancy](v2/doc/par2.md) | Verify, repair, and create PAR2 files |
 | [systemd Setup](v2/doc/systemd-setup.md) | Generate and install systemd timers/services |
 | [Shell Autocompletion](v2/doc/shell-completion.md) | Bash and zsh tab-completion setup |

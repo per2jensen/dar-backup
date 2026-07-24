@@ -15,7 +15,7 @@ dar-backup will select the correct archive chain automatically.
 
 If a restore fails because an archive slice is damaged (dar exits non-zero), PITR
 fails fast instead of silently restoring an older version — see
-[restoring.md](restoring.md#when-the-selected-archive-is-damaged-fail-fast-no-fallback)
+[restoring-pitr.md](restoring-pitr.md#when-the-selected-archive-is-damaged)
 for the recovery steps (par2 repair first, explicit older-version restore second).
 
 ---
@@ -104,8 +104,8 @@ For an interactive user who wants *"give me the version of this specific file wh
 content was last modified at or before DATE"*, `dar_manager -w` is exactly right. That
 is a different question from dar-backup's PITR contract.
 
-See [restoring.md](restoring.md) for how to use `dar_manager -w` directly when that is
-what you need.
+See [Advanced restore procedures](restoring-advanced.md#restore-a-file-by-its-mtime)
+for how to use `dar_manager -w` directly when that is what you need.
 
 ---
 

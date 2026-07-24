@@ -10,13 +10,13 @@ see more restore tests/verifications in v2/tests/test_create_full_diff_incr_back
 """
 
 import re
-import shutil
 import tempfile
 
 from tests.conftest import test_files
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
-from testdata_verification import verify_restore_contents, run_backup_script 
+from testdata_verification import run_backup_script
+from testdata_verification import verify_restored_matches_source
 
 
 
@@ -52,9 +52,8 @@ def test_restore_requires_value(setup_environment, env):
 
 def test_restore_with_restoredir(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
-    try:
+    with tempfile.TemporaryDirectory(dir="/tmp") as unique_dir:
         run_backup_script("--full-backup", env)
-        unique_dir = tempfile.mkdtemp(dir='/tmp')
         env.logger.info(f"unique_dir={unique_dir}")
         command = ['dar-backup', '--restore', f'example_FULL_{env.datestamp}', '--restore-dir', unique_dir , '--log-stdout', '--log-level', 'debug', '--config-file', env.config_file]
         process = runner.run(command)
@@ -63,10 +62,7 @@ def test_restore_with_restoredir(setup_environment, env):
             stdout, stderr = process.stdout, process.stderr
             env.logger.error(f"command failed: \nstdout:{stdout}\nstderr:{stderr}")
             raise RuntimeError(f"Expected error message not found in stderr: {stderr}")
-        verify_restore_contents(test_files, f"example_FULL_{env.datestamp}", env, unique_dir)
-    finally:
-        shutil.rmtree(unique_dir)
-        env.logger.info(f"test_restore_with_restoredir():  removed directory {unique_dir}")
+        verify_restored_matches_source(list(test_files), env, unique_dir)
 
 def test_restore_validatation(setup_environment, env):
     runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)

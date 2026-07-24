@@ -241,11 +241,8 @@ def test_restore_at_existing_target_paths_abort(tmp_path, mock_config, mock_runn
 
         assert ret == 1
         mock_logger.error.assert_any_call(
-            "Restore target '%s' already contains path(s) to restore: %s%s. For safety, PITR restores abort "
-            "without overwriting existing files. Use a clean/empty target.",
-            str(target),
-            "tmp/file.txt",
-            "",
+            f"Restore target '{target}' already contains path(s) to restore: tmp/file.txt. "
+            "For safety, restores abort without overwriting existing files. Use a clean/empty target."
         )
         mock_runner.run.assert_not_called()
 
@@ -471,7 +468,7 @@ def test_restore_at_concurrent_restore_to_same_target_is_blocked(tmp_path, mock_
 
     assert ret == 1
     mock_restore.assert_not_called()
-    error_text = " ".join(str(c) for c in mock_logger.exception.call_args_list)
+    error_text = " ".join(str(c) for c in mock_logger.error.call_args_list)
     assert "concurrent" in error_text.lower() or "locked" in error_text.lower(), (
         f"Expected error mentioning concurrent lock; got: {error_text}"
     )

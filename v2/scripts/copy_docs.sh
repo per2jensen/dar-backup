@@ -8,6 +8,10 @@
 # --readme / --changelog / --readme-pretty / --changelog-pretty CLI options
 # can find them via _resolve_doc_path().
 #
+# This intentionally uses a negative list: every top-level doc/*.md file ships
+# unless it is explicitly excluded below as internal/developer-only material.
+# New user-facing guides therefore enter build.sh and release.sh automatically.
+#
 # Must be run from the v2/ directory.
 # Cleanup of the copied files is the caller's responsibility.
 

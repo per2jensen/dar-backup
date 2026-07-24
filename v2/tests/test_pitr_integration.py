@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
+from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
 
 
@@ -96,6 +97,131 @@ class TestClock:
 def _pitr_integration_config(setup_environment, env):
     _apply_fast_pitr_config(env)
     yield
+
+
+def test_pitr_dot_root_restore_requires_empty_target(
+    setup_environment: object,
+    env: EnvData,
+) -> None:
+    """Verify a dot-root restore cannot overwrite a nonempty target.
+
+    Args:
+        setup_environment: Fixture that prepares the real command environment.
+        env: Paths, configuration, and loggers for this test.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    source_file = os.path.join(env.data_dir, "dot-root-restore.txt")
+    archived_content = "content from the archive"
+    with open(source_file, "w") as file_handle:
+        file_handle.write(archived_content)
+    clock.touch(source_file, seconds=PITR_STEP_SECONDS)
+
+    archive_timestamp = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+    archive_base = os.path.join(env.backup_dir, f"example_FULL_{archive_timestamp}_dot_root")
+    create_result = runner.run([
+        "dar", "-c", archive_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ], timeout=300)
+    assert create_result.returncode == 0, f"dar FULL failed: {create_result.stderr}"
+
+    add_result = runner.run([
+        "manager", "--add-specific-archive", archive_base,
+        "--config-file", env.config_file, "--log-stdout",
+    ], timeout=300)
+    assert add_result.returncode == 0, f"manager add failed: {add_result.stderr}"
+    restore_time = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d %H:%M:%S")
+
+    relative_source = source_file.lstrip(os.sep)
+    nonempty_target = os.path.join(env.test_dir, "dot-root-nonempty")
+    existing_file = os.path.join(nonempty_target, relative_source)
+    os.makedirs(os.path.dirname(existing_file), exist_ok=True)
+    sentinel_content = "existing target content"
+    with open(existing_file, "w") as file_handle:
+        file_handle.write(sentinel_content)
+
+    blocked_result = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example", "--restore-path", ".",
+        "--when", restore_time, "--target", nonempty_target, "--log-stdout",
+    ], timeout=300)
+    assert blocked_result.returncode != 0, "Dot-root PITR unexpectedly accepted a nonempty target"
+    with open(existing_file) as file_handle:
+        assert file_handle.read() == sentinel_content, "Dot-root PITR overwrote the existing target file"
+
+    empty_target = os.path.join(env.test_dir, "dot-root-empty")
+    os.makedirs(empty_target)
+    restore_result = runner.run([
+        "manager", "--config-file", env.config_file,
+        "--backup-def", "example", "--restore-path", ".",
+        "--when", restore_time, "--target", empty_target, "--log-stdout",
+    ], timeout=300)
+    assert restore_result.returncode == 0, f"Dot-root PITR into an empty target failed: {restore_result.stderr}"
+
+    restored_file = os.path.join(empty_target, relative_source)
+    with open(restored_file) as file_handle:
+        assert file_handle.read() == archived_content
+
+
+def test_direct_archive_dot_root_restore_requires_empty_target(
+    setup_environment: object,
+    env: EnvData,
+) -> None:
+    """Verify direct ``--selection=-g .`` uses shared empty-target policy.
+
+    Args:
+        setup_environment: Fixture that prepares the real command environment.
+        env: Paths, configuration, and loggers for this test.
+    """
+    runner = CommandRunner(logger=env.logger, command_logger=env.command_logger)
+    clock = TestClock()
+    backup_def_path = os.path.join(env.backup_d_dir, "example")
+    source_file = os.path.join(env.data_dir, "direct-dot-root.txt")
+    archived_content = "direct archive content"
+    with open(source_file, "w") as file_handle:
+        file_handle.write(archived_content)
+    clock.touch(source_file, seconds=PITR_STEP_SECONDS)
+
+    archive_timestamp = clock.tick(PITR_STEP_SECONDS).strftime("%Y-%m-%d_%H%M%S")
+    archive_name = f"example_FULL_{archive_timestamp}_direct_dot_root"
+    archive_base = os.path.join(env.backup_dir, archive_name)
+    create_result = runner.run([
+        "dar", "-c", archive_base, "-N", "-B", env.dar_rc,
+        "-B", backup_def_path, "-Q", "compress-exclusion", "verbose",
+    ], timeout=300)
+    assert create_result.returncode == 0, f"dar FULL failed: {create_result.stderr}"
+
+    relative_source = source_file.lstrip(os.sep)
+    nonempty_target = os.path.join(env.test_dir, "direct-dot-root-nonempty")
+    existing_file = os.path.join(nonempty_target, relative_source)
+    os.makedirs(os.path.dirname(existing_file), exist_ok=True)
+    sentinel_content = "existing direct target content"
+    with open(existing_file, "w") as file_handle:
+        file_handle.write(sentinel_content)
+
+    blocked_result = runner.run([
+        "dar-backup", "--config-file", env.config_file,
+        "--darrc", env.dar_rc, "--restore", archive_name,
+        "--restore-dir", nonempty_target, "--selection=-g .", "--log-stdout",
+    ], timeout=300)
+    assert blocked_result.returncode != 0, "Direct dot-root restore unexpectedly accepted a nonempty target"
+    with open(existing_file) as file_handle:
+        assert file_handle.read() == sentinel_content, "Direct restore overwrote the existing target file"
+
+    empty_target = os.path.join(env.test_dir, "direct-dot-root-empty")
+    os.makedirs(empty_target)
+    restore_result = runner.run([
+        "dar-backup", "--config-file", env.config_file,
+        "--darrc", env.dar_rc, "--restore", archive_name,
+        "--restore-dir", empty_target, "--selection=-g .", "--log-stdout",
+    ], timeout=300)
+    assert restore_result.returncode == 0, f"Direct dot-root restore into an empty target failed: {restore_result.stderr}"
+
+    restored_file = os.path.join(empty_target, relative_source)
+    with open(restored_file) as file_handle:
+        assert file_handle.read() == archived_content
+
 
 def test_pitr_integration_flow(setup_environment, env):
     """

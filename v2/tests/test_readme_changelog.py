@@ -135,6 +135,17 @@ def test_copy_docs_includes_all_user_facing_files(real_docs):
         )
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["restoring.md", "restoring-pitr.md", "restoring-advanced.md"],
+)
+def test_copy_docs_includes_complete_restore_guide(real_docs, name):
+    """The wheel staging tree must contain every part of the restore guide."""
+    assert (PKG_DIR / "doc" / name).is_file(), (
+        f"{name} missing from the packaged restore guide"
+    )
+
+
 def test_resolve_doc_path_finds_real_readme(real_docs):
     """_resolve_doc_path must resolve README.md to the package dir after copy_docs.sh."""
     from dar_backup.dar_backup import _resolve_doc_path
