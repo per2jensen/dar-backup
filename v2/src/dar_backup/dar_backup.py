@@ -828,21 +828,26 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
                 "or remove --ignore-ownership from the command line if you passed it explicitly."
             )
         backup_file = os.path.join(config_settings.backup_dir, backup_name)
-        command = ['dar', '-x', backup_file, '-wa', '--noconf', '-Q']
+        command_prefix = ['dar', '-x', backup_file, '-wa', '--noconf', '-Q']
         if "_FULL_" in backup_name:
-            command.append('-D')
-        command.extend(['-R', restore_dir])
+            command_prefix.append('-D')
+        command_suffix: list[str] = []
         if selection_criteria:
-            command.extend(selection_criteria)
+            command_suffix.extend(selection_criteria)
         if ignore_ownership:
-            command.append('--comparison-field=ignore-owner')
+            command_suffix.append('--comparison-field=ignore-owner')
         if no_deleted:
-            command.append('--deleted=ignore')
-        command.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
+            command_suffix.append('--deleted=ignore')
+        command_suffix.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
         target_policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.REQUIRE_EMPTY)
-        with prepare_restore_target(restore_dir, target_policy):
+        with prepare_restore_target(restore_dir, target_policy) as target_handle:
+            command = [*command_prefix, '-R', target_handle.dar_root, *command_suffix]
             logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
-            process = _runner().run(command, timeout=config_settings.command_timeout_secs)
+            process = _runner().run(
+                command,
+                timeout=config_settings.command_timeout_secs,
+                pass_fds=target_handle.pass_fds,
+            )
             if process.returncode == 0:
                 logger.info(f"Restore completed successfully to: '{restore_dir}'")
             else:

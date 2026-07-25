@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import glob
+import logging
 import os
 import random
 import shutil
@@ -9,6 +10,7 @@ import time
 from typing import Optional
 from configparser import ConfigParser
 from datetime import datetime, timedelta
+from pathlib import Path
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
@@ -21,8 +23,60 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
+from dar_backup.restore_target_safety import ExistingDataPolicy
+from dar_backup.restore_target_safety import RestoreTargetPolicy
+from dar_backup.restore_target_safety import prepare_restore_target
 from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
+
+
+def test_real_dar_restore_uses_open_target_after_path_replacement(
+    tmp_path: Path,
+    logger: dict[str, logging.Logger],
+) -> None:
+    """Real DAR extraction remains bound to the validated target descriptor."""
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    held_target = tmp_path / "held-target"
+    outside = tmp_path / "outside"
+    archive = tmp_path / "archive"
+    source.mkdir()
+    target.mkdir()
+    outside.mkdir()
+    (source / "probe.txt").write_text("descriptor-bound", encoding="utf-8")
+    runner = CommandRunner(
+        logger=logger["logger"],
+        command_logger=logger["command_logger"],
+    )
+
+    create_result = runner.run(
+        ["dar", "-c", str(archive), "-R", str(source), "-Q", "--noconf"],
+        timeout=30,
+    )
+    assert create_result.returncode == 0, create_result.stderr
+
+    policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.REQUIRE_EMPTY)
+    with prepare_restore_target(str(target), policy) as handle:
+        target.rename(held_target)
+        target.symlink_to(outside, target_is_directory=True)
+        restore_result = runner.run(
+            [
+                "dar",
+                "-x",
+                str(archive),
+                "-wa",
+                "-R",
+                handle.dar_root,
+                "-Q",
+                "--noconf",
+            ],
+            timeout=30,
+            pass_fds=handle.pass_fds,
+        )
+
+    assert restore_result.returncode == 0, restore_result.stderr
+    assert (held_target / "probe.txt").read_text(encoding="utf-8") == "descriptor-bound"
+    assert not (outside / "probe.txt").exists()
 
 
 

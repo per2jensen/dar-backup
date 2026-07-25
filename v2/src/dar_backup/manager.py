@@ -57,6 +57,7 @@ from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
 from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetError
+from dar_backup.restore_target_safety import RestoreTargetHandle
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
@@ -513,7 +514,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     )
 
     try:
-        with prepare_restore_target(target, target_policy, normalized_paths):
+        with prepare_restore_target(target, target_policy, normalized_paths) as target_handle:
             # PITR restore: select archives by creation date and restore with
             # dar directly. dar_manager -w is intentionally not used.
             try:
@@ -525,6 +526,7 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
                     config_settings,
                     ignore_ownership=ignore_ownership,
                     no_deleted=no_deleted,
+                    restore_target_handle=target_handle,
                 )
             except KeyboardInterrupt:
                 msg = (
@@ -1748,7 +1750,8 @@ def _guess_darrc_path(config_settings: ConfigSettings) -> Optional[str]:
 
 def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, target: str,
                       config_settings: ConfigSettings, ignore_ownership: bool = True,
-                      no_deleted: bool = False) -> int:
+                      no_deleted: bool = False,
+                      restore_target_handle: Optional[RestoreTargetHandle] = None) -> int:
     """
     Restore specific paths by selecting the best matching archive (<= when_dt)
     using dar_manager metadata, then invoking dar directly.
@@ -1771,6 +1774,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
         ignore_ownership: When True, passes --comparison-field=ignore-owner to dar.
         no_deleted: When True, passes --deleted=ignore to dar so deletion records
             in DIFF/INCR archives do not cause errors.
+        restore_target_handle: Optional stable descriptor-backed restore root.
+            Production restores provide this handle; direct unit tests may omit it.
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -1796,6 +1801,7 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
     failures = 0
     successes = 0
     missing_archives = set()
+    dar_target = restore_target_handle.dar_root if restore_target_handle else target
 
     try:
         for path in paths:
@@ -1853,8 +1859,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         restored = False
                         break
                     cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
-                    if target:
-                        cmd.extend(['-R', target])
+                    if dar_target:
+                        cmd.extend(['-R', dar_target])
                     if ignore_ownership:
                         cmd.append('--comparison-field=ignore-owner')
                     if no_deleted:
@@ -1866,7 +1872,14 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         _describe_archive(catalog_no, archive_map, info_by_no),
                         path,
                     )
-                    result = _runner().run(cmd, timeout=timeout)
+                    if restore_target_handle:
+                        result = _runner().run(
+                            cmd,
+                            timeout=timeout,
+                            pass_fds=restore_target_handle.pass_fds,
+                        )
+                    else:
+                        result = _runner().run(cmd, timeout=timeout)
                     if result.returncode != 0:
                         logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
                         restored = False
@@ -1927,8 +1940,8 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 _describe_archive(catalog_no, archive_map, info_by_no),
             )
             cmd = ['dar', '-x', archive_path, '-wa', '-g', path, '--noconf', '-Q']
-            if target:
-                cmd.extend(['-R', target])
+            if dar_target:
+                cmd.extend(['-R', dar_target])
             if ignore_ownership:
                 cmd.append('--comparison-field=ignore-owner')
             if no_deleted:
@@ -1940,7 +1953,14 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 path,
                 _describe_archive(catalog_no, archive_map, info_by_no),
             )
-            result = _runner().run(cmd, timeout=timeout)
+            if restore_target_handle:
+                result = _runner().run(
+                    cmd,
+                    timeout=timeout,
+                    pass_fds=restore_target_handle.pass_fds,
+                )
+            else:
+                result = _runner().run(cmd, timeout=timeout)
             if result.returncode != 0:
                 logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
                 # Give the operator everything needed to recover without a doc hunt:

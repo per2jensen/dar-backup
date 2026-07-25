@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from dar_backup.command_runner import CommandRunner, CommandResult, sanitize_cmd
 from dar_backup.util import parse_dar_stats
@@ -1023,3 +1024,35 @@ def test_stream_command_stderr_captured(tmp_path):
 
     assert result.returncode != 0
     assert "error-output" in result.stderr
+
+
+def test_run_inherits_only_explicitly_passed_descriptor(tmp_path: Path) -> None:
+    """A descriptor is closed by default and inherited only through pass_fds."""
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    descriptor_path = f"/proc/self/fd/{directory_fd}"
+    try:
+        closed_result = runner.run(["test", "-d", descriptor_path])
+        inherited_result = runner.run(
+            ["test", "-d", descriptor_path],
+            pass_fds=(directory_fd,),
+        )
+    finally:
+        os.close(directory_fd)
+
+    assert closed_result.returncode != 0
+    assert inherited_result.returncode == 0
+
+
+def test_run_rejects_closed_pass_descriptor(tmp_path: Path) -> None:
+    """A closed descriptor fails validation before a child process is started."""
+    logger, command_logger, _ = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+    directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    os.close(directory_fd)
+
+    result = runner.run(["true"], pass_fds=(directory_fd,))
+
+    assert result.returncode == -1
+    assert "closed or invalid descriptor" in result.stderr

@@ -1216,8 +1216,11 @@ def test_restore_backup_selection_and_darrc(tmp_path, selection, expect_tokens):
         db.restore_backup(backup_name, config, str(restore_dir), darrc, selection)
 
         called_cmd = mock_runner.run.call_args[0][0]
-        # -R restore target present
-        assert "-R" in called_cmd and str(restore_dir) in called_cmd
+        # -R uses the inherited descriptor-backed restore target.
+        root_index = called_cmd.index("-R") + 1
+        assert called_cmd[root_index].startswith("/proc/self/fd/")
+        passed_fds = mock_runner.run.call_args.kwargs["pass_fds"]
+        assert called_cmd[root_index] == f"/proc/self/fd/{passed_fds[0]}"
         # Improvement #1: darrc must be passed with -B
         assert "-B" in called_cmd and darrc in called_cmd
 

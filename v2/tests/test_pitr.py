@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 import fcntl
 import os
 import sys
@@ -21,6 +21,7 @@ from dar_backup.manager import (
 )
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.command_runner import CommandResult
+from dar_backup.restore_target_safety import RestoreTargetHandle
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -126,7 +127,16 @@ def test_restore_at_basic_success(tmp_path, mock_config, mock_logger):
         ret = restore_at(backup_def, paths, when, target, mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with(backup_def, paths, parsed_date, target, mock_config, ignore_ownership=True, no_deleted=False)
+        mock_restore.assert_called_once_with(
+            backup_def,
+            paths,
+            parsed_date,
+            target,
+            mock_config,
+            ignore_ownership=True,
+            no_deleted=False,
+            restore_target_handle=ANY,
+        )
 
 
 def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
@@ -151,7 +161,16 @@ def test_restore_at_timezone_aware_when_normalized(mock_config, mock_logger):
         ret = restore_at("def", ["file"], "2026-01-01 00:00Z", "/tmp", mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["file"], expected_date, "/tmp", mock_config, ignore_ownership=True, no_deleted=False)
+        mock_restore.assert_called_once_with(
+            "def",
+            ["file"],
+            expected_date,
+            "/tmp",
+            mock_config,
+            ignore_ownership=True,
+            no_deleted=False,
+            restore_target_handle=ANY,
+        )
 
 
 def test_restore_at_invalid_date(mock_config, mock_runner, mock_logger):
@@ -531,7 +550,16 @@ def test_restore_at_multiple_paths_all_restored(tmp_path, mock_config, mock_logg
 
         assert ret == 0
         # All three paths must be forwarded together in a single call
-        mock_restore.assert_called_once_with("media-files", paths, parsed_date, target, mock_config, ignore_ownership=True, no_deleted=False)
+        mock_restore.assert_called_once_with(
+            "media-files",
+            paths,
+            parsed_date,
+            target,
+            mock_config,
+            ignore_ownership=True,
+            no_deleted=False,
+            restore_target_handle=ANY,
+        )
 
 
 def test_restore_at_multiple_paths_and_no_target(mock_config, mock_runner, mock_logger):
@@ -745,7 +773,16 @@ def test_restore_at_default_when_uses_now(tmp_path, mock_config, mock_logger):
         ret = restore_at("def", ["tmp/file.txt"], None, target, mock_config)
 
         assert ret == 0
-        mock_restore.assert_called_once_with("def", ["tmp/file.txt"], fixed_now, target, mock_config, ignore_ownership=True, no_deleted=False)
+        mock_restore.assert_called_once_with(
+            "def",
+            ["tmp/file.txt"],
+            fixed_now,
+            target,
+            mock_config,
+            ignore_ownership=True,
+            no_deleted=False,
+            restore_target_handle=ANY,
+        )
 
 
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):
@@ -766,6 +803,12 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
         CommandResult(0, "ok", "", note=None),
     ]
     mock_config.command_timeout_secs = 30
+    target_handle = RestoreTargetHandle(
+        requested_path="/tmp/restore",
+        canonical_path="/tmp/restore",
+        directory_fd=73,
+        dar_root="/proc/self/fd/73",
+    )
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.runner", mock_runner), \
@@ -773,10 +816,17 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
          patch("dar_backup.manager._detect_directory", return_value=False), \
          patch("dar_backup.manager.send_discord_message") as mock_discord, \
          patch("os.path.exists", return_value=True), \
-         patch("dar_backup.manager._guess_darrc_path", return_value=None):
+        patch("dar_backup.manager._guess_darrc_path", return_value=None):
 
         when_dt = datetime.datetime(2026, 1, 29, 16, 0, 0)
-        ret = _restore_with_dar("def", ["tmp/file.txt"], when_dt, "/tmp/restore", mock_config)
+        ret = _restore_with_dar(
+            "def",
+            ["tmp/file.txt"],
+            when_dt,
+            "/tmp/restore",
+            mock_config,
+            restore_target_handle=target_handle,
+        )
 
         assert ret == 0
         debug_calls = mock_logger.debug.call_args_list
@@ -808,6 +858,10 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
             for call in info_calls
         )
         mock_discord.assert_not_called()
+        restore_call = mock_runner.run.call_args_list[-1]
+        restore_command = restore_call.args[0]
+        assert restore_command[restore_command.index("-R") + 1] == target_handle.dar_root
+        assert restore_call.kwargs["pass_fds"] == target_handle.pass_fds
 
 
 def test_restore_with_dar_directory_logs_chain_details(mock_config, mock_runner, mock_logger):

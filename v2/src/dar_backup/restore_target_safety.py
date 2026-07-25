@@ -2,9 +2,11 @@
 
 """Shared restore-target protection, locking, and overwrite checks."""
 
+import errno
 import fcntl
 import logging
 import os
+import stat
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -38,6 +40,32 @@ class RestoreTargetPolicy:
 
 class RestoreTargetError(RuntimeError):
     """Raised when a restore target fails a safety or locking check."""
+
+
+@dataclass(frozen=True)
+class RestoreTargetHandle:
+    """Stable reference to a validated restore target.
+
+    Attributes:
+        requested_path: Restore path supplied by the caller.
+        canonical_path: Resolved path opened during target preparation.
+        directory_fd: Open descriptor for the validated target directory.
+        dar_root: Descriptor-backed path to pass to DAR as its filesystem root.
+    """
+
+    requested_path: str
+    canonical_path: str
+    directory_fd: int
+    dar_root: str
+
+    @property
+    def pass_fds(self) -> tuple[int, ...]:
+        """Return descriptors that must be inherited by the DAR process.
+
+        Returns:
+            A one-item tuple containing the restore target descriptor.
+        """
+        return (self.directory_fd,)
 
 
 def restore_target_unsafe_reason(target: str) -> str | None:
@@ -143,32 +171,139 @@ def _normalize_selected_paths(selected_paths: Sequence[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _symlink_component_reason(target: str, rel_path: str) -> str | None:
-    """Return why an existing selected-path component is unsafe.
+def _extended_acl_present(directory_fd: int) -> bool:
+    """Return whether a directory has an extended POSIX access/default ACL.
 
     Args:
-        target: Existing restore target directory.
-        rel_path: Normalized relative selected path.
+        directory_fd: Open descriptor for the directory to inspect.
 
     Returns:
-        A human-readable rejection reason, or None when no component is a
-        symlink.
+        True when an extended ACL is present; False when ACLs are absent or
+        unsupported by the filesystem.
+
+    Raises:
+        OSError: If ACL metadata exists but cannot be inspected safely.
     """
-    current = target
-    for part in rel_path.split(os.sep):
-        if not part or part == ".":
-            continue
-        current = os.path.join(current, part)
-        if os.path.islink(current):
-            return (
-                f"'{current}' inside the restore target is a symlink — restoring through it "
-                f"could write outside the target. Remove it or use a clean/empty target."
-            )
+    absent_errnos = {
+        errno.ENODATA,
+        errno.ENOTSUP,
+        getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
+    }
+    for attribute in ("system.posix_acl_access", "system.posix_acl_default"):
+        try:
+            if os.getxattr(directory_fd, attribute):
+                return True
+        except OSError as exc:
+            if exc.errno in absent_errnos:
+                continue
+            raise
+    return False
+
+
+def _exclusive_control_reason(directory_fd: int, display_path: str, effective_uid: int) -> str | None:
+    """Return why a privileged restore directory is not exclusively controlled.
+
+    Args:
+        directory_fd: Open descriptor for the directory to inspect.
+        display_path: Operator-facing path used in any error.
+        effective_uid: UID performing the restore.
+
+    Returns:
+        A human-readable rejection reason, or None when the directory is owned
+        by the restoring UID and is not writable by group/other identities.
+
+    Raises:
+        OSError: If directory metadata or ACLs cannot be inspected.
+    """
+    directory_stat = os.fstat(directory_fd)
+    if directory_stat.st_uid != effective_uid:
+        return (
+            f"Privileged restore path '{display_path}' is owned by uid "
+            f"{directory_stat.st_uid}, not the restoring uid {effective_uid}. "
+            "Use a restore target exclusively controlled by the restoring user, "
+            "run the restore as the target owner, or stop other writers."
+        )
+    if stat.S_IMODE(directory_stat.st_mode) & 0o022:
+        return (
+            f"Privileged restore path '{display_path}' is writable by its group "
+            "or other users. Remove group/other write access or stop other writers "
+            "before restoring."
+        )
+    if _extended_acl_present(directory_fd):
+        return (
+            f"Privileged restore path '{display_path}' has an extended POSIX ACL, "
+            "so exclusive control cannot be established. Remove the ACL or use a "
+            "private restore target."
+        )
     return None
+
+
+def _inspect_selected_path(
+    target: str,
+    target_fd: int,
+    rel_path: str,
+    effective_uid: int,
+) -> tuple[str | None, bool]:
+    """Inspect one selected path without reopening the restore target pathname.
+
+    Args:
+        target: Operator-facing canonical restore target.
+        target_fd: Open descriptor for the restore target.
+        rel_path: Normalized relative selected path.
+        effective_uid: UID performing the restore.
+
+    Returns:
+        A tuple of ``(unsafe_reason, exists)``. ``unsafe_reason`` is populated
+        for a symlink or privileged-control violation. ``exists`` is True when
+        the selected path or a blocking non-directory component already exists.
+
+    Raises:
+        OSError: If an existing component cannot be inspected or opened safely.
+    """
+    current_fd = os.dup(target_fd)
+    current_display = target
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        parts = [part for part in rel_path.split(os.sep) if part and part != "."]
+        for index, part in enumerate(parts):
+            component_display = os.path.join(current_display, part)
+            try:
+                component_stat = os.stat(part, dir_fd=current_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return None, False
+
+            if stat.S_ISLNK(component_stat.st_mode):
+                return (
+                    f"'{component_display}' inside the restore target is a symlink — restoring through it "
+                    "could write outside the target. Remove it or use a clean/empty target.",
+                    True,
+                )
+
+            is_last = index == len(parts) - 1
+            if not stat.S_ISDIR(component_stat.st_mode):
+                return None, True
+            if is_last and effective_uid != 0:
+                return None, True
+
+            next_fd = os.open(part, directory_flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+            current_display = component_display
+
+            if effective_uid == 0:
+                control_reason = _exclusive_control_reason(current_fd, current_display, effective_uid)
+                if control_reason:
+                    return control_reason, True
+            if is_last:
+                return None, True
+        return None, False
+    finally:
+        os.close(current_fd)
 
 
 def _validate_existing_data(
     target: str,
+    target_fd: int,
     policy: RestoreTargetPolicy,
     selected_paths: Sequence[str],
 ) -> None:
@@ -176,6 +311,7 @@ def _validate_existing_data(
 
     Args:
         target: Existing, locked restore target directory.
+        target_fd: Open descriptor for the restore target.
         policy: Existing-data policy for the restore.
         selected_paths: Relative paths expected to be written.
 
@@ -186,9 +322,10 @@ def _validate_existing_data(
             policy.
     """
     normalized_paths = _normalize_selected_paths(selected_paths)
+    effective_uid = os.geteuid()
 
     if policy.existing_data is ExistingDataPolicy.REQUIRE_EMPTY:
-        with os.scandir(target) as entries:
+        with os.scandir(target_fd) as entries:
             if next(entries, None) is not None:
                 raise RestoreTargetError(
                     f"Restore target '{target}' is not empty. This restore can write anywhere under the target, "
@@ -203,10 +340,10 @@ def _validate_existing_data(
         for rel_path in normalized_paths:
             if rel_path == ".":
                 raise ValueError("archive-root path '.' requires the empty-target policy")
-            symlink_reason = _symlink_component_reason(target, rel_path)
-            if symlink_reason:
-                raise RestoreTargetError(symlink_reason)
-            if os.path.lexists(os.path.join(target, rel_path)):
+            unsafe_reason, path_exists = _inspect_selected_path(target, target_fd, rel_path, effective_uid)
+            if unsafe_reason:
+                raise RestoreTargetError(unsafe_reason)
+            if path_exists:
                 existing.append(rel_path)
         if existing:
             sample = ", ".join(existing[:3])
@@ -219,9 +356,9 @@ def _validate_existing_data(
 
     if policy.existing_data is ExistingDataPolicy.ALLOW_OVERWRITE:
         for rel_path in normalized_paths:
-            symlink_reason = _symlink_component_reason(target, rel_path)
-            if symlink_reason:
-                raise RestoreTargetError(symlink_reason)
+            unsafe_reason, _path_exists = _inspect_selected_path(target, target_fd, rel_path, effective_uid)
+            if unsafe_reason:
+                raise RestoreTargetError(unsafe_reason)
         return
 
     raise ValueError(f"Unsupported existing-data policy: {policy.existing_data!r}")
@@ -232,7 +369,7 @@ def prepare_restore_target(
     target: str,
     policy: RestoreTargetPolicy,
     selected_paths: Sequence[str] = (),
-) -> Iterator[None]:
+) -> Iterator[RestoreTargetHandle]:
     """Validate, create, lock, and hold a restore target for an operation.
 
     Args:
@@ -242,47 +379,93 @@ def prepare_restore_target(
             ``REJECT_SELECTED_PATHS``.
 
     Yields:
-        Control while the target directory lock is held.
+        A stable target handle while the directory lock is held.
 
     Raises:
         ValueError: If inputs are invalid.
         RestoreTargetError: If target validation, creation, locking, or
             existing-data checks fail.
     """
-    validate_restore_target_location(target, policy)
+    canonical_target = validate_restore_target_location(target, policy)
 
     try:
         os.makedirs(target, exist_ok=True)
     except OSError as exc:
         raise RestoreTargetError(f"Could not create restore target '{target}': {exc}") from exc
-    if not os.path.isdir(target):
+
+    # Resolve again after creation so a replacement during makedirs() cannot
+    # retain the pre-creation location decision.
+    canonical_target = validate_restore_target_location(target, policy)
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise RestoreTargetError("This platform lacks O_NOFOLLOW/O_DIRECTORY support required for safe restores.")
+
+    try:
+        expected_stat = os.stat(canonical_target, follow_symlinks=False)
+    except OSError as exc:
+        raise RestoreTargetError(f"Could not inspect restore target '{target}' before opening it: {exc}") from exc
+    if not stat.S_ISDIR(expected_stat.st_mode):
         raise RestoreTargetError(f"Restore target '{target}' is not a directory.")
 
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
-        lock_fd = os.open(target, flags)
+        lock_fd = os.open(canonical_target, flags)
     except OSError as exc:
         raise RestoreTargetError(f"Could not open restore target '{target}' for locking: {exc}") from exc
 
+    locked = False
     try:
+        opened_stat = os.fstat(lock_fd)
+        if (opened_stat.st_dev, opened_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+            raise RestoreTargetError(
+                f"Restore target '{target}' changed while it was being opened; refusing to continue."
+            )
+
+        dar_root = f"/proc/self/fd/{lock_fd}"
+        try:
+            os.readlink(dar_root)
+        except OSError as exc:
+            raise RestoreTargetError(
+                "The /proc/self/fd interface required for safe restores is unavailable."
+            ) from exc
+        opened_path = os.path.realpath(dar_root)
+        if opened_path != canonical_target:
+            raise RestoreTargetError(
+                f"Restore target '{target}' changed from '{canonical_target}' to "
+                f"'{opened_path}' while it was being prepared; refusing to continue."
+            )
+        validate_restore_target_location(opened_path, policy)
+
+        effective_uid = os.geteuid()
+        if effective_uid == 0:
+            control_reason = _exclusive_control_reason(lock_fd, opened_path, effective_uid)
+            if control_reason:
+                raise RestoreTargetError(control_reason)
+
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
         except BlockingIOError as exc:
             raise RestoreTargetError(f"Restore target '{target}' is locked by a concurrent restore; refusing to continue.") from exc
         except OSError as exc:
             raise RestoreTargetError(f"Could not lock restore target '{target}': {exc}") from exc
 
         try:
-            _validate_existing_data(target, policy, selected_paths)
+            _validate_existing_data(target, lock_fd, policy, selected_paths)
         except OSError as exc:
             raise RestoreTargetError(f"Could not inspect restore target '{target}': {exc}") from exc
 
-        yield
+        yield RestoreTargetHandle(
+            requested_path=target,
+            canonical_path=opened_path,
+            directory_fd=lock_fd,
+            dar_root=dar_root,
+        )
     finally:
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        except OSError as exc:
-            logger.warning("Could not unlock restore target '%s': %s", target, exc)
+        if locked:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            except OSError as exc:
+                logger.warning("Could not unlock restore target '%s': %s", target, exc)
         try:
             os.close(lock_fd)
         except OSError as exc:

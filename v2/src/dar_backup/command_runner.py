@@ -77,6 +77,36 @@ def sanitize_cmd(cmd: List[str]) -> List[str]:
             raise ValueError(f"Unsafe argument detected: {arg}")
     return cmd
 
+
+def _validate_pass_fds(pass_fds: tuple[int, ...]) -> tuple[int, ...]:
+    """Validate descriptors requested for child-process inheritance.
+
+    Args:
+        pass_fds: File descriptors to keep open in the child process.
+
+    Returns:
+        The unchanged descriptor tuple when every descriptor is valid and open.
+
+    Raises:
+        TypeError: If pass_fds is not a tuple of integers.
+        ValueError: If a descriptor is negative, duplicated, or closed.
+    """
+    if not isinstance(pass_fds, tuple):
+        raise TypeError("pass_fds must be a tuple of integers")
+    if len(set(pass_fds)) != len(pass_fds):
+        raise ValueError("pass_fds must not contain duplicate descriptors")
+    for descriptor in pass_fds:
+        if type(descriptor) is not int:
+            raise TypeError("pass_fds must contain only integers")
+        if descriptor < 0:
+            raise ValueError(f"pass_fds contains a negative descriptor: {descriptor}")
+        try:
+            os.fstat(descriptor)
+        except OSError as exc:
+            raise ValueError(f"pass_fds contains a closed or invalid descriptor: {descriptor}") from exc
+    return pass_fds
+
+
 def _safe_str(s: Union[str, bytes]) -> str:
     """Return a display-safe string for logging, replacing raw bytes with a placeholder.
 
@@ -271,7 +301,8 @@ class CommandRunner:
         log_output: bool = True,
         text: bool = True,
         cwd: Optional[str] = None,
-        stdin: Optional[int] = subprocess.DEVNULL
+        stdin: Optional[int] = subprocess.DEVNULL,
+        pass_fds: tuple[int, ...] = (),
     ) -> CommandResult:
         """Run a command to completion, capturing and logging its output.
 
@@ -309,6 +340,8 @@ class CommandRunner:
                 current directory.
             stdin: File descriptor or special value (e.g. subprocess.DEVNULL)
                 passed as the subprocess's stdin.
+            pass_fds: Explicit descriptors to keep open in the child process.
+                Defaults to none. Each descriptor is validated before spawning.
 
         Returns:
             A CommandResult with the process's real returncode on normal
@@ -328,6 +361,16 @@ class CommandRunner:
             capture_output_limit_bytes = self.default_capture_limit_bytes
         if capture_output_limit_bytes is not None and capture_output_limit_bytes < 0:
             capture_output_limit_bytes = None
+        try:
+            pass_fds = _validate_pass_fds(pass_fds)
+        except (TypeError, ValueError) as exc:
+            self.logger.error("Invalid pass_fds for command execution: %s", exc)  # noqa: TRY400 — expected caller validation error
+            return CommandResult(
+                returncode=-1,
+                stdout="",
+                stderr=str(exc),
+                note="Descriptor validation failed",
+            )
 
         tty_fd = None
         tty_file = None
@@ -403,6 +446,7 @@ class CommandRunner:
                     bufsize=-1,
                     cwd=cwd,
                     env=cmd_env,
+                    pass_fds=pass_fds,
                 )
                 pid = getattr(process, "pid", None)
                 if log_output:
