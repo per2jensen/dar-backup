@@ -95,6 +95,10 @@ def _runner() -> CommandRunner:
     return runner
 
 
+class ReportedRestoreTargetError(RestoreError):
+    """Restore-target rejection already logged with operator-facing context."""
+
+
 class BackupResult(NamedTuple):
     """Return the DAR-phase status and parsed inode statistics."""
 
@@ -798,7 +802,8 @@ def _parse_restore_selection(selection: Optional[str]) -> List[str]:
 
 def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
                    selection: Optional[str] = None, ignore_ownership: bool = True,
-                   no_deleted: bool = False, overwrite_restore_target: bool = False) -> None:
+                   no_deleted: bool = False, overwrite_restore_target: bool = False,
+                   force_unsafe_restore_target: bool = False) -> None:
     """
     Restores a backup file to a specified directory.
 
@@ -815,6 +820,8 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             archives do not cause errors when restoring to an empty directory.  Defaults to False.
         overwrite_restore_target: Permit an in-place restore into an existing,
             privately controlled target after a complete safety preflight.
+        force_unsafe_restore_target: Root-only break-glass permission to
+            continue past overridable overwrite preflight policy findings.
 
     Raises:
         RestoreError: If the restore command fails or the restore directory cannot be created.
@@ -822,6 +829,10 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
     try:
         if not restore_dir:
             raise RestoreError("Restore directory ('-R <dir>') not specified")
+        if force_unsafe_restore_target and not overwrite_restore_target:
+            raise RestoreError(
+                "force_unsafe_restore_target requires overwrite_restore_target"
+            )
         selection_criteria = _parse_restore_selection(selection)
 
         if ignore_ownership and os.getuid() == 0:
@@ -867,7 +878,8 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
                 ExistingDataPolicy.ALLOW_OVERWRITE
                 if overwrite_restore_target
                 else ExistingDataPolicy.REQUIRE_EMPTY
-            )
+            ),
+            force_unsafe_restore_target=force_unsafe_restore_target,
         )
         with prepare_restore_target(restore_dir, target_policy) as target_handle:
             command = [*command_prefix, '-R', target_handle.dar_root, *command_suffix]
@@ -910,7 +922,7 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         # A policy rejection is expected operator feedback; a traceback would
         # add noise without diagnostic value.
         logger.error("Restore target safety check failed: %s", e)  # noqa: TRY400
-        raise RestoreError(str(e)) from e
+        raise ReportedRestoreTargetError(str(e)) from e
     except RestoreError:
         raise
     except subprocess.CalledProcessError as e:
@@ -2316,6 +2328,11 @@ def main() -> None:
         action='store_true',
         help="Restore in place into an existing privately controlled --restore-dir after a safety preflight.",
     )
+    parser.add_argument(
+        '--force-unsafe-restore-target',
+        action='store_true',
+        help="ROOT BREAK-GLASS: waive overridable overwrite preflight policy findings; structural protections remain.",
+    )
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--preflight-check', action='store_true', help="Run preflight checks and exit")
     parser.add_argument('--suppress-dar-msg', action='store_true', help="cancel dar options in .darrc: -vt, -vs, -vd, -vf and -va")
@@ -2367,6 +2384,8 @@ def main() -> None:
         args.no_deleted = False
     if not hasattr(args, "overwrite_restore_target"):
         args.overwrite_restore_target = False
+    if not hasattr(args, "force_unsafe_restore_target"):
+        args.force_unsafe_restore_target = False
     if not hasattr(args, "doc"):
         args.doc = None
     if not hasattr(args, "doc_pretty"):
@@ -2438,6 +2457,16 @@ def main() -> None:
         logger.error(
             "--overwrite-restore-target requires an explicit --restore-dir; "
             "the configured test restore directory is never used for in-place overwrite."
+        )
+        exit(1)
+    if args.force_unsafe_restore_target and not args.overwrite_restore_target:
+        logger.error(
+            "--force-unsafe-restore-target requires --overwrite-restore-target, exiting"
+        )
+        exit(1)
+    if args.force_unsafe_restore_target and os.geteuid() != 0:
+        logger.error(
+            "--force-unsafe-restore-target is restricted to root (effective uid 0), exiting"
         )
         exit(1)
 
@@ -2646,7 +2675,8 @@ def main() -> None:
             restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection,
                            ignore_ownership=ignore_ownership,
                            no_deleted=args.no_deleted,
-                           overwrite_restore_target=args.overwrite_restore_target)
+                           overwrite_restore_target=args.overwrite_restore_target,
+                           force_unsafe_restore_target=args.force_unsafe_restore_target)
         else:
             parser.print_help()
 
@@ -2678,7 +2708,14 @@ def main() -> None:
             )
             send_discord_message(msg, config_settings=config_settings)
 
-
+    except ReportedRestoreTargetError as e:
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
+        send_discord_message(
+            f"{ts} - dar-backup: FAILURE - Restore target safety check failed: "
+            f"{e}\n---- End of report ----",
+            config_settings=config_settings,
+        )
+        results.append((repr(e), 1))
     except Exception as e:
         msg = f"Unexpected error: {e}"
         logger.error(msg, exc_info=True)

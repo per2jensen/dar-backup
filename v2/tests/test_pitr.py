@@ -820,12 +820,12 @@ def test_restore_at_overwrite_target_rejects_unsafe_tree_before_dar(
     mock_config,
     mock_logger,
 ):
-    """PITR overwrite rejects a group-writable directory before archive selection."""
+    """PITR overwrite rejects an other-writable directory before archive selection."""
     target = tmp_path / "home"
     shared = target / "shared"
     shared.mkdir(parents=True)
     target.chmod(0o700)
-    shared.chmod(0o770)
+    shared.chmod(0o707)
 
     with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
          patch("dar_backup.manager.os.path.exists", return_value=True), \
@@ -843,6 +843,37 @@ def test_restore_at_overwrite_target_rejects_unsafe_tree_before_dar(
     assert result == 1
     mock_restore.assert_not_called()
     assert "No restore data was written" in mock_logger.error.call_args.args[0]
+
+
+def test_restore_at_force_unsafe_target_root_reaches_restore(
+    tmp_path,
+    mock_config,
+    mock_logger,
+):
+    """Root break-glass reaches PITR extraction after the complete policy audit."""
+    target = tmp_path / "home"
+    target.mkdir()
+    target.chmod(0o707)
+
+    # Effective root identity cannot be established portably inside the
+    # unprivileged unit-test process.
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.os.path.exists", return_value=True), \
+         patch("dar_backup.restore_target_safety.os.geteuid", return_value=0), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+        result = restore_at(
+            "def",
+            ["Documents/file.txt"],
+            None,
+            str(target),
+            mock_config,
+            overwrite_restore_target=True,
+            force_unsafe_restore_target=True,
+        )
+
+    assert result == 0
+    mock_restore.assert_called_once()
 
 
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):
@@ -1434,6 +1465,7 @@ def test_cli_restore_execution(mock_runner):
             "--when", "now",
             "--target", "/tmp/out",
             "--overwrite-restore-target",
+            "--force-unsafe-restore-target",
             "--config-file", "dummy.conf"
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
@@ -1444,7 +1476,8 @@ def test_cli_restore_execution(mock_runner):
          patch("os.path.isfile", return_value=True), \
          patch("os.access", return_value=True), \
          patch("os.path.dirname", return_value="/tmp"), \
-         patch("os.path.exists", return_value=True): # For backup def path check
+         patch("os.path.exists", return_value=True), \
+         patch("dar_backup.manager.os.geteuid", return_value=0): # For backup def path check
         
         # Mock ConfigSettings instance
         settings_instance = MockSettings.return_value
@@ -1465,6 +1498,7 @@ def test_cli_restore_execution(mock_runner):
         assert call_args[0][2] == "now" # when
         assert call_args[0][3] == "/tmp/out" # target
         assert call_args.kwargs["overwrite_restore_target"] is True
+        assert call_args.kwargs["force_unsafe_restore_target"] is True
 
 
 def test_cli_relocate_requires_backup_def():

@@ -84,7 +84,9 @@ branches while the limit permits.
 Every existing directory must:
 
 - Be owned by a trusted UID.
-- Have no group-write or other-write mode bit.
+- Have no other-write mode bit.
+- If group-write is set, have a group whose sole resolved member is the
+  directory owner.
 - Have no extended POSIX access or default ACL.
 
 For a normal user restore, the restoring UID and target-root owner are the
@@ -93,26 +95,45 @@ root and the target-root owner's UID are trusted. This permits, for example,
 root-owned administrative directories inside Alice's private home as well as
 Alice-owned directories. It does not trust arbitrary third-party owners.
 
-Modes such as `0700`, `0750`, and `0755` do not grant write access to another
-identity and can pass. Modes such as `0770`, `0775`, and `0777` fail, even
-when the group is a private user group. This is deliberately conservative:
-group membership can change, and the restore cannot prove that no other
-process holds that identity.
+Modes such as `0700`, `0750`, and `0755` can pass. Modes `0770` and `0775`
+also pass when the directory owner is the group's only member. The login and
+group names do not need to match: `<user>:<group>` is safe when `<group>` has
+exactly that user's UID and no second identity. Mode `0777` always fails
+because other-write is set.
+
+At the start of each preflight, dar-backup takes one immutable NSS snapshot.
+It combines users whose primary GID is the directory group with explicit
+supplementary members returned by the group database. This works with the
+system's configured NSS sources, not only literal `/etc/passwd` and
+`/etc/group` files. Unknown users or groups, duplicate or ambiguous
+identities, membership lookup failures, a group with no resolved member, or a
+second member all fail closed. Membership changes after the snapshot are
+another reason to stop account-management services and other writers during
+recovery.
 
 Check a proposed home target without changing it:
 
 ```bash
 target="/home/alice"
-find "${target}" -xdev -type d -perm /022 -print
+find "${target}" -xdev -type d -perm -0002 -printf 'OTHER-WRITE %m %u:%g %p\n'
+find "${target}" -xdev -type d -perm -0020 -printf 'REVIEW-GROUP %m %u:%g %p\n'
 find "${target}" -xdev -type d ! -user alice ! -user root -printf '%u %m %p\n'
+id alice
+getent passwd alice
+getent group alice
 getfacl -R -p -- "${target}"
 df -h -- "${target}"
 ```
 
-The first `find` should print nothing. Review every line from the ownership
-check. `getfacl` output containing only the ordinary owner/group/other entries
-is not an extended ACL; named users, named groups, mask entries created for
-them, or default ACLs require investigation.
+The `OTHER-WRITE` search should print nothing. `REVIEW-GROUP` lines are not
+automatically errors: the preflight accepts each one when NSS proves that its
+owner is the group's sole member. The `getent group alice` command is only an
+example for a same-named group; inspect every distinct group printed by the
+tree. Remember that a primary-group member may not appear in `getent group`
+member text, which is why dar-backup also reads the passwd database. Review
+every line from the ownership check. `getfacl` output containing only ordinary
+owner/group/other entries is not an extended ACL; named users, named groups,
+mask entries created for them, or default ACLs require investigation.
 
 The preflight does not follow symlinks. For selected PITR paths, any existing
 symlink in the selected path is rejected. Descriptor binding prevents
@@ -141,7 +162,7 @@ If a home restore fails with:
 
 ```text
 ERROR: Overwrite safety preflight failed: found 3 problem(s) after inspecting 12,404 entries.
-  1. directory '/home/alice/shared-a' is writable by another identity (group or other write permission is set).
+  1. directory '/home/alice/shared-a' is group-writable through group 'photo-editors' (gid 2200), whose membership is not limited to owner uid 1000: alice (uid 1000), bob (uid 1001).
   2. directory '/home/alice/shared-b' is owned by untrusted uid 1002; trusted uid(s): 1000.
   3. could not open directory '/home/alice/mounted-data' safely: Permission denied
 No restore data was written.
@@ -158,6 +179,64 @@ preflight runs again. If the previous report stopped at 100, another batch may
 appear; repeat investigation until a complete scan reports no problems. A
 shorter later list does not prove that an earlier permission change was safe:
 review what changed and retain the logs from every attempt.
+
+### Root-only break-glass override
+
+`--force-unsafe-restore-target` is a last-ditch option for an operator who is
+root, understands the reported policy problems, and accepts an in-place
+restore without dar-backup being able to establish exclusive control. It
+requires `--overwrite-restore-target`, an explicit target, and effective UID
+0. It cannot be used with report-only PITR.
+
+Direct restore:
+
+```bash
+sudo dar-backup --restore homedir_FULL_2026-07-25 \
+  --restore-dir /home/alice \
+  --overwrite-restore-target \
+  --force-unsafe-restore-target \
+  --log-stdout --verbose
+```
+
+PITR:
+
+```bash
+sudo manager --backup-def homedir \
+  --restore-path . \
+  --when "2026-07-25 14:00" \
+  --target /home/alice \
+  --pitr-report-first \
+  --overwrite-restore-target \
+  --force-unsafe-restore-target \
+  --log-stdout --verbose
+```
+
+The preflight still runs before DAR, reports up to 100 problems, and writes a
+`CRITICAL` audit record containing the target and every reported finding. If
+the limit is reached, additional unknown problems may exist. Before choosing
+this option, stop services, login sessions, account-management tools, sync
+agents, and every other writer; take a filesystem snapshot if possible; keep
+the complete command, log, and exit status.
+
+Root may waive only these policy findings:
+
+- An untrusted directory owner.
+- Group write whose membership is shared, missing, ambiguous, or unresolved.
+- Other-write permission.
+- An extended POSIX ACL.
+- An entry, directory, metadata, ACL, or scan inspection failure.
+
+The option never waives structural protections:
+
+- A symlink in a selected restore path.
+- An unsafe target open, wrong target type, lock failure, pathname
+  replacement, or descriptor identity failure.
+- An invalid/absolute/traversing selection or DAR option injection.
+- A protected target such as `/etc`, `/root`, or `/usr`.
+
+The future `--disregard-protected-dirs` policy remains separate. Combining
+those two decisions is deliberately outside this option. If a structural
+check fails, there is no flag here that makes dar-backup continue.
 
 ### Deletions and free-space behavior
 

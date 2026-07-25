@@ -59,10 +59,11 @@ sudo getfacl -p -- "${restore_target}"
 test -d /proc/self/fd
 ```
 
-The target must be owned by root, must not be writable by group or other
-users, and must not have an extended POSIX ACL. `getfacl` may need to be
-installed separately. For selected-path PITR into an existing tree, inspect
-the existing directory components too:
+The target must be owned by a trusted UID, must not be writable by other
+users, and must not have an extended POSIX ACL. Group write is accepted only
+when NSS proves that the directory owner is the group's sole member.
+`getfacl` may need to be installed separately. For selected-path PITR into an
+existing tree, inspect the existing directory components too:
 
 ```bash
 namei -l -- "/path/to/target/path/to/item"
@@ -96,6 +97,12 @@ not bypass protected-directory checks. In particular, restoring directly into
 `/etc` is still not possible through dar-backup, even when its permissions are
 safe. Restore into a private temporary directory, verify the result, and copy
 the required files into place using the normal system recovery procedure.
+
+Root has a last-resort `--force-unsafe-restore-target` option for understood
+overwrite-preflight policy findings. It does not disable structural
+protections or permit `/etc`; read the
+[break-glass runbook](restoring-advanced.md#root-only-break-glass-override)
+before an incident.
 
 ### Plan disk space and final placement
 
@@ -166,8 +173,8 @@ In-place overwrite trades disk space for recovery risk:
 - Deletions recorded by DIFF/INCR archives can alter the live tree.
 - Services, deployment agents, cleanup jobs, and other writers must be
   stopped before the restore.
-- Descriptor binding, symlink rejection, exclusive-control checks, and
-  protected-directory policy still apply. Overwrite permission must not
+- Descriptor binding, selected-path symlink rejection, access-policy checks,
+  and protected-directory policy still apply. Overwrite permission must not
   disable them.
 
 The planned `--disregard-protected-dirs` option is a separate decision: it
@@ -208,11 +215,11 @@ deletion behavior, capacity limits, and failure recovery.
   but it will not be written through the replacement symlink.
 - The opened target is locked cooperatively while it is checked and while DAR
   runs. A concurrent dar-backup restore to the same target is rejected.
-- When dar-backup runs as root, the opened target must be root-owned and must
-  not be writable by group, other users, or an extended POSIX ACL. Existing
-  directory components traversed by selected-path PITR have the same
-  requirement. This prevents another identity from planting a replacement
-  path while privileged DAR is extracting.
+- During an overwrite preflight, every directory must have a trusted owner,
+  no other-write bit, and no extended POSIX ACL. A group-write bit is accepted
+  only when an immutable NSS snapshot resolves that group to exactly the
+  directory owner's UID. Existing directory components traversed by
+  selected-path PITR receive the same protection.
 - Safe descriptor-bound extraction requires Linux `/proc/self/fd` support.
   dar-backup fails closed if that interface is unavailable.
 - These checks do not protect against a malicious process running as the same
@@ -230,7 +237,8 @@ deletion behavior, capacity limits, and failure recovery.
 | already contains path(s) to restore | A selected PITR path would overwrite existing data | Retry with a new target, or select a different non-overlapping path |
 | is a symlink | An existing component could redirect extraction | Do not follow or replace it during the incident; use a clean target and investigate the symlink |
 | owned by another uid | A privileged restore does not have exclusive control | Create a new root-owned target; do not recursively change ownership on a live tree |
-| writable by group or other users | Another identity could change paths during privileged extraction | Create a new mode `0700` target and stop other writers |
+| group-writable through a group with another, missing, or unresolved member | The preflight cannot prove that group write is limited to the owner | Inspect `id`, `getent passwd`, and `getent group`; prefer a new target and do not recursively chmod a live tree |
+| writable by other users | The other-write bit lets any local identity change paths | Create a new private target and stop other writers |
 | extended POSIX ACL | Additional identities may have access not visible in the mode bits | Prefer a new target; remove an ACL only after reviewing why it exists |
 | changed while it was being opened | Another process replaced or renamed the target during validation | Stop and investigate concurrent writers; do not immediately retry against the same path |
 | `/proc/self/fd` unavailable | DAR cannot be safely tied to the opened target | Ensure Linux procfs is mounted or correctly exposed in the recovery container; do not bypass the check |

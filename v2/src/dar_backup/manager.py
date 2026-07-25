@@ -416,7 +416,8 @@ def find_file(file: str, backup_def: str, config_settings: ConfigSettings) -> in
 
 def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings,
                verbose: bool = False, ignore_ownership: bool = True, no_deleted: bool = False,
-               overwrite_restore_target: bool = False) -> int:
+               overwrite_restore_target: bool = False,
+               force_unsafe_restore_target: bool = False) -> int:
     """
     Perform a Point-in-Time Recovery (PITR) by selecting the correct archive
     chain from the dar_manager catalog and restoring directly with dar.
@@ -448,6 +449,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             DIFF/INCR archives do not cause errors when restoring to an empty directory.
         overwrite_restore_target: Permit an in-place restore into an existing,
             privately controlled target after a complete safety preflight.
+        force_unsafe_restore_target: Root-only break-glass permission to
+            continue past overridable overwrite preflight policy findings.
 
     Returns:
         Process return code (0 on success, non-zero on failure).
@@ -462,6 +465,17 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
         target,
         database_path,
     )
+
+    if force_unsafe_restore_target and not overwrite_restore_target:
+        logger.error(
+            "force_unsafe_restore_target requires overwrite_restore_target"
+        )
+        return 1
+    if force_unsafe_restore_target and os.geteuid() != 0:
+        logger.error(
+            "The unsafe restore-target override is restricted to root (effective uid 0)."
+        )
+        return 1
 
     if not os.path.exists(database_path):
         logger.error(f'Database not found: "{database_path}"')
@@ -524,7 +538,10 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             if "." in normalized_paths
             else ExistingDataPolicy.REJECT_SELECTED_PATHS
         )
-    target_policy = RestoreTargetPolicy(existing_data=existing_data_policy)
+    target_policy = RestoreTargetPolicy(
+        existing_data=existing_data_policy,
+        force_unsafe_restore_target=force_unsafe_restore_target,
+    )
     logger.debug(
         "PITR target directory: %s (cwd=%s) policy=%s paths=%d sample=%s",
         target,
@@ -2401,6 +2418,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action='store_true',
         help="Restore in place into an existing privately controlled --target after a safety preflight.",
     )
+    parser.add_argument(
+        '--force-unsafe-restore-target',
+        action='store_true',
+        help="ROOT BREAK-GLASS: waive overridable overwrite preflight policy findings; structural protections remain.",
+    )
     parser.add_argument('--pitr-report', action='store_true', help="Report PITR archive chain for --restore-path/--when without restoring.")
     parser.add_argument(
         '--pitr-report-first',
@@ -2473,6 +2495,10 @@ def main() -> None:
     argcomplete.autocomplete(parser)
 
     args = parser.parse_args()
+    # Keep tests and programmatic CLI wrappers that construct older Namespace
+    # objects compatible as new restore flags are introduced.
+    if not hasattr(args, "force_unsafe_restore_target"):
+        args.force_unsafe_restore_target = False
 
     if args.more_help:
         show_more_help()
@@ -2631,6 +2657,27 @@ def main() -> None:
         sys.exit(1)
         return
 
+    if args.force_unsafe_restore_target and not args.overwrite_restore_target:
+        logger.error(
+            "--force-unsafe-restore-target requires --overwrite-restore-target, exiting"
+        )
+        sys.exit(1)
+        return
+
+    if args.force_unsafe_restore_target and args.pitr_report:
+        logger.error(
+            "--force-unsafe-restore-target cannot be used with report-only --pitr-report, exiting"
+        )
+        sys.exit(1)
+        return
+
+    if args.force_unsafe_restore_target and os.geteuid() != 0:
+        logger.error(
+            "--force-unsafe-restore-target is restricted to root (effective uid 0), exiting"
+        )
+        sys.exit(1)
+        return
+
     if args.pitr_report:
         if not args.restore_path:
             logger.error("--pitr-report requires --restore-path, exiting")
@@ -2736,7 +2783,8 @@ def main() -> None:
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings,
                                 verbose=args.verbose, ignore_ownership=ignore_ownership,
                                 no_deleted=no_deleted,
-                                overwrite_restore_target=args.overwrite_restore_target)
+                                overwrite_restore_target=args.overwrite_restore_target,
+                                force_unsafe_restore_target=args.force_unsafe_restore_target)
             sys.exit(result)
             return
 

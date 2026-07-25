@@ -152,6 +152,7 @@ def test_advanced_restore_guide_documents_overwrite_incident_contract() -> None:
 
     required_text = (
         "--overwrite-restore-target",
+        "--force-unsafe-restore-target",
         "whole-target safety preflight",
         "approximately every ten seconds",
         "--ignore-ownership",
@@ -159,6 +160,8 @@ def test_advanced_restore_guide_documents_overwrite_incident_contract() -> None:
         "there is no rollback",
         "up to 100",
         "additional problems may exist",
+        "sole resolved member",
+        "`CRITICAL`",
         "`/etc`",
     )
     for text in required_text:

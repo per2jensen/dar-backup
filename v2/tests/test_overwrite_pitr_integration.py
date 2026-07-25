@@ -200,15 +200,15 @@ def _populate_existing_target(target: Path, restore_path: str) -> Path:
     Returns:
         Existing selected directory below the target.
     """
-    target.mkdir(mode=0o750)
+    target.mkdir()
+    target.chmod(0o775)
     selected_directory = target
     for component in Path(restore_path).parts:
         selected_directory /= component
         selected_directory.mkdir(mode=0o700)
-        # Pin every traversed component explicitly: mkdir(parents=True) creates
-        # intermediate parents with its default mode, which may be too broad
-        # under an unusually permissive test umask.
-        selected_directory.chmod(0o700)
+        # Pin every traversed component explicitly so the real integration
+        # proves owner-only group-write directories need no chmod workaround.
+        selected_directory.chmod(0o770)
     (selected_directory / "profile.txt").write_text(
         "stale target profile",
         encoding="utf-8",

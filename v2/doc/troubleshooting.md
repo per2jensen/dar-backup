@@ -226,6 +226,35 @@ for the full script and configuration notes.
 
 ---
 
+## Overwrite restore preflight rejects directory permissions
+
+Do not immediately run recursive `chmod`, `chown`, or `setfacl` on the restore
+tree. Modes `0770` and `0775` are accepted when NSS proves that each
+directory's owner is the corresponding group's sole member. A rejection means
+the group is shared, empty, missing, ambiguous, or unresolved; other-write is
+set; an owner is untrusted; an extended ACL exists; or part of the tree could
+not be inspected.
+
+Inspect without changing the tree:
+
+```bash
+target="/path/to/restore-target"
+find "${target}" -xdev -type d -perm -0002 -printf 'OTHER-WRITE %m %u:%g %p\n'
+find "${target}" -xdev -type d -perm -0020 -printf 'REVIEW-GROUP %m %u:%g %p\n'
+getent passwd
+getent group
+getfacl -R -p -- "${target}"
+```
+
+Prefer stopping writers and using private staging. If staging is impossible,
+root's `--force-unsafe-restore-target` is a logged last resort and requires
+`--overwrite-restore-target`; it does not bypass selected-path symlinks,
+target replacement/type/lock failures, unsafe selections, option injection, or
+protected targets such as `/etc`. Follow the complete
+[in-place overwrite and break-glass runbook](restoring-advanced.md#root-only-break-glass-override).
+
+---
+
 ## Restore test fails with exit code 4
 
 By default, `RESTORE_OWNERSHIP = no` makes dar-backup add

@@ -9,7 +9,13 @@ from typing import Iterator
 import pytest
 
 from dar_backup.restore_target_safety import _exclusive_control_reason
+from dar_backup.restore_target_safety import _resolve_identity_snapshot
+from dar_backup.restore_target_safety import _unsafe_group_write_finding
 from dar_backup.restore_target_safety import ExistingDataPolicy
+from dar_backup.restore_target_safety import GroupIdentity
+from dar_backup.restore_target_safety import IdentitySnapshot
+from dar_backup.restore_target_safety import NssGroup
+from dar_backup.restore_target_safety import NssUser
 from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
@@ -242,8 +248,8 @@ def test_exclusive_control_rejects_different_owner(tmp_path: Path) -> None:
     assert "owned by untrusted uid" in reason
 
 
-def test_exclusive_control_rejects_group_writable_directory(tmp_path: Path) -> None:
-    """Exclusive-control validation rejects writes by another identity."""
+def test_exclusive_control_accepts_owner_only_group_writable_directory(tmp_path: Path) -> None:
+    """A private primary group does not falsely classify the owner as another user."""
     target = tmp_path / "target"
     target.mkdir()
     target.chmod(0o770)
@@ -253,8 +259,90 @@ def test_exclusive_control_rejects_group_writable_directory(tmp_path: Path) -> N
     finally:
         os.close(directory_fd)
 
-    assert reason is not None
-    assert "writable by another identity" in reason
+    assert reason is None
+
+
+def test_group_write_policy_accepts_generic_owner_as_group_sole_member() -> None:
+    """Names need not match when the directory owner UID is the sole group member."""
+    snapshot = IdentitySnapshot(
+        groups=(
+            GroupIdentity(
+                gid=2400,
+                name="photo-operators",
+                members=(("restore-user", 1700),),
+            ),
+        )
+    )
+
+    assert _unsafe_group_write_finding(2400, 1700, snapshot) is None
+
+
+def test_group_write_policy_rejects_group_with_second_identity() -> None:
+    """One additional group member makes group write unsafe."""
+    snapshot = IdentitySnapshot(
+        groups=(
+            GroupIdentity(
+                gid=2400,
+                name="photo-operators",
+                members=(("restore-user", 1700), ("second-user", 1701)),
+            ),
+        )
+    )
+
+    finding = _unsafe_group_write_finding(2400, 1700, snapshot)
+
+    assert finding is not None
+    assert "second-user (uid 1701)" in finding.message
+
+
+def test_group_write_policy_rejects_unresolved_membership() -> None:
+    """An NSS resolution ambiguity fails closed."""
+    snapshot = IdentitySnapshot(
+        groups=(),
+        resolution_error="simulated ambiguous NSS data",
+    )
+
+    finding = _unsafe_group_write_finding(2400, 1700, snapshot)
+
+    assert finding is not None
+    assert "membership could not be verified" in finding.message
+
+
+def test_identity_snapshot_combines_primary_and_supplementary_membership() -> None:
+    """Resolution includes both passwd primary GIDs and group member lists."""
+    snapshot = _resolve_identity_snapshot(
+        users=(
+            NssUser(name="owner", uid=1700, primary_gid=2400),
+            NssUser(name="operator", uid=1701, primary_gid=2500),
+        ),
+        groups=(
+            NssGroup(
+                name="owner-private",
+                gid=2400,
+                explicit_members=("operator",),
+            ),
+            NssGroup(name="operator-private", gid=2500, explicit_members=()),
+        ),
+    )
+
+    owner_group = snapshot.group_for_gid(2400)
+
+    assert owner_group is not None
+    assert owner_group.members == (("owner", 1700), ("operator", 1701))
+
+
+def test_identity_snapshot_duplicate_uid_fails_closed() -> None:
+    """Duplicate numeric identities make all group-write decisions unresolved."""
+    snapshot = _resolve_identity_snapshot(
+        users=(
+            NssUser(name="owner", uid=1700, primary_gid=2400),
+            NssUser(name="owner-alias", uid=1700, primary_gid=2400),
+        ),
+        groups=(NssGroup(name="owner-private", gid=2400, explicit_members=()),),
+    )
+
+    assert snapshot.resolution_error is not None
+    assert "duplicate uid(s): 1700" in snapshot.resolution_error
 
 
 def test_overwrite_preflight_private_tree_reports_completion(
@@ -279,7 +367,25 @@ def test_overwrite_preflight_private_tree_reports_completion(
     assert any("Overwrite safety preflight completed" in message for message in messages)
 
 
-def test_overwrite_preflight_group_writable_child_rejects_before_restore(
+@pytest.mark.parametrize("mode", [0o770, 0o775], ids=["0770", "0775"])
+def test_overwrite_preflight_accepts_real_owner_only_group_modes(
+    tmp_path: Path,
+    mode: int,
+) -> None:
+    """Real owner/primary-group directories pass when NSS shows only that owner."""
+    target = tmp_path / "home"
+    child = target / "photos"
+    child.mkdir(parents=True)
+    target.chmod(mode)
+    child.chmod(mode)
+    policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
+
+    with prepare_restore_target(str(target), policy):
+        assert target.stat().st_mode & 0o777 == mode
+        assert child.stat().st_mode & 0o777 == mode
+
+
+def test_overwrite_preflight_other_writable_child_rejects_before_restore(
     tmp_path: Path,
 ) -> None:
     """A child writable by another identity aborts with an explicit no-write result."""
@@ -287,12 +393,12 @@ def test_overwrite_preflight_group_writable_child_rejects_before_restore(
     child = target / "shared"
     child.mkdir(parents=True)
     target.chmod(0o700)
-    child.chmod(0o770)
+    child.chmod(0o707)
     policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
 
     with pytest.raises(
         RestoreTargetError,
-        match=r"(?s)Overwrite safety preflight failed.*writable by another identity.*No restore data was written",
+        match=r"(?s)Overwrite safety preflight failed.*writable by other users.*No restore data was written",
     ):
         with prepare_restore_target(str(target), policy):
             pytest.fail("unsafe overwrite target unexpectedly passed preflight")
@@ -307,7 +413,7 @@ def test_overwrite_preflight_reports_multiple_problems_in_one_run(
     unsafe_directories = [target / name for name in ("shared-a", "shared-b", "shared-c")]
     for directory in unsafe_directories:
         directory.mkdir()
-        directory.chmod(0o770)
+        directory.chmod(0o707)
     policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
 
     with pytest.raises(RestoreTargetError) as exc_info:
@@ -330,7 +436,7 @@ def test_overwrite_preflight_stops_and_reports_at_one_hundred_problems(
     for index in range(105):
         directory = target / f"shared-{index:03d}"
         directory.mkdir()
-        directory.chmod(0o770)
+        directory.chmod(0o707)
     policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
 
     with pytest.raises(RestoreTargetError) as exc_info:
@@ -377,7 +483,7 @@ def test_overwrite_preflight_succeeds_after_all_reported_modes_are_fixed(
     unsafe_directories = [target / "shared-a", target / "shared-b"]
     for directory in unsafe_directories:
         directory.mkdir()
-        directory.chmod(0o770)
+        directory.chmod(0o707)
     policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
 
     with pytest.raises(RestoreTargetError) as exc_info:
@@ -440,7 +546,7 @@ def test_overwrite_preflight_continues_after_child_open_error(
     shared.mkdir()
     target.chmod(0o700)
     blocked.chmod(0o700)
-    shared.chmod(0o770)
+    shared.chmod(0o707)
     policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.ALLOW_OVERWRITE)
     real_open = os.open
 
@@ -480,7 +586,137 @@ def test_overwrite_preflight_continues_after_child_open_error(
     message = str(exc_info.value)
     assert "failed: found 2 problem(s)" in message
     assert f"could not open directory '{blocked}' safely" in message
-    assert f"directory '{shared}' is writable by another identity" in message
+    assert f"directory '{shared}' is writable by other users" in message
+
+
+def test_force_unsafe_restore_target_root_continues_past_policy_finding(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Root's explicit override continues after auditing an overridable problem."""
+    target = tmp_path / "home"
+    target.mkdir()
+    target.chmod(0o707)
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.ALLOW_OVERWRITE,
+        force_unsafe_restore_target=True,
+    )
+
+    # Effective root identity is an OS condition that cannot be established
+    # portably inside an unprivileged test process.
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+
+    with caplog.at_level("CRITICAL", logger="main_logger"):
+        with prepare_restore_target(str(target), policy):
+            assert target.is_dir()
+
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "ROOT BREAK-GLASS OVERRIDE ACTIVE" in message
+    assert "writable by other users" in message
+    assert "Stop services and users" in message
+
+
+def test_force_unsafe_restore_target_root_logs_bounded_problem_report(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break-glass remains bounded at 100 findings and warns of unknown extras."""
+    target = tmp_path / "home"
+    target.mkdir(mode=0o700)
+    for index in range(105):
+        directory = target / f"shared-{index:03d}"
+        directory.mkdir()
+        directory.chmod(0o707)
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.ALLOW_OVERWRITE,
+        force_unsafe_restore_target=True,
+    )
+
+    # Effective root identity is an OS condition that cannot be established
+    # portably inside an unprivileged test process.
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+
+    with caplog.at_level("CRITICAL", logger="main_logger"):
+        with prepare_restore_target(str(target), policy):
+            assert target.is_dir()
+
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    detail_lines = [
+        line
+        for line in message.splitlines()
+        if line.startswith("  ") and line.partition(". ")[0].strip().isdigit()
+    ]
+    assert len(detail_lines) == 100
+    assert "additional problems may exist" in message
+
+
+def test_force_unsafe_restore_target_non_root_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-root caller cannot activate the break-glass override."""
+    target = tmp_path / "home"
+    target.mkdir(mode=0o700)
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.ALLOW_OVERWRITE,
+        force_unsafe_restore_target=True,
+    )
+
+    # Simulating euid is required because CI may itself run as root.
+    monkeypatch.setattr(os, "geteuid", lambda: 1700)
+
+    with pytest.raises(RestoreTargetError, match="restricted to root"):
+        with prepare_restore_target(str(target), policy):
+            pytest.fail("non-root break-glass override unexpectedly passed")
+
+
+def test_force_unsafe_restore_target_requires_overwrite_policy(tmp_path: Path) -> None:
+    """The break-glass setting cannot be attached to a non-overwrite restore."""
+    target = tmp_path / "home"
+    target.mkdir(mode=0o700)
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.REQUIRE_EMPTY,
+        force_unsafe_restore_target=True,
+    )
+
+    with pytest.raises(ValueError, match="requires the overwrite existing-data policy"):
+        with prepare_restore_target(str(target), policy):
+            pytest.fail("break-glass without overwrite unexpectedly passed")
+
+
+def test_force_unsafe_restore_target_does_not_bypass_selected_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even root break-glass cannot waive a structural selected-path symlink."""
+    target = tmp_path / "home"
+    target.mkdir(mode=0o700)
+    (target / "photos").symlink_to(tmp_path / "outside", target_is_directory=True)
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.ALLOW_OVERWRITE,
+        force_unsafe_restore_target=True,
+    )
+
+    # Effective root identity is an OS condition that cannot be established
+    # portably inside an unprivileged test process.
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+
+    with pytest.raises(RestoreTargetError, match="is a symlink"):
+        with prepare_restore_target(str(target), policy, ["photos/file.nef"]):
+            pytest.fail("root override unexpectedly bypassed a selected symlink")
+
+
+def test_force_unsafe_restore_target_does_not_bypass_protected_location() -> None:
+    """Protected system destinations remain rejected under break-glass."""
+    policy = RestoreTargetPolicy(
+        existing_data=ExistingDataPolicy.ALLOW_OVERWRITE,
+        force_unsafe_restore_target=True,
+    )
+
+    with pytest.raises(RestoreTargetError, match="protected system directory"):
+        validate_restore_target_location("/etc", policy)
 
 
 def test_restore_target_identity_accepts_unchanged_path(tmp_path: Path) -> None:

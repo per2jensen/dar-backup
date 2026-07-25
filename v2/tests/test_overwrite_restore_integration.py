@@ -61,7 +61,8 @@ def test_real_dar_overwrite_restores_private_fake_home_in_place(
     _create_archive(backup_dir / backup_name, source)
 
     fake_home = tmp_path / "home"
-    fake_home.mkdir(mode=0o755)
+    fake_home.mkdir()
+    fake_home.chmod(0o775)
     (fake_home / "profile.txt").write_text("old version", encoding="utf-8")
     (fake_home / "unrelated.txt").write_text("must survive", encoding="utf-8")
     outside = tmp_path / "outside.txt"

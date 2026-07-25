@@ -8,7 +8,7 @@ import dar_backup.dar_backup as db
 from unittest.mock import MagicMock, mock_open
 import subprocess
 from datetime import datetime
-from dar_backup.dar_backup import restore_backup, RestoreError
+from dar_backup.dar_backup import ReportedRestoreTargetError, restore_backup, RestoreError
 from pathlib import Path 
 import pytest
 
@@ -2048,12 +2048,12 @@ def test_restore_backup_overwrite_target_appends_explicit_policy(tmp_path):
 
 
 def test_restore_backup_overwrite_target_rejects_unsafe_tree_before_dar(tmp_path):
-    """Overwrite preflight rejects a group-writable child before DAR runs."""
+    """Overwrite preflight rejects an other-writable child before DAR runs."""
     target = tmp_path / "home"
     shared = target / "shared"
     shared.mkdir(parents=True)
     target.chmod(0o700)
-    shared.chmod(0o770)
+    shared.chmod(0o707)
     config = _make_restore_config(str(tmp_path))
     mock_runner = MagicMock()
 
@@ -2071,6 +2071,63 @@ def test_restore_backup_overwrite_target_rejects_unsafe_tree_before_dar(tmp_path
             )
 
     mock_runner.run.assert_not_called()
+
+
+def test_restore_backup_target_refusal_is_logged_once_without_unexpected(tmp_path):
+    """An expected safety refusal has one clear error and no traceback label."""
+    target = tmp_path / "home"
+    target.mkdir()
+    target.chmod(0o707)
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_logger = MagicMock()
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger", mock_logger):
+        with pytest.raises(ReportedRestoreTargetError):
+            restore_backup(
+                "example_FULL_2026-01-01",
+                config,
+                str(target),
+                "/fake/.darrc",
+                ignore_ownership=True,
+                overwrite_restore_target=True,
+            )
+
+    mock_logger.error.assert_called_once()
+    assert "Restore target safety check failed" in mock_logger.error.call_args.args[0]
+    assert "Unexpected error" not in str(mock_logger.error.call_args)
+    mock_runner.run.assert_not_called()
+
+
+def test_restore_backup_force_unsafe_target_root_reaches_dar(tmp_path):
+    """Root break-glass forwards through direct restore after the policy audit."""
+    target = tmp_path / "home"
+    target.mkdir()
+    target.chmod(0o707)
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    # Effective root identity cannot be established portably inside the
+    # unprivileged unit-test process.
+    with patch("dar_backup.dar_backup.os.getuid", return_value=0), \
+         patch("dar_backup.restore_target_safety.os.geteuid", return_value=0), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(target),
+            "/fake/.darrc",
+            ignore_ownership=True,
+            overwrite_restore_target=True,
+            force_unsafe_restore_target=True,
+        )
+
+    command = mock_runner.run.call_args.args[0]
+    assert command[-1] == "--overwriting-policy=Oo"
 
 
 def test_perform_backup_fails_when_dar_slice_missing_after_backup(env):

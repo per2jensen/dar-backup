@@ -4,8 +4,10 @@
 
 import errno
 import fcntl
+import grp
 import logging
 import os
+import pwd
 import stat
 import time
 from contextlib import contextmanager
@@ -35,10 +37,14 @@ class RestoreTargetPolicy:
         existing_data: How existing entries below the target are handled.
         allow_protected_target: Whether protected system directories are
             permitted. No CLI currently enables this.
+        force_unsafe_restore_target: Whether root explicitly chose to continue
+            past policy findings from an overwrite preflight. Structural
+            restore-target protections are never bypassed.
     """
 
     existing_data: ExistingDataPolicy
     allow_protected_target: bool = False
+    force_unsafe_restore_target: bool = False
 
 
 class RestoreTargetError(RuntimeError):
@@ -71,6 +77,110 @@ class RestoreTargetHandle:
         return (self.directory_fd,)
 
 
+class RestoreSafetyFindingKind(Enum):
+    """Classification of one overwrite preflight safety finding."""
+
+    UNTRUSTED_OWNER = "untrusted_owner"
+    UNSAFE_GROUP_WRITE = "unsafe_group_write"
+    OTHER_WRITE = "other_write"
+    EXTENDED_ACL = "extended_acl"
+    INSPECTION_FAILURE = "inspection_failure"
+    SELECTED_PATH_SYMLINK = "selected_path_symlink"
+
+
+@dataclass(frozen=True)
+class RestoreSafetyFinding:
+    """One typed overwrite preflight finding.
+
+    Attributes:
+        kind: Stable category used to enforce the override boundary.
+        message: Operator-facing explanation of the problem.
+        root_overridable: Whether root's explicit break-glass option may waive
+            this finding after the complete bounded audit.
+    """
+
+    kind: RestoreSafetyFindingKind
+    message: str
+    root_overridable: bool
+
+
+@dataclass(frozen=True)
+class NssUser:
+    """Minimal immutable passwd identity used during snapshot resolution.
+
+    Attributes:
+        name: Login name.
+        uid: Numeric user identifier.
+        primary_gid: Numeric primary group identifier.
+    """
+
+    name: str
+    uid: int
+    primary_gid: int
+
+
+@dataclass(frozen=True)
+class NssGroup:
+    """Minimal immutable group identity used during snapshot resolution.
+
+    Attributes:
+        name: Group name.
+        gid: Numeric group identifier.
+        explicit_members: Supplementary member names from the group database.
+    """
+
+    name: str
+    gid: int
+    explicit_members: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GroupIdentity:
+    """Resolved membership for one NSS group.
+
+    Attributes:
+        gid: Numeric group identifier.
+        name: NSS group name, or a display placeholder when ambiguous.
+        members: Distinct ``(username, uid)`` identities in the group, including
+            primary-GID and explicit supplementary membership.
+        resolution_error: Why membership could not be resolved unambiguously.
+    """
+
+    gid: int
+    name: str
+    members: tuple[tuple[str, int], ...]
+    resolution_error: str | None = None
+
+
+@dataclass(frozen=True)
+class IdentitySnapshot:
+    """Immutable per-preflight snapshot of NSS user and group membership.
+
+    Attributes:
+        groups: Resolved groups indexed by lookup through :meth:`group_for_gid`.
+        resolution_error: Snapshot-wide ambiguity or lookup failure.
+    """
+
+    groups: tuple[GroupIdentity, ...]
+    resolution_error: str | None = None
+
+    def group_for_gid(self, gid: int) -> GroupIdentity | None:
+        """Return the resolved group for a numeric GID.
+
+        Args:
+            gid: Numeric group identifier to find.
+
+        Returns:
+            The matching group, or None when NSS did not enumerate it.
+
+        Raises:
+            ValueError: If gid is negative.
+        """
+        if gid < 0:
+            raise ValueError("gid must not be negative")
+        return next((group for group in self.groups if group.gid == gid), None)
+
+
 @dataclass(frozen=True)
 class OverwritePreflightStats:
     """Summary of an overwrite restore-target preflight.
@@ -89,8 +199,134 @@ class OverwritePreflightStats:
     directories: int
     symlinks: int
     elapsed_seconds: float
-    findings: tuple[str, ...]
+    findings: tuple[RestoreSafetyFinding, ...]
     problem_limit_reached: bool
+
+
+def _build_identity_snapshot() -> IdentitySnapshot:
+    """Build one immutable NSS snapshot for an overwrite preflight.
+
+    Primary group membership from the passwd database is combined with
+    supplementary membership from the group database. Ambiguous identities
+    fail closed instead of making a best-effort security decision.
+
+    Returns:
+        An immutable snapshot of groups and their resolved member UIDs.
+    """
+    try:
+        users = tuple(
+            NssUser(
+                name=user.pw_name,
+                uid=user.pw_uid,
+                primary_gid=user.pw_gid,
+            )
+            for user in pwd.getpwall()
+        )
+        groups = tuple(
+            NssGroup(
+                name=group.gr_name,
+                gid=group.gr_gid,
+                explicit_members=tuple(group.gr_mem),
+            )
+            for group in grp.getgrall()
+        )
+    except OSError as exc:
+        return IdentitySnapshot(
+            groups=(),
+            resolution_error=f"could not enumerate NSS identities: {exc}",
+        )
+
+    return _resolve_identity_snapshot(users, groups)
+
+
+def _resolve_identity_snapshot(
+    users: Sequence[NssUser],
+    groups: Sequence[NssGroup],
+) -> IdentitySnapshot:
+    """Resolve immutable passwd/group records into exact group membership.
+
+    Args:
+        users: Frozen passwd identities from one NSS enumeration.
+        groups: Frozen group identities from the same preflight.
+
+    Returns:
+        An immutable, fail-closed group-membership snapshot.
+    """
+    if not users:
+        return IdentitySnapshot(groups=(), resolution_error="NSS returned no user identities")
+    if not groups:
+        return IdentitySnapshot(groups=(), resolution_error="NSS returned no group identities")
+
+    users_by_name: dict[str, list[tuple[str, int, int]]] = {}
+    users_by_uid: dict[int, list[tuple[str, int, int]]] = {}
+    for user in users:
+        identity = (user.name, user.uid, user.primary_gid)
+        users_by_name.setdefault(user.name, []).append(identity)
+        users_by_uid.setdefault(user.uid, []).append(identity)
+
+    duplicate_names = sorted(name for name, records in users_by_name.items() if len(records) != 1)
+    duplicate_uids = sorted(uid for uid, records in users_by_uid.items() if len(records) != 1)
+    if duplicate_names or duplicate_uids:
+        details: list[str] = []
+        if duplicate_names:
+            details.append(f"duplicate username(s): {', '.join(duplicate_names)}")
+        if duplicate_uids:
+            details.append(f"duplicate uid(s): {', '.join(str(uid) for uid in duplicate_uids)}")
+        return IdentitySnapshot(
+            groups=(),
+            resolution_error=f"NSS user identities are ambiguous ({'; '.join(details)})",
+        )
+
+    groups_by_gid: dict[int, list[NssGroup]] = {}
+    for group in groups:
+        groups_by_gid.setdefault(group.gid, []).append(group)
+
+    resolved_groups: list[GroupIdentity] = []
+    for gid, group_records in sorted(groups_by_gid.items()):
+        if len(group_records) != 1:
+            names = ", ".join(sorted(group.name for group in group_records))
+            resolved_groups.append(
+                GroupIdentity(
+                    gid=gid,
+                    name=f"gid {gid}",
+                    members=(),
+                    resolution_error=f"NSS returned multiple groups for gid {gid}: {names}",
+                )
+            )
+            continue
+
+        group = group_records[0]
+        member_identities: dict[int, str] = {
+            user.uid: user.name
+            for user in users
+            if user.primary_gid == gid
+        }
+        member_errors: list[str] = []
+        for member_name in group.explicit_members:
+            member_records = users_by_name.get(member_name, [])
+            if len(member_records) != 1:
+                member_errors.append(
+                    f"member '{member_name}' did not resolve to exactly one user"
+                )
+                continue
+            resolved_name, member_uid, _primary_gid = member_records[0]
+            member_identities[member_uid] = resolved_name
+
+        resolved_groups.append(
+            GroupIdentity(
+                gid=gid,
+                name=group.name,
+                members=tuple(
+                    sorted(
+                        ((name, uid) for uid, name in member_identities.items()),
+                        key=lambda member: (member[1], member[0]),
+                    )
+                ),
+                resolution_error="; ".join(member_errors) if member_errors else None,
+            )
+        )
+
+    return IdentitySnapshot(groups=tuple(resolved_groups))
 
 
 def restore_target_unsafe_reason(target: str) -> str | None:
@@ -229,18 +465,24 @@ def _exclusive_control_reasons(
     directory_fd: int,
     display_path: str,
     trusted_uids: frozenset[int],
-) -> tuple[str, ...]:
+    identity_snapshot: IdentitySnapshot,
+    group_write_cache: dict[tuple[int, int], RestoreSafetyFinding | None],
+) -> tuple[RestoreSafetyFinding, ...]:
     """Return every exclusive-control problem found for one directory.
 
     Args:
         directory_fd: Open descriptor for the directory to inspect.
         display_path: Operator-facing path used in any error.
         trusted_uids: UIDs permitted to own directories in the restore target.
+        identity_snapshot: Immutable NSS identity view for this preflight.
+        group_write_cache: Per-preflight group-policy result cache keyed by
+            ``(gid, owner_uid)``.
 
     Returns:
-        Operator-facing rejection reasons. The tuple is empty when the
+        Typed rejection findings. The tuple is empty when the
         directory owner is trusted and group, other, and extended ACL access
-        cannot write it.
+        cannot write it, except for a group whose sole resolved member is the
+        directory owner.
 
     Raises:
         ValueError: If trusted_uids is empty.
@@ -249,25 +491,139 @@ def _exclusive_control_reasons(
     if not trusted_uids:
         raise ValueError("trusted_uids must not be empty")
 
-    reasons: list[str] = []
+    findings: list[RestoreSafetyFinding] = []
     directory_stat = os.fstat(directory_fd)
     if directory_stat.st_uid not in trusted_uids:
         trusted_display = ", ".join(str(uid) for uid in sorted(trusted_uids))
-        reasons.append(
-            f"directory '{display_path}' is owned by untrusted uid "
-            f"{directory_stat.st_uid}; trusted uid(s): {trusted_display}."
+        findings.append(
+            RestoreSafetyFinding(
+                kind=RestoreSafetyFindingKind.UNTRUSTED_OWNER,
+                message=(
+                    f"directory '{display_path}' is owned by untrusted uid "
+                    f"{directory_stat.st_uid}; trusted uid(s): {trusted_display}."
+                ),
+                root_overridable=True,
+            )
         )
-    if stat.S_IMODE(directory_stat.st_mode) & 0o022:
-        reasons.append(
-            f"directory '{display_path}' is writable by another identity "
-            "(group or other write permission is set)."
+
+    mode = stat.S_IMODE(directory_stat.st_mode)
+    if mode & stat.S_IWGRP:
+        cache_key = (directory_stat.st_gid, directory_stat.st_uid)
+        group_finding = group_write_cache.get(cache_key)
+        if cache_key not in group_write_cache:
+            group_finding = _unsafe_group_write_finding(
+                gid=directory_stat.st_gid,
+                owner_uid=directory_stat.st_uid,
+                identity_snapshot=identity_snapshot,
+            )
+            group_write_cache[cache_key] = group_finding
+        if group_finding:
+            findings.append(
+                RestoreSafetyFinding(
+                    kind=group_finding.kind,
+                    message=f"directory '{display_path}' {group_finding.message}",
+                    root_overridable=group_finding.root_overridable,
+                )
+            )
+
+    if mode & stat.S_IWOTH:
+        findings.append(
+            RestoreSafetyFinding(
+                kind=RestoreSafetyFindingKind.OTHER_WRITE,
+                message=(
+                    f"directory '{display_path}' is writable by other users "
+                    "(the other-write permission is set)."
+                ),
+                root_overridable=True,
+            )
         )
     if _extended_acl_present(directory_fd):
-        reasons.append(
-            f"directory '{display_path}' has an extended POSIX ACL, so exclusive "
-            "control cannot be established."
+        findings.append(
+            RestoreSafetyFinding(
+                kind=RestoreSafetyFindingKind.EXTENDED_ACL,
+                message=(
+                    f"directory '{display_path}' has an extended POSIX ACL, so "
+                    "exclusive control cannot be established."
+                ),
+                root_overridable=True,
+            )
         )
-    return tuple(reasons)
+    return tuple(findings)
+
+
+def _unsafe_group_write_finding(
+    gid: int,
+    owner_uid: int,
+    identity_snapshot: IdentitySnapshot,
+) -> RestoreSafetyFinding | None:
+    """Evaluate whether group write grants access to another identity.
+
+    Args:
+        gid: Directory group identifier.
+        owner_uid: Directory owner identifier.
+        identity_snapshot: Immutable NSS identity view for this preflight.
+
+    Returns:
+        A policy finding when group write is unsafe or cannot be resolved;
+        otherwise None when the owner is the group's sole member.
+
+    Raises:
+        ValueError: If gid or owner_uid is negative.
+    """
+    if gid < 0:
+        raise ValueError("gid must not be negative")
+    if owner_uid < 0:
+        raise ValueError("owner_uid must not be negative")
+
+    if identity_snapshot.resolution_error:
+        return RestoreSafetyFinding(
+            kind=RestoreSafetyFindingKind.UNSAFE_GROUP_WRITE,
+            message=(
+                f"is group-writable through gid {gid}, but membership could not "
+                f"be verified: {identity_snapshot.resolution_error}."
+            ),
+            root_overridable=True,
+        )
+
+    group = identity_snapshot.group_for_gid(gid)
+    if group is None:
+        return RestoreSafetyFinding(
+            kind=RestoreSafetyFindingKind.UNSAFE_GROUP_WRITE,
+            message=(
+                f"is group-writable through unresolved gid {gid}; exclusive "
+                "control cannot be established."
+            ),
+            root_overridable=True,
+        )
+    if group.resolution_error:
+        return RestoreSafetyFinding(
+            kind=RestoreSafetyFindingKind.UNSAFE_GROUP_WRITE,
+            message=(
+                f"is group-writable through group '{group.name}' (gid {gid}), "
+                f"but membership is ambiguous: {group.resolution_error}."
+            ),
+            root_overridable=True,
+        )
+
+    member_uids = frozenset(uid for _name, uid in group.members)
+    if member_uids == frozenset({owner_uid}):
+        return None
+
+    if group.members:
+        members_display = ", ".join(
+            f"{name} (uid {uid})"
+            for name, uid in group.members
+        )
+    else:
+        members_display = "no resolved members"
+    return RestoreSafetyFinding(
+        kind=RestoreSafetyFindingKind.UNSAFE_GROUP_WRITE,
+        message=(
+            f"is group-writable through group '{group.name}' (gid {gid}), whose "
+            f"membership is not limited to owner uid {owner_uid}: {members_display}."
+        ),
+        root_overridable=True,
+    )
 
 
 def _exclusive_control_reason(
@@ -275,12 +631,16 @@ def _exclusive_control_reason(
     display_path: str,
     trusted_uids: frozenset[int],
 ) -> str | None:
-    """Return the first exclusive-control problem found for a directory.
+    """Return the first exclusive-control problem for one directory.
+
+    This focused helper is retained for callers and tests that need a single
+    answer. A fresh immutable NSS snapshot prevents membership changes during
+    the decision.
 
     Args:
         directory_fd: Open descriptor for the directory to inspect.
         display_path: Operator-facing path used in any error.
-        trusted_uids: UIDs permitted to own directories in the restore target.
+        trusted_uids: UIDs permitted to own the directory.
 
     Returns:
         The first rejection reason, or None when the directory passes.
@@ -289,8 +649,14 @@ def _exclusive_control_reason(
         ValueError: If trusted_uids is empty.
         OSError: If directory metadata or ACLs cannot be inspected.
     """
-    reasons = _exclusive_control_reasons(directory_fd, display_path, trusted_uids)
-    return reasons[0] if reasons else None
+    findings = _exclusive_control_reasons(
+        directory_fd,
+        display_path,
+        trusted_uids,
+        _build_identity_snapshot(),
+        {},
+    )
+    return findings[0].message if findings else None
 
 
 def _inspect_selected_path(
@@ -298,7 +664,9 @@ def _inspect_selected_path(
     target_fd: int,
     rel_path: str,
     trusted_uids: frozenset[int],
-) -> tuple[str | None, bool]:
+    identity_snapshot: IdentitySnapshot,
+    group_write_cache: dict[tuple[int, int], RestoreSafetyFinding | None],
+) -> tuple[tuple[RestoreSafetyFinding, ...], bool]:
     """Inspect one selected path without reopening the restore target pathname.
 
     Args:
@@ -306,11 +674,13 @@ def _inspect_selected_path(
         target_fd: Open descriptor for the restore target.
         rel_path: Normalized relative selected path.
         trusted_uids: UIDs permitted to own existing directories.
+        identity_snapshot: Immutable NSS identity view for this preflight.
+        group_write_cache: Per-preflight group-policy result cache.
 
     Returns:
-        A tuple of ``(unsafe_reason, exists)``. ``unsafe_reason`` is populated
-        for a symlink or privileged-control violation. ``exists`` is True when
-        the selected path or a blocking non-directory component already exists.
+        A tuple of ``(findings, exists)``. Findings include symlink and
+        privileged-control violations. ``exists`` is True when the selected
+        path or a blocking non-directory component already exists.
 
     Raises:
         OSError: If an existing component cannot be inspected or opened safely.
@@ -318,6 +688,7 @@ def _inspect_selected_path(
     current_fd = os.dup(target_fd)
     current_display = target
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    findings: list[RestoreSafetyFinding] = []
     try:
         parts = [part for part in rel_path.split(os.sep) if part and part != "."]
         for index, part in enumerate(parts):
@@ -325,20 +696,27 @@ def _inspect_selected_path(
             try:
                 component_stat = os.stat(part, dir_fd=current_fd, follow_symlinks=False)
             except FileNotFoundError:
-                return None, False
+                return tuple(findings), False
 
             if stat.S_ISLNK(component_stat.st_mode):
-                return (
-                    f"'{component_display}' inside the restore target is a symlink — restoring through it "
-                    "could write outside the target. Remove it or use a clean/empty target.",
-                    True,
+                findings.append(
+                    RestoreSafetyFinding(
+                        kind=RestoreSafetyFindingKind.SELECTED_PATH_SYMLINK,
+                        message=(
+                            f"'{component_display}' inside the restore target is a "
+                            "symlink — restoring through it could write outside the "
+                            "target. Remove it or use a clean/empty target."
+                        ),
+                        root_overridable=False,
+                    )
                 )
+                return tuple(findings), True
 
             is_last = index == len(parts) - 1
             if not stat.S_ISDIR(component_stat.st_mode):
-                return None, True
+                return tuple(findings), True
             if is_last and os.geteuid() != 0:
-                return None, True
+                return tuple(findings), True
 
             next_fd = os.open(part, directory_flags, dir_fd=current_fd)
             os.close(current_fd)
@@ -346,20 +724,26 @@ def _inspect_selected_path(
             current_display = component_display
 
             if os.geteuid() == 0:
-                control_reason = _exclusive_control_reason(current_fd, current_display, trusted_uids)
-                if control_reason:
-                    return control_reason, True
+                findings.extend(
+                    _exclusive_control_reasons(
+                        current_fd,
+                        current_display,
+                        trusted_uids,
+                        identity_snapshot,
+                        group_write_cache,
+                    )
+                )
             if is_last:
-                return None, True
-        return None, False
+                return tuple(findings), True
+        return tuple(findings), False
     finally:
         os.close(current_fd)
 
 
 def _add_overwrite_preflight_finding(
-    findings: list[str],
-    seen_findings: set[str],
-    finding: str,
+    findings: list[RestoreSafetyFinding],
+    seen_findings: set[RestoreSafetyFinding],
+    finding: RestoreSafetyFinding,
 ) -> bool:
     """Add one distinct finding without exceeding the reporting limit.
 
@@ -368,8 +752,8 @@ def _add_overwrite_preflight_finding(
 
     Args:
         findings: Ordered findings collected for the current preflight.
-        seen_findings: Exact finding strings already collected.
-        finding: Operator-facing problem description.
+        seen_findings: Exact typed findings already collected.
+        finding: Typed operator-facing problem description.
 
     Returns:
         True when the 100-problem limit has been reached.
@@ -377,8 +761,10 @@ def _add_overwrite_preflight_finding(
     Raises:
         ValueError: If finding is empty.
     """
-    if not finding or not finding.strip():
-        raise ValueError("finding must not be empty")
+    if not isinstance(finding, RestoreSafetyFinding):
+        raise TypeError("finding must be a RestoreSafetyFinding")
+    if not finding.message or not finding.message.strip():
+        raise ValueError("finding message must not be empty")
     if finding in seen_findings:
         return len(findings) >= MAX_OVERWRITE_PREFLIGHT_PROBLEMS
     if len(findings) >= MAX_OVERWRITE_PREFLIGHT_PROBLEMS:
@@ -416,17 +802,40 @@ def _format_overwrite_preflight_failure(stats: OverwritePreflightStats) -> str:
             f"problem(s) after inspecting {stats.entries:,} entries."
         )
     details = "\n".join(
-        f"  {index}. {finding}"
+        f"  {index}. {finding.message}"
         for index, finding in enumerate(stats.findings, start=1)
     )
     return f"{summary}\n{details}\nNo restore data was written."
+
+
+def _inspection_failure(message: str) -> RestoreSafetyFinding:
+    """Create a root-overridable preflight inspection failure.
+
+    Args:
+        message: Operator-facing failure description.
+
+    Returns:
+        A typed inspection finding.
+
+    Raises:
+        ValueError: If message is empty.
+    """
+    if not message or not message.strip():
+        raise ValueError("message must not be empty")
+    return RestoreSafetyFinding(
+        kind=RestoreSafetyFindingKind.INSPECTION_FAILURE,
+        message=message,
+        root_overridable=True,
+    )
 
 
 def _run_overwrite_preflight(
     target: str,
     target_fd: int,
     trusted_uids: frozenset[int],
-    initial_findings: Sequence[str] = (),
+    identity_snapshot: IdentitySnapshot,
+    group_write_cache: dict[tuple[int, int], RestoreSafetyFinding | None],
+    initial_findings: Sequence[RestoreSafetyFinding] = (),
 ) -> OverwritePreflightStats:
     """Audit an overwrite target without following directory symlinks.
 
@@ -438,6 +847,8 @@ def _run_overwrite_preflight(
         target: Operator-facing restore target path.
         target_fd: Open and locked descriptor for the restore target.
         trusted_uids: UIDs permitted to own directories below the target.
+        identity_snapshot: Immutable NSS identity view for this preflight.
+        group_write_cache: Per-preflight group-policy result cache.
         initial_findings: Problems found by selected-path checks before the
             whole-target traversal.
 
@@ -459,8 +870,8 @@ def _run_overwrite_preflight(
     symlink_count = 0
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     pending: list[tuple[int, str]] = []
-    findings: list[str] = []
-    seen_findings: set[str] = set()
+    findings: list[RestoreSafetyFinding] = []
+    seen_findings: set[RestoreSafetyFinding] = set()
     problem_limit_reached = False
 
     for initial_finding in initial_findings:
@@ -479,7 +890,9 @@ def _run_overwrite_preflight(
             problem_limit_reached = _add_overwrite_preflight_finding(
                 findings,
                 seen_findings,
-                f"could not duplicate the locked target descriptor for '{target}': {exc}",
+                _inspection_failure(
+                    f"could not duplicate the locked target descriptor for '{target}': {exc}"
+                ),
             )
 
     try:
@@ -492,13 +905,17 @@ def _run_overwrite_preflight(
                         directory_fd,
                         display_path,
                         trusted_uids,
+                        identity_snapshot,
+                        group_write_cache,
                     )
                 except OSError as exc:
                     problem_limit_reached = _add_overwrite_preflight_finding(
                         findings,
                         seen_findings,
-                        f"could not inspect ownership, permissions, or ACLs for "
-                        f"directory '{display_path}': {exc}",
+                        _inspection_failure(
+                            f"could not inspect ownership, permissions, or ACLs for "
+                            f"directory '{display_path}': {exc}"
+                        ),
                     )
                 else:
                     for control_reason in control_reasons:
@@ -524,7 +941,9 @@ def _run_overwrite_preflight(
                                 problem_limit_reached = _add_overwrite_preflight_finding(
                                     findings,
                                     seen_findings,
-                                    f"could not inspect entry '{entry_path}': {exc}",
+                                    _inspection_failure(
+                                        f"could not inspect entry '{entry_path}': {exc}"
+                                    ),
                                 )
                                 if problem_limit_reached:
                                     break
@@ -543,7 +962,9 @@ def _run_overwrite_preflight(
                                     problem_limit_reached = _add_overwrite_preflight_finding(
                                         findings,
                                         seen_findings,
-                                        f"could not open directory '{entry_path}' safely: {exc}",
+                                        _inspection_failure(
+                                            f"could not open directory '{entry_path}' safely: {exc}"
+                                        ),
                                     )
                                     if problem_limit_reached:
                                         break
@@ -564,7 +985,9 @@ def _run_overwrite_preflight(
                     problem_limit_reached = _add_overwrite_preflight_finding(
                         findings,
                         seen_findings,
-                        f"could not scan directory '{display_path}': {exc}",
+                        _inspection_failure(
+                            f"could not scan directory '{display_path}': {exc}"
+                        ),
                     )
             finally:
                 try:
@@ -655,6 +1078,18 @@ def _validate_existing_data(
     """
     normalized_paths = _normalize_selected_paths(selected_paths)
     effective_uid = os.geteuid()
+    if (
+        policy.force_unsafe_restore_target
+        and policy.existing_data is not ExistingDataPolicy.ALLOW_OVERWRITE
+    ):
+        raise ValueError(
+            "force_unsafe_restore_target requires the overwrite existing-data policy"
+        )
+    if policy.force_unsafe_restore_target and effective_uid != 0:
+        raise RestoreTargetError(
+            "The unsafe restore-target override is restricted to root (effective uid 0)."
+        )
+
     target_stat = os.fstat(target_fd)
     trusted_uid_values = {effective_uid}
     if effective_uid == 0 and policy.existing_data is ExistingDataPolicy.ALLOW_OVERWRITE:
@@ -675,13 +1110,22 @@ def _validate_existing_data(
     if policy.existing_data is ExistingDataPolicy.REJECT_SELECTED_PATHS:
         if not normalized_paths:
             raise ValueError("selected_paths are required when rejecting selected paths")
+        identity_snapshot = _build_identity_snapshot()
+        group_write_cache: dict[tuple[int, int], RestoreSafetyFinding | None] = {}
         existing: list[str] = []
         for rel_path in normalized_paths:
             if rel_path == ".":
                 raise ValueError("archive-root path '.' requires the empty-target policy")
-            unsafe_reason, path_exists = _inspect_selected_path(target, target_fd, rel_path, trusted_uids)
-            if unsafe_reason:
-                raise RestoreTargetError(unsafe_reason)
+            findings, path_exists = _inspect_selected_path(
+                target,
+                target_fd,
+                rel_path,
+                trusted_uids,
+                identity_snapshot,
+                group_write_cache,
+            )
+            if findings:
+                raise RestoreTargetError(findings[0].message)
             if path_exists:
                 existing.append(rel_path)
         if existing:
@@ -699,42 +1143,94 @@ def _validate_existing_data(
             "this can take a long time and no restore data will be written until it completes.",
             target,
         )
-        selected_findings: list[str] = []
-        seen_selected_findings: set[str] = set()
+        identity_snapshot = _build_identity_snapshot()
+        group_write_cache = {}
+        selected_findings: list[RestoreSafetyFinding] = []
+        seen_selected_findings: set[RestoreSafetyFinding] = set()
         for rel_path in normalized_paths:
             try:
-                unsafe_reason, _path_exists = _inspect_selected_path(
+                path_findings, _path_exists = _inspect_selected_path(
                     target,
                     target_fd,
                     rel_path,
                     trusted_uids,
+                    identity_snapshot,
+                    group_write_cache,
                 )
             except OSError as exc:
-                problem_limit_reached = _add_overwrite_preflight_finding(
+                _add_overwrite_preflight_finding(
                     selected_findings,
                     seen_selected_findings,
-                    f"could not inspect selected restore path '{rel_path}' below "
-                    f"'{target}': {exc}",
+                    _inspection_failure(
+                        f"could not inspect selected restore path '{rel_path}' below "
+                        f"'{target}': {exc}"
+                    ),
                 )
             else:
-                problem_limit_reached = False
-                if unsafe_reason:
-                    problem_limit_reached = _add_overwrite_preflight_finding(
+                for finding in path_findings:
+                    if not finding.root_overridable:
+                        immediate_stats = OverwritePreflightStats(
+                            entries=0,
+                            directories=0,
+                            symlinks=1,
+                            elapsed_seconds=0.0,
+                            findings=(finding,),
+                            problem_limit_reached=False,
+                        )
+                        raise RestoreTargetError(
+                            _format_overwrite_preflight_failure(immediate_stats)
+                        )
+                    _add_overwrite_preflight_finding(
                         selected_findings,
                         seen_selected_findings,
-                        unsafe_reason,
+                        finding,
                     )
-            if problem_limit_reached:
-                break
 
         stats = _run_overwrite_preflight(
             target,
             target_fd,
             trusted_uids,
-            selected_findings,
+            identity_snapshot,
+            group_write_cache,
+            initial_findings=selected_findings,
         )
         if stats.findings:
-            raise RestoreTargetError(_format_overwrite_preflight_failure(stats))
+            non_overridable = tuple(
+                finding
+                for finding in stats.findings
+                if not finding.root_overridable
+            )
+            if non_overridable or not policy.force_unsafe_restore_target:
+                raise RestoreTargetError(_format_overwrite_preflight_failure(stats))
+
+            details = "\n".join(
+                f"  {index}. {finding.message}"
+                for index, finding in enumerate(stats.findings, start=1)
+            )
+            truncation_warning = (
+                f" The audit stopped at {MAX_OVERWRITE_PREFLIGHT_PROBLEMS} "
+                "reported problems; additional problems may exist."
+                if stats.problem_limit_reached
+                else ""
+            )
+            logger.critical(
+                "ROOT BREAK-GLASS OVERRIDE ACTIVE for '%s': continuing despite "
+                "%s overwrite safety problem(s) after inspecting %s entries.%s\n"
+                "%s\nConcurrent writers can redirect or corrupt this restore. "
+                "Stop services and users that can modify the target before continuing. "
+                "No automatic rollback is available.",
+                target,
+                f"{len(stats.findings):,}",
+                f"{stats.entries:,}",
+                truncation_warning,
+                details,
+            )
+        elif policy.force_unsafe_restore_target:
+            logger.warning(
+                "Root unsafe restore-target override was requested for '%s', but "
+                "the overwrite preflight found no policy problems.",
+                target,
+            )
         logger.info(
             "Overwrite safety preflight completed: inspected %s entries in %s directories "
             "(%s symlinks) in %.1f seconds.",
@@ -822,9 +1318,16 @@ def prepare_restore_target(
         effective_uid = os.geteuid()
         if effective_uid == 0 and policy.existing_data is not ExistingDataPolicy.ALLOW_OVERWRITE:
             trusted_uids = {effective_uid}
-            control_reason = _exclusive_control_reason(lock_fd, opened_path, frozenset(trusted_uids))
-            if control_reason:
-                raise RestoreTargetError(control_reason)
+            identity_snapshot = _build_identity_snapshot()
+            control_findings = _exclusive_control_reasons(
+                lock_fd,
+                opened_path,
+                frozenset(trusted_uids),
+                identity_snapshot,
+                {},
+            )
+            if control_findings:
+                raise RestoreTargetError(control_findings[0].message)
 
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
