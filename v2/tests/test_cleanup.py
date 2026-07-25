@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import sys
+from pathlib import Path
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -844,7 +845,7 @@ def test_cleanup_specific_archives_rejects_unsafe_name(monkeypatch, caplog):
     with pytest.raises(SystemExit) as exc:
         cleanup.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert "Refusing unsafe archive name" in caplog.text
 
 
@@ -916,6 +917,59 @@ def test_delete_old_backups_skips_catalog_when_remove_fails(monkeypatch, tmp_pat
     assert file_path.exists()
 
 
+def test_delete_old_backups_partial_slice_failure_removes_catalog_and_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify age-based partial deletion removes the catalog and reports failure."""
+    import dar_backup.cleanup as cleanup
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    archive_name = f"example_DIFF_{date_100_days_ago}"
+    deleted_slice = backup_dir / f"{archive_name}.1.dar"
+    remaining_slice = backup_dir / f"{archive_name}.2.dar"
+    deleted_slice.write_text("data")
+    remaining_slice.write_text("data")
+
+    # A real permission or filesystem failure cannot be triggered portably, so
+    # simulate safe_remove_file rejecting only the second archive slice.
+    def remove_one_slice(file_path: str, base_dir: Path) -> bool:
+        """Delete the first slice while simulating failure for the second.
+
+        Args:
+            file_path: Candidate archive slice path.
+            base_dir: Path-safety base directory.
+
+        Returns:
+            True for the deleted first slice; False for the retained second slice.
+        """
+        assert Path(file_path).parent == base_dir
+        if file_path == str(remaining_slice):
+            return False
+        os.remove(file_path)
+        return True
+
+    delete_catalog = MagicMock(return_value=True)
+    monkeypatch.setattr(cleanup, "logger", MagicMock())
+    monkeypatch.setattr(cleanup, "safe_remove_file", remove_one_slice)
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", MagicMock(return_value=True))
+
+    result = cleanup.delete_old_backups(
+        str(backup_dir),
+        age=30,
+        backup_type="DIFF",
+        args=SimpleNamespace(dry_run=False, config_file="/dev/null"),
+        backup_definition="example",
+    )
+
+    assert result is False
+    assert not deleted_slice.exists()
+    assert remaining_slice.exists()
+    delete_catalog.assert_called_once()
+
+
 def test_delete_par2_files_skips_missing_dir(monkeypatch, tmp_path):
     import dar_backup.cleanup as cleanup
 
@@ -978,6 +1032,27 @@ def test_delete_par2_files_dry_run_does_not_delete(monkeypatch, tmp_path):
     assert mock_remove.call_count == 0
     for name in par2_files:
         assert (par2_dir / name).exists()
+
+
+def test_delete_par2_files_deletion_failure_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify a retained PAR2 file makes the PAR2 cleanup fail."""
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2000-01-01"
+    par2_path = tmp_path / f"{archive_name}.par2"
+    par2_path.write_text("data")
+
+    # A real permission or filesystem failure cannot be triggered portably.
+    monkeypatch.setattr(cleanup, "logger", MagicMock())
+    monkeypatch.setattr(cleanup, "safe_remove_file", MagicMock(return_value=False))
+
+    result = cleanup._delete_par2_files(archive_name, str(tmp_path))
+
+    assert result is False
+    assert par2_path.exists()
 
 
 def test_delete_old_backups_rejects_unsafe_archive(monkeypatch, tmp_path):
@@ -1066,6 +1141,157 @@ def test_remove_file_exception_returns_false(monkeypatch, tmp_path):
 
     assert result is False
     mock_logger.exception.assert_called_once_with(f"Error deleting archive slice '{f}' — file remains on disk")
+
+
+def test_delete_archive_all_slices_deleted_removes_catalog_and_returns_true(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify complete slice deletion removes the catalog and reports success."""
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2026-01-01"
+    slice_paths = [
+        tmp_path / f"{archive_name}.1.dar",
+        tmp_path / f"{archive_name}.2.dar",
+    ]
+    for slice_path in slice_paths:
+        slice_path.write_text("data")
+
+    delete_catalog = MagicMock(return_value=True)
+    monkeypatch.setattr(cleanup, "logger", MagicMock())
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", MagicMock(return_value=True))
+
+    result = cleanup.delete_archive(
+        str(tmp_path),
+        archive_name,
+        SimpleNamespace(dry_run=False, config_file="/dev/null"),
+    )
+
+    assert result is True
+    assert all(not slice_path.exists() for slice_path in slice_paths)
+    delete_catalog.assert_called_once()
+
+
+def test_delete_archive_partial_slice_failure_removes_catalog_and_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify partial deletion removes the catalog but reports failure."""
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2026-01-01"
+    deleted_slice = tmp_path / f"{archive_name}.1.dar"
+    remaining_slice = tmp_path / f"{archive_name}.2.dar"
+    deleted_slice.write_text("data")
+    remaining_slice.write_text("data")
+
+    # A real permission or filesystem failure cannot be triggered portably, so
+    # simulate safe_remove_file rejecting only the second archive slice.
+    def remove_one_slice(file_path: str, base_dir: Path) -> bool:
+        """Delete the first slice while simulating failure for the second.
+
+        Args:
+            file_path: Candidate archive slice path.
+            base_dir: Path-safety base directory.
+
+        Returns:
+            True for the deleted first slice; False for the retained second slice.
+        """
+        assert Path(file_path).parent == base_dir
+        if file_path == str(remaining_slice):
+            return False
+        os.remove(file_path)
+        return True
+
+    test_logger = logging.getLogger("cleanup_test_partial_slice")
+    delete_catalog = MagicMock(return_value=True)
+    monkeypatch.setattr(cleanup, "logger", test_logger)
+    monkeypatch.setattr(cleanup, "safe_remove_file", remove_one_slice)
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", MagicMock(return_value=True))
+
+    result = cleanup.delete_archive(
+        str(tmp_path),
+        archive_name,
+        SimpleNamespace(dry_run=False, config_file="/dev/null"),
+    )
+
+    assert result is False
+    assert not deleted_slice.exists()
+    assert remaining_slice.exists()
+    delete_catalog.assert_called_once()
+    assert "deleted 1 of 2 DAR slices" in caplog.text
+    assert str(remaining_slice) in caplog.text
+    assert "catalog entry will be removed" in caplog.text.lower()
+
+
+def test_delete_archive_catalog_failure_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify catalog removal failure makes the archive cleanup fail."""
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2026-01-01"
+    slice_path = tmp_path / f"{archive_name}.1.dar"
+    slice_path.write_text("data")
+
+    monkeypatch.setattr(cleanup, "logger", MagicMock())
+    monkeypatch.setattr(cleanup, "delete_catalog", MagicMock(return_value=False))
+    monkeypatch.setattr(cleanup, "_delete_par2_files", MagicMock(return_value=True))
+
+    result = cleanup.delete_archive(
+        str(tmp_path),
+        archive_name,
+        SimpleNamespace(dry_run=False, config_file="/dev/null"),
+    )
+
+    assert result is False
+    assert not slice_path.exists()
+
+
+def test_cleanup_main_delete_failure_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify main exits nonzero when an archive cleanup reports failure."""
+    import dar_backup.cleanup as cleanup
+
+    config_settings = SimpleNamespace(
+        logfile_location=str(tmp_path / "dar-backup.log"),
+        logfile_max_bytes=1000,
+        logfile_backup_count=1,
+        backup_dir=str(tmp_path / "backup"),
+        backup_d_dir=str(tmp_path / "backup.d"),
+        diff_age=1,
+        incr_age=1,
+        config={},
+        command_capture_max_bytes=1024,
+        command_timeout_secs=30,
+    )
+
+    test_logger = logging.getLogger("cleanup_test_main_failure")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cleanup", "--cleanup-specific-archives", "example_DIFF_2026-01-01", "--test-mode"],
+    )
+    monkeypatch.setattr(cleanup.argcomplete, "autocomplete", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "ConfigSettings", lambda _path: config_settings)
+    monkeypatch.setattr(cleanup, "init_logging", lambda *a, **k: (test_logger, "/dev/null"))
+    monkeypatch.setattr(cleanup, "get_logger", lambda **_k: test_logger)
+    monkeypatch.setattr(cleanup, "CommandRunner", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(cleanup, "requirements", lambda *_a, **_k: None)
+    monkeypatch.setattr(cleanup, "print_aligned_settings", lambda *a, **k: None)
+    monkeypatch.setattr(cleanup, "delete_archive", lambda *_a, **_k: False)
+
+    with pytest.raises(SystemExit) as exc:
+        cleanup.main()
+
+    assert exc.value.code == 1
 
 
 def test_delete_catalog_handles_exception(monkeypatch):

@@ -92,7 +92,20 @@ def _delete_par2_files(
     config_settings: Optional[ConfigSettings] = None,
     backup_definition: Optional[str] = None,
     dry_run: bool = False,
-) -> None:
+) -> bool:
+    """Delete PAR2 files associated with one archive.
+
+    Args:
+        archive_name: Archive base name without a slice suffix.
+        backup_dir: Default directory containing the archive and PAR2 files.
+        config_settings: Optional configuration used to resolve a separate PAR2 directory.
+        backup_definition: Optional backup definition used for PAR2 configuration lookup.
+        dry_run: When True, log matching files without deleting them.
+
+    Returns:
+        True when every matched PAR2 file was removed, no files matched, or the
+        configured PAR2 directory does not exist; False when any deletion failed.
+    """
     if config_settings and hasattr(config_settings, "get_par2_config"):
         par2_config = config_settings.get_par2_config(backup_definition)
     else:
@@ -104,7 +117,7 @@ def _delete_par2_files(
     par2_dir = os.path.expanduser(os.path.expandvars(par2_dir))
     if not os.path.isdir(par2_dir):
         logger.warning(f"PAR2 directory not found, skipping cleanup: {par2_dir}")
-        return
+        return True
 
     par2_glob = os.path.join(par2_dir, f"{archive_name}*.par2")
     targets = set(glob.glob(par2_glob))
@@ -122,29 +135,132 @@ def _delete_par2_files(
 
     if not targets:
         logger.info("No par2 files matched the cleanup patterns.")
-        return
+        return True
 
+    cleanup_succeeded = True
     for file_path in sorted(targets):
-        _remove_file(file_path, Path(par2_dir), "PAR2 file", dry_run)
+        if not _remove_file(file_path, Path(par2_dir), "PAR2 file", dry_run):
+            cleanup_succeeded = False
+
+    return cleanup_succeeded
 
 
-def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=None, config_settings: Optional[ConfigSettings] = None):
+def _finalize_archive_deletion(
+    archive_name: str,
+    backup_dir: str,
+    matched_files: list[str],
+    deleted_files: list[str],
+    failed_files: list[str],
+    args: argparse.Namespace,
+    config_settings: Optional[ConfigSettings],
+    dry_run: bool,
+) -> bool:
+    """Update the catalog and PAR2 files after deleting DAR slices.
+
+    Args:
+        archive_name: Archive base name without a slice suffix.
+        backup_dir: Directory containing the DAR archive slices.
+        matched_files: DAR slices selected for deletion.
+        deleted_files: Matched DAR slices deleted successfully.
+        failed_files: Matched DAR slices that remain on disk.
+        args: Parsed command-line arguments.
+        config_settings: Optional configuration used to locate PAR2 files.
+        dry_run: When True, log actions without modifying the catalog or files.
+
+    Returns:
+        True when every slice, catalog, and PAR2 operation succeeded; False
+        when any requested operation failed.
+
+    Raises:
+        ValueError: If the supplied deletion results are inconsistent.
     """
-    Delete backups older than the specified age in days.
-    Only .dar and .par2 files are considered for deletion.
+    if not archive_name:
+        raise ValueError("Archive name must not be empty")
+    if not matched_files:
+        raise ValueError(f"Deletion results for '{archive_name}' contain no matched files")
+    if len(deleted_files) + len(failed_files) != len(matched_files):
+        raise ValueError(f"Deletion results for '{archive_name}' do not account for every matched file")
+
+    if not deleted_files:
+        logger.error(
+            "Failed to delete any of %d DAR slices for archive '%s': %s. "
+            "The catalog entry and PAR2 files will be retained.",
+            len(matched_files),
+            archive_name,
+            ", ".join(failed_files),
+        )
+        return False
+
+    cleanup_succeeded = not failed_files
+    if failed_files:
+        logger.error(
+            "Archive '%s' is incomplete: deleted %d of %d DAR slices; failed "
+            "to delete: %s. The catalog entry will be removed because the "
+            "archive can no longer be restored.",
+            archive_name,
+            len(deleted_files),
+            len(matched_files),
+            ", ".join(failed_files),
+        )
+
+    if dry_run:
+        logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
+    elif not delete_catalog(archive_name, args):
+        cleanup_succeeded = False
+        logger.error(
+            "Catalog entry for '%s' was not removed — at least one archive "
+            "slice was deleted and the database entry is stale",
+            archive_name,
+        )
+
+    parsed_name = ArchiveName.parse(archive_name)
+    archive_definition = parsed_name.definition if parsed_name else archive_name.split('_')[0]
+    if not _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run):
+        cleanup_succeeded = False
+        logger.error("One or more PAR2 files for archive '%s' remain on disk", archive_name)
+
+    return cleanup_succeeded
+
+
+def delete_old_backups(
+    backup_dir: str,
+    age: int,
+    backup_type: str,
+    args: argparse.Namespace,
+    backup_definition: Optional[str] = None,
+    config_settings: Optional[ConfigSettings] = None,
+) -> bool:
+    """Delete backups older than the specified age in days.
+
+    Args:
+        backup_dir: Directory containing DAR archive slices.
+        age: Minimum archive age in days.
+        backup_type: Archive type to delete; must be DIFF or INCR.
+        args: Parsed command-line arguments.
+        backup_definition: Optional backup definition used to filter archives.
+        config_settings: Optional configuration used to locate PAR2 files.
+
+    Returns:
+        True when every requested deletion and catalog update succeeded; False
+        when any file deletion or catalog update failed.
+
+    Raises:
+        ValueError: If a discovered archive name is unsafe.
     """
     logger.info(f"Deleting {backup_type} backups older than {age} days in {backup_dir} for backup definition: {backup_definition}")
 
     if backup_type not in ['DIFF', 'INCR']:
         logger.error(f"Invalid backup type: {backup_type}")
-        return
+        return False
 
     # Must stay naive: compared below against ArchiveName.as_datetime(), which is
     # also naive (archive filenames carry a calendar date only, no timezone).
     now = datetime.now()  # noqa: DTZ005
     cutoff_date = now - timedelta(days=age)
 
-    archives_deleted = {}
+    archive_files: dict[str, list[str]] = {}
+    deleted_files: dict[str, list[str]] = {}
+    failed_files: dict[str, list[str]] = {}
 
     dry_run = getattr(args, "dry_run", False) is True
     for entry in os.scandir(backup_dir):
@@ -167,40 +283,63 @@ def delete_old_backups(backup_dir, age, backup_type, args, backup_definition=Non
 
             if file_date < cutoff_date:
                 file_path = entry.path
+                archive_name = filename.split('.')[0]
+                if not is_archive_name_allowed(archive_name):
+                    raise ValueError(f"Refusing unsafe archive name: {archive_name}")
+                archive_files.setdefault(archive_name, []).append(file_path)
                 if _remove_file(file_path, Path(backup_dir), f"{backup_type} backup", dry_run):
-                    archive_name = filename.split('.')[0]
-                    if archive_name not in archives_deleted:
-                        logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
-                    archives_deleted[archive_name] = True
+                    deleted_files.setdefault(archive_name, []).append(file_path)
+                else:
+                    failed_files.setdefault(archive_name, []).append(file_path)
 
-    for archive_name in archives_deleted.keys():
-        if not is_archive_name_allowed(archive_name):
-            raise ValueError(f"Refusing unsafe archive name: {archive_name}")
-        _parsed_name = ArchiveName.parse(archive_name)
-        archive_definition = _parsed_name.definition if _parsed_name else archive_name.split('_')[0]
-        _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
-        if dry_run:
-            logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
-        else:
-            if not delete_catalog(archive_name, args):
-                logger.error(
-                    "Catalog entry for '%s' was not removed — archive files are deleted but catalog entry remains",
-                    archive_name,
-                )
+    cleanup_succeeded = True
+    for archive_name, matched_files in archive_files.items():
+        archive_deleted_files = deleted_files.get(archive_name, [])
+        archive_failed_files = failed_files.get(archive_name, [])
+        logger.debug(f"Archive name: '{archive_name}' added to catalog deletion list")
+        if not _finalize_archive_deletion(
+            archive_name,
+            backup_dir,
+            matched_files,
+            archive_deleted_files,
+            archive_failed_files,
+            args,
+            config_settings,
+            dry_run,
+        ):
+            cleanup_succeeded = False
+
+    return cleanup_succeeded
 
 
-def delete_archive(backup_dir, archive_name, args, config_settings: Optional[ConfigSettings] = None):
-    """
-    Delete all .dar and .par2 files in the backup directory for the given archive name.
+def delete_archive(
+    backup_dir: str,
+    archive_name: str,
+    args: argparse.Namespace,
+    config_settings: Optional[ConfigSettings] = None,
+) -> bool:
+    """Delete all DAR and PAR2 files for one archive.
 
-    This function will delete any type of archive, including FULL.
+    This function can delete any archive type, including FULL.
+
+    Args:
+        backup_dir: Directory containing DAR archive slices.
+        archive_name: Archive base name without a slice suffix.
+        args: Parsed command-line arguments.
+        config_settings: Optional configuration used to locate PAR2 files.
+
+    Returns:
+        True when every requested deletion and catalog update succeeded; False
+        when any file deletion or catalog update failed.
     """
     logger.info(f"Deleting all .dar and .par2 files for archive: `{archive_name}`")
     # Regex to match the archive files according to the naming convention
     archive_regex = re.compile(rf"^{re.escape(archive_name)}\.[0-9]+\.dar$")
 
     # Delete the specified .dar files according to the naming convention
-    files_deleted = False
+    matched_files: list[str] = []
+    deleted_files: list[str] = []
+    failed_files: list[str] = []
     dry_run = getattr(args, "dry_run", False) is True
     for entry in os.scandir(backup_dir):
         if not entry.is_file():
@@ -208,24 +347,28 @@ def delete_archive(backup_dir, archive_name, args, config_settings: Optional[Con
         filename = entry.name
         if archive_regex.match(filename):
             file_path = entry.path
+            matched_files.append(file_path)
             if _remove_file(file_path, Path(backup_dir), "archive slice", dry_run):
-                files_deleted = True
-
-    if files_deleted:
-            if dry_run:
-                logger.info(f"Dry run: would run manager to delete archive '{archive_name}'")
+                deleted_files.append(file_path)
             else:
-                if not delete_catalog(archive_name, args):
-                    logger.error(
-                        "Catalog entry for '%s' was not removed — archive files are deleted but catalog entry remains",
-                        archive_name,
-                    )
-    else:
-        logger.info("No .dar files matched the regex for deletion.")
+                failed_files.append(file_path)
 
-    _an = ArchiveName.parse(archive_name)
-    archive_definition = _an.definition if _an else archive_name.split('_')[0]
-    _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
+    if not matched_files:
+        logger.info("No .dar files matched the regex for deletion.")
+        _an = ArchiveName.parse(archive_name)
+        archive_definition = _an.definition if _an else archive_name.split('_')[0]
+        return _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run)
+
+    return _finalize_archive_deletion(
+        archive_name,
+        backup_dir,
+        matched_files,
+        deleted_files,
+        failed_files,
+        args,
+        config_settings,
+        dry_run,
+    )
 
 
 def delete_catalog(catalog_name: str, args: argparse.Namespace) -> bool:
@@ -409,6 +552,7 @@ def main() -> None:
         send_discord_message(f"{ts} - cleanup: FAILURE - {msg}", config_settings=config_settings)
         sys.exit(1)
 
+    cleanup_succeeded = True
     try:
         if args.alternate_archive_dir:
             error = validate_directory(args.alternate_archive_dir, "Alternate archive directory", require_write=False)
@@ -430,13 +574,15 @@ def main() -> None:
             for archive_name in archive_names:
                 if not is_archive_name_allowed(archive_name):
                     logger.error(f"Refusing unsafe archive name: {archive_name}")
+                    cleanup_succeeded = False
                     continue
                 if "_FULL_" in archive_name:
                     if not confirm_full_archive_deletion(archive_name, args.test_mode):
                         continue
                 archive_path = os.path.join(config_settings.backup_dir, archive_name.strip())
                 logger.info(f"Deleting archive: {archive_path}")
-                delete_archive(config_settings.backup_dir, archive_name.strip(), args, config_settings)
+                if not delete_archive(config_settings.backup_dir, archive_name.strip(), args, config_settings):
+                    cleanup_succeeded = False
         elif args.list:
             list_backups(config_settings.backup_dir, args.backup_definition)
         else:
@@ -449,22 +595,24 @@ def main() -> None:
                         backup_definitions.append(file.split('.')[0])
 
             for definition in backup_definitions:
-                delete_old_backups(
+                if not delete_old_backups(
                     config_settings.backup_dir,
                     config_settings.diff_age,
                     'DIFF',
                     args,
                     backup_definition=definition,
                     config_settings=config_settings
-                )
-                delete_old_backups(
+                ):
+                    cleanup_succeeded = False
+                if not delete_old_backups(
                     config_settings.backup_dir,
                     config_settings.incr_age,
                     'INCR',
                     args,
                     backup_definition=definition,
                     config_settings=config_settings
-                )
+                ):
+                    cleanup_succeeded = False
     except Exception as e:
         msg = f"Unexpected error during cleanup: {e}"
         logger.error(msg, exc_info=True)
@@ -485,6 +633,9 @@ def main() -> None:
 
     end_time=int(time())
     logger.info(f"END TIME: {end_time}")
+    if not cleanup_succeeded:
+        logger.error("Cleanup completed with one or more failures")
+        sys.exit(1)
     sys.exit(0)
 
 if __name__ == "__main__":
