@@ -152,6 +152,26 @@ def test_diff_restore_deleted_ignore_zero_deletions_logged(work_dir):
     )
 
 
+def test_diff_restore_overwrite_policy_keeps_deleted_ignore_effective(work_dir):
+    """The explicit overwrite policy must not defeat the independent deletion option."""
+    _, diff, darrc = _setup(work_dir)
+    restore_dir = os.path.join(work_dir, "restore_overwrite_no_deleted")
+    os.makedirs(restore_dir)
+
+    result = _restore(
+        diff,
+        restore_dir,
+        darrc,
+        extra_flags=["--deleted=ignore", "--overwriting-policy=Oo"],
+    )
+
+    assert result.returncode == 0, (
+        f"DAR rejected overwrite plus --deleted=ignore (rc={result.returncode}): "
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "0 inode(s) deleted" in result.stdout
+
+
 def test_full_restore_without_overwriting_policy_succeeds(work_dir):
     """
     Verify that removing -/ Oo from the dar command does not break FULL

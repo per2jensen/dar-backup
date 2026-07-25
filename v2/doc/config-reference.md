@@ -125,8 +125,11 @@ restore-options:
 # don't restore File Specific Attributes
 #--fsa-scope none
 
-# ignore owner, useful when used by a non-privileged user
---comparison-field=ignore-owner
+# Ownership handling is controlled by RESTORE_OWNERSHIP and the
+# --preserve-ownership / --ignore-ownership command-line overrides.
+# Do not add --comparison-field=ignore-owner here; dar-backup injects it when
+# RESTORE_OWNERSHIP = no (the default).
+#--comparison-field=ignore-owner
 
 
 # Exclude specific file types from compression

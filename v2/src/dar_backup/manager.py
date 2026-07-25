@@ -60,6 +60,7 @@ from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetHandle
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
+from dar_backup.restore_target_safety import validate_restore_target_identity
 from dar_backup.util import backup_definition_completer, archive_content_completer, add_specific_archive_completer
 
 from dataclasses import dataclass
@@ -414,7 +415,8 @@ def find_file(file: str, backup_def: str, config_settings: ConfigSettings) -> in
 
 
 def restore_at(backup_def: str, paths: List[str], when: str, target: str, config_settings: ConfigSettings,
-               verbose: bool = False, ignore_ownership: bool = True, no_deleted: bool = False) -> int:
+               verbose: bool = False, ignore_ownership: bool = True, no_deleted: bool = False,
+               overwrite_restore_target: bool = False) -> int:
     """
     Perform a Point-in-Time Recovery (PITR) by selecting the correct archive
     chain from the dar_manager catalog and restoring directly with dar.
@@ -444,6 +446,8 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             uid/gid are not restored.  Defaults to True (safe for non-root).
         no_deleted: When True, passes --deleted=ignore to dar so deletion records in
             DIFF/INCR archives do not cause errors when restoring to an empty directory.
+        overwrite_restore_target: Permit an in-place restore into an existing,
+            privately controlled target after a complete safety preflight.
 
     Returns:
         Process return code (0 on success, non-zero on failure).
@@ -498,11 +502,28 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
     # requires an empty destination. Specific PITR paths retain the narrower
     # no-overlap policy. Both policies independently reject protected targets.
     normalized_paths = [os.path.normpath(path.lstrip(os.sep)) for path in paths]
-    existing_data_policy = (
-        ExistingDataPolicy.REQUIRE_EMPTY
-        if "." in normalized_paths
-        else ExistingDataPolicy.REJECT_SELECTED_PATHS
-    )
+    if overwrite_restore_target:
+        existing_data_policy = ExistingDataPolicy.ALLOW_OVERWRITE
+        logger.warning(
+            "Overwrite restore enabled for '%s'. Existing files may be replaced or deleted. "
+            "Failure can leave a partially restored mixture with no automatic rollback.",
+            target,
+        )
+        if no_deleted:
+            logger.warning(
+                "Deletion records will be ignored because --no-deleted was specified; "
+                "paths deleted in the backup history may remain in the target."
+            )
+        else:
+            logger.warning(
+                "DAR deletion records will be applied and may remove existing target paths."
+            )
+    else:
+        existing_data_policy = (
+            ExistingDataPolicy.REQUIRE_EMPTY
+            if "." in normalized_paths
+            else ExistingDataPolicy.REJECT_SELECTED_PATHS
+        )
     target_policy = RestoreTargetPolicy(existing_data=existing_data_policy)
     logger.debug(
         "PITR target directory: %s (cwd=%s) policy=%s paths=%d sample=%s",
@@ -518,16 +539,36 @@ def restore_at(backup_def: str, paths: List[str], when: str, target: str, config
             # PITR restore: select archives by creation date and restore with
             # dar directly. dar_manager -w is intentionally not used.
             try:
-                return _restore_with_dar(
-                    backup_def,
-                    paths,
-                    parsed_date,
-                    target,
-                    config_settings,
-                    ignore_ownership=ignore_ownership,
-                    no_deleted=no_deleted,
-                    restore_target_handle=target_handle,
-                )
+                if overwrite_restore_target:
+                    result = _restore_with_dar(
+                        backup_def,
+                        paths,
+                        parsed_date,
+                        target,
+                        config_settings,
+                        ignore_ownership=ignore_ownership,
+                        no_deleted=no_deleted,
+                        restore_target_handle=target_handle,
+                        overwrite_restore_target=True,
+                    )
+                else:
+                    result = _restore_with_dar(
+                        backup_def,
+                        paths,
+                        parsed_date,
+                        target,
+                        config_settings,
+                        ignore_ownership=ignore_ownership,
+                        no_deleted=no_deleted,
+                        restore_target_handle=target_handle,
+                    )
+                if overwrite_restore_target and result == 0:
+                    logger.info(
+                        "Overwrite PITR restore completed successfully in place at '%s'. "
+                        "Existing target data was modified.",
+                        target,
+                    )
+                return result
             except KeyboardInterrupt:
                 msg = (
                     f"PITR restore interrupted (Ctrl-C or SIGTERM) for '{backup_def}' "
@@ -1748,10 +1789,62 @@ def _guess_darrc_path(config_settings: ConfigSettings) -> Optional[str]:
     return None
 
 
+def _run_dar_restore_command(
+    command: List[str],
+    timeout: Optional[int],
+    restore_target_handle: Optional[RestoreTargetHandle],
+    overwrite_restore_target: bool,
+) -> CommandResult:
+    """Run one DAR extraction with target identity checks around it.
+
+    Args:
+        command: Fully assembled DAR extraction command.
+        timeout: Command timeout in seconds, or None for no timeout.
+        restore_target_handle: Descriptor-bound target used by production
+            restores, or None for lower-level callers.
+        overwrite_restore_target: Whether failure may have modified an
+            existing in-place target.
+
+    Returns:
+        Completed command result.
+
+    Raises:
+        ValueError: If command is empty.
+        RestoreTargetError: If the requested target pathname changes before
+            or during DAR execution.
+    """
+    if not command:
+        raise ValueError("command must not be empty")
+
+    if restore_target_handle and overwrite_restore_target:
+        validate_restore_target_identity(restore_target_handle, "before starting DAR")
+    if restore_target_handle:
+        result = _runner().run(
+            command,
+            timeout=timeout,
+            pass_fds=restore_target_handle.pass_fds,
+        )
+    else:
+        result = _runner().run(command, timeout=timeout)
+    if restore_target_handle and overwrite_restore_target:
+        try:
+            validate_restore_target_identity(restore_target_handle, "after DAR completed")
+        except RestoreTargetError:
+            if overwrite_restore_target:
+                logger.exception(
+                    "The restore target pathname changed after DAR started. The descriptor-bound "
+                    "original directory may contain partial or complete restore output; inspect it "
+                    "before retrying."
+                )
+            raise
+    return result
+
+
 def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, target: str,
                       config_settings: ConfigSettings, ignore_ownership: bool = True,
                       no_deleted: bool = False,
-                      restore_target_handle: Optional[RestoreTargetHandle] = None) -> int:
+                      restore_target_handle: Optional[RestoreTargetHandle] = None,
+                      overwrite_restore_target: bool = False) -> int:
     """
     Restore specific paths by selecting the best matching archive (<= when_dt)
     using dar_manager metadata, then invoking dar directly.
@@ -1776,6 +1869,11 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
             in DIFF/INCR archives do not cause errors.
         restore_target_handle: Optional stable descriptor-backed restore root.
             Production restores provide this handle; direct unit tests may omit it.
+        overwrite_restore_target: Append a final explicit DAR overwrite policy
+            and report failures as potentially partial in-place restores.
+
+    Returns:
+        Zero when every requested path restores successfully; otherwise one.
     """
     database = f"{backup_def}{DB_SUFFIX}"
     database_path = os.path.join(get_db_dir(config_settings), database)
@@ -1867,21 +1965,26 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                         cmd.append('--deleted=ignore')
                     if darrc_path:
                         cmd.extend(['-B', darrc_path, 'restore-options'])
+                    if overwrite_restore_target:
+                        cmd.append('--overwriting-policy=Oo')
                     logger.info(
                         "Applying archive %s for '%s'.",
                         _describe_archive(catalog_no, archive_map, info_by_no),
                         path,
                     )
-                    if restore_target_handle:
-                        result = _runner().run(
-                            cmd,
-                            timeout=timeout,
-                            pass_fds=restore_target_handle.pass_fds,
-                        )
-                    else:
-                        result = _runner().run(cmd, timeout=timeout)
+                    result = _run_dar_restore_command(
+                        cmd,
+                        timeout,
+                        restore_target_handle,
+                        overwrite_restore_target,
+                    )
                     if result.returncode != 0:
                         logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
+                        if overwrite_restore_target:
+                            logger.error(
+                                "Overwrite PITR restore failed after DAR began. The target may now contain a "
+                                "partial mixture of old and restored data; there is no automatic rollback."
+                            )
                         restored = False
                         break
                     sequence_error = _pitr_archive_sequence_error(archive_path)
@@ -1892,6 +1995,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                             sequence_error,
                             path,
                         )
+                        if overwrite_restore_target:
+                            logger.error(
+                                "The in-place target may contain partial changes; there is no automatic rollback."
+                            )
                         restored = False
                         break
                 if restored:
@@ -1948,21 +2055,26 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                 cmd.append('--deleted=ignore')
             if darrc_path:
                 cmd.extend(['-B', darrc_path, 'restore-options'])
+            if overwrite_restore_target:
+                cmd.append('--overwriting-policy=Oo')
             logger.info(
                 "Restoring '%s' from archive %s using dar.",
                 path,
                 _describe_archive(catalog_no, archive_map, info_by_no),
             )
-            if restore_target_handle:
-                result = _runner().run(
-                    cmd,
-                    timeout=timeout,
-                    pass_fds=restore_target_handle.pass_fds,
-                )
-            else:
-                result = _runner().run(cmd, timeout=timeout)
+            result = _run_dar_restore_command(
+                cmd,
+                timeout,
+                restore_target_handle,
+                overwrite_restore_target,
+            )
             if result.returncode != 0:
                 logger.error(f"dar restore failed for '{path}' from '{archive_path}': {cast(str, result.stderr)}")
+                if overwrite_restore_target:
+                    logger.error(
+                        "Overwrite PITR restore failed after DAR began. The target may now contain a "
+                        "partial mixture of old and restored data; there is no automatic rollback."
+                    )
                 # Give the operator everything needed to recover without a doc hunt:
                 # the older versions (with the timestamps a rerun's --when must
                 # target), the par2-repair-first hint, and the clean-target
@@ -1991,6 +2103,10 @@ def _restore_with_dar(backup_def: str, paths: List[str], when_dt: datetime, targ
                     sequence_error,
                     path,
                 )
+                if overwrite_restore_target:
+                    logger.error(
+                        "The in-place target may contain partial changes; there is no automatic rollback."
+                    )
                 failures += 1
                 continue
             successes += 1
@@ -2280,6 +2396,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--restore-path', nargs='+', help="Restore specific path(s) (Point-in-Time Recovery).")
     parser.add_argument('--when', type=str, help="Date/time for restoration (used with --restore-path).")
     parser.add_argument('--target', type=str, default=None, help="Target directory for restoration (default: current dir).")
+    parser.add_argument(
+        '--overwrite-restore-target',
+        action='store_true',
+        help="Restore in place into an existing privately controlled --target after a safety preflight.",
+    )
     parser.add_argument('--pitr-report', action='store_true', help="Report PITR archive chain for --restore-path/--when without restoring.")
     parser.add_argument(
         '--pitr-report-first',
@@ -2500,6 +2621,16 @@ def main() -> None:
         sys.exit(1)
         return
 
+    if args.overwrite_restore_target and not args.restore_path:
+        logger.error("--overwrite-restore-target requires --restore-path, exiting")
+        sys.exit(1)
+        return
+
+    if args.overwrite_restore_target and args.pitr_report:
+        logger.error("--overwrite-restore-target cannot be used with report-only --pitr-report, exiting")
+        sys.exit(1)
+        return
+
     if args.pitr_report:
         if not args.restore_path:
             logger.error("--pitr-report requires --restore-path, exiting")
@@ -2604,7 +2735,8 @@ def main() -> None:
             no_deleted = getattr(args, 'no_deleted', False)
             result = restore_at(args.backup_def, args.restore_path, args.when, args.target, config_settings,
                                 verbose=args.verbose, ignore_ownership=ignore_ownership,
-                                no_deleted=no_deleted)
+                                no_deleted=no_deleted,
+                                overwrite_restore_target=args.overwrite_restore_target)
             sys.exit(result)
             return
 

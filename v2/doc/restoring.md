@@ -83,6 +83,7 @@ requested operation:
 | PITR of specific paths | Requested paths must not already exist | Rejected |
 | PITR archive root (`--restore-path .`) | Entire target must be empty | Rejected |
 | Direct archive restore | Entire target must be empty | Rejected |
+| Direct or PITR with `--overwrite-restore-target` | Existing data may be changed after a whole-target safety preflight | Rejected |
 | Manual `dar` or `dar_manager` command | No dar-backup protection | No dar-backup protection |
 
 For direct restores and PITR of `.`, use an entirely empty target. Hidden
@@ -90,11 +91,11 @@ files, directories, and dangling symlinks all make it nonempty. For PITR of
 specific paths, unrelated existing data is permitted, but none of the selected
 paths may already exist.
 
-No current CLI option permits overwriting existing data or bypassing
-protected-directory checks. In particular, restoring directly into `/etc` is
-not currently possible through dar-backup, even when its permissions are safe.
-Restore into a private temporary directory, verify the result, and copy the
-required files into place using the normal system recovery procedure.
+`--overwrite-restore-target` permits existing data to be modified, but it does
+not bypass protected-directory checks. In particular, restoring directly into
+`/etc` is still not possible through dar-backup, even when its permissions are
+safe. Restore into a private temporary directory, verify the result, and copy
+the required files into place using the normal system recovery procedure.
 
 ### Plan disk space and final placement
 
@@ -152,10 +153,9 @@ switch, and retain the old tree until the restored system has been verified.
 
 #### When there is not enough room for staging
 
-The planned `--overwrite-restore-target` option is intended for recoveries
-where the filesystem cannot hold a second complete tree. It is **not available
-in the current release**. It will restore in place instead of requiring a
-complete staged copy, so it can substantially reduce peak space usage.
+`--overwrite-restore-target` is available for recoveries where the filesystem
+cannot hold a second complete tree. It restores in place instead of requiring
+a complete staged copy, so it can substantially reduce peak space usage.
 
 In-place overwrite trades disk space for recovery risk:
 
@@ -175,9 +175,15 @@ controls *where* restoration is permitted, while
 `--overwrite-restore-target` controls *whether existing data may be
 replaced*. A low-space restore into a protected location such as `/etc` would
 require both policies and should normally be performed from rescue or
-single-user mode with a verified backup and recovery path. Until those
-options are implemented, use a staged restore or the documented manual
+single-user mode with a verified backup and recovery path. Until protected
+target support is implemented, use a staged restore or the documented manual
 advanced procedures.
+
+Do not add this option merely to get past a nonempty-target error. Before an
+incident, read and test the complete
+[in-place overwrite runbook](restoring-advanced.md#in-place-overwrite-restores).
+It documents the preflight ownership/access rules, home-directory examples,
+deletion behavior, capacity limits, and failure recovery.
 
 ### What the target protections mean
 

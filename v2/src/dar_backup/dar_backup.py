@@ -82,6 +82,7 @@ from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
+from dar_backup.restore_target_safety import validate_restore_target_identity
 
 # Module-level by design: tests inject real logger/runner objects via save/restore
 # (see logger_runner_globals_accepted memory) — not a bug.
@@ -796,7 +797,8 @@ def _parse_restore_selection(selection: Optional[str]) -> List[str]:
 
 
 def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_dir: str, darrc: str,
-                   selection: Optional[str] = None, ignore_ownership: bool = True, no_deleted: bool = False) -> None:
+                   selection: Optional[str] = None, ignore_ownership: bool = True,
+                   no_deleted: bool = False, overwrite_restore_target: bool = False) -> None:
     """
     Restores a backup file to a specified directory.
 
@@ -811,6 +813,8 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
             as root and RESTORE_OWNERSHIP = yes is configured.
         no_deleted (bool): When True, passes --deleted=ignore to dar so deletion records in DIFF/INCR
             archives do not cause errors when restoring to an empty directory.  Defaults to False.
+        overwrite_restore_target: Permit an in-place restore into an existing,
+            privately controlled target after a complete safety preflight.
 
     Raises:
         RestoreError: If the restore command fails or the restore directory cannot be created.
@@ -839,19 +843,68 @@ def restore_backup(backup_name: str, config_settings: ConfigSettings, restore_di
         if no_deleted:
             command_suffix.append('--deleted=ignore')
         command_suffix.extend(['-B', darrc, 'restore-options'])  # the .darrc `restore-options` section
-        target_policy = RestoreTargetPolicy(existing_data=ExistingDataPolicy.REQUIRE_EMPTY)
+        if overwrite_restore_target:
+            # This must follow the operator's restore-options section so a
+            # custom preservation policy cannot silently defeat explicit
+            # overwrite intent.
+            command_suffix.append('--overwriting-policy=Oo')
+            logger.warning(
+                "Overwrite restore enabled for '%s'. Existing files may be replaced or deleted. "
+                "Failure can leave a partially restored mixture with no automatic rollback.",
+                restore_dir,
+            )
+            if no_deleted:
+                logger.warning(
+                    "Deletion records will be ignored because --no-deleted was specified; "
+                    "paths deleted in the backup history may remain in the target."
+                )
+            else:
+                logger.warning(
+                    "DAR deletion records will be applied and may remove existing target paths."
+                )
+        target_policy = RestoreTargetPolicy(
+            existing_data=(
+                ExistingDataPolicy.ALLOW_OVERWRITE
+                if overwrite_restore_target
+                else ExistingDataPolicy.REQUIRE_EMPTY
+            )
+        )
         with prepare_restore_target(restore_dir, target_policy) as target_handle:
             command = [*command_prefix, '-R', target_handle.dar_root, *command_suffix]
             logger.info(f"Running restore command: {' '.join(map(shlex.quote, command))}")
+            if overwrite_restore_target:
+                validate_restore_target_identity(target_handle, "before starting DAR")
             process = _runner().run(
                 command,
                 timeout=config_settings.command_timeout_secs,
                 pass_fds=target_handle.pass_fds,
             )
+            if overwrite_restore_target:
+                try:
+                    validate_restore_target_identity(target_handle, "after DAR completed")
+                except RestoreTargetError:
+                    logger.exception(
+                        "The restore target pathname changed after DAR started. The descriptor-bound "
+                        "original directory may contain partial or complete restore output; inspect it "
+                        "before retrying."
+                    )
+                    raise
             if process.returncode == 0:
-                logger.info(f"Restore completed successfully to: '{restore_dir}'")
+                if overwrite_restore_target:
+                    logger.info(
+                        "Overwrite restore completed successfully in place at: '%s'. "
+                        "Existing target data was modified.",
+                        restore_dir,
+                    )
+                else:
+                    logger.info(f"Restore completed successfully to: '{restore_dir}'")
             else:
                 logger.error(f"Restore command failed: \n ==> stdout: {cast(str, process.stdout)}, \n ==> stderr: {cast(str, process.stderr)}")
+                if overwrite_restore_target:
+                    logger.error(
+                        "Overwrite restore failed after DAR began. The target may now contain a "
+                        "partial mixture of old and restored data; there is no automatic rollback."
+                    )
                 raise RestoreError(str(process))
     except RestoreTargetError as e:
         # A policy rejection is expected operator feedback; a traceback would
@@ -2177,6 +2230,19 @@ def _normalize_restore_dir(path: Optional[str]) -> Optional[str]:
 
 
 def should_clean_restore_test_directory(args: argparse.Namespace, config_settings: ConfigSettings) -> bool:
+    """Return whether startup should clear the configured test restore directory.
+
+    Args:
+        args: Parsed dar-backup command-line arguments.
+        config_settings: Active configuration settings.
+
+    Returns:
+        True only for backup verification or ordinary restores that use the
+        configured disposable test restore directory.
+    """
+    if getattr(args, "overwrite_restore_target", False):
+        return False
+
     if args.full_backup or args.differential_backup or args.incremental_backup:
         return not getattr(args, "do_not_compare", False)
 
@@ -2245,6 +2311,11 @@ def main() -> None:
 #    parser.add_argument('-r', '--restore', nargs=1, type=str, help="Restore specified archive.")
     parser.add_argument('-r', '--restore', type=str, help="Restore specified archive.").completer = list_archive_completer  # type: ignore[attr-defined]
     parser.add_argument('--restore-dir',   type=str, help="Directory to restore files to.")
+    parser.add_argument(
+        '--overwrite-restore-target',
+        action='store_true',
+        help="Restore in place into an existing privately controlled --restore-dir after a safety preflight.",
+    )
     parser.add_argument('--verbose', action='store_true', help="Print various status messages to screen")
     parser.add_argument('--preflight-check', action='store_true', help="Run preflight checks and exit")
     parser.add_argument('--suppress-dar-msg', action='store_true', help="cancel dar options in .darrc: -vt, -vs, -vd, -vf and -va")
@@ -2294,6 +2365,8 @@ def main() -> None:
         args.preserve_ownership = False
     if not hasattr(args, "no_deleted"):
         args.no_deleted = False
+    if not hasattr(args, "overwrite_restore_target"):
+        args.overwrite_restore_target = False
     if not hasattr(args, "doc"):
         args.doc = None
     if not hasattr(args, "doc_pretty"):
@@ -2357,6 +2430,16 @@ def main() -> None:
         exit(0)
 
     trace_log_file = initialize_runtime_logging(args, config_settings)
+
+    if args.overwrite_restore_target and not args.restore:
+        logger.error("--overwrite-restore-target requires --restore, exiting")
+        exit(1)
+    if args.overwrite_restore_target and not args.restore_dir:
+        logger.error(
+            "--overwrite-restore-target requires an explicit --restore-dir; "
+            "the configured test restore directory is never used for in-place overwrite."
+        )
+        exit(1)
 
     try:
         validate_required_directories(config_settings)
@@ -2562,7 +2645,8 @@ def main() -> None:
             # try) and has no per-file issues to accumulate, so it is called directly.
             restore_backup(args.restore, config_settings, restore_dir, args.darrc, args.selection,
                            ignore_ownership=ignore_ownership,
-                           no_deleted=args.no_deleted)
+                           no_deleted=args.no_deleted,
+                           overwrite_restore_target=args.overwrite_restore_target)
         else:
             parser.print_help()
 

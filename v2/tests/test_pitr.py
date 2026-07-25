@@ -785,6 +785,66 @@ def test_restore_at_default_when_uses_now(tmp_path, mock_config, mock_logger):
         )
 
 
+def test_restore_at_overwrite_target_runs_preflight_and_forwards_option(
+    tmp_path,
+    mock_config,
+    mock_logger,
+):
+    """PITR overwrite permits a private existing selected path after preflight."""
+    target = tmp_path / "home"
+    selected = target / "Documents" / "file.txt"
+    selected.parent.mkdir(parents=True)
+    target.chmod(0o700)
+    selected.parent.chmod(0o700)
+    selected.write_text("old", encoding="utf-8")
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.os.path.exists", return_value=True), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar", return_value=0) as mock_restore:
+        result = restore_at(
+            "def",
+            ["Documents/file.txt"],
+            None,
+            str(target),
+            mock_config,
+            overwrite_restore_target=True,
+        )
+
+    assert result == 0
+    assert mock_restore.call_args.kwargs["overwrite_restore_target"] is True
+
+
+def test_restore_at_overwrite_target_rejects_unsafe_tree_before_dar(
+    tmp_path,
+    mock_config,
+    mock_logger,
+):
+    """PITR overwrite rejects a group-writable directory before archive selection."""
+    target = tmp_path / "home"
+    shared = target / "shared"
+    shared.mkdir(parents=True)
+    target.chmod(0o700)
+    shared.chmod(0o770)
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.os.path.exists", return_value=True), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._restore_with_dar") as mock_restore:
+        result = restore_at(
+            "def",
+            ["Documents/file.txt"],
+            None,
+            str(target),
+            mock_config,
+            overwrite_restore_target=True,
+        )
+
+    assert result == 1
+    mock_restore.assert_not_called()
+    assert "No restore data was written" in mock_logger.error.call_args.args[0]
+
+
 def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, mock_logger):
     """Test that restore logs candidate selection and summary."""
     list_output = (
@@ -862,6 +922,47 @@ def test_restore_with_dar_logs_candidates_and_summary(mock_config, mock_runner, 
         restore_command = restore_call.args[0]
         assert restore_command[restore_command.index("-R") + 1] == target_handle.dar_root
         assert restore_call.kwargs["pass_fds"] == target_handle.pass_fds
+
+
+def test_restore_with_dar_overwrite_policy_follows_darrc_options(
+    mock_config,
+    mock_runner,
+    mock_logger,
+):
+    """PITR appends Oo after restore-options when overwrite is explicit."""
+    list_output = (
+        "archive #   |    path      |    basename\n"
+        "------------+--------------+---------------\n"
+        "1\t/tmp/backups\texample_FULL_2026-01-29\n"
+    )
+    file_output = "1 Thu Jan 29 15:00:34 2026  saved\n"
+    mock_runner.run.side_effect = [
+        CommandResult(0, list_output, "", note=None),
+        CommandResult(0, file_output, "", note=None),
+        CommandResult(0, "ok", "", note=None),
+    ]
+    mock_config.command_timeout_secs = 30
+
+    with patch("dar_backup.manager.get_db_dir", return_value="/tmp/db_dir"), \
+         patch("dar_backup.manager.runner", mock_runner), \
+         patch("dar_backup.manager.logger", mock_logger), \
+         patch("dar_backup.manager._detect_directory", return_value=False), \
+         patch("dar_backup.manager.send_discord_message"), \
+         patch("dar_backup.manager._guess_darrc_path", return_value="/tmp/.darrc"), \
+         patch("os.path.exists", return_value=True):
+        result = _restore_with_dar(
+            "def",
+            ["tmp/file.txt"],
+            datetime.datetime(2026, 1, 29, 16, 0, 0),
+            "/tmp/restore",
+            mock_config,
+            overwrite_restore_target=True,
+        )
+
+    assert result == 0
+    command = mock_runner.run.call_args_list[-1].args[0]
+    assert command[-1] == "--overwriting-policy=Oo"
+    assert command.index("--overwriting-policy=Oo") > command.index("restore-options")
 
 
 def test_restore_with_dar_directory_logs_chain_details(mock_config, mock_runner, mock_logger):
@@ -1332,6 +1433,7 @@ def test_cli_restore_execution(mock_runner):
             "--restore-path", "file.txt", 
             "--when", "now",
             "--target", "/tmp/out",
+            "--overwrite-restore-target",
             "--config-file", "dummy.conf"
          ]), \
          patch("dar_backup.manager.ConfigSettings") as MockSettings, \
@@ -1362,6 +1464,7 @@ def test_cli_restore_execution(mock_runner):
         assert call_args[0][1] == ["file.txt"] # paths
         assert call_args[0][2] == "now" # when
         assert call_args[0][3] == "/tmp/out" # target
+        assert call_args.kwargs["overwrite_restore_target"] is True
 
 
 def test_cli_relocate_requires_backup_def():

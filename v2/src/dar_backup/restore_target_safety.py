@@ -7,6 +7,7 @@ import fcntl
 import logging
 import os
 import stat
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -14,6 +15,8 @@ from typing import Iterator, Sequence
 
 
 logger = logging.getLogger("main_logger")
+
+MAX_OVERWRITE_PREFLIGHT_PROBLEMS = 100
 
 
 class ExistingDataPolicy(Enum):
@@ -66,6 +69,28 @@ class RestoreTargetHandle:
             A one-item tuple containing the restore target descriptor.
         """
         return (self.directory_fd,)
+
+
+@dataclass(frozen=True)
+class OverwritePreflightStats:
+    """Summary of an overwrite restore-target preflight.
+
+    Attributes:
+        entries: Number of filesystem entries inspected.
+        directories: Number of directories inspected, including the target.
+        symlinks: Number of symlinks observed without following them.
+        elapsed_seconds: Elapsed preflight time.
+        findings: Distinct safety problems found during the audit.
+        problem_limit_reached: Whether scanning stopped at the configured
+            problem limit and additional problems may exist.
+    """
+
+    entries: int
+    directories: int
+    symlinks: int
+    elapsed_seconds: float
+    findings: tuple[str, ...]
+    problem_limit_reached: bool
 
 
 def restore_target_unsafe_reason(target: str) -> str | None:
@@ -200,49 +225,79 @@ def _extended_acl_present(directory_fd: int) -> bool:
     return False
 
 
-def _exclusive_control_reason(directory_fd: int, display_path: str, effective_uid: int) -> str | None:
-    """Return why a privileged restore directory is not exclusively controlled.
+def _exclusive_control_reasons(
+    directory_fd: int,
+    display_path: str,
+    trusted_uids: frozenset[int],
+) -> tuple[str, ...]:
+    """Return every exclusive-control problem found for one directory.
 
     Args:
         directory_fd: Open descriptor for the directory to inspect.
         display_path: Operator-facing path used in any error.
-        effective_uid: UID performing the restore.
+        trusted_uids: UIDs permitted to own directories in the restore target.
 
     Returns:
-        A human-readable rejection reason, or None when the directory is owned
-        by the restoring UID and is not writable by group/other identities.
+        Operator-facing rejection reasons. The tuple is empty when the
+        directory owner is trusted and group, other, and extended ACL access
+        cannot write it.
 
     Raises:
+        ValueError: If trusted_uids is empty.
         OSError: If directory metadata or ACLs cannot be inspected.
     """
+    if not trusted_uids:
+        raise ValueError("trusted_uids must not be empty")
+
+    reasons: list[str] = []
     directory_stat = os.fstat(directory_fd)
-    if directory_stat.st_uid != effective_uid:
-        return (
-            f"Privileged restore path '{display_path}' is owned by uid "
-            f"{directory_stat.st_uid}, not the restoring uid {effective_uid}. "
-            "Use a restore target exclusively controlled by the restoring user, "
-            "run the restore as the target owner, or stop other writers."
+    if directory_stat.st_uid not in trusted_uids:
+        trusted_display = ", ".join(str(uid) for uid in sorted(trusted_uids))
+        reasons.append(
+            f"directory '{display_path}' is owned by untrusted uid "
+            f"{directory_stat.st_uid}; trusted uid(s): {trusted_display}."
         )
     if stat.S_IMODE(directory_stat.st_mode) & 0o022:
-        return (
-            f"Privileged restore path '{display_path}' is writable by its group "
-            "or other users. Remove group/other write access or stop other writers "
-            "before restoring."
+        reasons.append(
+            f"directory '{display_path}' is writable by another identity "
+            "(group or other write permission is set)."
         )
     if _extended_acl_present(directory_fd):
-        return (
-            f"Privileged restore path '{display_path}' has an extended POSIX ACL, "
-            "so exclusive control cannot be established. Remove the ACL or use a "
-            "private restore target."
+        reasons.append(
+            f"directory '{display_path}' has an extended POSIX ACL, so exclusive "
+            "control cannot be established."
         )
-    return None
+    return tuple(reasons)
+
+
+def _exclusive_control_reason(
+    directory_fd: int,
+    display_path: str,
+    trusted_uids: frozenset[int],
+) -> str | None:
+    """Return the first exclusive-control problem found for a directory.
+
+    Args:
+        directory_fd: Open descriptor for the directory to inspect.
+        display_path: Operator-facing path used in any error.
+        trusted_uids: UIDs permitted to own directories in the restore target.
+
+    Returns:
+        The first rejection reason, or None when the directory passes.
+
+    Raises:
+        ValueError: If trusted_uids is empty.
+        OSError: If directory metadata or ACLs cannot be inspected.
+    """
+    reasons = _exclusive_control_reasons(directory_fd, display_path, trusted_uids)
+    return reasons[0] if reasons else None
 
 
 def _inspect_selected_path(
     target: str,
     target_fd: int,
     rel_path: str,
-    effective_uid: int,
+    trusted_uids: frozenset[int],
 ) -> tuple[str | None, bool]:
     """Inspect one selected path without reopening the restore target pathname.
 
@@ -250,7 +305,7 @@ def _inspect_selected_path(
         target: Operator-facing canonical restore target.
         target_fd: Open descriptor for the restore target.
         rel_path: Normalized relative selected path.
-        effective_uid: UID performing the restore.
+        trusted_uids: UIDs permitted to own existing directories.
 
     Returns:
         A tuple of ``(unsafe_reason, exists)``. ``unsafe_reason`` is populated
@@ -282,7 +337,7 @@ def _inspect_selected_path(
             is_last = index == len(parts) - 1
             if not stat.S_ISDIR(component_stat.st_mode):
                 return None, True
-            if is_last and effective_uid != 0:
+            if is_last and os.geteuid() != 0:
                 return None, True
 
             next_fd = os.open(part, directory_flags, dir_fd=current_fd)
@@ -290,8 +345,8 @@ def _inspect_selected_path(
             current_fd = next_fd
             current_display = component_display
 
-            if effective_uid == 0:
-                control_reason = _exclusive_control_reason(current_fd, current_display, effective_uid)
+            if os.geteuid() == 0:
+                control_reason = _exclusive_control_reason(current_fd, current_display, trusted_uids)
                 if control_reason:
                     return control_reason, True
             if is_last:
@@ -299,6 +354,283 @@ def _inspect_selected_path(
         return None, False
     finally:
         os.close(current_fd)
+
+
+def _add_overwrite_preflight_finding(
+    findings: list[str],
+    seen_findings: set[str],
+    finding: str,
+) -> bool:
+    """Add one distinct finding without exceeding the reporting limit.
+
+    The caller owns both mutable collections; they are created fresh for each
+    preflight and never shared between restore operations.
+
+    Args:
+        findings: Ordered findings collected for the current preflight.
+        seen_findings: Exact finding strings already collected.
+        finding: Operator-facing problem description.
+
+    Returns:
+        True when the 100-problem limit has been reached.
+
+    Raises:
+        ValueError: If finding is empty.
+    """
+    if not finding or not finding.strip():
+        raise ValueError("finding must not be empty")
+    if finding in seen_findings:
+        return len(findings) >= MAX_OVERWRITE_PREFLIGHT_PROBLEMS
+    if len(findings) >= MAX_OVERWRITE_PREFLIGHT_PROBLEMS:
+        return True
+
+    seen_findings.add(finding)
+    findings.append(finding)
+    return len(findings) >= MAX_OVERWRITE_PREFLIGHT_PROBLEMS
+
+
+def _format_overwrite_preflight_failure(stats: OverwritePreflightStats) -> str:
+    """Format all collected overwrite blockers as one bounded error.
+
+    Args:
+        stats: Completed or problem-limited overwrite preflight result.
+
+    Returns:
+        Multiline operator-facing failure message.
+
+    Raises:
+        ValueError: If stats contains no findings.
+    """
+    if not stats.findings:
+        raise ValueError("stats must contain at least one finding")
+
+    if stats.problem_limit_reached:
+        summary = (
+            f"Overwrite safety preflight failed and stopped after reaching "
+            f"{MAX_OVERWRITE_PREFLIGHT_PROBLEMS} problems while inspecting "
+            f"{stats.entries:,} entries; additional problems may exist."
+        )
+    else:
+        summary = (
+            f"Overwrite safety preflight failed: found {len(stats.findings):,} "
+            f"problem(s) after inspecting {stats.entries:,} entries."
+        )
+    details = "\n".join(
+        f"  {index}. {finding}"
+        for index, finding in enumerate(stats.findings, start=1)
+    )
+    return f"{summary}\n{details}\nNo restore data was written."
+
+
+def _run_overwrite_preflight(
+    target: str,
+    target_fd: int,
+    trusted_uids: frozenset[int],
+    initial_findings: Sequence[str] = (),
+) -> OverwritePreflightStats:
+    """Audit an overwrite target without following directory symlinks.
+
+    The complete existing target tree is inspected. This intentionally favors
+    a clear safety boundary over guessing which paths a DAR selection might
+    affect.
+
+    Args:
+        target: Operator-facing restore target path.
+        target_fd: Open and locked descriptor for the restore target.
+        trusted_uids: UIDs permitted to own directories below the target.
+        initial_findings: Problems found by selected-path checks before the
+            whole-target traversal.
+
+    Returns:
+        Counts and elapsed time for the completed audit.
+
+    Raises:
+        ValueError: If target or trusted_uids is empty.
+    """
+    if not target:
+        raise ValueError("target must not be empty")
+    if not trusted_uids:
+        raise ValueError("trusted_uids must not be empty")
+
+    started_at = time.monotonic()
+    last_progress_at = started_at
+    entry_count = 0
+    directory_count = 0
+    symlink_count = 0
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    pending: list[tuple[int, str]] = []
+    findings: list[str] = []
+    seen_findings: set[str] = set()
+    problem_limit_reached = False
+
+    for initial_finding in initial_findings:
+        problem_limit_reached = _add_overwrite_preflight_finding(
+            findings,
+            seen_findings,
+            initial_finding,
+        )
+        if problem_limit_reached:
+            break
+
+    if not problem_limit_reached:
+        try:
+            pending.append((os.dup(target_fd), target))
+        except OSError as exc:
+            problem_limit_reached = _add_overwrite_preflight_finding(
+                findings,
+                seen_findings,
+                f"could not duplicate the locked target descriptor for '{target}': {exc}",
+            )
+
+    try:
+        while pending and not problem_limit_reached:
+            directory_fd, display_path = pending.pop()
+            try:
+                directory_count += 1
+                try:
+                    control_reasons = _exclusive_control_reasons(
+                        directory_fd,
+                        display_path,
+                        trusted_uids,
+                    )
+                except OSError as exc:
+                    problem_limit_reached = _add_overwrite_preflight_finding(
+                        findings,
+                        seen_findings,
+                        f"could not inspect ownership, permissions, or ACLs for "
+                        f"directory '{display_path}': {exc}",
+                    )
+                else:
+                    for control_reason in control_reasons:
+                        problem_limit_reached = _add_overwrite_preflight_finding(
+                            findings,
+                            seen_findings,
+                            control_reason,
+                        )
+                        if problem_limit_reached:
+                            break
+                if problem_limit_reached:
+                    continue
+
+                try:
+                    entries_context = os.scandir(directory_fd)
+                    with entries_context as entries:
+                        for entry in entries:
+                            entry_count += 1
+                            entry_path = os.path.join(display_path, entry.name)
+                            try:
+                                entry_stat = entry.stat(follow_symlinks=False)
+                            except OSError as exc:
+                                problem_limit_reached = _add_overwrite_preflight_finding(
+                                    findings,
+                                    seen_findings,
+                                    f"could not inspect entry '{entry_path}': {exc}",
+                                )
+                                if problem_limit_reached:
+                                    break
+                                continue
+
+                            if stat.S_ISLNK(entry_stat.st_mode):
+                                symlink_count += 1
+                            elif stat.S_ISDIR(entry_stat.st_mode):
+                                try:
+                                    child_fd = os.open(
+                                        entry.name,
+                                        directory_flags,
+                                        dir_fd=directory_fd,
+                                    )
+                                except OSError as exc:
+                                    problem_limit_reached = _add_overwrite_preflight_finding(
+                                        findings,
+                                        seen_findings,
+                                        f"could not open directory '{entry_path}' safely: {exc}",
+                                    )
+                                    if problem_limit_reached:
+                                        break
+                                else:
+                                    pending.append((child_fd, entry_path))
+
+                            now = time.monotonic()
+                            if now - last_progress_at >= 10.0:
+                                logger.info(
+                                    "Overwrite safety preflight progress: inspected %s entries, "
+                                    "found %s problem(s); currently '%s'.",
+                                    f"{entry_count:,}",
+                                    f"{len(findings):,}",
+                                    entry_path,
+                                )
+                                last_progress_at = now
+                except OSError as exc:
+                    problem_limit_reached = _add_overwrite_preflight_finding(
+                        findings,
+                        seen_findings,
+                        f"could not scan directory '{display_path}': {exc}",
+                    )
+            finally:
+                try:
+                    os.close(directory_fd)
+                except OSError as exc:
+                    logger.warning(
+                        "Could not close overwrite preflight directory descriptor for '%s': %s",
+                        display_path,
+                        exc,
+                    )
+    finally:
+        for pending_fd, _pending_path in pending:
+            try:
+                os.close(pending_fd)
+            except OSError as exc:
+                logger.warning("Could not close overwrite preflight directory descriptor: %s", exc)
+
+    return OverwritePreflightStats(
+        entries=entry_count,
+        directories=directory_count,
+        symlinks=symlink_count,
+        elapsed_seconds=time.monotonic() - started_at,
+        findings=tuple(findings),
+        problem_limit_reached=problem_limit_reached,
+    )
+
+
+def validate_restore_target_identity(target_handle: RestoreTargetHandle, phase: str) -> None:
+    """Verify that the requested pathname still names the held target inode.
+
+    Args:
+        target_handle: Descriptor-bound restore target to verify.
+        phase: Operator-facing description of when the check is performed.
+
+    Raises:
+        TypeError: If target_handle has the wrong type.
+        ValueError: If inputs are invalid.
+        RestoreTargetError: If the pathname disappeared, changed type, or now
+            resolves to a different inode.
+    """
+    if not isinstance(target_handle, RestoreTargetHandle):
+        raise TypeError("target_handle must be a RestoreTargetHandle")
+    if not phase or not phase.strip():
+        raise ValueError("phase must not be empty")
+
+    try:
+        path_stat = os.stat(target_handle.requested_path, follow_symlinks=True)
+        descriptor_stat = os.fstat(target_handle.directory_fd)
+    except OSError as exc:
+        raise RestoreTargetError(
+            f"Restore target identity check {phase} failed for "
+            f"'{target_handle.requested_path}': {exc}"
+        ) from exc
+
+    if not stat.S_ISDIR(path_stat.st_mode):
+        raise RestoreTargetError(
+            f"Restore target identity check {phase} failed: "
+            f"'{target_handle.requested_path}' is no longer a directory."
+        )
+    if (path_stat.st_dev, path_stat.st_ino) != (descriptor_stat.st_dev, descriptor_stat.st_ino):
+        raise RestoreTargetError(
+            f"Restore target identity check {phase} failed: "
+            f"'{target_handle.requested_path}' no longer names the locked restore directory. "
+            "Descriptor binding prevented redirection outside the original directory, "
+            "but that original directory may have been renamed."
+        )
 
 
 def _validate_existing_data(
@@ -323,6 +655,13 @@ def _validate_existing_data(
     """
     normalized_paths = _normalize_selected_paths(selected_paths)
     effective_uid = os.geteuid()
+    target_stat = os.fstat(target_fd)
+    trusted_uid_values = {effective_uid}
+    if effective_uid == 0 and policy.existing_data is ExistingDataPolicy.ALLOW_OVERWRITE:
+        # Root must be able to recover a private user-owned home without
+        # classifying every original user-owned directory as hostile.
+        trusted_uid_values.add(target_stat.st_uid)
+    trusted_uids = frozenset(trusted_uid_values)
 
     if policy.existing_data is ExistingDataPolicy.REQUIRE_EMPTY:
         with os.scandir(target_fd) as entries:
@@ -340,7 +679,7 @@ def _validate_existing_data(
         for rel_path in normalized_paths:
             if rel_path == ".":
                 raise ValueError("archive-root path '.' requires the empty-target policy")
-            unsafe_reason, path_exists = _inspect_selected_path(target, target_fd, rel_path, effective_uid)
+            unsafe_reason, path_exists = _inspect_selected_path(target, target_fd, rel_path, trusted_uids)
             if unsafe_reason:
                 raise RestoreTargetError(unsafe_reason)
             if path_exists:
@@ -355,10 +694,55 @@ def _validate_existing_data(
         return
 
     if policy.existing_data is ExistingDataPolicy.ALLOW_OVERWRITE:
+        logger.info(
+            "Starting overwrite safety preflight for '%s'. Existing target data is being inspected; "
+            "this can take a long time and no restore data will be written until it completes.",
+            target,
+        )
+        selected_findings: list[str] = []
+        seen_selected_findings: set[str] = set()
         for rel_path in normalized_paths:
-            unsafe_reason, _path_exists = _inspect_selected_path(target, target_fd, rel_path, effective_uid)
-            if unsafe_reason:
-                raise RestoreTargetError(unsafe_reason)
+            try:
+                unsafe_reason, _path_exists = _inspect_selected_path(
+                    target,
+                    target_fd,
+                    rel_path,
+                    trusted_uids,
+                )
+            except OSError as exc:
+                problem_limit_reached = _add_overwrite_preflight_finding(
+                    selected_findings,
+                    seen_selected_findings,
+                    f"could not inspect selected restore path '{rel_path}' below "
+                    f"'{target}': {exc}",
+                )
+            else:
+                problem_limit_reached = False
+                if unsafe_reason:
+                    problem_limit_reached = _add_overwrite_preflight_finding(
+                        selected_findings,
+                        seen_selected_findings,
+                        unsafe_reason,
+                    )
+            if problem_limit_reached:
+                break
+
+        stats = _run_overwrite_preflight(
+            target,
+            target_fd,
+            trusted_uids,
+            selected_findings,
+        )
+        if stats.findings:
+            raise RestoreTargetError(_format_overwrite_preflight_failure(stats))
+        logger.info(
+            "Overwrite safety preflight completed: inspected %s entries in %s directories "
+            "(%s symlinks) in %.1f seconds.",
+            f"{stats.entries:,}",
+            f"{stats.directories:,}",
+            f"{stats.symlinks:,}",
+            stats.elapsed_seconds,
+        )
         return
 
     raise ValueError(f"Unsupported existing-data policy: {policy.existing_data!r}")
@@ -436,8 +820,9 @@ def prepare_restore_target(
         validate_restore_target_location(opened_path, policy)
 
         effective_uid = os.geteuid()
-        if effective_uid == 0:
-            control_reason = _exclusive_control_reason(lock_fd, opened_path, effective_uid)
+        if effective_uid == 0 and policy.existing_data is not ExistingDataPolicy.ALLOW_OVERWRITE:
+            trusted_uids = {effective_uid}
+            control_reason = _exclusive_control_reason(lock_fd, opened_path, frozenset(trusted_uids))
             if control_reason:
                 raise RestoreTargetError(control_reason)
 

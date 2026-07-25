@@ -146,6 +146,34 @@ def test_copy_docs_includes_complete_restore_guide(real_docs, name):
     )
 
 
+def test_advanced_restore_guide_documents_overwrite_incident_contract() -> None:
+    """The operator runbook must retain the safety and recovery contract."""
+    content = (V2_DIR / "doc" / "restoring-advanced.md").read_text(encoding="utf-8")
+
+    required_text = (
+        "--overwrite-restore-target",
+        "whole-target safety preflight",
+        "approximately every ten seconds",
+        "--ignore-ownership",
+        "--no-deleted",
+        "there is no rollback",
+        "up to 100",
+        "additional problems may exist",
+        "`/etc`",
+    )
+    for text in required_text:
+        assert text in content, f"advanced restore guide is missing: {text}"
+
+
+def test_restore_docs_do_not_claim_ignore_owner_is_enabled_in_darrc() -> None:
+    """Ownership docs must identify configuration, not darrc, as authoritative."""
+    config_reference = (V2_DIR / "doc" / "config-reference.md").read_text(encoding="utf-8")
+    troubleshooting = (V2_DIR / "doc" / "troubleshooting.md").read_text(encoding="utf-8")
+
+    assert "#--comparison-field=ignore-owner" in config_reference
+    assert "The supplied `.darrc` leaves that option commented out" in troubleshooting
+
+
 def test_resolve_doc_path_finds_real_readme(real_docs):
     """_resolve_doc_path must resolve README.md to the package dir after copy_docs.sh."""
     from dar_backup.dar_backup import _resolve_doc_path

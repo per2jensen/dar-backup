@@ -230,6 +230,22 @@ def test_dar_backup_should_not_clean_restore_to_different_dir(setup_environment,
     assert dar_backup_mod.should_clean_restore_test_directory(args, config_settings) is False
 
 
+def test_dar_backup_should_never_clean_overwrite_target(setup_environment, env):
+    """An in-place overwrite target is never treated as disposable test data."""
+    config_settings = ConfigSettings(env.config_file)
+    args = SimpleNamespace(
+        full_backup=False,
+        differential_backup=False,
+        incremental_backup=False,
+        restore=True,
+        do_not_compare=False,
+        restore_dir=config_settings.test_restore_dir,
+        overwrite_restore_target=True,
+    )
+
+    assert dar_backup_mod.should_clean_restore_test_directory(args, config_settings) is False
+
+
 # ---------------------------------------------------------------------------
 # Full backup with --suppress-dar-msg — uses real dar, no mocking
 #

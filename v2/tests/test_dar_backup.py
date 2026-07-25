@@ -2020,6 +2020,59 @@ def test_restore_backup_overwriting_policy_removed(tmp_path):
     )
 
 
+def test_restore_backup_overwrite_target_appends_explicit_policy(tmp_path):
+    """Explicit overwrite passes Oo after darrc options and permits existing data."""
+    target = tmp_path / "home"
+    target.mkdir(mode=0o700)
+    (target / "existing.txt").write_text("old", encoding="utf-8")
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+    mock_runner.run.return_value.returncode = 0
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        restore_backup(
+            "example_FULL_2026-01-01",
+            config,
+            str(target),
+            "/fake/.darrc",
+            ignore_ownership=True,
+            overwrite_restore_target=True,
+        )
+
+    command = mock_runner.run.call_args.args[0]
+    assert command[-1] == "--overwriting-policy=Oo"
+    assert command.index("--overwriting-policy=Oo") > command.index("restore-options")
+    assert command[command.index("-R") + 1].startswith("/proc/self/fd/")
+
+
+def test_restore_backup_overwrite_target_rejects_unsafe_tree_before_dar(tmp_path):
+    """Overwrite preflight rejects a group-writable child before DAR runs."""
+    target = tmp_path / "home"
+    shared = target / "shared"
+    shared.mkdir(parents=True)
+    target.chmod(0o700)
+    shared.chmod(0o770)
+    config = _make_restore_config(str(tmp_path))
+    mock_runner = MagicMock()
+
+    with patch("dar_backup.dar_backup.os.getuid", return_value=1000), \
+         patch("dar_backup.dar_backup.runner", mock_runner), \
+         patch("dar_backup.dar_backup.logger"):
+        with pytest.raises(RestoreError, match="No restore data was written"):
+            restore_backup(
+                "example_FULL_2026-01-01",
+                config,
+                str(target),
+                "/fake/.darrc",
+                ignore_ownership=True,
+                overwrite_restore_target=True,
+            )
+
+    mock_runner.run.assert_not_called()
+
+
 def test_perform_backup_fails_when_dar_slice_missing_after_backup(env):
     """A .dar slice that disappears between _list_dar_slices() and getsize() means
     the archive is incomplete.  perform_backup() must record FAILURE and log a clear

@@ -228,13 +228,17 @@ for the full script and configuration notes.
 
 ## Restore test fails with exit code 4
 
-`dar` in newer versions emits a question about file ownership, which is "answered" with a "no" via the "-Q" option. That in turn leads to an error code 4.
+By default, `RESTORE_OWNERSHIP = no` makes dar-backup add
+`--comparison-field=ignore-owner` to each restore command. This prevents a
+non-root restore from failing when it cannot recreate archived uid/gid
+ownership. The supplied `.darrc` leaves that option commented out so the
+configuration and per-run command-line overrides remain authoritative.
 
-Thus the dar option `--comparison-field=ignore-owner` has been placed in the supplied [.darrc](config-reference.md#darrc) file (located in the virtual environment where dar-backup is installed).
-
-This causes dar to restore without an error.
-
-It is a good option when using dar as a non-privileged user.
+Check the startup settings and generated DAR command. Use
+`--ignore-ownership` to force this behavior for one run, or set
+`RESTORE_OWNERSHIP = no` in `dar-backup.conf`. Original uid/gid ownership will
+not be restored. Use `RESTORE_OWNERSHIP = yes` or `--preserve-ownership` only
+when running as root and preserving the archived identities is required.
 
 ---
 
