@@ -25,9 +25,13 @@ It automates FULL / DIFF / INCR as independent archive types built on two except
 `dar-backup` wires these two tools together into a fully automated backup system, with every
 archive verified and a random set (configurable) of files restored to a test directory before the job completes.
 
->**Interested ?**, see the quick guide that shows installation and a test run
->
->==>>> [Demo](v2/doc/quick-guide.md)
+## Start here
+
+If you are new to the project, the easiest way to get oriented is:
+
+- [Quick guide](v2/doc/quick-guide.md) — install the package, run the built-in demo, and see a backup/restore flow in minutes
+- [Getting started](v2/doc/getting-started.md) — set up a real installation and configure your first backup definition
+- [Configuration reference](v2/doc/config-reference.md) — learn how the config file and backup definitions work
 
 **Is this for you?**
 
@@ -51,7 +55,7 @@ Not if you want:
 
 ---
 
-## TL;DR
+## Quick start (TL;DR)
 
 ```bash
 # prep
@@ -188,6 +192,18 @@ The author has used `dar-backup` ~6 years and has been saved by it multiple time
 
 ---
 
+## Documentation map
+
+For a first-time visitor, the best next steps are:
+
+- [Quick guide](v2/doc/quick-guide.md) — the fastest path to a working demo
+- [Getting started](v2/doc/getting-started.md) — a real-world setup guide
+- [Configuration reference](v2/doc/config-reference.md) — the main reference for backup definitions and config options
+- [Restoring](v2/doc/restoring.md) — how to recover data when you need it
+- [Troubleshooting](v2/doc/troubleshooting.md) — common issues and fixes
+
+---
+
 ## Dashboard
 
 Every backup run writes structured metrics to a SQLite database. The built-in
@@ -216,7 +232,7 @@ Unlike traditional backup utilities that fail entirely if a single byte is corru
 
 ---
 
-## Documentation
+## Full documentation index
 
 | Document | Description |
 |---|---|
