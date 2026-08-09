@@ -1,23 +1,36 @@
 <!-- markdownlint-disable MD024 -->
 # `dar-backup`
 
-**Long-term archival backups for Linux — with integrity you can prove and repair**
+**Personal digital preservation for Linux — with integrity you can prove, repair, and restore years from now**
 
 [![Codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup) [![Snyk Vuln findings](https://snyk.io/test/github/per2jensen/dar-backup/badge.svg)](https://security.snyk.io/vuln/?search=dar-backup) ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg) [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/) [![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total_downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fclonepulse%2Fdownloads.json)](https://pypi.org/project/dar-backup/) [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) <sub>🎯 Stats powered by [ClonePulse](https://github.com/per2jensen/clonepulse)</sub>
 
-`dar-backup` is for Linux users who want **serious, long-term backups** — not just file copies.
-It automates FULL / DIFF / INCR as independent archive types built on two exceptional open-source tools:
+`dar-backup` is a **personal digital preservation system for Linux** built around one question:
+
+**Will I still be able to recover this data years from now?**
+
+It is intended for people preserving irreplaceable personal data — photographs, home video,
+documents, research, creative work, and other material whose value may increase with time.
+
+The goal is not merely to create backup copies. The goal is to keep those copies
+**understandable, verifiable, repairable, portable, and recoverable** over long periods of time,
+even if the original machine, operating system, package versions, or administrator are no longer
+available.
+
+`dar-backup` automates FULL / DIFF / INCR as independent archive types built on two exceptional
+open-source tools:
 
 - **[dar](https://github.com/Edrusb/DAR)** (Disk ARchiver) — a powerful, actively maintained
   archiver by Denis Corbin that handles differential and incremental archives, built-in
   verification, catalogue databases, and precise file selection. `dar` is the engine that makes
   long-term archival practical. It deserves to be far better known than it is.
-- **[par2cmdline](https://github.com/Parchive/par2cmdline)** — Parchive's
-  redundancy format can detect and repair corruption in any archive, as long as the .par2 files travel with the
-  dar archives. A quiet but remarkable piece of technology.
+- **[par2cmdline](https://github.com/Parchive/par2cmdline)** — Parchive's redundancy format can
+  detect and repair corruption in any archive, as long as the `.par2` files travel with the DAR
+  archives. A quiet but remarkable piece of technology.
 
-`dar-backup` wires these two tools together into a fully automated backup system, with every
-archive verified and a random set (configurable) of files restored to a test directory before the job completes.
+`dar-backup` wires these tools together with automated verification, restore testing, catalog
+management, and an optional preserved restore environment. The result is a backup workflow
+designed not only to survive hardware failure, but also **time**.
 
 ## Start here
 
@@ -29,8 +42,8 @@ If you are new to the project, the easiest way to get oriented is:
 
 **Is this for you?**
 
-- You back up irreplaceable data — photos, documents, home-made video — and want to be
-   certain you can restore any file to any point in time, years from now
+- You preserve irreplaceable data — photos, documents, home-made video, research, creative
+   work — and want to remain able to restore it years from now
 
 - You run backups as a **normal user** — root is not required, and FUSE-mounted filesystems (Nextcloud, rclone, sshfs) work correctly
 
@@ -38,7 +51,8 @@ If you are new to the project, the easiest way to get oriented is:
 
 - You want unattended, scheduled backups with **Discord notifications** on success or failure
 
-- You want a transparent, no-lock-in tool built on proven Unix components
+- You want a transparent, no-lock-in system built on proven Unix components and standard
+   archive/recovery tools
 
 Not if you want:
 
@@ -81,8 +95,15 @@ Version **1.1.10** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGE
 
 ## A personal digital preservation system
 
-Most backup tools are designed to survive hardware failure. `dar-backup` is designed to survive
-time.
+`dar-backup` uses **personal digital preservation** in a practical, deliberately limited sense:
+preserving personal files and the means to recover them over long periods of time.
+
+It is not an institutional digital-archive platform, records-management system, or preservation
+repository. It is a Linux backup and recovery system whose design choices are guided by
+long-term recoverability.
+
+Most backup tools are designed primarily to survive hardware failure. `dar-backup` is also
+designed to survive **time**.
 
 That is a different problem.
 
@@ -117,7 +138,9 @@ This principle drives the design choices behind `dar-backup`.
 `dar-backup` intentionally prioritizes recoverability over deduplication ratios or storage
 efficiency.
 
-Storage costs are typically lower than the cost of data loss or recovery failure. The cost of data loss can be in currency or perhaps even more important the sentimental value of your history.
+Storage costs are typically lower than the cost of data loss or recovery failure. For personal
+archives, that cost may be financial, practical, historical, or simply the loss of something
+irreplaceable.
 
 This priority is reflected throughout the design:
 
@@ -129,9 +152,12 @@ This priority is reflected throughout the design:
   byte-for-byte against the source. Each restore test increases confidence in recoverability through repeated, physical verification of data integrity.
 - **PAR2 redundancy travels with the archive** — integrity protection and repair capability are
   embedded in the archive set itself, not dependent on the original system.
-- **No dependency on the original machine** — a single static dar binary is sufficient. No installation, configuration, or version matching required.
+- **No dependency on the original machine** — recovery can be performed independently of the
+  original host; a suitable `dar` binary is enough for direct archive restoration.
+- **Preserved restore environment** — the optional Docker image can be archived alongside the
+  backups as a known-working toolchain containing `dar-backup`, `dar`, PAR2, and runtime dependencies.
 - **Documentation as part of the system** — long-term preservation requires preserving the
-  knowledge needed to use the archives, not just the archives themselves.
+  knowledge needed to understand and use the archives, not just the archive files themselves.
 
 ---
 
@@ -156,6 +182,43 @@ The result is that recovery confidence does not degrade with distance — distan
 
 ---
 
+## Preservation model
+
+`dar-backup` treats a recoverable archive as more than a collection of backup files.
+
+A strong long-term recovery set contains several independent layers:
+
+```text
+DAR archive slices
+        +
+PAR2 recovery data
+        +
+dar_manager catalogs
+        +
+restore procedures and documentation
+        +
+a preserved restore environment
+        =
+a portable personal preservation set
+```
+
+Each layer addresses a different failure mode:
+
+- **DAR archives** preserve the file data and metadata in independent archive sets.
+- **PAR2** provides repair capability if archive slices suffer localized corruption.
+- **Catalogs** preserve historical knowledge about which archive contains which version of a file.
+- **Restore testing** provides evidence at backup time that recovery actually works.
+- **Documentation** preserves operational knowledge for a future operator.
+- **The optional Docker restore image** preserves a known-working software environment alongside
+  the data.
+
+The aim is to reduce the number of assumptions a future restore depends on.
+
+This approach does not claim to replace mature repository-based backup systems such as Borg or
+restic. Those tools make different design trade-offs and are excellent choices for many backup
+workloads. `dar-backup` deliberately emphasizes independent archives, portability, repairability,
+and long-term recovery confidence.
+
 ## Features
 
 - **FULL / DIFF / INCR backup cycles** — per backup definition, independently scheduled
@@ -164,7 +227,10 @@ The result is that recovery confidence does not degrade with distance — distan
   configurable excludes for cache dirs, temp files, locks
 - **PAR2 redundancy** — configurable coverage per backup type (FULL/DIFF/INCR);
   optionally stored in a separate directory (different device or offsite mount)
-- **Docker based restore environment (time capsule)** — optional [dar-backup-image](https://github.com/per2jensen/dar-backup-image) providing a fully packaged, known-working restore environment (dar-backup, dar, PAR2, and tooling). Very useful years into the future :-)
+- **Preservable restore environment (time capsule)** — optional
+  [dar-backup-image](https://github.com/per2jensen/dar-backup-image) packages `dar-backup`,
+  `dar`, PAR2, and their runtime dependencies into a known-working environment that can be
+  archived alongside the backups for future recovery
 - **Point-in-Time Recovery** — `dar_manager` catalogs let you locate and restore any file to any date across your full archive history
 - **Metrics and dashboard** - optional [detailed metrics](v2/doc/dashboard-and-metrics.md#metrics-database) and [dashboard](v2/doc/dashboard-and-metrics.md#dashboard)
 - **Can run as a normal user** — no root needed; works correctly on FUSE-mounted filesystems. Root is also a first class user.
@@ -216,9 +282,10 @@ opens the dashboard in your browser:
 
 ---
 
-### Built for Disaster Recovery
+### Built for long-term recovery
 
-Unlike traditional backup utilities that fail entirely if a single byte is corrupted, `dar-backup` splits data processing into independent, verifiable layers:
+Long-term recovery benefits from multiple independent layers of verification and repair.
+`dar-backup` separates those responsibilities rather than relying on a single mechanism:
 
 1. **Deterministic Slicing:** Backups are divided into manageable chunk sizes (e.g., 10GB blocks) making transfers over networks or long-term disk sets reliable.
 2. **Isolated Parity Directories:** `par2` recovery files are maintained in a completely separate directory infrastructure from your data slices. If an underlying storage volume experiences filesystem bitrot, the parity blocks can cleanly rebuild damaged `.dar` slices automatically.
@@ -258,7 +325,9 @@ I needed the following:
   - A non-privileged user can perform a mount
   - A privileged user cannot look into the filesystem --> a backup script running as root is not suitable
 
-- Have a simple way of restoring, possibly years into the future. 'dar' fits that scenario with a single statically linked binary (kept with the archives). There is no need install/configure anything - restoring is simple and works well.
+- Have a simple way of restoring, possibly years into the future. `dar` fits that scenario
+  particularly well: the restore tool can be preserved with the archives, reducing dependence on
+  the original machine or package repositories.
 - During backup archives must be tested and a restore test (however small) performed
 - Archives stored on a server with a reliable file system (easy to mount a directory over sshfs)
 - Easy to verify archive's integrity, after being moved around.
@@ -301,6 +370,14 @@ I needed the following:
    The result: my `rsync` to USB disks on the storage server picks up the Docker image automatically, so the
    restore environment travels with the archives onto every offsite copy.
 
+   This is intentionally treated as part of the backup set rather than as a convenience download.
+   The long-term goal is that a future restore can begin with the preserved artifacts themselves,
+   without first reconstructing today's software environment from the Internet.
+
+   A useful preservation practice is to periodically perform a **cold recovery drill**: restore
+   using only the archive set, PAR2 files, catalogs, saved documentation, and preserved restore
+   image. That tests the preservation system rather than merely the current installation.
+
 ### Why PAR2 is especially good for portable / offsite copies
 
 PAR2 parity is:
@@ -319,7 +396,7 @@ PAR2 parity is:
 
 ### Design choices
 
-My design choices are boring, proven and pragmatic:
+My design choices are deliberately simple, proven, and pragmatic:
 
 - mdadm handles disks
 - PAR2 handles data integrity
