@@ -3,6 +3,11 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.11 - 2026-08-16
+
+- Many fixes after reviews
+- Large scale tests via [my Docker image setup](https://github.com/per2jensen/dar-backup-image)
+
 ## v2-1.1.10 - 2026-07-07
 
 - BUGFIX: PITR with dar Rootdir different from "/" failed

@@ -213,6 +213,14 @@ if [[ -z "${VIRTUAL_ENV:-}" ]] || [[ "$VIRTUAL_ENV" != "$(realpath "$VENV_DIR")"
     source "$VENV_DIR/bin/activate"
 fi
 
+green "Checking release-tool versions..."
+if ! python3 scripts/release_validation.py environment; then
+    red "❌ Release tools are missing or too old"
+    echo "  Refresh them with: python3 -m pip install --upgrade '.[packaging]'"
+    exit 1
+fi
+green "✅ Release-tool versions passed"
+
 ########################################
 # Static analysis gate (runs in both dry-run and real releases)
 ########################################
@@ -306,17 +314,11 @@ else
 fi
 
 ########################################
-# Prepare README/Changelog copies and docs for wheel inclusion
+# Prepare the PyPI README
 ########################################
-TEMP_README="src/dar_backup/README.md"
-TEMP_CHANGELOG="src/dar_backup/Changelog.md"
-trap 'rm -f "$TEMP_README" "$TEMP_CHANGELOG"; rm -f src/dar_backup/doc/*; rmdir src/dar_backup/doc' EXIT
-
 if $DRY_RUN; then
     dryrun "refresh v2/README.md from root README.md for PyPI description"
     dryrun "rewrite relative links in v2/README.md to absolute GitHub URLs pinned to ${TAG} (scripts/rewrite_readme_links.py)"
-    dryrun "copy all non-excluded user docs into src/dar_backup/ for wheel inclusion (scripts/copy_docs.sh)"
-    dryrun "verify restoring.md, restoring-pitr.md, and restoring-advanced.md are in the wheel staging tree"
 else
     cp ../README.md README.md  ||
         { red "❌ Error: Failed to refresh README.md from root"; exit 1; }
@@ -329,19 +331,6 @@ else
     python3 scripts/rewrite_readme_links.py --input README.md --output README.md --ref "${TAG}" ||
         { red "❌ Error: rewrite_readme_links.py failed"; exit 1; }
     green "Rewrote relative links in README.md to absolute GitHub URLs (ref: ${TAG})"
-
-    scripts/copy_docs.sh || { red "❌ Error: copy_docs.sh failed"; exit 1; }
-
-    # copy_docs.sh uses a negative exclusion list. These three files form one
-    # operator-facing restore guide, so fail the release if a future packaging
-    # change copies only part of the set.
-    for _restore_doc in restoring.md restoring-pitr.md restoring-advanced.md; do
-        if [[ ! -f "src/dar_backup/doc/${_restore_doc}" ]]; then
-            red "❌ Error: restore guide missing from wheel staging: ${_restore_doc}"
-            exit 1
-        fi
-    done
-    green "Verified complete restore guide in wheel staging"
 fi
 
 
@@ -379,7 +368,7 @@ else
 
     # Gzip the JSON report — they grow ~20-60 MB per release but compress 20:1.
     # The .txt and __collect.txt stay uncompressed for easy reading.
-    for json_report in doc/test-report/dar-backup-${VERSION}__pytest-full__*.json; do
+    for json_report in "doc/test-report/dar-backup-${VERSION}__pytest-full__"*.json; do
         [[ -f "$json_report" ]] || continue
         gzip -f "$json_report"
         green "Compressed test report: ${json_report}.gz (was $(basename "$json_report"))"
@@ -487,18 +476,66 @@ fi
 ########################################
 # Build
 ########################################
+TEMP_README="src/dar_backup/README.md"
+TEMP_CHANGELOG="src/dar_backup/Changelog.md"
+TEMP_DOC_DIR="src/dar_backup/doc"
+
+cleanup_staged_docs() {
+    rm -f "$TEMP_README" "$TEMP_CHANGELOG"
+    rm -f "$TEMP_DOC_DIR"/*.md 2>/dev/null || true
+    rmdir "$TEMP_DOC_DIR" 2>/dev/null || true
+}
+
+trap cleanup_staged_docs EXIT
+
 if $DRY_RUN; then
+    dryrun "copy all non-excluded user docs into src/dar_backup/ after tests (scripts/copy_docs.sh)"
+    dryrun "verify restoring.md, restoring-pitr.md, and restoring-advanced.md are in the wheel staging tree"
     dryrun "build wheel and sdist with python3 -m build"
+    dryrun "verify every staged document is present in the built wheel"
+    dryrun "validate distribution metadata with twine check"
 else
+    # Tests exercise copy_docs.sh against the same source tree and remove their
+    # fixture data afterwards. Stage release docs only after pytest has finished
+    # so test cleanup cannot silently strip documentation from the wheel.
+    scripts/copy_docs.sh || { red "❌ Error: copy_docs.sh failed"; exit 1; }
+
+    # copy_docs.sh uses a negative exclusion list. These three files form one
+    # operator-facing restore guide, so fail the release if a future packaging
+    # change copies only part of the set.
+    for _restore_doc in restoring.md restoring-pitr.md restoring-advanced.md; do
+        if [[ ! -f "${TEMP_DOC_DIR}/${_restore_doc}" ]]; then
+            red "❌ Error: restore guide missing from wheel staging: ${_restore_doc}"
+            exit 1
+        fi
+    done
+    green "Verified complete restore guide in wheel staging"
+
     rm -rf "$DIST_DIR" || { red "❌ Error: Failed to remove $DIST_DIR"; exit 1; }
     python3 -m build
 
-    # Verify that artifacts were created
-    mapfile -t ARTIFACTS < <(ls "$DIST_DIR"/*.whl "$DIST_DIR"/*.tar.gz 2>/dev/null)
-    if [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
-        red "❌ No artifacts found in $DIST_DIR"
+    # A release requires both artifact types. Keep the resolved names in arrays
+    # so every later validation and signing step uses the exact same files.
+    mapfile -t WHEELS < <(compgen -G "$DIST_DIR/*.whl" || true)
+    mapfile -t SDISTS < <(compgen -G "$DIST_DIR/*.tar.gz" || true)
+    if [[ ${#WHEELS[@]} -eq 0 || ${#SDISTS[@]} -eq 0 ]]; then
+        red "❌ Expected at least one wheel and one sdist in $DIST_DIR"
         exit 1
     fi
+    ARTIFACTS=("${WHEELS[@]}" "${SDISTS[@]}")
+
+    if ! python3 scripts/release_validation.py wheel-docs \
+        --staging-dir "src/dar_backup" "${WHEELS[@]}"; then
+        red "❌ Built wheel documentation validation failed"
+        exit 1
+    fi
+    green "✅ Built wheel contains every staged document"
+
+    if ! python3 -m twine check "${ARTIFACTS[@]}"; then
+        red "❌ Distribution metadata validation failed"
+        exit 1
+    fi
+    green "✅ Distribution metadata passed twine check"
 fi
 
 ########################################
@@ -527,11 +564,11 @@ else
         done
     }
 
-    for f in "$DIST_DIR"/*.{whl,tar.gz}; do
+    for f in "${ARTIFACTS[@]}"; do
         sign_file "$f" || exit 1
     done
 
-    for f in "$DIST_DIR"/*.{whl,tar.gz}; do
+    for f in "${ARTIFACTS[@]}"; do
         # Capture GPG's machine-readable status lines on fd 3 (separate from
         # stdout/stderr) so the human-facing --verify output/exit code above
         # is unaffected; --list-packets' human debug format is not a stable
@@ -570,7 +607,7 @@ if $DRY_RUN; then
     exit 0
 elif $UPLOAD; then
     green "Uploading to PyPI..."
-    if twine upload "$DIST_DIR"/*; then
+    if python3 -m twine upload "$DIST_DIR"/*; then
         green "🎉 Done: Version $VERSION uploaded successfully"
 
         ########################################
