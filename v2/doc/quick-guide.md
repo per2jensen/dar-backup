@@ -43,7 +43,7 @@ pip install dar-backup  # run pip to install `dar-backup` into the virtual envir
 ```bash
 (venv) $ pip install dar-backup
 ...
-Successfully installed argcomplete-3.6.2 dar-backup-1.1.10 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
+Successfully installed argcomplete-3.6.2 dar-backup-1.1.11 inputimeout-1.0.4 markdown-it-py-3.0.0 mdurl-0.1.2 pygments-2.19.1 rich-14.0.0
 ```
 
 </details>
