@@ -1,0 +1,105 @@
+# Copy one dar-backup run from /mnt/dar to the current directory,
+# then verify the copied files using rsync checksums.
+#
+# Valid backup name format:
+#   <definition>_<FULL|DIFF|INCR>_YYYY-MM-DD
+#
+# Rules for <definition>:
+#   - underscores are NOT allowed
+#   - spaces ARE allowed
+#
+# Examples:
+#   dbcopy media-files_DIFF_2026-08-01
+#   dbcopy "My Photos_FULL_2026-08-01"
+
+dbcopy()
+{
+    local backup="$1"
+    local src="/mnt/dar"
+    local rc
+    local verify_output
+    local -a archive_files
+
+    if [ -z "$backup" ]; then
+        echo "Usage: dbcopy <backup-name>"
+        echo "Example: dbcopy media-files_DIFF_2026-08-01"
+        return 2
+    fi
+
+    # Guardrail: validate archive/run name.
+    #
+    # Definition:
+    #   - must contain at least one character
+    #   - must not contain underscores
+    #   - may contain spaces
+    #
+    # Suffix must be exactly:
+    #   _FULL_YYYY-MM-DD
+    #   _DIFF_YYYY-MM-DD
+    #   _INCR_YYYY-MM-DD
+    if [[ ! "$backup" =~ ^[^_]+_(FULL|DIFF|INCR)_[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "ERROR: invalid backup name:"
+        echo "  $backup"
+        echo
+        echo "Required format:"
+        echo "  <definition>_<FULL|DIFF|INCR>_YYYY-MM-DD"
+        echo
+        echo "Underscores are not allowed in <definition>."
+        echo "Spaces are allowed."
+        return 2
+    fi
+
+    # Build a naturally/version-sorted list of matching archive files.
+    mapfile -t archive_files < <(
+        compgen -G "${src}/${backup}*" | sort -V
+    )
+
+    if [ "${#archive_files[@]}" -eq 0 ]; then
+        echo "ERROR: no files matching:"
+        echo "  ${src}/${backup}*"
+        return 1
+    fi
+
+    echo "Copying ${backup}..."
+    echo
+
+    rsync -avh \
+        --partial \
+        --info=progress2 \
+        --stats \
+        "${archive_files[@]}" .
+
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo
+        echo "ERROR: rsync copy failed with exit code $rc"
+        return "$rc"
+    fi
+
+    echo
+    echo "Verifying copied files using checksums..."
+    echo
+
+    verify_output=$(
+        rsync -avhc \
+            --dry-run \
+            --out-format='%n' \
+            "${archive_files[@]}" .
+    )
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: verification rsync failed with exit code $rc"
+        return "$rc"
+    fi
+
+    if [ -n "$verify_output" ]; then
+        echo "ERROR: verification found differences:"
+        printf '%s\n' "$verify_output"
+        return 1
+    fi
+
+    echo "Copy and verification completed successfully:"
+    echo "  ${backup}"
+}
+
