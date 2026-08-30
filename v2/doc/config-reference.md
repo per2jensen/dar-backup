@@ -413,7 +413,7 @@ Optional. When set, dar-backup records a row of operational metrics into a SQLit
 
 ```ini
 [MISC]
-METRICS_DB_PATH = /var/lib/dar-backup/metrics.db
+METRICS_DB_PATH = ~/.config/dar-backup/dar-backup-metrics.db
 ```
 
 Tilde and environment variable expansion are supported:
@@ -425,7 +425,32 @@ METRICS_DB_PATH = $XDG_DATA_HOME/dar-backup/metrics.db
 
 If `METRICS_DB_PATH` is absent or empty, metrics collection is silently disabled — no database is created and backups are unaffected.
 
+`METRICS_DB_PATH` must be outside `BACKUP_DIR`. If the database is stored below
+the backup destination and that destination is an NFS or other mounted
+filesystem, losing the mount exposes the underlying local directory. Metrics
+can then be written to a second database under the same pathname. Restoring the
+mount hides that database again, making recorded failures appear to disappear.
+dar-backup rejects this configuration at startup.
+
+Keeping the database beside `dar-backup.conf` is recommended. It remains
+available when backup storage is offline and is included automatically when
+that configuration directory is itself covered by a backup definition. The
+backup that captures the database may not contain its own final metrics row,
+because that row is committed after the backup finishes; a later backup will
+contain it.
+
 The database is created automatically on first use. If an older database exists (created before this version), the new columns are added automatically; no data is lost.
+
+Cleanup also preserves metrics history. When an archive is removed, its active
+metrics row is marked with an `archive_deleted_at` timestamp rather than being
+deleted. Dashboard queries hide marked rows. If a new backup later reuses the
+same archive name, its new row remains active until that archive is cleaned up.
+Dry runs and attempts that remove no DAR slices do not mark a row deleted.
+
+The database uses SQLite WAL mode. When copying or restoring it manually, copy
+the main database and its `-wal` file as one set while no dar-backup process is
+writing to them. A `-shm` file may also be present, but it is transient and
+SQLite can rebuild it.
 
 Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / FAILURE).
 

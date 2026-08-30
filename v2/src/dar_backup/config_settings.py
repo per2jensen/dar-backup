@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import dataclass, field, fields
 from os.path import expandvars, expanduser
+from pathlib import Path
 from typing import Optional, Pattern, cast
 
 from dar_backup.exceptions import ConfigSettingsError
@@ -232,6 +233,8 @@ class ConfigSettings:
                     if isinstance(value, str):
                         setattr(self, f.name, expanduser(expandvars(value)))
 
+            self._validate_metrics_db_location()
+
         except ConfigSettingsError:
             raise
         except OSError as e:
@@ -258,6 +261,36 @@ class ConfigSettings:
             if hasattr(self, field.name) and getattr(self, field.name) is not None
         ]
         return f"<ConfigSettings({', '.join(safe_fields)})>"
+
+    def _validate_metrics_db_location(self) -> None:
+        """Reject a metrics database stored inside the backup destination.
+
+        A database below ``BACKUP_DIR`` can resolve to a different file when a
+        mount is lost and later restored. This creates split metrics histories
+        under one pathname and can make recorded failures appear to disappear.
+
+        Returns:
+            None.
+
+        Raises:
+            ConfigSettingsError: If ``METRICS_DB_PATH`` resolves to
+                ``BACKUP_DIR`` or one of its descendants.
+        """
+        if not self.metrics_db_path:
+            return
+
+        backup_dir = Path(self.backup_dir).resolve(strict=False)
+        metrics_db_path = Path(self.metrics_db_path).resolve(strict=False)
+        if metrics_db_path != backup_dir and backup_dir not in metrics_db_path.parents:
+            return
+
+        raise ConfigSettingsError(
+            "METRICS_DB_PATH must not be inside BACKUP_DIR: "
+            f"METRICS_DB_PATH='{metrics_db_path}', BACKUP_DIR='{backup_dir}'. "
+            "A missing or restored mount can otherwise switch the pathname to "
+            "a different database and hide backup failures. Store the metrics "
+            "database beside dar-backup.conf or on another always-available filesystem."
+        )
 
     def _get_config_value(self, section: str, key: str, converter, default):
         """Read an optional config key and convert it with *converter*.

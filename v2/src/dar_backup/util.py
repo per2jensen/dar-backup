@@ -32,7 +32,7 @@ import dar_backup.__about__ as about
 
 
 
-from datetime import datetime, date
+from datetime import UTC, datetime, date
 from dar_backup.config_settings import ConfigSettings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -1644,6 +1644,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     backup_definition             TEXT    NOT NULL,
     backup_type                   TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
     archive_name                  TEXT,
+    archive_deleted_at            TEXT,
     dar_backup_version            TEXT,
     dar_version                   TEXT,
     run_started_at                TEXT    NOT NULL,
@@ -1790,6 +1791,7 @@ _METRICS_MIGRATIONS: list[tuple[str, str]] = [
     ("run_id",                        "TEXT"),
     ("prereq_status",                 "TEXT"),
     ("postreq_status",                "TEXT"),
+    ("archive_deleted_at",            "TEXT"),
 ]
 
 
@@ -1908,6 +1910,66 @@ def write_metrics_row(metrics: dict, config_settings) -> None:
             conn.commit()
     except Exception as exc:  # noqa: BLE001 — logs with context and continues (metrics write is best-effort)
         get_logger().warning("Failed to write metrics row: %s", exc)
+
+
+def mark_archive_metrics_deleted(
+    archive_name: str,
+    config_settings: ConfigSettings,
+) -> bool:
+    """Mark active metrics rows for a cleaned archive as deleted.
+
+    All currently-active rows with the exact archive name are marked in one
+    transaction. Rows already marked remain unchanged, so repeated cleanup is
+    idempotent. A later backup with the same archive name inserts a new row with
+    a NULL deletion timestamp and therefore becomes active independently.
+
+    Args:
+        archive_name: Archive base name without a DAR slice suffix.
+        config_settings: Parsed configuration containing ``metrics_db_path``.
+
+    Returns:
+        True when metrics are disabled or the update commits successfully;
+        False when the configured database cannot be updated.
+
+    Raises:
+        ValueError: If ``archive_name`` is empty or not a string.
+    """
+    if not isinstance(archive_name, str) or not archive_name.strip():
+        raise ValueError("archive_name must be a non-empty string")
+
+    db_path = getattr(config_settings, "metrics_db_path", None)
+    if not db_path:
+        return True
+
+    expanded_db_path = os.path.expanduser(os.path.expandvars(db_path))
+    deleted_at = datetime.now(UTC).isoformat()
+    try:
+        ensure_metrics_db(expanded_db_path)
+        with closing(sqlite3.connect(expanded_db_path)) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE backup_runs
+                SET archive_deleted_at = ?
+                WHERE archive_name = ?
+                  AND archive_deleted_at IS NULL
+                """,
+                (deleted_at, archive_name),
+            )
+            updated_rows = cursor.rowcount
+            conn.commit()
+        get_logger().info(
+            "Marked %d metrics row(s) deleted for archive '%s'",
+            updated_rows,
+            archive_name,
+        )
+        return True
+    except (OSError, sqlite3.Error) as exc:
+        get_logger().error(
+            "Failed to mark metrics rows deleted for archive '%s': %s",
+            archive_name,
+            exc,
+        )
+        return False
 
 
 def write_restore_test_samples(

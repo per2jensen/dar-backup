@@ -279,6 +279,42 @@ def test_generate_file_writes_and_respects_override(tmp_path):
     assert output_path.read_text() == original
 
 
+def test_generated_config_recommends_metrics_db_in_config_dir(tmp_path: Path) -> None:
+    """The generated metrics path must use CONFIG_DIR, not the backup destination.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    output_path = tmp_path / "dar-backup.conf"
+    config_dir = tmp_path / "config"
+    dar_backup_dir = tmp_path / "dar-backup"
+    vars_map = {
+        "ROOT_DIR": str(tmp_path / "source"),
+        "DIR_TO_BACKUP": ".config/dar-backup",
+        "DAR_BACKUP_DIR": str(dar_backup_dir),
+        "BACKUP_DIR": str(dar_backup_dir / "backups"),
+        "BACKUP_D_DIR": str(config_dir / "backup.d"),
+        "TEST_RESTORE_DIR": str(tmp_path / "restore"),
+        "CONFIG_DIR": str(config_dir),
+    }
+
+    result = demo.generate_file(
+        _ns(override=True),
+        "dar-backup.conf.j2",
+        output_path,
+        vars_map,
+        {},
+    )
+
+    assert result is True
+    rendered = output_path.read_text()
+    assert f"# METRICS_DB_PATH = {config_dir}/dar-backup-metrics.db" in rendered
+    assert f"# METRICS_DB_PATH = {dar_backup_dir}/dar-backup-metrics.db" not in rendered
+
+
 def test_generate_file_rejects_directory_output(tmp_path, capsys):
     args = _ns(override=True)
     output_path = tmp_path / "outdir"

@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -410,6 +411,60 @@ class TestMain:
             main()
 
         assert any("8001" in msg and "8002" in msg for msg in printed)
+
+    def test_main_prints_canonical_metrics_database_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Print and serve the canonical path of the selected metrics database.
+
+        Args:
+            tmp_path: Isolated filesystem directory provided by pytest.
+
+        Returns:
+            None.
+        """
+        db_file = tmp_path / "metrics.db"
+        db_file.touch()
+        db_alias = tmp_path / "metrics-alias.db"
+        db_alias.symlink_to(db_file)
+
+        mock_proc = MagicMock()
+        mock_proc.wait = MagicMock(side_effect=[KeyboardInterrupt, None])
+        mock_proc.terminate = MagicMock()
+        printed: list[str] = []
+
+        def capture_print(*args: object, **kwargs: object) -> None:
+            """Capture printed dashboard messages.
+
+            Args:
+                *args: Positional values passed to ``print``.
+                **kwargs: Keyword values passed to ``print``.
+
+            Returns:
+                None.
+            """
+            printed.append(" ".join(str(arg) for arg in args))
+
+        with patch("dar_backup.dashboard.check_datasette_installed", return_value=True), \
+             patch("dar_backup.dashboard.resolve_config_file", return_value=str(tmp_path / "c.conf")), \
+             patch("dar_backup.dashboard.resolve_db_path", return_value=str(db_alias)), \
+             patch("dar_backup.dashboard.get_dashboard_html_path", return_value=str(tmp_path / "dashboard.html")), \
+             patch("dar_backup.dashboard.find_free_port", return_value=8001), \
+             patch("dar_backup.dashboard.get_datasette_path", return_value="/usr/bin/datasette"), \
+             patch("dar_backup.dashboard.subprocess.Popen", return_value=mock_proc) as mock_popen, \
+             patch("dar_backup.dashboard.wait_for_datasette", return_value=True), \
+             patch("webbrowser.open"), \
+             patch("sys.argv", ["dar-backup-dashboard", "--no-browser"]), \
+             patch("builtins.print", side_effect=capture_print), \
+             pytest.raises(SystemExit) as exc_info:
+            main()
+
+        canonical_path = str(db_file.resolve())
+        assert exc_info.value.code == 0
+        assert f"Metrics database: {canonical_path}" in printed
+        popen_command = mock_popen.call_args.args[0]
+        assert canonical_path in popen_command
 
     def test_main_datasette_file_not_found(self, tmp_path: pytest.TempPathFactory) -> None:
         """Exits with code 1 when Popen raises FileNotFoundError."""

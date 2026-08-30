@@ -257,6 +257,26 @@ class TestJsFunctionsPresent:
 
 
 # ---------------------------------------------------------------------------
+# JavaScript: cleaned archive filtering
+# ---------------------------------------------------------------------------
+
+class TestCleanedArchiveFiltering:
+    """Cleaned archives must be retained in SQLite but excluded from the UI."""
+
+    def test_all_dashboard_queries_require_active_archive(self, dom: _AttrCollector) -> None:
+        """Definition, recent, limit, and trend queries must exclude deleted rows."""
+        assert dom.inline_js.count("archive_deleted_at IS NULL") >= 4
+
+    def test_recent_limit_ignores_deleted_newer_rows(self, dom: _AttrCollector) -> None:
+        """Deleted rows must not consume one of the configured recent-run slots."""
+        js = dom.inline_js
+        limit_start = js.index("SELECT COUNT(*) FROM backup_runs b2")
+        limit_end = js.index(") < ${limit}", limit_start)
+        limit_query = js[limit_start:limit_end]
+        assert "b2.archive_deleted_at IS NULL" in limit_query
+
+
+# ---------------------------------------------------------------------------
 # JavaScript: two-dataset chart design
 # ---------------------------------------------------------------------------
 

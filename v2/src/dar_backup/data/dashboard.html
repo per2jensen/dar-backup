@@ -1121,7 +1121,9 @@ function filterTimeRange() {
 async function populateDefDropdown() {
   try {
     const rows = await query(
-      `SELECT DISTINCT backup_definition FROM backup_runs ORDER BY backup_definition`
+      `SELECT DISTINCT backup_definition FROM backup_runs
+       WHERE archive_deleted_at IS NULL
+       ORDER BY backup_definition`
     );
     const sel = document.getElementById('filter-def');
     const current = sel.value;
@@ -1155,6 +1157,7 @@ async function loadAll() {
     const limitClause = limit != null
       ? `AND (SELECT COUNT(*) FROM backup_runs b2
              WHERE b2.backup_definition = b.backup_definition
+               AND b2.archive_deleted_at IS NULL
                AND b2.run_started_at > b.run_started_at) < ${limit}`
       : '';
     const fromClause  = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
@@ -1165,6 +1168,7 @@ async function loadAll() {
       SELECT b.*
       FROM backup_runs b
       WHERE 1=1
+        AND b.archive_deleted_at IS NULL
         ${limitClause}
         ${defClause}
         ${fromClause}
@@ -1174,6 +1178,7 @@ async function loadAll() {
     `;
 
     const trendWhere = [
+      `archive_deleted_at IS NULL`,
       def          ? `backup_definition = '${def.replace(/'/g, "''")}'`         : '',
       timeRange.from ? `datetime(run_started_at) >= datetime('${timeRange.from}')` : '',
       timeRange.to   ? `datetime(run_started_at) <= datetime('${timeRange.to}')`   : '',

@@ -1,8 +1,11 @@
 import os
+import sqlite3
 import subprocess
 import logging
 import sys
+from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -13,7 +16,7 @@ from datetime import timedelta
 from datetime import datetime
 from dar_backup.command_runner import CommandRunner
 from unittest.mock import MagicMock
-from dar_backup.util import requirements
+from dar_backup.util import ensure_metrics_db, requirements
 
 from dar_backup.cleanup import confirm_full_archive_deletion
 from inputimeout import TimeoutOccurred
@@ -25,6 +28,40 @@ date_19_days_ago  = (datetime.now() - timedelta(days=19)).strftime('%Y-%m-%d')
 date_20_days_ago  = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 date_40_days_ago  = (datetime.now() - timedelta(days=40)).strftime('%Y-%m-%d')
 date_100_days_ago = (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d')
+
+
+def create_metrics_archive_row(db_path: Path, archive_name: str) -> SimpleNamespace:
+    """Create one active metrics row and return a cleanup configuration stub.
+
+    Args:
+        db_path: SQLite metrics database path.
+        archive_name: Archive base name stored in the metrics row.
+
+    Returns:
+        Configuration stub containing the metrics database path.
+
+    Raises:
+        ValueError: If ``archive_name`` is empty.
+    """
+    if not archive_name:
+        raise ValueError("archive_name must not be empty")
+
+    ensure_metrics_db(str(db_path))
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO backup_runs (
+                backup_definition,
+                backup_type,
+                archive_name,
+                run_started_at,
+                status
+            ) VALUES (?, 'DIFF', ?, '2026-01-01T00:00:00Z', 'SUCCESS')
+            """,
+            ("example", archive_name),
+        )
+        conn.commit()
+    return SimpleNamespace(metrics_db_path=str(db_path))
 
 
 def create_test_files(env):
@@ -710,7 +747,6 @@ def test_postreq_script_failure(logger, caplog):
     assert "failure output" in caplog.text
 
 
-from types import SimpleNamespace
 from unittest.mock import patch
 from dar_backup.cleanup import delete_catalog
 
@@ -1157,6 +1193,8 @@ def test_delete_archive_all_slices_deleted_removes_catalog_and_returns_true(
     ]
     for slice_path in slice_paths:
         slice_path.write_text("data")
+    metrics_db = tmp_path / "metrics.db"
+    config_settings = create_metrics_archive_row(metrics_db, archive_name)
 
     delete_catalog = MagicMock(return_value=True)
     monkeypatch.setattr(cleanup, "logger", MagicMock())
@@ -1167,11 +1205,100 @@ def test_delete_archive_all_slices_deleted_removes_catalog_and_returns_true(
         str(tmp_path),
         archive_name,
         SimpleNamespace(dry_run=False, config_file="/dev/null"),
+        config_settings,
     )
 
     assert result is True
     assert all(not slice_path.exists() for slice_path in slice_paths)
     delete_catalog.assert_called_once()
+    with closing(sqlite3.connect(metrics_db)) as conn:
+        deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert deleted_at is not None
+
+
+def test_delete_archive_dry_run_preserves_active_metrics_row(tmp_path: Path) -> None:
+    """A dry run must preserve both the archive slice and active metrics row.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2026-01-01"
+    slice_path = tmp_path / f"{archive_name}.1.dar"
+    slice_path.write_text("data")
+    metrics_db = tmp_path / "metrics.db"
+    config_settings = create_metrics_archive_row(metrics_db, archive_name)
+
+    result = cleanup.delete_archive(
+        str(tmp_path),
+        archive_name,
+        SimpleNamespace(dry_run=True, config_file="/dev/null"),
+        config_settings,
+    )
+
+    assert result is True
+    assert slice_path.exists()
+    with closing(sqlite3.connect(metrics_db)) as conn:
+        deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert deleted_at is None
+
+
+def test_delete_archive_total_slice_failure_preserves_active_metrics_row(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keep metrics active when cleanup cannot remove any archive slice.
+
+    Args:
+        monkeypatch: Pytest fixture used to simulate an OS-level deletion failure.
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    import dar_backup.cleanup as cleanup
+
+    archive_name = "example_DIFF_2026-01-01"
+    slice_path = tmp_path / f"{archive_name}.1.dar"
+    slice_path.write_text("data")
+    metrics_db = tmp_path / "metrics.db"
+    config_settings = create_metrics_archive_row(metrics_db, archive_name)
+
+    # An OS-level deletion failure cannot be triggered portably on every test
+    # filesystem, so simulate safe_remove_file leaving the slice untouched.
+    delete_catalog = MagicMock(return_value=True)
+    delete_par2 = MagicMock(return_value=True)
+    monkeypatch.setattr(cleanup, "safe_remove_file", MagicMock(return_value=False))
+    monkeypatch.setattr(cleanup, "delete_catalog", delete_catalog)
+    monkeypatch.setattr(cleanup, "_delete_par2_files", delete_par2)
+
+    result = cleanup.delete_archive(
+        str(tmp_path),
+        archive_name,
+        SimpleNamespace(dry_run=False, config_file="/dev/null"),
+        config_settings,
+    )
+
+    assert result is False
+    assert slice_path.exists()
+    delete_catalog.assert_not_called()
+    delete_par2.assert_not_called()
+    with closing(sqlite3.connect(metrics_db)) as conn:
+        deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert deleted_at is None
 
 
 def test_delete_archive_partial_slice_failure_removes_catalog_and_returns_false(
@@ -1187,6 +1314,8 @@ def test_delete_archive_partial_slice_failure_removes_catalog_and_returns_false(
     remaining_slice = tmp_path / f"{archive_name}.2.dar"
     deleted_slice.write_text("data")
     remaining_slice.write_text("data")
+    metrics_db = tmp_path / "metrics.db"
+    config_settings = create_metrics_archive_row(metrics_db, archive_name)
 
     # A real permission or filesystem failure cannot be triggered portably, so
     # simulate safe_remove_file rejecting only the second archive slice.
@@ -1217,6 +1346,7 @@ def test_delete_archive_partial_slice_failure_removes_catalog_and_returns_false(
         str(tmp_path),
         archive_name,
         SimpleNamespace(dry_run=False, config_file="/dev/null"),
+        config_settings,
     )
 
     assert result is False
@@ -1226,6 +1356,12 @@ def test_delete_archive_partial_slice_failure_removes_catalog_and_returns_false(
     assert "deleted 1 of 2 DAR slices" in caplog.text
     assert str(remaining_slice) in caplog.text
     assert "catalog entry will be removed" in caplog.text.lower()
+    with closing(sqlite3.connect(metrics_db)) as conn:
+        deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert deleted_at is not None
 
 
 def test_delete_archive_catalog_failure_returns_false(
@@ -1238,6 +1374,8 @@ def test_delete_archive_catalog_failure_returns_false(
     archive_name = "example_DIFF_2026-01-01"
     slice_path = tmp_path / f"{archive_name}.1.dar"
     slice_path.write_text("data")
+    metrics_db = tmp_path / "metrics.db"
+    config_settings = create_metrics_archive_row(metrics_db, archive_name)
 
     monkeypatch.setattr(cleanup, "logger", MagicMock())
     monkeypatch.setattr(cleanup, "delete_catalog", MagicMock(return_value=False))
@@ -1247,10 +1385,17 @@ def test_delete_archive_catalog_failure_returns_false(
         str(tmp_path),
         archive_name,
         SimpleNamespace(dry_run=False, config_file="/dev/null"),
+        config_settings,
     )
 
     assert result is False
     assert not slice_path.exists()
+    with closing(sqlite3.connect(metrics_db)) as conn:
+        deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert deleted_at is not None
 
 
 def test_cleanup_main_delete_failure_exits_nonzero(

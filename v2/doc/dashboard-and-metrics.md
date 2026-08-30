@@ -151,10 +151,11 @@ That is all.  The command:
 1. Reads `METRICS_DB_PATH` from your dar-backup config file (same config
    resolution as `dar-backup` itself: `--config-file` → `DAR_BACKUP_CONFIG_FILE`
    env var → `~/.config/dar-backup/dar-backup.conf`)
-2. Starts Datasette on port 8001 (or the next free port if 8001 is taken)
-3. Waits for Datasette to be ready, printing a dot per second so you know
+2. Prints the canonical metrics database path so the data source is explicit
+3. Starts Datasette on port 8001 (or the next free port if 8001 is taken)
+4. Waits for Datasette to be ready, printing a dot per second so you know
    something is happening
-4. Opens the dashboard in your default browser
+5. Opens the dashboard in your default browser
 
 ### Examples
 
@@ -202,6 +203,18 @@ are appended with `ALTER TABLE ADD COLUMN` so no data is lost.
 
 Errors writing metrics are logged as `WARNING` and never abort a backup.
 
+Cleanup retains metrics history. After at least one DAR slice is removed,
+`cleanup` timestamps every currently active row with the exact archive name in
+`archive_deleted_at`; it does not delete database rows. The dashboard excludes
+those rows from its summaries, recent-run tables, filters, and trend charts.
+Dry runs and cleanups that fail before removing any slice leave the row active.
+
+Archive names may be reused, for example when a backup is created, cleaned up,
+and created again on the same date. A new backup appends a new row with
+`archive_deleted_at` set to NULL, so it appears in the dashboard even though an
+older row with the same archive name remains preserved as deleted history. A
+later cleanup timestamps only rows that are active at that time.
+
 #### Run identification
 
 | Column | Type | Description |
@@ -210,6 +223,7 @@ Errors writing metrics are logged as `WARNING` and never abort a backup.
 | `backup_definition` | TEXT | Name of the backup definition file. |
 | `backup_type` | TEXT | `FULL`, `DIFF`, or `INCR`. |
 | `archive_name` | TEXT | Base name of the dar archive, e.g. `homedir_FULL_2025-11-22`. |
+| `archive_deleted_at` | TEXT | ISO-8601 cleanup timestamp, or NULL while the archive remains active. |
 | `hostname` | TEXT | Hostname of the machine that ran the backup (`socket.gethostname()`). |
 | `dar_backup_version` | TEXT | dar-backup version string. |
 | `dar_version` | TEXT | dar version string. |

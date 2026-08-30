@@ -16,6 +16,9 @@ COMMAND_TIMEOUT_SECS = 86400
 # size is still logged but not kept in memory. Use 0 to avoid buffering entirely.
 # Default is 102400.
 # COMMAND_CAPTURE_MAX_BYTES = 102400
+# Optional SQLite metrics database. Keep it outside BACKUP_DIR so a missing
+# backup mount cannot hide or replace its history.
+# METRICS_DB_PATH = /tmp/unit-test/@@test-case-name@@/dar-backup-metrics.db
 #
 # Ownership restoration during restores.
 # no  (default) — dar-backup injects --comparison-field=ignore-owner so that

@@ -31,6 +31,7 @@ import glob
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.util import list_backups
+from dar_backup.util import mark_archive_metrics_deleted
 from dar_backup.util import init_logging
 from dar_backup.util import get_config_file
 from dar_backup.util import get_logger
@@ -218,6 +219,18 @@ def _finalize_archive_deletion(
     if not _delete_par2_files(archive_name, backup_dir, config_settings, archive_definition, dry_run=dry_run):
         cleanup_succeeded = False
         logger.error("One or more PAR2 files for archive '%s' remain on disk", archive_name)
+
+    if (
+        not dry_run
+        and config_settings is not None
+        and not mark_archive_metrics_deleted(archive_name, config_settings)
+    ):
+        cleanup_succeeded = False
+        logger.error(
+            "Archive '%s' was removed or made incomplete, but its metrics rows "
+            "could not be marked deleted",
+            archive_name,
+        )
 
     return cleanup_succeeded
 

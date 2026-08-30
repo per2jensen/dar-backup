@@ -1,6 +1,7 @@
 import logging
 import os
 from configparser import ConfigParser
+from pathlib import Path
 
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.exceptions import ConfigSettingsError
@@ -66,6 +67,123 @@ def write_config(
     with open(path, "w") as handle:
         config.write(handle)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Metrics database location safety
+# ---------------------------------------------------------------------------
+
+def test_metrics_db_path_outside_backup_dir_is_accepted(tmp_path: Path) -> None:
+    """Accept a metrics database beside the configuration file.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    metrics_db_path = tmp_path / "config" / "dar-backup-metrics.db"
+    config_path = write_config(
+        tmp_path / "good.conf",
+        tmp_path,
+        misc_overrides={"METRICS_DB_PATH": str(metrics_db_path)},
+    )
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.metrics_db_path == str(metrics_db_path)
+
+
+def test_metrics_db_path_with_backup_prefix_is_accepted(tmp_path: Path) -> None:
+    """Accept a sibling whose name merely shares the backup path prefix.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    metrics_db_path = tmp_path / "backups-metrics" / "metrics.db"
+    config_path = write_config(
+        tmp_path / "good-prefix.conf",
+        tmp_path,
+        misc_overrides={"METRICS_DB_PATH": str(metrics_db_path)},
+    )
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.metrics_db_path == str(metrics_db_path)
+
+
+@pytest.mark.parametrize(
+    "metrics_relative_path",
+    [
+        ".",
+        "metrics.db",
+        "monitoring/metrics.db",
+        "../backups/metrics.db",
+    ],
+)
+def test_metrics_db_path_inside_backup_dir_raises_config_error(
+    tmp_path: Path,
+    metrics_relative_path: str,
+) -> None:
+    """Reject direct, nested, and normalized backup-directory descendants.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        metrics_relative_path: Unsafe metrics path relative to BACKUP_DIR.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If ConfigSettings does not reject the unsafe path.
+    """
+    backup_dir = tmp_path / "backups"
+    metrics_db_path = backup_dir / metrics_relative_path
+    config_path = write_config(
+        tmp_path / "unsafe.conf",
+        tmp_path,
+        misc_overrides={"METRICS_DB_PATH": str(metrics_db_path)},
+    )
+
+    with pytest.raises(ConfigSettingsError) as exc_info:
+        ConfigSettings(str(config_path))
+
+    message = str(exc_info.value)
+    assert "METRICS_DB_PATH" in message
+    assert "BACKUP_DIR" in message
+    assert "mount" in message.lower()
+    assert "dar-backup.conf" in message
+
+
+def test_metrics_db_path_symlink_into_backup_dir_raises_config_error(
+    tmp_path: Path,
+) -> None:
+    """Reject an existing symlink that disguises a path below BACKUP_DIR.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If ConfigSettings does not reject the symlinked path.
+    """
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    metrics_alias = tmp_path / "metrics-alias"
+    metrics_alias.symlink_to(backup_dir, target_is_directory=True)
+    config_path = write_config(
+        tmp_path / "unsafe-symlink.conf",
+        tmp_path,
+        misc_overrides={"METRICS_DB_PATH": str(metrics_alias / "metrics.db")},
+    )
+
+    with pytest.raises(ConfigSettingsError, match="must not be inside BACKUP_DIR"):
+        ConfigSettings(str(config_path))
 
 
 def test_config_settings_missing_file_raises(tmp_path):

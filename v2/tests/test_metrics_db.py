@@ -12,12 +12,18 @@ import os
 import sqlite3
 from contextlib import closing
 from configparser import ConfigParser
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dar_backup.util import ensure_metrics_db, write_metrics_row, _METRICS_MIGRATIONS
+from dar_backup.util import (
+    _METRICS_MIGRATIONS,
+    ensure_metrics_db,
+    mark_archive_metrics_deleted,
+    write_metrics_row,
+)
 from dar_backup.config_settings import ConfigSettings
 
 pytestmark = pytest.mark.unit
@@ -333,6 +339,142 @@ def test_write_metrics_row_multiple_rows_accumulate(tmp_path):
     assert count == 3
 
 
+def test_mark_archive_metrics_deleted_supports_repeated_backup_cleanup_cycles(
+    tmp_path: Path,
+) -> None:
+    """Mark only rows active at each point in a repeated archive lifecycle.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    db = str(tmp_path / "metrics.db")
+    cfg = _cfg(db)
+    archive_name = "test-def_INCR_2026-08-30"
+    other_archive_name = "test-def_INCR_2026-08-29"
+    write_metrics_row(
+        {
+            **_FULL_METRICS,
+            "backup_type": "INCR",
+            "archive_name": archive_name,
+            "run_started_at": "2026-08-30T08:00:00Z",
+        },
+        cfg,
+    )
+    write_metrics_row(
+        {
+            **_FULL_METRICS,
+            "backup_type": "INCR",
+            "archive_name": other_archive_name,
+            "run_started_at": "2026-08-29T08:00:00Z",
+        },
+        cfg,
+    )
+
+    assert mark_archive_metrics_deleted(archive_name, cfg) is True
+    with closing(sqlite3.connect(db)) as conn:
+        first_cycle = conn.execute(
+            "SELECT archive_name, archive_deleted_at FROM backup_runs ORDER BY id"
+        ).fetchall()
+    assert first_cycle[0][1] is not None
+    assert first_cycle[1] == (other_archive_name, None)
+
+    write_metrics_row(
+        {
+            **_FULL_METRICS,
+            "backup_type": "INCR",
+            "archive_name": archive_name,
+            "run_started_at": "2026-08-30T09:00:00Z",
+        },
+        cfg,
+    )
+    with closing(sqlite3.connect(db)) as conn:
+        active_rows = conn.execute(
+            """
+            SELECT run_started_at
+            FROM backup_runs
+            WHERE archive_name = ? AND archive_deleted_at IS NULL
+            """,
+            (archive_name,),
+        ).fetchall()
+    assert active_rows == [("2026-08-30T09:00:00Z",)]
+
+    assert mark_archive_metrics_deleted(archive_name, cfg) is True
+    with closing(sqlite3.connect(db)) as conn:
+        active_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM backup_runs
+            WHERE archive_name = ? AND archive_deleted_at IS NULL
+            """,
+            (archive_name,),
+        ).fetchone()[0]
+        retained_count = conn.execute(
+            "SELECT COUNT(*) FROM backup_runs WHERE archive_name = ?",
+            (archive_name,),
+        ).fetchone()[0]
+    assert active_count == 0
+    assert retained_count == 2
+
+
+def test_mark_archive_metrics_deleted_is_idempotent(tmp_path: Path) -> None:
+    """Preserve the original deletion timestamp across repeated cleanup.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    db = str(tmp_path / "metrics.db")
+    cfg = _cfg(db)
+    archive_name = _FULL_METRICS["archive_name"]
+    write_metrics_row(_FULL_METRICS, cfg)
+
+    assert mark_archive_metrics_deleted(archive_name, cfg) is True
+    with closing(sqlite3.connect(db)) as conn:
+        first_deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs"
+        ).fetchone()[0]
+
+    assert mark_archive_metrics_deleted(archive_name, cfg) is True
+    with closing(sqlite3.connect(db)) as conn:
+        second_deleted_at = conn.execute(
+            "SELECT archive_deleted_at FROM backup_runs"
+        ).fetchone()[0]
+    assert second_deleted_at == first_deleted_at
+
+
+def test_mark_archive_metrics_deleted_rejects_empty_archive_name(tmp_path: Path) -> None:
+    """Reject an empty archive name before opening the database.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    with pytest.raises(ValueError, match="non-empty"):
+        mark_archive_metrics_deleted("", _cfg(str(tmp_path / "metrics.db")))
+
+
+def test_mark_archive_metrics_deleted_reports_unavailable_database(tmp_path: Path) -> None:
+    """Return False when the metrics database parent does not exist.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    db_path = tmp_path / "missing" / "metrics.db"
+
+    assert mark_archive_metrics_deleted("test-def_INCR_2026-08-30", _cfg(str(db_path))) is False
+    assert not db_path.exists()
+
+
 def test_write_metrics_row_null_optional_fields(tmp_path):
     """All optional fields set to None must still insert cleanly."""
     db = str(tmp_path / "metrics.db")
@@ -520,6 +662,7 @@ def test_write_metrics_row_undefined_env_var_swallowed_and_logged(monkeypatch):
 
 _EXPECTED_COLUMNS = {
     "id", "backup_definition", "backup_type", "archive_name",
+    "archive_deleted_at",
     "dar_backup_version", "dar_version",
     "run_started_at", "run_finished_at", "duration_secs",
     "dar_duration_secs", "verify_duration_secs", "par2_duration_secs",

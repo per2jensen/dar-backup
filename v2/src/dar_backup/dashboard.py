@@ -197,6 +197,16 @@ def main() -> None:
         )
         sys.exit(1)
 
+    db_path = os.path.realpath(db_path)
+    try:
+        from dar_backup.util import ensure_metrics_db
+        ensure_metrics_db(db_path)
+    except Exception as e:  # noqa: BLE001 — CLI boundary reports the database path and exits
+        print(f"Error: could not prepare metrics database '{db_path}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Metrics database: {db_path}")
+
     # Resolve the bundled HTML file
     try:
         html_path = get_dashboard_html_path()

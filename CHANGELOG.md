@@ -3,6 +3,11 @@
 
 High-level release summary. For detailed per-release notes see [v2/Changelog.md](v2/Changelog.md).
 
+## v2-1.1.12 - not released
+
+- Cleanup now retains metrics rows with a deletion timestamp while the dashboard shows only active archives and prints its database path
+- Reject metrics databases inside `BACKUP_DIR` to prevent mount-dependent split histories
+
 ## v2-1.1.11 - 2026-08-16
 
 - Many fixes after reviews
