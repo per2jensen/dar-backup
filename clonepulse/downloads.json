@@ -3,13 +3,12 @@
   "source": "https://pypistats.org/api/packages/dar-backup/overall?mirrors=false",
   "updated": "2026-09-04",
   "update_notice": {
-    "status": "partial",
-    "timestamp": "2026-09-04T04:32:57Z",
-    "message": "Rate-limited fetching recent stats; kept existing data."
+    "status": "ok",
+    "timestamp": "2026-09-04T14:51:08Z"
   },
   "recent": {
-    "last_day": 20,
-    "last_month": 348,
+    "last_day": 3,
+    "last_month": 346,
     "last_week": 76
   },
   "total_downloads": 5422,

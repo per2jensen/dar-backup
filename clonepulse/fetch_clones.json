@@ -70,7 +70,7 @@
     }
   ],
   "total_clones": 15340,
-  "total_clones_raw": 17345,
+  "total_clones_raw": 17559,
   "unique_clones": 7384,
   "discard": [
     {
@@ -81,6 +81,15 @@
       "imputed_count": 50,
       "imputed_from_days": 7,
       "discard_reason": "Clone/unique ratio 95.5x exceeds threshold 25x"
+    },
+    {
+      "date": "2026-09-03",
+      "count": 214,
+      "uniques": 8,
+      "ratio": 26.8,
+      "imputed_count": 14,
+      "imputed_from_days": 7,
+      "discard_reason": "Clone/unique ratio 26.8x exceeds threshold 25x"
     }
   ],
   "daily": [
@@ -2505,6 +2514,13 @@
       "timestamp": "2026-09-02T00:00:00Z",
       "count": 15,
       "uniques": 11
+    },
+    {
+      "timestamp": "2026-09-03T00:00:00Z",
+      "count": 214,
+      "uniques": 8,
+      "discarded": true,
+      "imputed_count": 14
     }
   ]
 }
