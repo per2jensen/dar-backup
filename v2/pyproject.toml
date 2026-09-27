@@ -97,6 +97,8 @@ classifiers = [
     "Intended Audience :: System Administrators",
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Topic :: System :: Archiving :: Backup",
@@ -109,13 +111,10 @@ dependencies = [
     "rich>=13.0.0",
     "argcomplete>=3.6.2",
     "Jinja2>=3.1.6",
+    "datasette>=0.65.5",
 ]
 
 [project.optional-dependencies]
-dashboard = [
-  "datasette>=0.65.2",
-]
-
 dev = [
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",

@@ -13,11 +13,14 @@ Back to [README](../../README.md)
     - [Run all tests](#run-all-tests)
     - [Howto use pytest in venv](#howto-use-pytest-in-venv)
     - [Subprocess coverage (local == CI)](#subprocess-coverage-local--ci)
+    - [Static type checking (mypy)](#static-type-checking-mypy)
 - [PyPI download stats](#pypi-download-stats)
 - [Release to PyPI](#release-to-pypi)
   - [Build dar from source](#build-dar-from-source)
     - [Check signature](#check-signature)
     - [Build](#build)
+      - [24.04](#2404)
+      - [26.04](#2604)
   - [SQLite metrics DB](#sqlite-metrics-db)
     - [Display restore-test results after a backup](#display-restore-test-results-after-a-backup)
     - [Display backup run summary](#display-backup-run-summary)
@@ -304,6 +307,10 @@ Primary key fingerprint: 1BE4 7606 A74F 178C 7328  43B0 5F64 5B19 16D5 6546
 
 ### Build
 
+The exact same build procedure works for dar 2.7.21 on Ubuntu 24.04 and 26.04 and documented below.
+
+#### 24.04
+
 export DAR_VERSION=2.7.21.RC1
 This worked for dar version 2.7.21.RC1 on ubuntu 24.04
 
@@ -311,7 +318,38 @@ export SRC_CODE=/some/dir
 export DAR_DIR=$HOME/.local/dar-${DAR_VERSION}
 
 ```` bash
-apt-get update && apt-get install -y --no-install-recommends \
+sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
+      build-essential autoconf automake libtool pkg-config binutils \
+      libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \
+      librsync-dev libcurl4-gnutls-dev libargon2-dev \
+      bzip2 zlib1g-dev libbz2-dev liblzo2-dev liblzma-dev libzstd-dev liblz4-dev \
+      groff doxygen graphviz upx
+sudo apt-get install libkrb5-dev
+sudo apt-get install libgcrypt-dev libgpgme-dev libext2fs-dev \
+     libthreadar-dev  librsync-dev  libcurl4-gnutls-dev
+cd "$SRC_CODE"
+CXXFLAGS=-O
+export CXXFLAGS
+make clean distclean
+./configure --prefix="$DAR_DIR" LDFLAGS="-lgssapi_krb5"
+make
+make install-strip
+
+rm $HOME/.local/dar  # remove link
+ln -s $HOME/.local/dar-${DAR_VERSION} $HOME/.local/dar
+````
+
+#### 26.04
+
+export DAR_VERSION=2.7.21
+This worked for dar version 2.7.21 on ubuntu 26.04
+
+export SRC_CODE=/tmp/dar-2.7.21
+export DAR_DIR=$HOME/.local/dar-${DAR_VERSION}
+
+```` bash
+sudo apt-get update && apt-get sudo install -y --no-install-recommends \
       python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
       build-essential autoconf automake libtool pkg-config binutils \
       libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \

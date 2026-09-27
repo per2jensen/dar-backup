@@ -9,6 +9,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 - **Cleaned archives remained visible in the dashboard** (`cleanup.py`, `util.py`, `dashboard.html`) — cleanup now timestamps active metrics rows with `archive_deleted_at` instead of deleting history, while every dashboard query excludes marked rows. Repeated backup → cleanup → backup cycles using the same archive name retain all rows and expose only the currently active run. Dry runs and failed deletions that remove no DAR slice leave metrics active. `dar-backup-dashboard` now prints the canonical metrics database path at startup.
 - **Metrics history could silently switch databases when backup storage was unmounted** (`config_settings.py`, config templates, `doc/config-reference.md`) — `METRICS_DB_PATH` below `BACKUP_DIR` now fails configuration validation, preventing failures from being written to an underlying local mountpoint and hidden when the backup filesystem returns. Generated and packaged configuration examples now recommend keeping the database beside `dar-backup.conf`.
+- dar-backup works on Ubuntu 26.04 with a compiled dar 2.7.21 (26.04 provides dar 2.8.3 which might work)
 
 ## v2-1.1.11 - 2026-08-16
 

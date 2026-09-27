@@ -589,7 +589,7 @@ def test_metrics_db_row_written_after_real_backup(setup_environment, env: EnvDat
     Complements test_write_metrics_row_inserts_one_row which uses a hand-crafted
     dict and never runs a real backup.
     """
-    metrics_db = os.path.join(env.backup_dir, "metrics.db")
+    metrics_db = os.path.join(os.path.dirname(env.config_file), "metrics.db")
 
     # Create an alternate backup definition so metrics are not skipped
     alt_def = "mtest"
