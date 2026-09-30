@@ -5,11 +5,15 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ## v2-1.1.12 - not released
 
+### Added
+
+- dar-backup works on Ubuntu 26.04 with a compiled dar 2.7.21 (26.04 provides dar 2.8.3 which might work)
+- **Fresh Ubuntu 24.04/26.04 VM compatibility matrix** (`vm_test/`) — a defensive Multipass controller verifies that its runtime root is a dedicated mounted SSD, archives one clean immutable Git revision, creates disposable guests sequentially, provisions real DAR/PAR2 and Python dependencies, and runs the existing pytest reporter. Test failures and infrastructure failures have distinct exit codes, while guest console output, structured metadata, pytest text/JSON/JUnit reports, coverage, and collection inventories are retrieved even after failures. Failed guests can be retained explicitly for interactive diagnosis.
+
 ### Fixed
 
 - **Cleaned archives remained visible in the dashboard** (`cleanup.py`, `util.py`, `dashboard.html`) — cleanup now timestamps active metrics rows with `archive_deleted_at` instead of deleting history, while every dashboard query excludes marked rows. Repeated backup → cleanup → backup cycles using the same archive name retain all rows and expose only the currently active run. Dry runs and failed deletions that remove no DAR slice leave metrics active. `dar-backup-dashboard` now prints the canonical metrics database path at startup.
 - **Metrics history could silently switch databases when backup storage was unmounted** (`config_settings.py`, config templates, `doc/config-reference.md`) — `METRICS_DB_PATH` below `BACKUP_DIR` now fails configuration validation, preventing failures from being written to an underlying local mountpoint and hidden when the backup filesystem returns. Generated and packaged configuration examples now recommend keeping the database beside `dar-backup.conf`.
-- dar-backup works on Ubuntu 26.04 with a compiled dar 2.7.21 (26.04 provides dar 2.8.3 which might work)
 
 ## v2-1.1.11 - 2026-08-16
 

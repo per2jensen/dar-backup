@@ -4,6 +4,7 @@
 # Unified pytest runner that produces:
 # - human-readable console log (.txt)
 # - machine-readable structured report (.json)
+# - standard CI test report (.xml)
 # - test collection inventory (__collect.txt)
 #
 # Usage:
@@ -67,6 +68,7 @@ BASE="${OUTDIR}/dar-backup-${VER}__pytest-${MODE}__${TS}"
 
 TXT="${BASE}.txt"
 JSON="${BASE}.json"
+JUNIT="${BASE}.xml"
 COLLECT="${BASE}__collect.txt"
 
 # Ensure pytest-json-report is available
@@ -102,6 +104,8 @@ pytest -q --collect-only --no-cov -m "$MARKS" | tee "$COLLECT"
 pytest -q -m "$MARKS" \
   --json-report \
   --json-report-file="$JSON" \
+  --junitxml="$JUNIT" \
+  --cov-report="xml:$COV_XML" \
   | tee "$TXT"
 
 # 3) Coverage XML (only if coverage data exists)
@@ -154,6 +158,7 @@ echo
 echo "Reports written:"
 echo "  $TXT"
 echo "  $JSON"
+echo "  $JUNIT"
 echo "  $COLLECT"
 if [[ -f "$COV_XML" ]]; then
   echo "  $COV_XML"

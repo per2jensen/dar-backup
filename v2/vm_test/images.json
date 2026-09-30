@@ -1,0 +1,21 @@
+{
+  "images": [
+    {
+      "label": "ubuntu-24.04",
+      "image": "24.04",
+      "instance_name": "dar-backup-test-2404",
+      "disk": "30G",
+      "memory": "4G",
+      "cpus": 2
+    },
+    {
+      "label": "ubuntu-26.04",
+      "image": "26.04",
+      "instance_name": "dar-backup-test-2604",
+      "disk": "30G",
+      "memory": "4G",
+      "cpus": 2
+    }
+  ]
+}
+
