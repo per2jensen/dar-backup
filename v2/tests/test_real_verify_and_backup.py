@@ -34,11 +34,13 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
 import time
 from contextlib import closing
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Generator
 
@@ -536,6 +538,67 @@ def test_verify_raises_on_corrupt_archive(setup_environment, env: EnvData) -> No
 _RESTORE_TEST_DEF_NAME = "restore-test-check"
 
 
+def _write_dar_creation_barrier(directory: Path) -> Path:
+    """Create a DAR wrapper that pauses after successful archive creation.
+
+    The wrapper delegates every invocation to the real DAR executable. For a
+    successful ``dar -c`` invocation, it creates the configured ready marker
+    and waits for the release marker before returning to dar-backup.
+
+    Args:
+        directory: Fresh directory in which to create the wrapper executable.
+
+    Returns:
+        Path to the executable DAR wrapper.
+
+    Raises:
+        OSError: If the wrapper cannot be written or made executable.
+    """
+    wrapper = directory / "dar"
+    wrapper.write_text(
+        r'''#!/usr/bin/env -S COVERAGE_PROCESS_START= python3
+# This ephemeral helper must not register as application subprocess coverage.
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+real_dar_value = os.environ.get("DAR_TEST_REAL_DAR", "")
+ready_value = os.environ.get("DAR_TEST_BARRIER_READY", "")
+release_value = os.environ.get("DAR_TEST_BARRIER_RELEASE", "")
+if not real_dar_value or not ready_value or not release_value:
+    sys.stderr.write("ERROR: DAR creation barrier environment is incomplete\n")
+    raise SystemExit(2)
+
+real_dar = Path(real_dar_value)
+ready_path = Path(ready_value)
+release_path = Path(release_value)
+if not real_dar.is_absolute() or not real_dar.is_file():
+    sys.stderr.write(f"ERROR: invalid real DAR executable: {real_dar}\n")
+    raise SystemExit(2)
+
+arguments = sys.argv[1:]
+result = subprocess.run([str(real_dar), *arguments], check=False)
+if result.returncode != 0 or "-c" not in arguments:
+    raise SystemExit(result.returncode)
+
+ready_path.touch()
+deadline = time.monotonic() + 120
+while not release_path.is_file():
+    if time.monotonic() >= deadline:
+        sys.stderr.write("ERROR: timed out waiting for DAR creation barrier release\n")
+        raise SystemExit(124)
+    time.sleep(0.01)
+
+raise SystemExit(result.returncode)
+''',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o700)
+    return wrapper
+
+
 def _inject_metrics_db(env: EnvData) -> str:
     """Insert METRICS_DB_PATH into [MISC] in the test config; return the db path."""
     db_path = os.path.join(env.test_dir, "dar-backup-metrics.db")
@@ -719,34 +782,43 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
     Steps:
       1. Inject METRICS_DB_PATH into the test config.
       2. Create a non-'example' backup definition (metrics are skipped for 'example').
-      3. Add a 512 KB random-data file to the source to lengthen the backup phase.
+      3. Install a real-process DAR wrapper that pauses after archive creation.
       4. Launch dar-backup --full-backup as a non-blocking subprocess.
-      5. Poll until the .1.dar slice size has been stable for 150 ms, which is
-         the precise signal that dar has finished writing and closed the archive.
+      5. Wait until real DAR has successfully finished creating the archive.
       6. Overwrite every source file with different content so that verify()'s
          restore-test detects a mismatch.
-      7. Wait for dar-backup to exit.
+      7. Release the wrapper so dar-backup proceeds to verification, then wait.
       8. Assert: non-zero exit code.
       9. Assert: metrics row has status='FAILURE' and restore_test_passed=0.
       10. Assert: the rejected archive was never published to the PITR catalog.
 
-    TIMING NOTE: stability is detected via 3 consecutive size-equal polls (50 ms
-    each). After dar closes the archive, the subsequent dar -t, listing, and
-    dar -x calls give the corruption time to land before verify() reads source
-    files.
+    The wrapper preserves the real DAR subprocess boundary while providing a
+    deterministic synchronization point before verification begins.
     """
     db_path = _inject_metrics_db(env)
     _create_restore_test_definition(env)
 
-    # 512 KB of random (incompressible) data to ensure the backup phase
-    # takes long enough for the corruption step to win the race.
-    padding = os.path.join(env.data_dir, "padding.bin")
-    with open(padding, "wb") as fh:
-        fh.write(os.urandom(512 * 1024))
+    real_dar = shutil.which("dar")
+    if real_dar is None:
+        pytest.fail("dar executable not found")
+    dar_backup = shutil.which("dar-backup")
+    if dar_backup is None:
+        pytest.fail("dar-backup executable not found")
+    barrier_dir = Path(env.test_dir) / "dar-creation-barrier"
+    barrier_dir.mkdir()
+    ready_path = barrier_dir / "ready"
+    release_path = barrier_dir / "release"
+    _write_dar_creation_barrier(barrier_dir)
 
-    proc = subprocess.Popen(
+    process_env = os.environ.copy()
+    process_env["PATH"] = f"{barrier_dir}{os.pathsep}{process_env['PATH']}"
+    process_env["DAR_TEST_REAL_DAR"] = str(Path(real_dar).resolve())
+    process_env["DAR_TEST_BARRIER_READY"] = str(ready_path)
+    process_env["DAR_TEST_BARRIER_RELEASE"] = str(release_path)
+
+    proc = subprocess.Popen(  # noqa: S603 - resolved trusted test executable.
         [
-            "dar-backup", "--full-backup",
+            dar_backup, "--full-backup",
             "-d", _RESTORE_TEST_DEF_NAME,
             "--config-file", env.config_file,
             "--log-level", "debug", "--log-stdout",
@@ -754,45 +826,45 @@ def test_restore_test_failure_writes_failure_to_metrics_db(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=process_env,
     )
 
-    # Poll until the .1.dar slice has stopped growing for 150 ms (3 × 50 ms polls).
-    # Detecting the file appearing is not enough — on a fast NVMe dar can finish
-    # writing and complete verify() before Python's poll loop fires.  Waiting for
-    # size stability is the precise signal that dar just closed the archive; the
-    # subsequent dar -t, listing, and dar -x calls give the source-file
-    # corruption time to land before verify() reads them.
     deadline = time.time() + 120
-    dar_appeared = False
-    last_size = -1
-    stable_count = 0
-    while time.time() < deadline:
-        try:
-            slices = [f for f in os.listdir(env.backup_dir) if f.endswith(".1.dar")]
-        except FileNotFoundError:
-            slices = []
-        if slices:
-            current_size = os.path.getsize(os.path.join(env.backup_dir, slices[0]))
-            if current_size == last_size:
-                stable_count += 1
-            else:
-                last_size = current_size
-                stable_count = 0
-            if stable_count >= 3:
-                dar_appeared = True
-                # Corrupt every source file before verify() can read them.
-                for filename in os.listdir(env.data_dir):
-                    filepath = os.path.join(env.data_dir, filename)
-                    if os.path.isfile(filepath):
-                        with open(filepath, "w") as fh:
-                            fh.write("CORRUPTED AFTER BACKUP — content mismatch expected")
+    barrier_reached = False
+    try:
+        while time.time() < deadline:
+            if ready_path.is_file():
+                barrier_reached = True
                 break
-        time.sleep(0.05)
+            if proc.poll() is not None:
+                break
+            time.sleep(0.01)
 
-    stdout, stderr = proc.communicate(timeout=120)
+        if barrier_reached:
+            for filename in os.listdir(env.data_dir):
+                filepath = os.path.join(env.data_dir, filename)
+                if os.path.isfile(filepath):
+                    with open(filepath, "w") as fh:
+                        fh.write("CORRUPTED AFTER BACKUP — content mismatch expected")
+    finally:
+        # Always release the real subprocess so failures cannot leave it blocked.
+        release_path.touch()
 
-    assert dar_appeared, (
-        "Backup .dar slice never appeared — test setup failed, not a timing issue"
+    try:
+        stdout, stderr = proc.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        pytest.fail(
+            "dar-backup timed out after the DAR creation barrier was released\n"
+            f"stdout (last 1000): {stdout[-1000:]}\n"
+            f"stderr (last 1000): {stderr[-1000:]}"
+        )
+
+    assert barrier_reached, (
+        "DAR creation barrier was not reached before dar-backup exited.\n"
+        f"stdout (last 1000): {stdout[-1000:]}\n"
+        f"stderr (last 1000): {stderr[-1000:]}"
     )
     assert proc.returncode != 0, (
         f"dar-backup must exit non-zero when restore-test fails.\n"

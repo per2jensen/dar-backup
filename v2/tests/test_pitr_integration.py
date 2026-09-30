@@ -69,6 +69,7 @@ def test_real_dar_restore_uses_open_target_after_path_replacement(
                 handle.dar_root,
                 "-Q",
                 "--noconf",
+                "--comparison-field=ignore-owner",
             ],
             timeout=30,
             pass_fds=handle.pass_fds,
@@ -1749,7 +1750,8 @@ def test_pitr_multislice_archive(setup_environment, env):
         raw_result = runner.run([
             "dar", "-x", full_archive,
             "-wa", "-g", data_dir_for_dar,
-            "--noconf", "-Q", "-R", raw_probe_dir,
+            "--noconf", "-Q", "--comparison-field=ignore-owner",
+            "-R", raw_probe_dir,
         ], timeout=300)
         assert raw_result.returncode == 0, (
             "Regression precondition changed: dar -x should still return zero "

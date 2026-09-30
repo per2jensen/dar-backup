@@ -47,14 +47,20 @@ WORK_DIR=""
 # Invoked indirectly by the EXIT trap.
 # shellcheck disable=SC2329
 write_result() {
-    local finished_at os_release kernel_version python_version pytest_version dar_version par2_version
+    local finished_at os_release kernel_version python_version pytest_version
+    local dar_version dar_manager_version par2_version
 
     finished_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
     os_release="$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '\"')"
     kernel_version="$(uname -r 2>/dev/null || printf 'unknown')"
     python_version="$(python3 --version 2>&1 || printf 'unknown')"
     pytest_version="$(pytest --version 2>&1 | head -n 1 || printf 'unavailable')"
-    dar_version="$(dar -V 2>&1 | head -n 1 || printf 'unavailable')"
+    # DAR prints a non-TTY warning before its version, so select the version
+    # line explicitly instead of recording the first output line.
+    dar_version="$(dar -V 2>&1 | sed -n '/^[[:space:]]*dar version /{s/^[[:space:]]*//;p;q;}')"
+    dar_manager_version="$(dar_manager -V 2>&1 | sed -n '/^[[:space:]]*dar_manager version /{s/^[[:space:]]*//;p;q;}')"
+    [[ -n "${dar_version}" ]] || dar_version="unavailable"
+    [[ -n "${dar_manager_version}" ]] || dar_manager_version="unavailable"
     par2_version="$(par2 -V 2>&1 | head -n 1 || printf 'unavailable')"
 
     /usr/bin/python3 - \
@@ -72,6 +78,7 @@ write_result() {
         "${python_version}" \
         "${pytest_version}" \
         "${dar_version}" \
+        "${dar_manager_version}" \
         "${par2_version}" <<'PY'
 import json
 import sys
@@ -92,6 +99,7 @@ from pathlib import Path
     python_version,
     pytest_version,
     dar_version,
+    dar_manager_version,
     par2_version,
 ) = sys.argv[1:]
 
@@ -109,6 +117,7 @@ payload = {
     "python": python_version,
     "pytest": pytest_version,
     "dar": dar_version,
+    "dar_manager": dar_manager_version,
     "par2": par2_version,
 }
 Path(result_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -164,11 +173,14 @@ fi
 
 WORK_DIR="$(mktemp -d --tmpdir=/home/ubuntu dar-backup-vm-test.XXXXXXXX)"
 tar -xf "${SOURCE_ARCHIVE}" -C "${WORK_DIR}"
-PROJECT_DIR="${WORK_DIR}/dar-backup/v2"
-if [[ ! -f "${PROJECT_DIR}/pyproject.toml" || ! -d "${PROJECT_DIR}/tests" ]]; then
-    >&2 echo "ERROR: source archive does not contain matching application source and tests"
+CHECKOUT_ROOT="${WORK_DIR}/dar-backup"
+PROJECT_DIR="${CHECKOUT_ROOT}/v2"
+PREPARE_CHECKOUT="${PROJECT_DIR}/vm_test/prepare_checkout.sh"
+if [[ ! -f "${PREPARE_CHECKOUT}" ]]; then
+    >&2 echo "ERROR: source archive does not contain the checkout preparation script"
     exit 2
 fi
+bash "${PREPARE_CHECKOUT}" "${CHECKOUT_ROOT}"
 
 cd "${PROJECT_DIR}"
 python3 -m venv venv

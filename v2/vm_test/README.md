@@ -13,11 +13,17 @@ the root-owned `multipass` directory on that same filesystem.
 ## One-time SSD and Multipass configuration
 
 Mount the SSD persistently at `/mnt/vm-work` by filesystem UUID. Multipass is
-a confined snap, so grant access to mounts below `/mnt`:
+a confined snap, so grant its daemon access to mounts below `/mnt`:
 
 ```bash
 sudo snap connect multipass:removable-media
 ```
+
+The Multipass snap does not grant `removable-media` to its command-line app,
+even though the daemon uses it for `MULTIPASS_STORAGE`. The controller
+therefore opens staged inputs and retrieved report files itself, transferring
+their bytes via Multipass standard input/output. This keeps the files on the
+SSD without requiring the confined CLI to open paths below `/mnt`.
 
 Stop Multipass and create
 `/etc/systemd/system/snap.multipass.multipassd.service.d/override.conf`:
@@ -44,6 +50,24 @@ source and tests to each guest from `HEAD`:
 python3 v2/vm_test/run_vm_matrix.py --mode full
 ```
 
+After an initialized run, the controller appends one public, schema-versioned
+record to the tracked evidence file:
+
+```text
+v2/doc/test-report/vm-matrix-results.jsonl
+```
+
+The append intentionally makes the checkout dirty after testing. Review and
+commit that line to publish the compatibility evidence on GitHub. The record
+contains both VM outcomes, source commits, tool versions, pytest counts and
+duration, and mypy status. Hostnames, usernames, instance names, and absolute
+local paths are excluded so the file is safe to publish and consume from a
+future README badge generator.
+
+The generated `v2/README.md` is intentionally ignored by Git. After extracting
+the immutable archive, each guest mirrors the normal build workflow by copying
+the committed root `README.md` into `v2/README.md` before package installation.
+
 Useful options:
 
 ```text
@@ -52,6 +76,7 @@ Useful options:
 --keep-failed        retain failed VMs for interactive diagnosis
 --keep-all           retain every VM
 --mode MODE          fast, smoke, integration, or full
+--evidence-jsonl PATH tracked evidence path (default: v2/doc/test-report/vm-matrix-results.jsonl)
 ```
 
 Results are written below:
@@ -64,3 +89,8 @@ The controller exits `0` when every image passes, `1` for pytest/mypy
 failures, and `2` for provisioning, VM, transfer, or result-contract errors.
 Guest console output, pytest text/JSON/JUnit reports, collection inventory,
 coverage, tool versions, and host controller logs are retained for diagnosis.
+Each SSD run directory also contains `vm-matrix-result.json`, the exact
+public-safe object appended to the tracked JSONL history. Evidence is written
+with an exclusive file lock, flushed, and synchronized before the controller
+returns. A malformed existing history or failed durable append is an
+infrastructure failure; the SSD artifacts are preserved for recovery.

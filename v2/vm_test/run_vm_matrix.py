@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import math
 import os
 import re
 import shlex
@@ -13,15 +15,17 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, BinaryIO, Sequence, cast
 
 
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
+HISTORY_SCHEMA_VERSION = 1
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -84,6 +88,49 @@ class CommandResult:
     output: str
 
 
+def _stream_file_to_pipe(source: BinaryIO, destination: BinaryIO) -> None:
+    """Copy one open file into a subprocess pipe and close the pipe.
+
+    Args:
+        source: Open binary source file.
+        destination: Open binary subprocess standard-input pipe.
+
+    Returns:
+        None.
+
+    Raises:
+        OSError: If the source cannot be read or the pipe cannot be written.
+    """
+    try:
+        shutil.copyfileobj(source, destination, length=1024 * 1024)
+    finally:
+        destination.close()
+
+
+def _read_pipe_as_text(source: BinaryIO, log_path: Path | None) -> str:
+    """Read, decode, and log all output from a subprocess pipe.
+
+    Args:
+        source: Open binary subprocess output pipe.
+        log_path: Optional diagnostic log path.
+
+    Returns:
+        Decoded subprocess output.
+
+    Raises:
+        OSError: If the pipe or diagnostic log cannot be read or written.
+    """
+    output_lines: list[str] = []
+    try:
+        for raw_line in source:
+            line = raw_line.decode("utf-8", errors="replace")
+            output_lines.append(line)
+            _append_log(log_path, line)
+    finally:
+        source.close()
+    return "".join(output_lines)
+
+
 @dataclass(frozen=True)
 class ImageRunResult:
     """Contain the host's final assessment of one guest run.
@@ -134,6 +181,7 @@ class CommandExecutor:
         arguments: Sequence[str],
         log_path: Path | None = None,
         stream: bool = False,
+        input_path: Path | None = None,
     ) -> CommandResult:
         """Run a Multipass command and optionally append its output to a log.
 
@@ -141,42 +189,162 @@ class CommandExecutor:
             arguments: Command arguments after the executable.
             log_path: Optional combined-output log.
             stream: Whether to echo output while the process runs.
+            input_path: Optional file for the command's standard input.
 
         Returns:
             Completed command status and combined output.
 
         Raises:
-            InfrastructureError: If the executable cannot be started.
+            InfrastructureError: If the input is invalid or the executable cannot be started.
         """
+        if input_path is not None and not input_path.is_file():
+            raise InfrastructureError(f"Command input is not a file: {input_path}")
+
         command = [self._executable, *arguments]
-        _append_log(log_path, f"$ {shlex.join(command)}\n")
+        input_suffix = f" < {shlex.quote(str(input_path))}" if input_path is not None else ""
+        _append_log(log_path, f"$ {shlex.join(command)}{input_suffix}\n")
+
+        input_file: BinaryIO | None = None
+        if input_path is not None:
+            try:
+                input_file = input_path.open("rb")
+            except OSError as exc:
+                raise InfrastructureError(f"Cannot open command input {input_path}: {exc}") from exc
 
         try:
             process = subprocess.Popen(  # noqa: S603 - arguments are never passed through a shell.
                 command,
+                stdin=subprocess.PIPE if input_file is not None else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
             )
         except OSError as exc:
-            raise InfrastructureError(f"Cannot start {self._executable}: {exc}") from exc
+            if input_file is not None:
+                input_file.close()
+            raise InfrastructureError(f"Cannot start {shlex.join(command)}: {exc}") from exc
 
-        output_lines: list[str] = []
+        input_executor: ThreadPoolExecutor | None = None
+        input_future: Future[None] | None = None
         if process.stdout is None:
             process.kill()
+            process.wait()
+            if input_file is not None:
+                input_file.close()
             raise InfrastructureError(f"Cannot capture output from {self._executable}")
 
-        for line in process.stdout:
-            output_lines.append(line)
-            _append_log(log_path, line)
-            if stream:
-                sys.stdout.write(line)
-                sys.stdout.flush()
+        if input_file is not None:
+            if process.stdin is None:
+                process.kill()
+                process.wait()
+                input_file.close()
+                raise InfrastructureError(f"Cannot stream input to {self._executable}")
+            input_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="multipass-input")
+            input_future = input_executor.submit(_stream_file_to_pipe, input_file, cast(BinaryIO, process.stdin))
 
-        returncode = process.wait()
+        output_lines: list[str] = []
+        try:
+            for raw_line in process.stdout:
+                line = raw_line.decode("utf-8", errors="replace")
+                output_lines.append(line)
+                _append_log(log_path, line)
+                if stream:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+
+            returncode = process.wait()
+            if input_future is not None:
+                try:
+                    input_future.result()
+                except OSError as exc:
+                    if returncode == 0:
+                        raise InfrastructureError(f"Cannot stream {input_path} to {self._executable}: {exc}") from exc
+                    _append_log(log_path, f"Input stream stopped after command failure: {exc}\n")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            if input_executor is not None:
+                input_executor.shutdown(wait=True)
+            if input_file is not None:
+                input_file.close()
         return CommandResult(returncode=returncode, output="".join(output_lines))
+
+    def run_with_stdout_file(
+        self,
+        arguments: Sequence[str],
+        output_path: Path,
+        log_path: Path | None = None,
+    ) -> CommandResult:
+        """Run a command and atomically capture its binary stdout in a file.
+
+        Args:
+            arguments: Command arguments after the executable.
+            output_path: Destination for the command's standard output.
+            log_path: Optional command and standard-error log.
+
+        Returns:
+            Completed command status and captured standard error.
+
+        Raises:
+            InfrastructureError: If the command or output file cannot be handled.
+        """
+        command = [self._executable, *arguments]
+        _append_log(log_path, f"$ {shlex.join(command)} > {shlex.quote(str(output_path))}\n")
+
+        temporary_path: Path | None = None
+        process: subprocess.Popen[bytes] | None = None
+        error_executor: ThreadPoolExecutor | None = None
+        error_output = ""
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                dir=output_path.parent,
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                process = subprocess.Popen(  # noqa: S603 - arguments are never passed through a shell.
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                if process.stdout is None or process.stderr is None:
+                    process.kill()
+                    process.wait()
+                    raise InfrastructureError(f"Cannot capture output from {self._executable}")
+
+                error_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="multipass-errors")
+                error_future = error_executor.submit(
+                    _read_pipe_as_text,
+                    cast(BinaryIO, process.stderr),
+                    log_path,
+                )
+                try:
+                    shutil.copyfileobj(cast(BinaryIO, process.stdout), temporary, length=1024 * 1024)
+                finally:
+                    process.stdout.close()
+                returncode = process.wait()
+                error_output = error_future.result()
+                error_executor.shutdown(wait=True)
+                error_executor = None
+
+            if returncode == 0:
+                os.replace(temporary_path, output_path)
+                temporary_path = None
+        except OSError as exc:
+            raise InfrastructureError(f"Cannot run {shlex.join(command)} into {output_path}: {exc}") from exc
+        finally:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+            if error_executor is not None:
+                error_executor.shutdown(wait=True)
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+        return CommandResult(returncode=returncode, output=error_output)
 
 
 def _append_log(log_path: Path | None, content: str) -> None:
@@ -523,6 +691,351 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
+def append_jsonl_record(path: Path, record: dict[str, Any]) -> None:
+    """Append one validated, locked, and durable JSONL record.
+
+    Existing non-empty lines are validated while the exclusive lock is held so
+    a malformed tracked history cannot silently gain more records.
+
+    Args:
+        path: Tracked JSONL history path.
+        record: JSON-serializable schema-versioned object.
+
+    Returns:
+        None.
+
+    Raises:
+        OSError: If the history cannot be created, read, written, or synchronized.
+        TypeError: If the record is not JSON serializable.
+        ValueError: If an argument or existing history record is invalid.
+    """
+    if path is None:
+        raise ValueError("history path must not be None")
+    if record is None:
+        raise ValueError("history record must not be None")
+    if record.get("schema_version") != HISTORY_SCHEMA_VERSION:
+        raise ValueError(
+            f"history record schema_version must be {HISTORY_SCHEMA_VERSION}"
+        )
+
+    encoded = json.dumps(
+        record,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as history_file:
+        fcntl.flock(history_file.fileno(), fcntl.LOCK_EX)
+        try:
+            history_file.seek(0)
+            for line_number, line in enumerate(history_file, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    existing = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Malformed JSONL history at {path}:{line_number}: {exc.msg}"
+                    ) from exc
+                if not isinstance(existing, dict):
+                    raise TypeError(
+                        f"JSONL history record at {path}:{line_number} must be an object"
+                    )
+                if not isinstance(existing.get("schema_version"), int):
+                    raise TypeError(
+                        f"JSONL history record at {path}:{line_number} has no integer schema_version"
+                    )
+
+            history_file.seek(0, os.SEEK_END)
+            history_file.write(encoded)
+            history_file.flush()
+            os.fsync(history_file.fileno())
+        finally:
+            fcntl.flock(history_file.fileno(), fcntl.LOCK_UN)
+
+
+def _read_optional_json_object(path: Path) -> dict[str, Any] | None:
+    """Read an optional JSON object while rejecting malformed evidence.
+
+    Args:
+        path: JSON path that may be absent.
+
+    Returns:
+        Parsed object, or ``None`` when the path does not exist.
+
+    Raises:
+        OSError: If an existing file cannot be read.
+        ValueError: If an existing file is not a JSON object.
+    """
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Malformed JSON evidence {path}: {exc.msg}") from exc
+    if not isinstance(payload, dict):
+        raise TypeError(f"JSON evidence must contain an object: {path}")
+    return payload
+
+
+def _optional_public_string(payload: dict[str, Any], key: str) -> str | None:
+    """Return one optional non-empty string from a JSON object.
+
+    Args:
+        payload: Parsed JSON object.
+        key: Field to read.
+
+    Returns:
+        The string value, or ``None`` when absent or empty.
+
+    Raises:
+        ValueError: If a present value is not a string.
+    """
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"Guest evidence field {key!r} must be a string")
+    return value
+
+
+def _pytest_evidence(image_result_dir: Path) -> dict[str, Any] | None:
+    """Extract badge-safe pytest evidence from one retrieved JSON report.
+
+    Args:
+        image_result_dir: Retrieved per-image result directory.
+
+    Returns:
+        Normalized pytest evidence, or ``None`` when pytest did not produce a
+        structured report.
+
+    Raises:
+        OSError: If a report cannot be read.
+        ValueError: If report count, structure, or values are invalid.
+    """
+    report_paths = sorted((image_result_dir / "pytest").glob("dar-backup-*__pytest-*.json"))
+    if not report_paths:
+        return None
+    if len(report_paths) != 1:
+        raise ValueError(
+            f"Expected one pytest JSON report for {image_result_dir.name}, found {len(report_paths)}"
+        )
+    payload = _read_optional_json_object(report_paths[0])
+    if payload is None:
+        return None
+
+    exit_code = payload.get("exitcode")
+    duration = payload.get("duration")
+    summary = payload.get("summary")
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        raise TypeError(f"pytest exitcode is not an integer in {report_paths[0]}")
+    if not isinstance(duration, (int, float)) or isinstance(duration, bool):
+        raise TypeError(f"pytest duration is not numeric in {report_paths[0]}")
+    if not math.isfinite(float(duration)) or duration < 0:
+        raise ValueError(f"pytest duration is invalid in {report_paths[0]}")
+    if not isinstance(summary, dict):
+        raise TypeError(f"pytest summary is not an object in {report_paths[0]}")
+
+    normalized_summary: dict[str, int] = {}
+    for key in (
+        "passed",
+        "failed",
+        "skipped",
+        "error",
+        "errors",
+        "xfailed",
+        "xpassed",
+        "deselected",
+        "collected",
+        "total",
+    ):
+        value = summary.get(key, 0)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"pytest summary field {key!r} is invalid in {report_paths[0]}")
+        normalized_summary[key] = value
+
+    return {
+        "status": "passed" if exit_code == 0 else "failed",
+        "exit_code": exit_code,
+        "duration_seconds": round(float(duration), 3),
+        "summary": normalized_summary,
+    }
+
+
+def _image_history_evidence(
+    spec: ImageSpec,
+    result: ImageRunResult,
+    mode: str,
+    application_commit: str,
+    orchestration_commit: str,
+) -> dict[str, Any]:
+    """Build one public-safe image result for tracked history.
+
+    Args:
+        spec: Requested VM image and resources.
+        result: Controller outcome for that image.
+        mode: Expected pytest matrix mode.
+        application_commit: Expected immutable application commit.
+        orchestration_commit: Expected immutable tooling commit.
+
+    Returns:
+        JSON-serializable image evidence without host-local paths or identities.
+
+    Raises:
+        OSError: If retrieved evidence cannot be read.
+        ValueError: If retrieved evidence is malformed.
+    """
+    image_result_dir = Path(result.result_directory)
+    guest = _read_optional_json_object(image_result_dir / "result.json")
+    pytest_result = _pytest_evidence(image_result_dir)
+
+    guest_evidence: dict[str, Any] | None = None
+    if guest is not None:
+        expected_guest_fields = {
+            "status": result.guest_status,
+            "exit_code": result.exit_code,
+            "mode": mode,
+            "application_commit": application_commit,
+            "orchestration_commit": orchestration_commit,
+        }
+        for field, expected in expected_guest_fields.items():
+            if guest.get(field) != expected:
+                raise ValueError(
+                    f"Guest evidence field {field!r} for {spec.label} does not match "
+                    "the controller result"
+                )
+        guest_evidence = {
+            key: _optional_public_string(guest, key)
+            for key in (
+                "started_at",
+                "finished_at",
+                "os_release",
+                "kernel",
+                "python",
+                "pytest",
+                "dar",
+                "dar_manager",
+                "par2",
+            )
+        }
+
+    if pytest_result is not None:
+        mypy_status = "passed"
+    elif result.guest_status == TEST_FAILED:
+        mypy_status = "failed_or_not_completed"
+    elif result.guest_status == PASS:
+        mypy_status = "unknown"
+    else:
+        mypy_status = "not_run"
+
+    return {
+        "label": spec.label,
+        "image": spec.image,
+        "resources": {
+            "cpus": spec.cpus,
+            "disk": spec.disk,
+            "memory": spec.memory,
+        },
+        "status": result.status,
+        "guest_status": result.guest_status,
+        "exit_code": result.exit_code,
+        "instance_preserved": result.instance_preserved,
+        "checks": {
+            "mypy": mypy_status,
+            "pytest": pytest_result,
+        },
+        "guest": guest_evidence,
+    }
+
+
+def build_history_record(
+    run_id: str,
+    started_at: str,
+    finished_at: str,
+    mode: str,
+    application_commit: str,
+    orchestration_commit: str,
+    specs: Sequence[ImageSpec],
+    results: Sequence[ImageRunResult],
+    completed: bool,
+    aborted_phase: str | None,
+    exit_code: int,
+) -> dict[str, Any]:
+    """Build and validate one public VM-matrix evidence record.
+
+    Args:
+        run_id: Stable UTC-time and commit identifier for the invocation.
+        started_at: UTC ISO-8601 invocation start.
+        finished_at: UTC ISO-8601 invocation finish.
+        mode: Requested pytest matrix mode.
+        application_commit: Immutable application source commit.
+        orchestration_commit: Immutable VM tooling commit.
+        specs: Requested VM image specifications.
+        results: Completed per-image controller outcomes.
+        completed: Whether every configured image was attempted.
+        aborted_phase: Public-safe phase name when the matrix stopped early.
+        exit_code: Final controller exit code before evidence persistence.
+
+    Returns:
+        JSON-serializable schema-v1 history record.
+
+    Raises:
+        ValueError: If required state is empty or inconsistent.
+        OSError: If retrieved guest evidence cannot be read.
+    """
+    required_strings = {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "mode": mode,
+        "application_commit": application_commit,
+        "orchestration_commit": orchestration_commit,
+    }
+    for field, value in required_strings.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} must be a non-empty string")
+    if mode not in {"fast", "smoke", "integration", "full"}:
+        raise ValueError(f"invalid history mode: {mode!r}")
+    if exit_code not in {0, 1, 2}:
+        raise ValueError(f"invalid matrix exit code: {exit_code}")
+    if completed and len(results) != len(specs):
+        raise ValueError("completed history requires one result per image")
+    if len(results) > len(specs):
+        raise ValueError("history contains more results than configured images")
+    for index, result in enumerate(results):
+        if result.label != specs[index].label:
+            raise ValueError(
+                f"result label {result.label!r} does not match image {specs[index].label!r}"
+            )
+
+    images = [
+        _image_history_evidence(
+            specs[index],
+            result,
+            mode,
+            application_commit,
+            orchestration_commit,
+        )
+        for index, result in enumerate(results)
+    ]
+    return {
+        "schema_version": HISTORY_SCHEMA_VERSION,
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "completed": completed,
+        "aborted_phase": aborted_phase,
+        "exit_code": exit_code,
+        "passed": completed and exit_code == 0,
+        "mode": mode,
+        "application_commit": application_commit,
+        "orchestration_commit": orchestration_commit,
+        "images": images,
+    }
+
+
 def _list_instances(executor: CommandExecutor, log_path: Path) -> dict[str, str]:
     """Return existing Multipass instance names and states.
 
@@ -688,6 +1201,7 @@ def run_image(
             _append_log(controller_log, f"Removing stale test instance {spec.instance_name}\n")
             _remove_instance(executor, spec.instance_name, existing[spec.instance_name], controller_log)
 
+        print(f"Launching {spec.label} ({spec.image}) as {spec.instance_name}...", flush=True)
         launch = executor.run(
             [
                 "launch",
@@ -702,16 +1216,17 @@ def run_image(
                 str(spec.cpus),
             ],
             controller_log,
-            stream=True,
         )
         if launch.returncode != 0:
             raise InfrastructureError(f"VM launch failed with status {launch.returncode}")
         instance_created = True
+        print(f"Launched: {spec.instance_name}", flush=True)
 
         for source in (archive_path, guest_script):
             transfer = executor.run(
-                ["transfer", str(source), f"{spec.instance_name}:/home/ubuntu/{source.name}"],
+                ["transfer", "-", f"{spec.instance_name}:/home/ubuntu/{source.name}"],
                 controller_log,
+                input_path=source,
             )
             if transfer.returncode != 0:
                 raise InfrastructureError(f"Cannot transfer {source.name} to {spec.instance_name}")
@@ -758,8 +1273,9 @@ def run_image(
             raise InfrastructureError("Cannot package guest diagnostics")
 
         retrieved_archive = image_result_dir / "guest-results.tar.gz"
-        retrieve = executor.run(
-            ["transfer", f"{spec.instance_name}:/home/ubuntu/results.tar.gz", str(retrieved_archive)],
+        retrieve = executor.run_with_stdout_file(
+            ["transfer", f"{spec.instance_name}:/home/ubuntu/results.tar.gz", "-"],
+            retrieved_archive,
             controller_log,
         )
         if retrieve.returncode != 0:
@@ -843,6 +1359,15 @@ def _print_summary(commit: str, result_root: Path, results: Sequence[ImageRunRes
     print(f"Reports: {result_root}")
 
 
+def _utc_timestamp() -> str:
+    """Return the current UTC time as a seconds-precision ISO-8601 string.
+
+    Returns:
+        UTC timestamp ending in ``Z``.
+    """
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments.
 
@@ -861,6 +1386,14 @@ def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--minimum-free-gib", type=int, default=40)
     parser.add_argument("--keep-failed", action="store_true", help="retain failed VMs for interactive diagnosis")
     parser.add_argument("--keep-all", action="store_true", help="retain every VM")
+    parser.add_argument(
+        "--evidence-jsonl",
+        type=Path,
+        help=(
+            "tracked VM history (default: SOURCE/v2/doc/test-report/"
+            "vm-matrix-results.jsonl)"
+        ),
+    )
     parser.add_argument("--multipass", default="multipass", help=argparse.SUPPRESS)
     parser.add_argument("--images", type=Path, default=script_directory / "images.json", help=argparse.SUPPRESS)
     return parser.parse_args(arguments)
@@ -876,9 +1409,25 @@ def main(arguments: Sequence[str] | None = None) -> int:
         Zero for success, one for test failure, or two for infrastructure failure.
     """
     args = parse_args(arguments)
+    started_at = _utc_timestamp()
+    result_root: Path | None = None
+    evidence_path: Path | None = None
+    commit = ""
+    run_id = ""
+    specs: list[ImageSpec] = []
+    results: list[ImageRunResult] = []
+    completed = False
+    aborted_phase: str | None = "preflight"
+    exit_code = 2
+
     try:
         source_root = args.source.resolve()
         ssd_root = args.ssd_root.resolve()
+        evidence_path = (
+            args.evidence_jsonl.resolve()
+            if args.evidence_jsonl is not None
+            else source_root / "v2" / "doc" / "test-report" / "vm-matrix-results.jsonl"
+        )
         mount_info = validate_ssd_root(ssd_root, args.minimum_free_gib)
         multipass_storage = validate_multipass_storage(ssd_root)
         commit = validate_git_checkout(source_root)
@@ -891,6 +1440,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         staging_root.mkdir(parents=True, exist_ok=False)
         result_root.mkdir(parents=True, exist_ok=False)
 
+        aborted_phase = "source_archive"
         archive_path = staging_root / f"dar-backup-{commit[:12]}.tar"
         create_source_archive(source_root, commit, archive_path)
         guest_script = source_root / "v2" / "vm_test" / "run_in_guest.sh"
@@ -905,8 +1455,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
         print(f"Results: {result_root}")
 
         executor = CommandExecutor(args.multipass)
-        results = [
-            run_image(
+        for spec in specs:
+            aborted_phase = f"image:{spec.label}"
+            results.append(run_image(
                 spec=spec,
                 executor=executor,
                 archive_path=archive_path,
@@ -916,9 +1467,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 result_root=result_root,
                 keep_failed=args.keep_failed,
                 keep_all=args.keep_all,
-            )
-            for spec in specs
-        ]
+            ))
+        completed = True
+        exit_code = _overall_exit_code(results)
+        aborted_phase = "summary"
         summary = {
             "application_commit": commit,
             "orchestration_commit": commit,
@@ -929,10 +1481,60 @@ def main(arguments: Sequence[str] | None = None) -> int:
         }
         write_json(result_root / "summary.json", summary)
         _print_summary(commit, result_root, results)
-        return _overall_exit_code(results)
+        aborted_phase = None
+    except KeyboardInterrupt:
+        print("ERROR: VM matrix interrupted", file=sys.stderr)
+        exit_code = 2
     except (InfrastructureError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        exit_code = 2
+
+    if result_root is None or evidence_path is None or not commit or not run_id or not specs:
+        return exit_code
+
+    finished_at = _utc_timestamp()
+    local_evidence_path = result_root / "vm-matrix-result.json"
+    try:
+        history_record = build_history_record(
+            run_id=run_id,
+            started_at=started_at,
+            finished_at=finished_at,
+            mode=args.mode,
+            application_commit=commit,
+            orchestration_commit=commit,
+            specs=specs,
+            results=results,
+            completed=completed,
+            aborted_phase=aborted_phase,
+            exit_code=exit_code,
+        )
+        write_json(local_evidence_path, history_record)
+        append_jsonl_record(evidence_path, history_record)
+        print(f"Evidence: {evidence_path}")
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: Cannot persist VM matrix evidence: {exc}", file=sys.stderr)
+        exit_code = 2
+        try:
+            failed_record = build_history_record(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=_utc_timestamp(),
+                mode=args.mode,
+                application_commit=commit,
+                orchestration_commit=commit,
+                specs=specs,
+                results=results,
+                completed=completed,
+                aborted_phase="evidence",
+                exit_code=exit_code,
+            )
+            write_json(local_evidence_path, failed_record)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as local_exc:
+            print(
+                f"ERROR: Cannot preserve local VM matrix evidence: {local_exc}",
+                file=sys.stderr,
+            )
+    return exit_code
 
 
 if __name__ == "__main__":
