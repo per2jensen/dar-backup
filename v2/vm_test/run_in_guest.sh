@@ -118,8 +118,8 @@ if dpkg_manifest_path:
             raise SystemExit(
                 f"ERROR: malformed dpkg manifest line {line_number}: expected four fields"
             )
-        package, version, architecture, status = fields
-        if status.strip() != "ii":
+        package, version, architecture, package_status = fields
+        if package_status.strip() != "ii":
             continue
         package_key = f"{package}:{architecture}"
         if package_key in package_manifest:

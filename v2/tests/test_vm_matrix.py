@@ -41,6 +41,75 @@ def _load_runner_module() -> ModuleType:
 
 RUNNER = _load_runner_module()
 PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
+RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
+
+
+def _run_guest_result_writer(
+    tmp_path: Path,
+    manifest: str,
+    guest_status: str,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Execute the production guest-result writer with a real manifest file.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+        manifest: Debian package manifest contents.
+        guest_status: Guest test outcome passed to the result writer.
+
+    Returns:
+        Completed Python subprocess and expected result path.
+
+    Raises:
+        ValueError: If the manifest or guest status is empty.
+        RuntimeError: If the embedded result writer cannot be located.
+    """
+    if not manifest:
+        raise ValueError("Package manifest must not be empty")
+    if not guest_status:
+        raise ValueError("Guest status must not be empty")
+
+    guest_script = RUN_IN_GUEST.read_text(encoding="utf-8")
+    start_marker = "<<'PY'\n"
+    end_marker = "\nPY\n}"
+    before_writer, separator, after_start = guest_script.partition(start_marker)
+    if not separator or "/usr/bin/python3 -" not in before_writer:
+        raise RuntimeError("Cannot locate the guest-result writer start marker")
+    writer_source, separator, _after_writer = after_start.partition(end_marker)
+    if not separator:
+        raise RuntimeError("Cannot locate the guest-result writer end marker")
+
+    manifest_path = tmp_path / "dpkg-manifest.tsv"
+    manifest_path.write_text(manifest, encoding="utf-8")
+    result_path = tmp_path / "result.json"
+    arguments = [
+        sys.executable,
+        "-",
+        str(result_path),
+        guest_status,
+        "pytest and mypy passed",
+        "0",
+        "full",
+        "a" * 40,
+        "a" * 40,
+        "2026-10-02T16:00:00Z",
+        "2026-10-02T16:15:00Z",
+        "Ubuntu 24.04.5 LTS",
+        "6.8.0-test",
+        "Python 3.12.3",
+        "pytest 9.1.1",
+        "dar version 2.7.13",
+        "dar_manager version 1.9.0",
+        "par2cmdline version 0.8.1",
+        str(manifest_path),
+    ]
+    completed = subprocess.run(  # noqa: S603 - execute the repository-owned result writer.
+        arguments,
+        input=writer_source,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed, result_path
 
 
 def _write_fake_multipass(
@@ -459,6 +528,45 @@ def test_run_image_setup_failure_returns_infrastructure_exit(tmp_path: Path) -> 
     assert result.exit_code == 2
     assert RUNNER._overall_exit_code([result]) == 2
     assert "guest setup failed" in (result_directory / "guest-console.log").read_text(encoding="utf-8")
+
+
+def test_guest_result_writer_installed_package_preserves_pass_status(
+    tmp_path: Path,
+) -> None:
+    """An installed-package status must not overwrite the guest test outcome.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\tii \nremoved\t1.0\tamd64\trc \n",
+        RUNNER.PASS,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["status"] == RUNNER.PASS
+    assert payload["package_manifest"] == {"acl:amd64": "2.3.2-2"}
+
+
+def test_guest_result_writer_malformed_package_manifest_fails(
+    tmp_path: Path,
+) -> None:
+    """A malformed package manifest must fail without writing evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\n",
+        RUNNER.PASS,
+    )
+
+    assert completed.returncode != 0
+    assert "malformed dpkg manifest line 1" in completed.stderr
+    assert not result_path.exists()
 
 
 def test_run_image_launch_progress_is_not_streamed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
