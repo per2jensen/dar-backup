@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -25,12 +27,18 @@ from typing import Any, BinaryIO, Sequence, cast
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
-HISTORY_SCHEMA_VERSION = 1
+HISTORY_SCHEMA_VERSION = 2
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 _SAFE_INSTANCE = re.compile(r"dar-backup-test-[a-z0-9-]+")
 _RESOURCE_SIZE = re.compile(r"[1-9][0-9]*[KMG]")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_DEBIAN_PACKAGE_KEY = re.compile(r"[a-z0-9][a-z0-9+.-]*:[a-z0-9][a-z0-9-]*")
+_MYPY_ERROR_CODE = re.compile(r"[a-z][a-z0-9-]*")
+# This parses pytest output; it does not create or trust a predictable temporary path.
+_PYTEST_TEMP_ROOT = re.compile(r"/tmp/pytest-of-[^/\s'\"]+/pytest-[0-9]+")  # noqa: S108
+_FAILURE_MESSAGE_LIMIT = 500
 
 
 class InfrastructureError(RuntimeError):
@@ -143,6 +151,8 @@ class ImageRunResult:
         result_directory: Directory holding retrieved diagnostics.
         instance_name: Multipass instance name.
         instance_preserved: Whether the VM was intentionally retained.
+        image_release: Multipass release label for the launched source image.
+        image_sha256: Full SHA-256 of the launched source image.
         message: Concise result explanation.
     """
 
@@ -153,6 +163,8 @@ class ImageRunResult:
     result_directory: str
     instance_name: str
     instance_preserved: bool
+    image_release: str | None
+    image_sha256: str | None
     message: str
 
 
@@ -801,6 +813,579 @@ def _optional_public_string(payload: dict[str, Any], key: str) -> str | None:
     return value
 
 
+def _canonical_json_sha256(payload: object) -> str:
+    """Return the SHA-256 of compact, key-sorted UTF-8 JSON.
+
+    Args:
+        payload: JSON-serializable value.
+
+    Returns:
+        Lowercase SHA-256 digest.
+
+    Raises:
+        TypeError: If the value cannot be serialized as JSON.
+        ValueError: If the value contains a non-finite number.
+    """
+    canonical = json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _package_manifest_sha256(manifest: dict[str, str]) -> str:
+    """Return the SHA-256 of one canonical Debian package manifest.
+
+    Args:
+        manifest: Installed package-and-architecture keys mapped to versions.
+
+    Returns:
+        Lowercase SHA-256 digest.
+    """
+    return _canonical_json_sha256(manifest)
+
+
+def _package_manifest_evidence(
+    guest: dict[str, Any],
+    label: str,
+    required: bool,
+) -> tuple[dict[str, str] | None, str | None]:
+    """Validate package manifest evidence returned by one guest.
+
+    Args:
+        guest: Parsed guest result object.
+        label: Public image label used in diagnostic errors.
+        required: Whether omission must fail evidence generation.
+
+    Returns:
+        Sorted installed-package mapping and its verified SHA-256, or two
+        None values when optional evidence is absent.
+
+    Raises:
+        TypeError: If manifest fields have invalid JSON types.
+        ValueError: If entries or the digest are invalid or inconsistent.
+    """
+    raw_manifest = guest.get("package_manifest")
+    raw_sha256 = guest.get("package_manifest_sha256")
+    if raw_manifest is None and raw_sha256 is None:
+        if required:
+            raise ValueError(f"Completed guest result has no package manifest for {label}")
+        return None, None
+    if not isinstance(raw_manifest, dict):
+        raise TypeError(f"Package manifest is not an object for {label}")
+    if not raw_manifest:
+        raise ValueError(f"Package manifest is empty for {label}")
+    if not isinstance(raw_sha256, str) or _SHA256.fullmatch(raw_sha256) is None:
+        raise ValueError(f"Package manifest SHA-256 is invalid for {label}")
+
+    manifest: dict[str, str] = {}
+    for package_key, version in raw_manifest.items():
+        if (
+            not isinstance(package_key, str)
+            or _DEBIAN_PACKAGE_KEY.fullmatch(package_key) is None
+        ):
+            raise ValueError(f"Invalid Debian package key {package_key!r} for {label}")
+        if (
+            not isinstance(version, str)
+            or not version
+            or any(character in version for character in "\r\n\t")
+        ):
+            raise ValueError(f"Invalid version for Debian package {package_key!r} in {label}")
+        manifest[package_key] = version
+
+    manifest = dict(sorted(manifest.items()))
+    calculated_sha256 = _package_manifest_sha256(manifest)
+    if calculated_sha256 != raw_sha256:
+        raise ValueError(f"Package manifest SHA-256 mismatch for {label}")
+    return manifest, raw_sha256
+
+
+def _validate_mypy_checks(checks: object, label: str) -> dict[str, Any]:
+    """Validate and normalize effective mypy check configuration.
+
+    Args:
+        checks: Parsed checks object from the mypy artifact.
+        label: Public image label used in diagnostic errors.
+
+    Returns:
+        Validated checks object with deterministically ordered collections.
+
+    Raises:
+        TypeError: If checks contain invalid JSON types.
+        ValueError: If checks contain invalid values or ordering.
+    """
+    if not isinstance(checks, dict):
+        raise TypeError(f"mypy checks is not an object for {label}")
+
+    python_version = _require_string(
+        checks.get("python_version"),
+        f"mypy Python version for {label}",
+    )
+    platform = _require_string(checks.get("platform"), f"mypy platform for {label}")
+    raw_codes = checks.get("enabled_error_codes")
+    if not isinstance(raw_codes, list):
+        raise TypeError(f"mypy enabled_error_codes is not an array for {label}")
+    if not raw_codes:
+        raise ValueError(f"mypy enabled_error_codes is empty for {label}")
+    if not all(
+        isinstance(code, str) and _MYPY_ERROR_CODE.fullmatch(code) is not None
+        for code in raw_codes
+    ):
+        raise ValueError(f"mypy enabled_error_codes contains an invalid code for {label}")
+    codes = sorted(set(raw_codes))
+    if len(codes) != len(raw_codes):
+        raise ValueError(f"mypy enabled_error_codes contains duplicates for {label}")
+
+    raw_options = checks.get("options")
+    if not isinstance(raw_options, dict) or not raw_options:
+        raise TypeError(f"mypy options is not a non-empty object for {label}")
+    options: dict[str, bool | str] = {}
+    for name, value in sorted(raw_options.items()):
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"mypy option name is invalid for {label}")
+        if not isinstance(value, (bool, str)):
+            raise TypeError(f"mypy option {name!r} has an invalid type for {label}")
+        options[name] = value
+
+    raw_overrides = checks.get("module_overrides")
+    if not isinstance(raw_overrides, dict):
+        raise TypeError(f"mypy module_overrides is not an object for {label}")
+    module_overrides: dict[str, dict[str, Any]] = {}
+    for module, raw_values in sorted(raw_overrides.items()):
+        if not isinstance(module, str) or not module:
+            raise ValueError(f"mypy module override name is invalid for {label}")
+        if not isinstance(raw_values, dict):
+            raise TypeError(f"mypy module override {module!r} is not an object for {label}")
+        values: dict[str, Any] = {}
+        for name, value in sorted(raw_values.items()):
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"mypy override option name is invalid for {label}")
+            if isinstance(value, list):
+                if not all(isinstance(item, str) for item in value):
+                    raise TypeError(
+                        f"mypy override option {name!r} has an invalid list for {label}"
+                    )
+                values[name] = sorted(value)
+            elif isinstance(value, (bool, int, str)) or value is None:
+                values[name] = value
+            else:
+                raise TypeError(
+                    f"mypy override option {name!r} has an invalid type for {label}"
+                )
+        module_overrides[module] = values
+
+    return {
+        "python_version": python_version,
+        "platform": platform,
+        "enabled_error_codes": codes,
+        "options": options,
+        "module_overrides": module_overrides,
+    }
+
+
+def _mypy_evidence(
+    image_result_dir: Path,
+    label: str,
+    required: bool,
+) -> dict[str, Any] | None:
+    """Extract validated mypy summary evidence from one guest artifact.
+
+    Args:
+        image_result_dir: Retrieved per-image result directory.
+        label: Public image label used in diagnostic errors.
+        required: Whether omission must fail evidence generation.
+
+    Returns:
+        Compact mypy evidence, or None when optional evidence is absent.
+
+    Raises:
+        OSError: If the report cannot be read.
+        TypeError: If report fields have invalid types.
+        ValueError: If report values or internal counts are inconsistent.
+    """
+    report_path = image_result_dir / "pytest" / "mypy.json"
+    payload = _read_optional_json_object(report_path)
+    if payload is None:
+        if required:
+            raise ValueError(f"Completed guest result has no mypy evidence for {label}")
+        return None
+
+    schema_version = payload.get("schema_version")
+    if schema_version != 1:
+        raise ValueError(f"Unsupported mypy report schema for {label}: {schema_version!r}")
+    version = _require_string(payload.get("version"), f"mypy version for {label}")
+    target = _require_string(payload.get("target"), f"mypy target for {label}")
+    status = payload.get("status")
+    if status not in {"passed", "failed", "error"}:
+        raise ValueError(f"Invalid mypy status for {label}: {status!r}")
+    exit_code = payload.get("exit_code")
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool) or exit_code < 0:
+        raise ValueError(f"Invalid mypy exit code for {label}")
+    expected_status = "passed" if exit_code == 0 else "failed" if exit_code == 1 else "error"
+    if status != expected_status:
+        raise ValueError(f"mypy status and exit code disagree for {label}")
+
+    checks = _validate_mypy_checks(payload.get("checks"), label)
+    checks_sha256 = payload.get("checks_sha256")
+    if not isinstance(checks_sha256, str) or _SHA256.fullmatch(checks_sha256) is None:
+        raise ValueError(f"Invalid mypy checks SHA-256 for {label}")
+    if _canonical_json_sha256(checks) != checks_sha256:
+        raise ValueError(f"mypy checks SHA-256 mismatch for {label}")
+
+    raw_summary = payload.get("summary")
+    if not isinstance(raw_summary, dict):
+        raise TypeError(f"mypy summary is not an object for {label}")
+    summary: dict[str, int] = {}
+    for field in ("errors", "notes", "warnings", "files_with_errors", "diagnostics"):
+        value = raw_summary.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"Invalid mypy summary field {field!r} for {label}")
+        summary[field] = value
+
+    diagnostics = payload.get("diagnostics")
+    if not isinstance(diagnostics, list):
+        raise TypeError(f"mypy diagnostics is not an array for {label}")
+    severity_counts = {"error": 0, "note": 0, "warning": 0}
+    files_with_errors: set[str] = set()
+    for diagnostic in diagnostics:
+        if not isinstance(diagnostic, dict):
+            raise TypeError(f"mypy diagnostic is not an object for {label}")
+        file_name = _require_string(diagnostic.get("file"), f"mypy diagnostic file for {label}")
+        _require_string(diagnostic.get("message"), f"mypy diagnostic message for {label}")
+        severity = _require_string(
+            diagnostic.get("severity"),
+            f"mypy diagnostic severity for {label}",
+        ).casefold()
+        if severity not in severity_counts:
+            raise ValueError(f"mypy diagnostic has an unsupported severity for {label}")
+        severity_counts[severity] += 1
+        if severity == "error":
+            files_with_errors.add(file_name)
+
+    expected_summary = {
+        "errors": severity_counts["error"],
+        "notes": severity_counts["note"],
+        "warnings": severity_counts["warning"],
+        "files_with_errors": len(files_with_errors),
+        "diagnostics": len(diagnostics),
+    }
+    if summary != expected_summary:
+        raise ValueError(f"mypy diagnostic counts do not match summary for {label}")
+    if status == "passed" and summary["errors"] != 0:
+        raise ValueError(f"passing mypy report contains errors for {label}")
+    if status == "failed" and summary["errors"] == 0:
+        raise ValueError(f"failed mypy report contains no errors for {label}")
+
+    return {
+        "status": status,
+        "version": version,
+        "exit_code": exit_code,
+        "target": target,
+        "checks": checks,
+        "checks_sha256": checks_sha256,
+        "summary": summary,
+    }
+
+
+def _skip_reason(longrepr: object, nodeid: str, report_path: Path) -> str:
+    """Extract a public skip reason from pytest-json-report phase evidence.
+
+    Args:
+        longrepr: Serialized pytest skip representation.
+        nodeid: Pytest node ID used for diagnostic errors.
+        report_path: Source report used for diagnostic errors.
+
+    Returns:
+        Non-empty skip reason without pytest's ``Skipped:`` prefix.
+
+    Raises:
+        TypeError: If the skip representation is not a string.
+        ValueError: If the skip representation has no reason.
+    """
+    if not isinstance(longrepr, str):
+        raise TypeError(f"pytest skip reason for {nodeid!r} is not a string in {report_path}")
+
+    reason = longrepr
+    try:
+        parsed = ast.literal_eval(longrepr)
+    except (SyntaxError, ValueError):
+        parsed = None
+    if (
+        isinstance(parsed, tuple)
+        and len(parsed) >= 3
+        and isinstance(parsed[2], str)
+    ):
+        reason = parsed[2]
+
+    prefix = "Skipped:"
+    reason = reason.strip()
+    if reason.startswith(prefix):
+        reason = reason.removeprefix(prefix).strip()
+    if not reason:
+        raise ValueError(f"pytest skip reason for {nodeid!r} is empty in {report_path}")
+    return reason
+
+
+def _pytest_skips(payload: dict[str, Any], report_path: Path) -> list[dict[str, str]]:
+    """Return sorted skipped test names and reasons from a pytest JSON report.
+
+    Args:
+        payload: Parsed pytest-json-report object.
+        report_path: Source report used for diagnostic errors.
+
+    Returns:
+        Skip evidence sorted by pytest node ID and reason.
+
+    Raises:
+        TypeError: If test or phase evidence has an invalid type.
+        ValueError: If skipped test evidence is incomplete.
+    """
+    tests = payload.get("tests")
+    if not isinstance(tests, list):
+        raise TypeError(f"pytest tests is not an array in {report_path}")
+
+    skips: list[dict[str, str]] = []
+    for test in tests:
+        if not isinstance(test, dict):
+            raise TypeError(f"pytest test entry is not an object in {report_path}")
+        if test.get("outcome") != "skipped":
+            continue
+
+        nodeid = test.get("nodeid")
+        if not isinstance(nodeid, str) or not nodeid.strip():
+            raise ValueError(f"pytest skipped test has no nodeid in {report_path}")
+
+        skip_phase: dict[str, Any] | None = None
+        for phase_name in ("setup", "call", "teardown"):
+            phase = test.get(phase_name)
+            if phase is None:
+                continue
+            if not isinstance(phase, dict):
+                raise TypeError(
+                    f"pytest phase {phase_name!r} for {nodeid!r} is not an object "
+                    f"in {report_path}"
+                )
+            if phase.get("outcome") == "skipped":
+                skip_phase = phase
+                break
+        if skip_phase is None:
+            raise ValueError(f"pytest skipped test {nodeid!r} has no skipped phase in {report_path}")
+
+        skips.append(
+            {
+                "test": nodeid,
+                "reason": _skip_reason(skip_phase.get("longrepr"), nodeid, report_path),
+            }
+        )
+
+    return sorted(skips, key=lambda skip: (skip["test"], skip["reason"]))
+
+
+def _concise_failure_message(value: object, context: str) -> str:
+    """Normalize one pytest failure message for compact public evidence.
+
+    Args:
+        value: Raw crash message or long representation.
+        context: Test or collector identity used in diagnostic errors.
+
+    Returns:
+        Single-line message, truncated deterministically when necessary.
+
+    Raises:
+        TypeError: If the message is not a string.
+        ValueError: If the normalized message is empty.
+    """
+    if not isinstance(value, str):
+        raise TypeError(f"pytest failure message for {context!r} is not a string")
+    message = " ".join(value.split())
+    message = _PYTEST_TEMP_ROOT.sub("<pytest-tmp>", message)
+    if not message:
+        raise ValueError(f"pytest failure message for {context!r} is empty")
+    if len(message) > _FAILURE_MESSAGE_LIMIT:
+        return message[: _FAILURE_MESSAGE_LIMIT - 1] + "…"
+    return message
+
+
+def _terminal_failure_message(value: object, context: str) -> str:
+    """Extract the final non-empty line from a pytest long representation.
+
+    Args:
+        value: Raw pytest long representation.
+        context: Test or collector identity used in diagnostic errors.
+
+    Returns:
+        Concise terminal exception line.
+
+    Raises:
+        TypeError: If the representation is not a string.
+        ValueError: If the representation has no non-empty line.
+    """
+    if not isinstance(value, str):
+        raise TypeError(f"pytest long representation for {context!r} is not a string")
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError(f"pytest long representation for {context!r} is empty")
+    return _concise_failure_message(lines[-1], context)
+
+
+def _pytest_stage_message(stage: dict[str, Any], nodeid: str) -> str:
+    """Extract a concise message from one failed pytest stage.
+
+    Args:
+        stage: pytest-json-report setup, call, or teardown object.
+        nodeid: Pytest node ID used in diagnostic errors.
+
+    Returns:
+        Concise structured crash message or long-representation fallback.
+
+    Raises:
+        TypeError: If crash or message fields have invalid types.
+        ValueError: If no usable message exists.
+    """
+    crash = stage.get("crash")
+    if crash is not None:
+        if not isinstance(crash, dict):
+            raise TypeError(f"pytest crash for {nodeid!r} is not an object")
+        message = crash.get("message")
+        if message is not None:
+            return _concise_failure_message(message, nodeid)
+    return _terminal_failure_message(stage.get("longrepr"), nodeid)
+
+
+def _pytest_failures(
+    payload: dict[str, Any],
+    report_path: Path,
+    exit_code: int,
+    summary: dict[str, int],
+) -> list[dict[str, str]]:
+    """Return deterministic pytest test, collection, and session failures.
+
+    Args:
+        payload: Parsed pytest-json-report object.
+        report_path: Source report used for diagnostic errors.
+        exit_code: Pytest process exit code.
+        summary: Normalized pytest summary counts.
+
+    Returns:
+        Compact failure evidence sorted by test, phase, kind, and message.
+
+    Raises:
+        TypeError: If test, stage, or collector evidence has invalid types.
+        ValueError: If failure details are incomplete or contradict summary counts.
+    """
+    tests = payload.get("tests")
+    if not isinstance(tests, list):
+        raise TypeError(f"pytest tests is not an array in {report_path}")
+
+    failures: list[dict[str, str]] = []
+    failed_tests = 0
+    error_tests = 0
+    for test in tests:
+        if not isinstance(test, dict):
+            raise TypeError(f"pytest test entry is not an object in {report_path}")
+        outcome = test.get("outcome")
+        if outcome not in {"failed", "error"}:
+            continue
+        nodeid = test.get("nodeid")
+        if not isinstance(nodeid, str) or not nodeid.strip():
+            raise ValueError(f"pytest failed test has no nodeid in {report_path}")
+
+        if outcome == "failed":
+            failed_tests += 1
+        else:
+            error_tests += 1
+
+        found_failed_stage = False
+        for phase_name in ("setup", "call", "teardown"):
+            stage = test.get(phase_name)
+            if stage is None:
+                continue
+            if not isinstance(stage, dict):
+                raise TypeError(
+                    f"pytest phase {phase_name!r} for {nodeid!r} is not an object "
+                    f"in {report_path}"
+                )
+            if stage.get("outcome") != "failed":
+                continue
+            found_failed_stage = True
+            kind = "failure" if outcome == "failed" and phase_name == "call" else "error"
+            failures.append(
+                {
+                    "test": nodeid,
+                    "phase": phase_name,
+                    "kind": kind,
+                    "message": _pytest_stage_message(stage, nodeid),
+                }
+            )
+        if not found_failed_stage:
+            raise ValueError(f"pytest failed test {nodeid!r} has no failed phase in {report_path}")
+
+    expected_errors = max(summary["error"], summary["errors"])
+    if summary["error"] and summary["errors"] and summary["error"] != summary["errors"]:
+        raise ValueError(f"pytest error summary fields disagree in {report_path}")
+    if failed_tests != summary["failed"]:
+        raise ValueError(
+            f"pytest failure detail count {failed_tests} does not match summary count "
+            f"{summary['failed']} in {report_path}"
+        )
+    if error_tests != expected_errors:
+        raise ValueError(
+            f"pytest error detail count {error_tests} does not match summary count "
+            f"{expected_errors} in {report_path}"
+        )
+
+    collectors = payload.get("collectors", [])
+    if not isinstance(collectors, list):
+        raise TypeError(f"pytest collectors is not an array in {report_path}")
+    for collector in collectors:
+        if not isinstance(collector, dict):
+            raise TypeError(f"pytest collector entry is not an object in {report_path}")
+        if collector.get("outcome") != "failed":
+            continue
+        raw_nodeid = collector.get("nodeid")
+        if not isinstance(raw_nodeid, str):
+            raise TypeError(f"pytest failed collector has an invalid nodeid in {report_path}")
+        nodeid = raw_nodeid.strip() or "<collection>"
+        failures.append(
+            {
+                "test": nodeid,
+                "phase": "collection",
+                "kind": "collection_error",
+                "message": _terminal_failure_message(collector.get("longrepr"), nodeid),
+            }
+        )
+
+    if exit_code != 0 and not failures:
+        session_kinds = {
+            1: "tests_failed",
+            2: "interrupted",
+            3: "internal_error",
+            4: "usage_error",
+            5: "no_tests_collected",
+        }
+        failures.append(
+            {
+                "test": "<session>",
+                "phase": "session",
+                "kind": session_kinds.get(exit_code, "unknown_exit"),
+                "message": f"pytest exited with status {exit_code}",
+            }
+        )
+
+    return sorted(
+        failures,
+        key=lambda failure: (
+            failure["test"],
+            failure["phase"],
+            failure["kind"],
+            failure["message"],
+        ),
+    )
+
+
 def _pytest_evidence(image_result_dir: Path) -> dict[str, Any] | None:
     """Extract badge-safe pytest evidence from one retrieved JSON report.
 
@@ -813,6 +1398,7 @@ def _pytest_evidence(image_result_dir: Path) -> dict[str, Any] | None:
 
     Raises:
         OSError: If a report cannot be read.
+        TypeError: If report fields have invalid types.
         ValueError: If report count, structure, or values are invalid.
     """
     report_paths = sorted((image_result_dir / "pytest").glob("dar-backup-*__pytest-*.json"))
@@ -856,11 +1442,26 @@ def _pytest_evidence(image_result_dir: Path) -> dict[str, Any] | None:
             raise ValueError(f"pytest summary field {key!r} is invalid in {report_paths[0]}")
         normalized_summary[key] = value
 
+    skips = _pytest_skips(payload, report_paths[0])
+    if len(skips) != normalized_summary["skipped"]:
+        raise ValueError(
+            f"pytest skip detail count {len(skips)} does not match summary count "
+            f"{normalized_summary['skipped']} in {report_paths[0]}"
+        )
+    failures = _pytest_failures(
+        payload,
+        report_paths[0],
+        exit_code,
+        normalized_summary,
+    )
+
     return {
         "status": "passed" if exit_code == 0 else "failed",
         "exit_code": exit_code,
         "duration_seconds": round(float(duration), 3),
         "summary": normalized_summary,
+        "skips": skips,
+        "failures": failures,
     }
 
 
@@ -890,6 +1491,23 @@ def _image_history_evidence(
     image_result_dir = Path(result.result_directory)
     guest = _read_optional_json_object(image_result_dir / "result.json")
     pytest_result = _pytest_evidence(image_result_dir)
+    mypy_result = _mypy_evidence(
+        image_result_dir,
+        spec.label,
+        required=result.guest_status in {PASS, TEST_FAILED},
+    )
+
+    if (result.image_release is None) != (result.image_sha256 is None):
+        raise ValueError(f"Incomplete source-image provenance for {spec.label}")
+    if result.guest_status is not None and result.image_sha256 is None:
+        raise ValueError(f"Completed guest result has no source-image provenance for {spec.label}")
+    if result.image_release is not None and not result.image_release.strip():
+        raise ValueError(f"Source-image release is empty for {spec.label}")
+    if (
+        result.image_sha256 is not None
+        and _SHA256.fullmatch(result.image_sha256) is None
+    ):
+        raise ValueError(f"Source-image SHA-256 is invalid for {spec.label}")
 
     guest_evidence: dict[str, Any] | None = None
     if guest is not None:
@@ -906,6 +1524,11 @@ def _image_history_evidence(
                     f"Guest evidence field {field!r} for {spec.label} does not match "
                     "the controller result"
                 )
+        package_manifest, package_manifest_sha256 = _package_manifest_evidence(
+            guest,
+            spec.label,
+            required=result.guest_status in {PASS, TEST_FAILED},
+        )
         guest_evidence = {
             key: _optional_public_string(guest, key)
             for key in (
@@ -920,19 +1543,14 @@ def _image_history_evidence(
                 "par2",
             )
         }
-
-    if pytest_result is not None:
-        mypy_status = "passed"
-    elif result.guest_status == TEST_FAILED:
-        mypy_status = "failed_or_not_completed"
-    elif result.guest_status == PASS:
-        mypy_status = "unknown"
-    else:
-        mypy_status = "not_run"
+        guest_evidence["package_manifest"] = package_manifest
+        guest_evidence["package_manifest_sha256"] = package_manifest_sha256
 
     return {
         "label": spec.label,
         "image": spec.image,
+        "image_release": result.image_release,
+        "image_sha256": result.image_sha256,
         "resources": {
             "cpus": spec.cpus,
             "disk": spec.disk,
@@ -943,7 +1561,7 @@ def _image_history_evidence(
         "exit_code": result.exit_code,
         "instance_preserved": result.instance_preserved,
         "checks": {
-            "mypy": mypy_status,
+            "mypy": mypy_result,
             "pytest": pytest_result,
         },
         "guest": guest_evidence,
@@ -979,7 +1597,7 @@ def build_history_record(
         exit_code: Final controller exit code before evidence persistence.
 
     Returns:
-        JSON-serializable schema-v1 history record.
+        JSON-serializable schema-v2 history record.
 
     Raises:
         ValueError: If required state is empty or inconsistent.
@@ -1067,6 +1685,60 @@ def _list_instances(executor: CommandExecutor, log_path: Path) -> dict[str, str]
         return instances
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise InfrastructureError(f"Cannot parse multipass list JSON: {exc}") from exc
+
+
+def _instance_image_provenance(
+    executor: CommandExecutor,
+    instance_name: str,
+    log_path: Path,
+) -> tuple[str, str]:
+    """Read and validate the immutable source-image identity for one instance.
+
+    Args:
+        executor: Multipass command executor.
+        instance_name: Launched Multipass instance name.
+        log_path: Controller diagnostic log.
+
+    Returns:
+        Multipass image release label and full lowercase SHA-256 digest.
+
+    Raises:
+        InfrastructureError: If Multipass cannot provide valid image metadata.
+    """
+    result = executor.run(["info", "--format", "json", instance_name], log_path)
+    if result.returncode != 0:
+        raise InfrastructureError(
+            f"multipass info failed for {instance_name}: {result.output.strip()}"
+        )
+
+    try:
+        payload = json.loads(result.output)
+        errors = payload["errors"]
+        info = payload["info"]
+        if not isinstance(errors, list):
+            raise TypeError("'errors' is not an array")
+        if errors:
+            raise ValueError(f"Multipass reported errors: {errors!r}")
+        if not isinstance(info, dict):
+            raise TypeError("'info' is not an object")
+        instance = info[instance_name]
+        if not isinstance(instance, dict):
+            raise TypeError(f"info for {instance_name!r} is not an object")
+        image_release = _require_string(
+            instance.get("image_release"),
+            f"image release for Multipass instance {instance_name}",
+        )
+        image_sha256 = _require_string(
+            instance.get("image_hash"),
+            f"image SHA-256 for Multipass instance {instance_name}",
+        ).lower()
+        if _SHA256.fullmatch(image_sha256) is None:
+            raise ValueError(f"image hash is not a full SHA-256: {image_sha256!r}")
+        return image_release, image_sha256
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise InfrastructureError(
+            f"Cannot parse image provenance for Multipass instance {instance_name}: {exc}"
+        ) from exc
 
 
 def _remove_instance(
@@ -1192,6 +1864,8 @@ def run_image(
     instance_created = False
     guest_exit_code: int | None = None
     guest_status: str | None = None
+    image_release: str | None = None
+    image_sha256: str | None = None
     status = INFRASTRUCTURE_FAILED
     message = "VM test did not complete"
 
@@ -1221,6 +1895,11 @@ def run_image(
             raise InfrastructureError(f"VM launch failed with status {launch.returncode}")
         instance_created = True
         print(f"Launched: {spec.instance_name}", flush=True)
+        image_release, image_sha256 = _instance_image_provenance(
+            executor,
+            spec.instance_name,
+            controller_log,
+        )
 
         for source in (archive_path, guest_script):
             transfer = executor.run(
@@ -1317,6 +1996,8 @@ def run_image(
         result_directory=str(image_result_dir),
         instance_name=spec.instance_name,
         instance_preserved=preserve,
+        image_release=image_release,
+        image_sha256=image_sha256,
         message=message,
     )
     write_json(image_result_dir / "host-result.json", asdict(result))

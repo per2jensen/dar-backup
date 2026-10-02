@@ -58,11 +58,20 @@ v2/doc/test-report/vm-matrix-results.jsonl
 ```
 
 The append intentionally makes the checkout dirty after testing. Review and
-commit that line to publish the compatibility evidence on GitHub. The record
-contains both VM outcomes, source commits, tool versions, pytest counts and
-duration, and mypy status. Hostnames, usernames, instance names, and absolute
-local paths are excluded so the file is safe to publish and consume from a
-future README badge generator.
+commit that line to publish the compatibility evidence on GitHub. Each
+schema-v2 record contains both VM outcomes, source commits, tool versions,
+the Multipass image alias and release, the full SHA-256 of the exact source
+image used to create each VM, a complete installed Debian package manifest and
+its canonical SHA-256, pytest counts and duration, the sorted pytest node ID
+and reason for every skipped test, compact pytest failure/error details, and a
+structured mypy summary. The mypy evidence records its exact version, target,
+effective enabled error codes, strictness options, per-module overrides,
+configuration digest, exit status, and diagnostic counts. Image and manifest
+digests must be complete 64-character SHA-256 values. Pytest counts, the
+package manifest, and mypy summaries are cross-validated so
+environment-specific differences cannot be silently omitted.
+Hostnames, usernames, instance names, and absolute local paths are excluded so
+the file is safe to publish and consume from a future README badge generator.
 
 The generated `v2/README.md` is intentionally ignored by Git. After extracting
 the immutable archive, each guest mirrors the normal build workflow by copying
@@ -88,7 +97,8 @@ Results are written below:
 The controller exits `0` when every image passes, `1` for pytest/mypy
 failures, and `2` for provisioning, VM, transfer, or result-contract errors.
 Guest console output, pytest text/JSON/JUnit reports, collection inventory,
-coverage, tool versions, and host controller logs are retained for diagnosis.
+coverage, the complete structured mypy diagnostics, the raw Debian package
+manifest, tool versions, and host controller logs are retained for diagnosis.
 Each SSD run directory also contains `vm-matrix-result.json`, the exact
 public-safe object appended to the tracked JSONL history. Evidence is written
 with an exclusive file lock, flushed, and synchronized before the controller

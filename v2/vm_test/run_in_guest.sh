@@ -43,6 +43,7 @@ STATUS="SETUP_FAILED"
 DETAIL="Guest setup did not complete"
 FINAL_EXIT_CODE=2
 WORK_DIR=""
+DPKG_MANIFEST=""
 
 # Invoked indirectly by the EXIT trap.
 # shellcheck disable=SC2329
@@ -79,7 +80,9 @@ write_result() {
         "${pytest_version}" \
         "${dar_version}" \
         "${dar_manager_version}" \
-        "${par2_version}" <<'PY'
+        "${par2_version}" \
+        "${DPKG_MANIFEST}" <<'PY'
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -101,7 +104,37 @@ from pathlib import Path
     dar_version,
     dar_manager_version,
     par2_version,
+    dpkg_manifest_path,
 ) = sys.argv[1:]
+
+package_manifest = None
+package_manifest_sha256 = None
+if dpkg_manifest_path:
+    package_manifest = {}
+    manifest_lines = Path(dpkg_manifest_path).read_text(encoding="utf-8").splitlines()
+    for line_number, line in enumerate(manifest_lines, start=1):
+        fields = line.split("\t")
+        if len(fields) != 4:
+            raise SystemExit(
+                f"ERROR: malformed dpkg manifest line {line_number}: expected four fields"
+            )
+        package, version, architecture, status = fields
+        if status.strip() != "ii":
+            continue
+        package_key = f"{package}:{architecture}"
+        if package_key in package_manifest:
+            raise SystemExit(f"ERROR: duplicate package in dpkg manifest: {package_key}")
+        package_manifest[package_key] = version
+    if not package_manifest:
+        raise SystemExit("ERROR: dpkg manifest contains no installed packages")
+    package_manifest = dict(sorted(package_manifest.items()))
+    canonical_manifest = json.dumps(
+        package_manifest,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    package_manifest_sha256 = hashlib.sha256(canonical_manifest).hexdigest()
 
 payload = {
     "status": status,
@@ -119,6 +152,8 @@ payload = {
     "dar": dar_version,
     "dar_manager": dar_manager_version,
     "par2": par2_version,
+    "package_manifest": package_manifest,
+    "package_manifest_sha256": package_manifest_sha256,
 }
 Path(result_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
@@ -188,6 +223,10 @@ venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -e '.[dev]'
 # shellcheck disable=SC1091
 source venv/bin/activate
+
+DPKG_MANIFEST="${RESULT_DIR}/dpkg-manifest.tsv"
+LC_ALL=C dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\n' \
+    | LC_ALL=C sort > "${DPKG_MANIFEST}"
 
 mkdir -p "${RESULT_DIR}/pytest"
 set +e

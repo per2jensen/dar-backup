@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
@@ -42,18 +43,24 @@ RUNNER = _load_runner_module()
 PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 
 
-def _write_fake_multipass(directory: Path, guest_status: str) -> Path:
+def _write_fake_multipass(
+    directory: Path,
+    guest_status: str,
+    image_sha256: str = "b" * 64,
+) -> Path:
     """Create a real subprocess executable implementing the used CLI surface.
 
     Args:
         directory: Isolated fake-command directory.
         guest_status: PASS or TEST_FAILED result emitted by the fake guest.
+        image_sha256: Image digest returned by the fake info command.
 
     Returns:
         Executable fake Multipass path.
     """
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "guest-status.txt").write_text(guest_status + "\n", encoding="utf-8")
+    (directory / "image-sha256.txt").write_text(image_sha256 + "\n", encoding="utf-8")
     executable = directory / "multipass"
     executable.write_text(
         r'''#!/usr/bin/env python3
@@ -84,6 +91,20 @@ if args and args[0] == "launch":
     (state / name / "home" / "ubuntu").mkdir(parents=True)
     print("\033[2K\033[0A\033[0ECreating instance")
     print("\033[2K\033[0A\033[0ELaunched instance")
+    raise SystemExit(0)
+
+if args and args[0] == "info":
+    instance = args[-1]
+    image_sha256 = (root / "image-sha256.txt").read_text(encoding="utf-8").strip()
+    print(json.dumps({
+        "errors": [],
+        "info": {
+            instance: {
+                "image_hash": image_sha256,
+                "image_release": "24.04 LTS",
+            }
+        },
+    }))
     raise SystemExit(0)
 
 if args and args[0] == "transfer":
@@ -161,17 +182,26 @@ raise SystemExit(99)
     return executable
 
 
-def _run_fake_image(tmp_path: Path, guest_status: str) -> object:
+def _run_fake_image(
+    tmp_path: Path,
+    guest_status: str,
+    image_sha256: str = "b" * 64,
+) -> object:
     """Run one image through the controller using a fake external executable.
 
     Args:
         tmp_path: Isolated pytest directory.
         guest_status: Guest result to simulate.
+        image_sha256: Image digest returned by the fake info command.
 
     Returns:
         Controller ImageRunResult.
     """
-    fake_multipass = _write_fake_multipass(tmp_path / "fake-bin", guest_status)
+    fake_multipass = _write_fake_multipass(
+        tmp_path / "fake-bin",
+        guest_status,
+        image_sha256,
+    )
     archive_path = tmp_path / "source.tar"
     archive_path.write_bytes(b"source archive")
     guest_script = tmp_path / "run_in_guest.sh"
@@ -211,6 +241,26 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
     image_result_dir = tmp_path / "private-host-path" / "ubuntu-24.04"
     pytest_dir = image_result_dir / "pytest"
     pytest_dir.mkdir(parents=True)
+    package_manifest = {
+        "acl:amd64": "2.3.2-2",
+        "dar:amd64": "2.7.13-2",
+    }
+    mypy_checks = {
+        "python_version": "3.11",
+        "platform": "linux",
+        "enabled_error_codes": ["arg-type", "assignment"],
+        "options": {
+            "check_untyped_defs": False,
+            "strict_optional": True,
+        },
+        "module_overrides": {
+            "inputimeout": {
+                "disable_error_code": [],
+                "enable_error_code": [],
+                "ignore_missing_imports": True,
+            }
+        },
+    }
     (image_result_dir / "result.json").write_text(
         json.dumps(
             {
@@ -229,6 +279,33 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                 "dar": "dar version 2.7.13",
                 "dar_manager": "dar_manager version 1.9.0",
                 "par2": "par2cmdline version 0.8.1",
+                "package_manifest": package_manifest,
+                "package_manifest_sha256": RUNNER._package_manifest_sha256(
+                    package_manifest
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pytest_dir / "mypy.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "passed",
+                "version": "mypy 2.3.1 (compiled: yes)",
+                "exit_code": 0,
+                "target": "src/",
+                "checks": mypy_checks,
+                "checks_sha256": RUNNER._canonical_json_sha256(mypy_checks),
+                "summary": {
+                    "errors": 0,
+                    "notes": 0,
+                    "warnings": 0,
+                    "files_with_errors": 0,
+                    "diagnostics": 0,
+                },
+                "diagnostics": [],
+                "stderr": "",
             }
         ),
         encoding="utf-8",
@@ -240,11 +317,38 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                 "exitcode": 0,
                 "summary": {
                     "passed": 1548,
-                    "skipped": 5,
-                    "total": 1553,
-                    "collected": 1555,
+                    "skipped": 2,
+                    "total": 1550,
+                    "collected": 1552,
                     "deselected": 2,
                 },
+                "tests": [
+                    {
+                        "nodeid": "tests/test_z.py::test_optional_binary",
+                        "outcome": "skipped",
+                        "setup": {
+                            "outcome": "skipped",
+                            "longrepr": (
+                                "('/guest/tests/test_z.py', 12, "
+                                "'Skipped: optional binary is unavailable')"
+                            ),
+                        },
+                        "teardown": {"outcome": "passed"},
+                    },
+                    {
+                        "nodeid": "tests/test_a.py::test_kernel_feature",
+                        "outcome": "skipped",
+                        "setup": {"outcome": "passed"},
+                        "call": {
+                            "outcome": "skipped",
+                            "longrepr": (
+                                "('/guest/tests/test_a.py', 34, "
+                                "'Skipped: kernel feature is unavailable')"
+                            ),
+                        },
+                        "teardown": {"outcome": "passed"},
+                    },
+                ],
             }
         ),
         encoding="utf-8",
@@ -265,6 +369,8 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
         result_directory=str(image_result_dir),
         instance_name="dar-backup-test-2404",
         instance_preserved=False,
+        image_release="24.04 LTS",
+        image_sha256="a" * 64,
         message="pytest and mypy passed",
     )
     return spec, result
@@ -278,7 +384,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         run_id: Record identity.
 
     Returns:
-        Valid schema-v1 history record.
+        Valid schema-v2 history record.
     """
     spec, result = _history_inputs(tmp_path)
     return RUNNER.build_history_record(
@@ -303,10 +409,29 @@ def test_run_image_passing_guest_returns_success_and_reports(tmp_path: Path) -> 
     result_directory = Path(result.result_directory)
     assert result.status == RUNNER.PASS
     assert result.exit_code == 0
+    assert result.image_release == "24.04 LTS"
+    assert result.image_sha256 == "b" * 64
     assert RUNNER._overall_exit_code([result]) == 0
     assert (result_directory / "result.json").is_file()
     assert (result_directory / "pytest" / "pytest.txt").read_text(encoding="utf-8") == "all tests passed\n"
     assert not result.instance_preserved
+
+
+def test_run_image_invalid_image_digest_returns_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    """A non-SHA-256 image identity must fail before guest tests start.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    result = _run_fake_image(tmp_path, "PASS", image_sha256="short-digest")
+
+    assert result.status == RUNNER.INFRASTRUCTURE_FAILED
+    assert result.image_release is None
+    assert result.image_sha256 is None
+    assert "image hash is not a full SHA-256" in result.message
+    assert RUNNER._overall_exit_code([result]) == 2
 
 
 def test_run_image_failing_guest_returns_failure_and_error_report(tmp_path: Path) -> None:
@@ -422,17 +547,383 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     encoded = json.dumps(record)
     image = record["images"][0]
 
-    assert record["schema_version"] == 1
+    assert record["schema_version"] == 2
     assert record["passed"] is True
     assert image["guest"]["dar"] == "dar version 2.7.13"
     assert image["guest"]["dar_manager"] == "dar_manager version 1.9.0"
-    assert image["checks"]["mypy"] == "passed"
+    assert image["guest"]["package_manifest"] == {
+        "acl:amd64": "2.3.2-2",
+        "dar:amd64": "2.7.13-2",
+    }
+    assert image["guest"]["package_manifest_sha256"] == (
+        RUNNER._package_manifest_sha256(image["guest"]["package_manifest"])
+    )
+    assert image["checks"]["mypy"]["status"] == "passed"
+    assert image["checks"]["mypy"]["version"] == "mypy 2.3.1 (compiled: yes)"
+    assert image["checks"]["mypy"]["checks"]["enabled_error_codes"] == [
+        "arg-type",
+        "assignment",
+    ]
+    assert image["checks"]["mypy"]["checks"]["module_overrides"]["inputimeout"] == {
+        "disable_error_code": [],
+        "enable_error_code": [],
+        "ignore_missing_imports": True,
+    }
+    assert image["checks"]["mypy"]["summary"]["errors"] == 0
+    assert image["image_release"] == "24.04 LTS"
+    assert image["image_sha256"] == "a" * 64
     assert image["checks"]["pytest"]["summary"]["passed"] == 1548
     assert image["checks"]["pytest"]["duration_seconds"] == 1200.125
+    assert image["checks"]["pytest"]["skips"] == [
+        {
+            "test": "tests/test_a.py::test_kernel_feature",
+            "reason": "kernel feature is unavailable",
+        },
+        {
+            "test": "tests/test_z.py::test_optional_binary",
+            "reason": "optional binary is unavailable",
+        },
+    ]
     assert "private-host-path" not in encoded
     assert "/home/" not in encoded
     assert "/mnt/" not in encoded
     assert "dar-backup-test-2404" not in encoded
+
+
+def test_history_record_skip_count_mismatch_raises(tmp_path: Path) -> None:
+    """Every summarized skip must have corresponding named evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = next(
+        (Path(result.result_directory) / "pytest").glob(
+            "dar-backup-*__pytest-*.json"
+        )
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["tests"].pop()
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="skip detail count 1 does not match summary count 2"):
+        RUNNER.build_history_record(
+            run_id="run-missing-skip",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_contains_pytest_failure_and_error_details(
+    tmp_path: Path,
+) -> None:
+    """Failures from calls, setup, and collection must remain distinguishable.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = next(
+        (Path(result.result_directory) / "pytest").glob(
+            "dar-backup-*__pytest-*.json"
+        )
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["exitcode"] = 1
+    report["summary"]["passed"] -= 2
+    report["summary"]["failed"] = 1
+    report["summary"]["error"] = 1
+    report["tests"].extend(
+        [
+            {
+                "nodeid": "tests/test_backup.py::test_archive_created",
+                "outcome": "failed",
+                "setup": {"outcome": "passed"},
+                "call": {
+                    "outcome": "failed",
+                    "crash": {
+                        "path": "tests/test_backup.py",
+                        "lineno": 42,
+                        "message": "AssertionError: archive was not created",
+                    },
+                    "longrepr": "full traceback must not enter JSONL",
+                },
+                "teardown": {"outcome": "passed"},
+            },
+            {
+                "nodeid": "tests/test_config.py::test_load_config",
+                "outcome": "error",
+                "setup": {
+                    "outcome": "failed",
+                    "crash": {
+                        "path": "tests/conftest.py",
+                        "lineno": 17,
+                        "message": (
+                            "FileNotFoundError: /tmp/pytest-of-ubuntu/pytest-44/"
+                            "test_load_config0/fixture config is missing"
+                        ),
+                    },
+                    "longrepr": "full setup traceback must not enter JSONL",
+                },
+                "teardown": {"outcome": "passed"},
+            },
+            {
+                "nodeid": "tests/test_expected.py::test_known_problem",
+                "outcome": "xfailed",
+                "setup": {"outcome": "passed"},
+                "call": {
+                    "outcome": "failed",
+                    "crash": {
+                        "path": "tests/test_expected.py",
+                        "lineno": 8,
+                        "message": "AssertionError: expected failure",
+                    },
+                },
+                "teardown": {"outcome": "passed"},
+            },
+        ]
+    )
+    report["collectors"] = [
+        {
+            "nodeid": "tests/test_import_error.py",
+            "outcome": "failed",
+            "result": [],
+            "longrepr": (
+                "tests/test_import_error.py:1: in <module>\n"
+                "ImportError: optional test module could not be imported"
+            ),
+        }
+    ]
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    result = replace(result, status=RUNNER.TEST_FAILED, guest_status=RUNNER.TEST_FAILED, exit_code=1)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest.update({"status": "TEST_FAILED", "exit_code": 1})
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    record = RUNNER.build_history_record(
+        run_id="run-pytest-failures",
+        started_at="2026-09-30T10:00:00Z",
+        finished_at="2026-09-30T10:20:01Z",
+        mode="full",
+        application_commit="a" * 40,
+        orchestration_commit="a" * 40,
+        specs=[spec],
+        results=[result],
+        completed=True,
+        aborted_phase=None,
+        exit_code=1,
+    )
+
+    assert record["images"][0]["checks"]["pytest"]["failures"] == [
+        {
+            "test": "tests/test_backup.py::test_archive_created",
+            "phase": "call",
+            "kind": "failure",
+            "message": "AssertionError: archive was not created",
+        },
+        {
+            "test": "tests/test_config.py::test_load_config",
+            "phase": "setup",
+            "kind": "error",
+            "message": (
+                "FileNotFoundError: <pytest-tmp>/test_load_config0/"
+                "fixture config is missing"
+            ),
+        },
+        {
+            "test": "tests/test_import_error.py",
+            "phase": "collection",
+            "kind": "collection_error",
+            "message": "ImportError: optional test module could not be imported",
+        },
+    ]
+    assert "full traceback" not in json.dumps(record)
+    assert "test_known_problem" not in json.dumps(
+        record["images"][0]["checks"]["pytest"]["failures"]
+    )
+
+
+def test_history_record_pytest_failure_count_mismatch_raises(tmp_path: Path) -> None:
+    """Missing pytest failure details must fail evidence generation.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = next(
+        (Path(result.result_directory) / "pytest").glob(
+            "dar-backup-*__pytest-*.json"
+        )
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["summary"]["failed"] = 1
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="failure detail count 0 does not match summary count 1",
+    ):
+        RUNNER.build_history_record(
+            run_id="run-missing-pytest-failure",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_modified_mypy_checks_raises(tmp_path: Path) -> None:
+    """Mypy check configuration must match its canonical digest.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = Path(result.result_directory) / "pytest" / "mypy.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["checks"]["options"]["strict_optional"] = False
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="mypy checks SHA-256 mismatch"):
+        RUNNER.build_history_record(
+            run_id="run-modified-mypy-checks",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_missing_mypy_report_raises(tmp_path: Path) -> None:
+    """A completed guest result must include its mypy evidence artifact.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = Path(result.result_directory) / "pytest" / "mypy.json"
+    report_path.unlink()
+
+    with pytest.raises(ValueError, match="has no mypy evidence"):
+        RUNNER.build_history_record(
+            run_id="run-missing-mypy-report",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_mypy_diagnostic_count_mismatch_raises(tmp_path: Path) -> None:
+    """Mypy summary counts must agree with the diagnostic detail.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    report_path = Path(result.result_directory) / "pytest" / "mypy.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["summary"]["notes"] = 1
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="diagnostic counts do not match summary"):
+        RUNNER.build_history_record(
+            run_id="run-invalid-mypy-summary",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_passing_image_without_digest_raises(tmp_path: Path) -> None:
+    """Successful evidence must never omit immutable image provenance.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    result_without_provenance = replace(
+        result,
+        image_release=None,
+        image_sha256=None,
+    )
+
+    with pytest.raises(ValueError, match="has no source-image provenance"):
+        RUNNER.build_history_record(
+            run_id="run-missing-image-digest",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result_without_provenance],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_modified_package_manifest_raises(tmp_path: Path) -> None:
+    """A package version changed without a matching digest must fail closed.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["package_manifest"]["dar:amd64"] = "unexpected-version"
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Package manifest SHA-256 mismatch"):
+        RUNNER.build_history_record(
+            run_id="run-modified-package-manifest",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
 
 
 def test_history_record_completed_without_all_images_raises(

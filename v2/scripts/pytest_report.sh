@@ -2,6 +2,7 @@
 # scripts/pytest_report.sh
 #
 # Unified pytest runner that produces:
+# - structured mypy report (.json)
 # - human-readable console log (.txt)
 # - machine-readable structured report (.json)
 # - standard CI test report (.xml)
@@ -91,7 +92,8 @@ echo
 
 # 0) Static type check (fails the run on error, same as ruff in release.sh)
 echo "=== mypy ==="
-mypy src/
+MYPY_JSON="${OUTDIR}/mypy.json"
+python scripts/run_mypy_report.py --output "${MYPY_JSON}" src/
 echo
 
 # Define coverage output next to the other artifacts
@@ -160,6 +162,7 @@ echo "  $TXT"
 echo "  $JSON"
 echo "  $JUNIT"
 echo "  $COLLECT"
+echo "  $MYPY_JSON"
 if [[ -f "$COV_XML" ]]; then
   echo "  $COV_XML"
 fi
