@@ -36,9 +36,15 @@ _RESOURCE_SIZE = re.compile(r"[1-9][0-9]*[KMG]")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _DEBIAN_PACKAGE_KEY = re.compile(r"[a-z0-9][a-z0-9+.-]*:[a-z0-9][a-z0-9-]*")
 _MYPY_ERROR_CODE = re.compile(r"[a-z][a-z0-9-]*")
+_GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
 # This parses pytest output; it does not create or trust a predictable temporary path.
 _PYTEST_TEMP_ROOT = re.compile(r"/tmp/pytest-of-[^/\s'\"]+/pytest-[0-9]+")  # noqa: S108
 _FAILURE_MESSAGE_LIMIT = 500
+_README_RESULTS_BEGIN = "<!-- BEGIN GENERATED VM MATRIX RESULTS -->"
+_README_RESULTS_END = "<!-- END GENERATED VM MATRIX RESULTS -->"
+_DEFAULT_HISTORY_RELATIVE_PATH = Path("v2/doc/test-report/vm-matrix-results.jsonl")
+_DEFAULT_BADGE_RELATIVE_PATH = Path("v2/doc/test-report/vm-matrix-badge.json")
+_GITHUB_REPOSITORY_URL = "https://github.com/per2jensen/dar-backup"
 
 
 class InfrastructureError(RuntimeError):
@@ -766,6 +772,497 @@ def append_jsonl_record(path: Path, record: dict[str, Any]) -> None:
             os.fsync(history_file.fileno())
         finally:
             fcntl.flock(history_file.fileno(), fcntl.LOCK_UN)
+
+
+def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate public matrix metadata and return its image records.
+
+    Args:
+        record: Schema-v2 VM matrix history record.
+
+    Returns:
+        Validated image dictionaries in matrix order.
+
+    Raises:
+        TypeError: If a required field has the wrong type.
+        ValueError: If the record cannot truthfully describe a full matrix run.
+    """
+    if record.get("schema_version") != HISTORY_SCHEMA_VERSION:
+        raise ValueError(
+            f"Presentation record schema_version must be {HISTORY_SCHEMA_VERSION}"
+        )
+    if record.get("mode") != "full":
+        raise ValueError("Public VM matrix presentation requires a full-mode record")
+
+    commit = record.get("application_commit")
+    if not isinstance(commit, str) or _GIT_COMMIT.fullmatch(commit) is None:
+        raise ValueError("Presentation record has no valid application commit")
+    _require_string(record.get("run_id"), "run_id")
+    _require_string(record.get("finished_at"), "finished_at")
+
+    completed = record.get("completed")
+    passed = record.get("passed")
+    exit_code = record.get("exit_code")
+    if not isinstance(completed, bool) or not isinstance(passed, bool):
+        raise TypeError("Presentation record completed and passed fields must be booleans")
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool) or exit_code not in {0, 1, 2}:
+        raise ValueError("Presentation record exit_code must be 0, 1, or 2")
+    if passed != (completed and exit_code == 0):
+        raise ValueError("Presentation record passed status is inconsistent")
+
+    raw_images = record.get("images")
+    if not isinstance(raw_images, list) or not raw_images:
+        raise ValueError("Presentation record must contain at least one image")
+
+    images: list[dict[str, Any]] = []
+    labels: set[str] = set()
+    for index, raw_image in enumerate(raw_images):
+        if not isinstance(raw_image, dict):
+            raise TypeError(f"Presentation image {index} must be an object")
+        label = _require_string(raw_image.get("label"), f"images[{index}].label")
+        status = _require_string(raw_image.get("status"), f"images[{index}].status")
+        if status not in {PASS, TEST_FAILED, INFRASTRUCTURE_FAILED}:
+            raise ValueError(f"Presentation image {label!r} has invalid status {status!r}")
+        if label in labels:
+            raise ValueError(f"Presentation record contains duplicate image label {label!r}")
+        labels.add(label)
+        images.append(raw_image)
+
+    if passed and any(image["status"] != PASS for image in images):
+        raise ValueError("Passing presentation record contains a non-passing image")
+    if passed:
+        for image in images:
+            label = image["label"]
+            guest = image.get("guest")
+            checks = image.get("checks")
+            if not isinstance(guest, dict):
+                raise TypeError(f"Passing presentation image {label!r} has no guest evidence")
+            if not isinstance(checks, dict):
+                raise TypeError(f"Passing presentation image {label!r} has no checks evidence")
+            pytest_result = checks.get("pytest")
+            if not isinstance(pytest_result, dict) or pytest_result.get("status") != "passed":
+                raise ValueError(f"Passing presentation image {label!r} has no passing pytest result")
+            if _mypy_presentation(checks, label) != "PASS":
+                raise ValueError(f"Passing presentation image {label!r} has no passing mypy result")
+    return images
+
+
+def _display_version(value: object, prefix: str, field: str) -> str:
+    """Extract a concise version following a required product prefix.
+
+    Args:
+        value: Recorded tool version.
+        prefix: Required prefix before the concise version.
+        field: Field name used in errors.
+
+    Returns:
+        Version text before optional comma-separated attribution.
+
+    Raises:
+        ValueError: If the value is missing or does not use the expected format.
+    """
+    text_value = _require_string(value, field)
+    if not text_value.startswith(prefix):
+        raise ValueError(f"{field} must start with {prefix!r}")
+    version = text_value[len(prefix):].split(",", 1)[0].strip()
+    if not version:
+        raise ValueError(f"{field} contains no version after {prefix!r}")
+    return version
+
+
+def _optional_display_version(value: object, prefix: str) -> str:
+    """Extract a version when failed-run evidence contains one.
+
+    Args:
+        value: Optional recorded tool version.
+        prefix: Expected prefix before the concise version.
+
+    Returns:
+        Concise version text, or ``not available`` for incomplete evidence.
+    """
+    if not isinstance(value, str) or not value.startswith(prefix):
+        return "not available"
+    version = value[len(prefix):].split(",", 1)[0].strip()
+    return version if version else "not available"
+
+
+def _markdown_table_cell(value: object) -> str:
+    """Escape one value for safe use in a Markdown table cell.
+
+    Args:
+        value: Value to render.
+
+    Returns:
+        Single-line Markdown table-cell text.
+    """
+    normalized = " ".join(str(value).splitlines()).strip()
+    return normalized.replace("\\", "\\\\").replace("|", "\\|")
+
+
+def _pytest_presentation(checks: object, label: str) -> str:
+    """Render concise pytest counts for one image.
+
+    Args:
+        checks: Image checks object from public evidence.
+        label: Image label used in errors.
+
+    Returns:
+        Human-readable pytest result counts, or ``not run``.
+
+    Raises:
+        TypeError: If recorded pytest evidence has invalid types.
+        ValueError: If recorded pytest counts are negative.
+    """
+    if checks is None:
+        return "not run"
+    if not isinstance(checks, dict):
+        raise TypeError(f"Checks for {label} must be an object")
+    pytest_result = checks.get("pytest")
+    if pytest_result is None:
+        return "not run"
+    if not isinstance(pytest_result, dict):
+        raise TypeError(f"pytest evidence for {label} must be an object")
+    summary = pytest_result.get("summary")
+    if not isinstance(summary, dict):
+        raise TypeError(f"pytest summary for {label} must be an object")
+
+    counts: dict[str, int] = {}
+    for field in ("passed", "skipped", "failed", "error", "errors"):
+        value = summary.get(field, 0)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError(f"pytest {field} count for {label} must be an integer")
+        if value < 0:
+            raise ValueError(f"pytest {field} count for {label} must not be negative")
+        counts[field] = value
+    failure_count = counts["failed"] + counts["error"] + counts["errors"]
+    return (
+        f"{counts['passed']} passed, {counts['skipped']} skipped, "
+        f"{failure_count} failed"
+    )
+
+
+def _mypy_presentation(checks: object, label: str) -> str:
+    """Render the mypy status for one image.
+
+    Args:
+        checks: Image checks object from public evidence.
+        label: Image label used in errors.
+
+    Returns:
+        Uppercase mypy status, or ``not run``.
+
+    Raises:
+        TypeError: If recorded mypy evidence has invalid types.
+        ValueError: If the mypy status is empty.
+    """
+    if checks is None:
+        return "not run"
+    if not isinstance(checks, dict):
+        raise TypeError(f"Checks for {label} must be an object")
+    mypy_result = checks.get("mypy")
+    if mypy_result is None:
+        return "not run"
+    if isinstance(mypy_result, str):
+        status = _require_string(mypy_result, f"mypy status for {label}")
+    else:
+        if not isinstance(mypy_result, dict):
+            raise TypeError(f"mypy evidence for {label} must be an object")
+        status = _require_string(mypy_result.get("status"), f"mypy status for {label}")
+    return {"passed": "PASS", "failed": "FAIL"}.get(status.casefold(), status.upper())
+
+
+def _image_presentation_row(image: dict[str, Any]) -> str:
+    """Render one Markdown table row from public image evidence.
+
+    Args:
+        image: Validated image evidence.
+
+    Returns:
+        Markdown table row.
+
+    Raises:
+        TypeError: If nested evidence has invalid types.
+        ValueError: If required passing-image evidence is missing or malformed.
+    """
+    label = _require_string(image.get("label"), "image label")
+    status = _require_string(image.get("status"), f"status for {label}")
+    guest = image.get("guest")
+    checks = image.get("checks")
+    if guest is None:
+        values = [label, "not available", "not available", "not available"]
+    else:
+        if not isinstance(guest, dict):
+            raise TypeError(f"Guest evidence for {label} must be an object")
+        if status == PASS:
+            values = [
+                _require_string(guest.get("os_release"), f"OS release for {label}"),
+                _display_version(guest.get("python"), "Python ", f"Python version for {label}"),
+                _display_version(guest.get("dar"), "dar version ", f"DAR version for {label}"),
+                _display_version(guest.get("par2"), "par2cmdline version ", f"PAR2 version for {label}"),
+            ]
+        else:
+            os_release = guest.get("os_release")
+            values = [
+                os_release.strip() if isinstance(os_release, str) and os_release.strip() else "not available",
+                _optional_display_version(guest.get("python"), "Python "),
+                _optional_display_version(guest.get("dar"), "dar version "),
+                _optional_display_version(guest.get("par2"), "par2cmdline version "),
+            ]
+    values.extend(
+        [
+            _pytest_presentation(checks, label),
+            _mypy_presentation(checks, label),
+            status.replace("_", " "),
+        ]
+    )
+    return "| " + " | ".join(_markdown_table_cell(value) for value in values) + " |"
+
+
+def _matrix_resource_text(images: Sequence[dict[str, Any]]) -> str:
+    """Describe shared VM resources when every matrix entry matches.
+
+    Args:
+        images: Validated matrix image records.
+
+    Returns:
+        Concise resource sentence, or a per-image fallback.
+
+    Raises:
+        TypeError: If resource evidence has invalid types.
+        ValueError: If resource evidence is missing or invalid.
+    """
+    resources: list[tuple[int, str, str]] = []
+    for image in images:
+        label = _require_string(image.get("label"), "image label")
+        raw_resources = image.get("resources")
+        if not isinstance(raw_resources, dict):
+            raise TypeError(f"Resources for {label} must be an object")
+        cpus = raw_resources.get("cpus")
+        memory = _require_string(raw_resources.get("memory"), f"memory for {label}")
+        disk = _require_string(raw_resources.get("disk"), f"disk for {label}")
+        if not isinstance(cpus, int) or isinstance(cpus, bool) or cpus < 1:
+            raise ValueError(f"CPU count for {label} must be a positive integer")
+        resources.append((cpus, memory, disk))
+
+    if len(set(resources)) == 1:
+        cpus, memory, disk = resources[0]
+        return f"Each VM uses {cpus} vCPUs, {memory} RAM, and a {disk} virtual disk."
+    return "VM resources are recorded per image in the detailed matrix history."
+
+
+def render_vm_matrix_badge(record: dict[str, Any]) -> dict[str, Any]:
+    """Build a Shields endpoint payload for the latest full VM matrix.
+
+    Args:
+        record: Schema-v2 full VM matrix history record.
+
+    Returns:
+        Shields endpoint JSON object.
+
+    Raises:
+        TypeError: If required evidence has invalid types.
+        ValueError: If required evidence is missing or inconsistent.
+    """
+    images = _presentation_images(record)
+    versions = [
+        _require_string(image.get("label"), "image label").removeprefix("ubuntu-")
+        for image in images
+    ]
+    version_text = " + ".join(versions)
+    completed = record["completed"]
+    exit_code = record["exit_code"]
+    if record["passed"]:
+        message = f"{version_text} passing"
+        color = "brightgreen"
+        is_error = False
+    elif not completed or exit_code == 2:
+        message = "matrix infrastructure failure"
+        color = "orange"
+        is_error = True
+    else:
+        message = f"{version_text} tests failing"
+        color = "red"
+        is_error = True
+    return {
+        "schemaVersion": 1,
+        "label": "Ubuntu VM matrix",
+        "message": message,
+        "color": color,
+        "isError": is_error,
+    }
+
+
+def render_vm_matrix_readme_block(record: dict[str, Any]) -> str:
+    """Render the generated README section for one full matrix record.
+
+    Args:
+        record: Schema-v2 full VM matrix history record.
+
+    Returns:
+        Marker-delimited Markdown section ending in one newline.
+
+    Raises:
+        TypeError: If required evidence has invalid types.
+        ValueError: If required evidence is missing or inconsistent.
+    """
+    images = _presentation_images(record)
+    commit = _require_string(record.get("application_commit"), "application_commit")
+    finished_at = _require_string(record.get("finished_at"), "finished_at")
+    if record["passed"]:
+        outcome = "PASS"
+    elif not record["completed"] or record["exit_code"] == 2:
+        outcome = "INFRASTRUCTURE FAILURE"
+    else:
+        outcome = "TEST FAILURE"
+    rows = "\n".join(_image_presentation_row(image) for image in images)
+    commit_url = f"{_GITHUB_REPOSITORY_URL}/commit/{commit}"
+    return (
+        f"{_README_RESULTS_BEGIN}\n\n"
+        "## Tested on Ubuntu LTS VMs\n\n"
+        "`dar-backup` is tested in fresh Ubuntu LTS Multipass VMs created from the\n"
+        "standard Ubuntu images. Each VM installs the distribution's DAR, PAR2, and\n"
+        "Python dependencies before running the full pytest suite and mypy.\n\n"
+        f"**Latest full VM matrix:** {outcome} at `{finished_at}` for\n"
+        f"[commit `{commit[:12]}`]({commit_url}).\n\n"
+        "| Ubuntu | Python | DAR | PAR2 | pytest | mypy | Result |\n"
+        "|---|---:|---:|---:|---|---|---|\n"
+        f"{rows}\n\n"
+        f"{_matrix_resource_text(images)}\n\n"
+        "[VM test methodology](v2/vm_test/README.md) · "
+        "[Detailed and historical results](v2/doc/test-report/vm-matrix-results.jsonl)\n\n"
+        f"{_README_RESULTS_END}\n"
+    )
+
+
+def _replace_generated_readme_block(readme_path: Path, generated_block: str) -> None:
+    """Replace exactly one generated VM matrix block in a README.
+
+    Args:
+        readme_path: Tracked root README path.
+        generated_block: Complete marker-delimited replacement.
+
+    Returns:
+        None.
+
+    Raises:
+        OSError: If the README cannot be read or written.
+        ValueError: If either the README or replacement markers are invalid.
+    """
+    if generated_block.count(_README_RESULTS_BEGIN) != 1 or generated_block.count(_README_RESULTS_END) != 1:
+        raise ValueError("Generated README block must contain exactly one marker pair")
+    original = readme_path.read_text(encoding="utf-8")
+    if original.count(_README_RESULTS_BEGIN) != 1 or original.count(_README_RESULTS_END) != 1:
+        raise ValueError(f"README must contain exactly one VM matrix marker pair: {readme_path}")
+    start = original.index(_README_RESULTS_BEGIN)
+    end = original.index(_README_RESULTS_END)
+    if end < start:
+        raise ValueError(f"README VM matrix markers are reversed: {readme_path}")
+    end += len(_README_RESULTS_END)
+    updated = original[:start] + generated_block.rstrip("\n") + original[end:]
+    if updated == original:
+        return
+
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f".{readme_path.name}.",
+            suffix=".tmp",
+            dir=readme_path.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(updated)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_path, readme_path.stat().st_mode & 0o777)
+        os.replace(temporary_path, readme_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _write_public_json(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically write a world-readable tracked JSON artifact.
+
+    Args:
+        path: Destination JSON path.
+        payload: Serializable JSON object.
+
+    Returns:
+        None.
+
+    Raises:
+        OSError: If the file cannot be written or its mode cannot be set.
+        TypeError: If the payload is not JSON serializable.
+    """
+    existing_mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+    write_json(path, payload)
+    # NamedTemporaryFile starts private; tracked badge data must remain readable
+    # by the local web server or any other account serving the checkout.
+    os.chmod(path, existing_mode)
+
+
+def publish_vm_matrix_presentation(
+    record: dict[str, Any],
+    readme_path: Path,
+    badge_path: Path,
+) -> None:
+    """Publish a README block and badge from one validated matrix record.
+
+    Args:
+        record: Schema-v2 full VM matrix history record.
+        readme_path: Root README containing the generated markers.
+        badge_path: Tracked Shields endpoint JSON path.
+
+    Returns:
+        None.
+
+    Raises:
+        OSError: If an output cannot be read or written.
+        TypeError: If matrix evidence has invalid types.
+        ValueError: If evidence or README markers are invalid.
+    """
+    readme_block = render_vm_matrix_readme_block(record)
+    badge = render_vm_matrix_badge(record)
+    _replace_generated_readme_block(readme_path, readme_block)
+    _write_public_json(badge_path, badge)
+
+
+def read_latest_full_history_record(history_path: Path) -> dict[str, Any]:
+    """Read the newest schema-v2 full matrix record from tracked history.
+
+    Args:
+        history_path: JSONL VM matrix history.
+
+    Returns:
+        Newest validated full-mode record.
+
+    Raises:
+        OSError: If history cannot be read.
+        TypeError: If a history line is not a JSON object.
+        ValueError: If history is malformed or has no publishable full record.
+    """
+    latest: dict[str, Any] | None = None
+    for line_number, line in enumerate(history_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            raw_record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Malformed JSONL history at {history_path}:{line_number}: {exc.msg}"
+            ) from exc
+        if not isinstance(raw_record, dict):
+            raise TypeError(f"JSONL history record at {history_path}:{line_number} must be an object")
+        if raw_record.get("schema_version") == HISTORY_SCHEMA_VERSION and raw_record.get("mode") == "full":
+            _presentation_images(raw_record)
+            latest = raw_record
+    if latest is None:
+        raise ValueError(f"No schema-v{HISTORY_SCHEMA_VERSION} full matrix record found in {history_path}")
+    return latest
 
 
 def _read_optional_json_object(path: Path) -> dict[str, Any] | None:
@@ -2075,6 +2572,11 @@ def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
             "vm-matrix-results.jsonl)"
         ),
     )
+    parser.add_argument(
+        "--refresh-presentation",
+        action="store_true",
+        help="regenerate the README matrix section and badge from tracked full-run history",
+    )
     parser.add_argument("--multipass", default="multipass", help=argparse.SUPPRESS)
     parser.add_argument("--images", type=Path, default=script_directory / "images.json", help=argparse.SUPPRESS)
     return parser.parse_args(arguments)
@@ -2090,9 +2592,29 @@ def main(arguments: Sequence[str] | None = None) -> int:
         Zero for success, one for test failure, or two for infrastructure failure.
     """
     args = parse_args(arguments)
+    source_root = args.source.resolve()
+    evidence_path = (
+        args.evidence_jsonl.resolve()
+        if args.evidence_jsonl is not None
+        else source_root / _DEFAULT_HISTORY_RELATIVE_PATH
+    )
+    readme_path = source_root / "README.md"
+    badge_path = source_root / _DEFAULT_BADGE_RELATIVE_PATH
+
+    if args.refresh_presentation:
+        # Repairing tracked presentation files does not need Multipass, a clean
+        # checkout, or the dedicated runtime SSD.
+        try:
+            latest_record = read_latest_full_history_record(evidence_path)
+            publish_vm_matrix_presentation(latest_record, readme_path, badge_path)
+            print(f"Refreshed VM matrix presentation from {latest_record['run_id']}")
+            return 0
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"ERROR: Cannot refresh VM matrix presentation: {exc}", file=sys.stderr)
+            return 2
+
     started_at = _utc_timestamp()
     result_root: Path | None = None
-    evidence_path: Path | None = None
     commit = ""
     run_id = ""
     specs: list[ImageSpec] = []
@@ -2102,13 +2624,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     exit_code = 2
 
     try:
-        source_root = args.source.resolve()
         ssd_root = args.ssd_root.resolve()
-        evidence_path = (
-            args.evidence_jsonl.resolve()
-            if args.evidence_jsonl is not None
-            else source_root / "v2" / "doc" / "test-report" / "vm-matrix-results.jsonl"
-        )
         mount_info = validate_ssd_root(ssd_root, args.minimum_free_gib)
         multipass_storage = validate_multipass_storage(ssd_root)
         commit = validate_git_checkout(source_root)
@@ -2170,11 +2686,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         exit_code = 2
 
-    if result_root is None or evidence_path is None or not commit or not run_id or not specs:
+    if result_root is None or not commit or not run_id or not specs:
         return exit_code
 
     finished_at = _utc_timestamp()
     local_evidence_path = result_root / "vm-matrix-result.json"
+    history_record: dict[str, Any] | None = None
     try:
         history_record = build_history_record(
             run_id=run_id,
@@ -2195,6 +2712,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: Cannot persist VM matrix evidence: {exc}", file=sys.stderr)
         exit_code = 2
+        history_record = None
         try:
             failed_record = build_history_record(
                 run_id=run_id,
@@ -2215,6 +2733,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 f"ERROR: Cannot preserve local VM matrix evidence: {local_exc}",
                 file=sys.stderr,
             )
+
+    # Publish only after immutable-source testing and durable evidence storage.
+    # A partial suite cannot substantiate the README's full-suite claim.
+    if history_record is not None and args.mode == "full":
+        try:
+            publish_vm_matrix_presentation(history_record, readme_path, badge_path)
+            print(f"README VM matrix: {readme_path}")
+            print(f"VM matrix badge: {badge_path}")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"ERROR: Cannot publish VM matrix presentation: {exc}", file=sys.stderr)
+            exit_code = 2
     return exit_code
 
 

@@ -57,9 +57,18 @@ record to the tracked evidence file:
 v2/doc/test-report/vm-matrix-results.jsonl
 ```
 
-The append intentionally makes the checkout dirty after testing. Review and
-commit that line to publish the compatibility evidence on GitHub. Each
-schema-v2 record contains both VM outcomes, source commits, tool versions,
+For a full matrix, the controller also regenerates the marker-delimited Ubuntu
+VM table in the root `README.md` and the Shields endpoint data in
+`v2/doc/test-report/vm-matrix-badge.json`. Failed full runs replace a previous
+green status; fast, smoke, and integration runs do not replace the published
+full-suite result. The badge changes on GitHub after these generated files are
+committed and pushed.
+
+These updates intentionally make the checkout dirty after testing. Review and
+commit the history, README, and badge together to publish the compatibility
+evidence on GitHub.
+
+Each schema-v2 record contains both VM outcomes, source commits, tool versions,
 the Multipass image alias and release, the full SHA-256 of the exact source
 image used to create each VM, a complete installed Debian package manifest and
 its canonical SHA-256, pytest counts and duration, the sorted pytest node ID
@@ -86,6 +95,13 @@ Useful options:
 --keep-all           retain every VM
 --mode MODE          fast, smoke, integration, or full
 --evidence-jsonl PATH tracked evidence path (default: v2/doc/test-report/vm-matrix-results.jsonl)
+--refresh-presentation regenerate README and badge from the latest tracked full run
+```
+
+Presentation-only refresh does not launch Multipass or require the SSD:
+
+```bash
+python3 v2/vm_test/run_vm_matrix.py --refresh-presentation
 ```
 
 Results are written below:

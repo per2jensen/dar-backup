@@ -3,7 +3,8 @@
 
 **Personal digital preservation for Linux — with integrity you can prove, repair, and restore years from now**
 
-[![Codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup) [![Snyk Vuln findings](https://snyk.io/test/github/per2jensen/dar-backup/badge.svg)](https://security.snyk.io/vuln/?search=dar-backup) ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg) [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/) [![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total_downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fclonepulse%2Fdownloads.json)](https://pypi.org/project/dar-backup/) [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) <sub>🎯 Stats powered by [ClonePulse](https://github.com/per2jensen/clonepulse)</sub>
+[![Codecov](https://codecov.io/gh/per2jensen/dar-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/per2jensen/dar-backup) [![Snyk Vuln findings](https://snyk.io/test/github/per2jensen/dar-backup/badge.svg)](https://security.snyk.io/vuln/?search=dar-backup) ![CI](https://github.com/per2jensen/dar-backup/actions/workflows/py-tests.yml/badge.svg) [![Ubuntu VM matrix](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fv2%2Fdoc%2Ftest-report%2Fvm-matrix-badge.json)](#tested-on-ubuntu-lts-vms)
+  [![PyPI version](https://img.shields.io/pypi/v/dar-backup.svg)](https://pypi.org/project/dar-backup/) [![PyPI downloads](https://img.shields.io/badge/dynamic/json?color=blue&label=PyPI%20downloads&query=total_downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fper2jensen%2Fdar-backup%2Fmain%2Fclonepulse%2Fdownloads.json)](https://pypi.org/project/dar-backup/) [![# clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/badge_clones.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) [![Milestone](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/per2jensen/dar-backup/main/clonepulse/milestone_badge.json)](https://github.com/per2jensen/dar-backup/blob/main/clonepulse/weekly_clones.png) <sub>🎯 Stats powered by [ClonePulse](https://github.com/per2jensen/clonepulse)</sub>
 
 `dar-backup` is a **personal digital preservation system for Linux** built around one question:
 
@@ -90,6 +91,30 @@ maintained by `dar_manager`, enabling single-file Point-in-Time Recovery without
 server.
 
 Version **1.1.11** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
+
+---
+
+<!-- BEGIN GENERATED VM MATRIX RESULTS -->
+
+## Tested on Ubuntu LTS VMs
+
+`dar-backup` is tested in fresh Ubuntu LTS Multipass VMs created from the
+standard Ubuntu images. Each VM installs the distribution's DAR, PAR2, and
+Python dependencies before running the full pytest suite and mypy.
+
+**Latest full VM matrix:** PASS at `2026-10-04T08:17:31Z` for
+[commit `a0737864d07b`](https://github.com/per2jensen/dar-backup/commit/a0737864d07b3df7401ac99516b64dd1d6799103).
+
+| Ubuntu | Python | DAR | PAR2 | pytest | mypy | Result |
+|---|---:|---:|---:|---|---|---|
+| Ubuntu 24.04.5 LTS | 3.12.3 | 2.7.13 | 0.8.1 | 1572 passed, 5 skipped, 0 failed | PASS | PASS |
+| Ubuntu 26.04.1 LTS | 3.14.4 | 2.8.3 | 1.1.1 | 1571 passed, 6 skipped, 0 failed | PASS | PASS |
+
+Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk.
+
+[VM test methodology](v2/vm_test/README.md) · [Detailed and historical results](v2/doc/test-report/vm-matrix-results.jsonl)
+
+<!-- END GENERATED VM MATRIX RESULTS -->
 
 ---
 
@@ -241,8 +266,7 @@ and long-term recovery confidence.
   size-capped; `clean-log` strips verbose `dar` output when not needed
 - **No lock-in** — standard `dar` archives, standard PAR2 files; restore with just the `dar`
   binary, no `dar-backup` installation required on the restore machine
-- **1000+ tests** — unit and integration tests covering PAR2 bitrot repair, full/diff/incr
-  restore chains, PITR verification, and edge cases; CI on every push to Github and when done locally
+- 1500+ unit and integration tests — covering PAR2 bitrot repair, FULL/DIFF/INCR restore chains, PITR verification, and edge cases; run in CI, local large_scale tests and validated against Ubuntu 24.04 and 26.04 LTS VMs.
 
 The author has used `dar-backup` ~6 years and has been saved by it multiple times.
 

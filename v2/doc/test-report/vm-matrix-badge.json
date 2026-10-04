@@ -1,0 +1,7 @@
+{
+  "color": "brightgreen",
+  "isError": false,
+  "label": "Ubuntu VM matrix",
+  "message": "24.04 + 26.04 passing",
+  "schemaVersion": 1
+}

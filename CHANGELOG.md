@@ -7,6 +7,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 - Cleanup now retains metrics rows with a deletion timestamp while the dashboard shows only active archives and prints its database path
 - Reject metrics databases inside `BACKUP_DIR` to prevent mount-dependent split histories
+- Full Ubuntu VM matrix runs now update the README compatibility table and its Shields badge from validated evidence
 
 ## v2-1.1.11 - 2026-08-16
 

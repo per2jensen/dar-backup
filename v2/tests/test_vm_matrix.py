@@ -1156,3 +1156,197 @@ def test_append_jsonl_record_concurrent_writers_do_not_interleave(
     assert {record["run_id"] for record in stored} == {
         record["run_id"] for record in records
     }
+
+
+def test_render_vm_matrix_presentation_passing_full_record_returns_green_outputs(
+    tmp_path: Path,
+) -> None:
+    """A passing full matrix must produce matching green public results.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    record = _history_record(tmp_path)
+
+    badge = RUNNER.render_vm_matrix_badge(record)
+    readme_block = RUNNER.render_vm_matrix_readme_block(record)
+
+    assert badge == {
+        "schemaVersion": 1,
+        "label": "Ubuntu VM matrix",
+        "message": "24.04 passing",
+        "color": "brightgreen",
+        "isError": False,
+    }
+    assert "**Latest full VM matrix:** PASS" in readme_block
+    assert "| Ubuntu 24.04.5 LTS | 3.12.3 | 2.7.13 | 0.8.1 |" in readme_block
+    assert "1548 passed, 2 skipped, 0 failed | PASS | PASS |" in readme_block
+    assert "Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk." in readme_block
+    assert readme_block.count(RUNNER._README_RESULTS_BEGIN) == 1
+    assert readme_block.count(RUNNER._README_RESULTS_END) == 1
+
+
+def test_render_vm_matrix_presentation_failed_full_record_returns_red_outputs(
+    tmp_path: Path,
+) -> None:
+    """A failed full matrix must replace a stale passing public status.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    record = _history_record(tmp_path)
+    record["passed"] = False
+    record["exit_code"] = 1
+    image = record["images"][0]
+    image["status"] = RUNNER.TEST_FAILED
+    image["checks"]["pytest"]["summary"]["passed"] = 1547
+    image["checks"]["pytest"]["summary"]["failed"] = 1
+
+    badge = RUNNER.render_vm_matrix_badge(record)
+    readme_block = RUNNER.render_vm_matrix_readme_block(record)
+
+    assert badge["message"] == "24.04 tests failing"
+    assert badge["color"] == "red"
+    assert badge["isError"] is True
+    assert "**Latest full VM matrix:** TEST FAILURE" in readme_block
+    assert "1547 passed, 2 skipped, 1 failed" in readme_block
+    assert "TEST FAILED" in readme_block
+
+
+def test_render_vm_matrix_presentation_incomplete_record_returns_orange_status(
+    tmp_path: Path,
+) -> None:
+    """An incomplete matrix must expose an infrastructure failure publicly.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    record = _history_record(tmp_path)
+    record["completed"] = False
+    record["passed"] = False
+    record["exit_code"] = 2
+    image = record["images"][0]
+    image["status"] = RUNNER.INFRASTRUCTURE_FAILED
+    image["guest"]["dar"] = "unavailable"
+    image["guest"]["par2"] = "unavailable"
+    image["checks"] = None
+
+    badge = RUNNER.render_vm_matrix_badge(record)
+    readme_block = RUNNER.render_vm_matrix_readme_block(record)
+
+    assert badge["message"] == "matrix infrastructure failure"
+    assert badge["color"] == "orange"
+    assert "**Latest full VM matrix:** INFRASTRUCTURE FAILURE" in readme_block
+    assert "| Ubuntu 24.04.5 LTS | 3.12.3 | not available | not available | not run | not run | INFRASTRUCTURE FAILED |" in readme_block
+
+
+def test_publish_vm_matrix_presentation_valid_markers_updates_only_generated_block(
+    tmp_path: Path,
+) -> None:
+    """Publishing must preserve all README content outside the marker pair.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    record = _history_record(tmp_path / "evidence")
+    readme_path = tmp_path / "README.md"
+    badge_path = tmp_path / "reports" / "vm-matrix-badge.json"
+    readme_path.write_text(
+        "# Before\n\n"
+        f"{RUNNER._README_RESULTS_BEGIN}\nold results\n{RUNNER._README_RESULTS_END}\n\n"
+        "# After\n",
+        encoding="utf-8",
+    )
+
+    RUNNER.publish_vm_matrix_presentation(record, readme_path, badge_path)
+    first_render = readme_path.read_text(encoding="utf-8")
+    RUNNER.publish_vm_matrix_presentation(record, readme_path, badge_path)
+
+    assert first_render.startswith("# Before\n\n")
+    assert first_render.endswith("\n\n# After\n")
+    assert readme_path.read_text(encoding="utf-8") == first_render
+    assert json.loads(badge_path.read_text(encoding="utf-8"))["color"] == "brightgreen"
+    assert stat.S_IMODE(badge_path.stat().st_mode) == 0o644
+
+
+@pytest.mark.parametrize(
+    "readme_content",
+    [
+        "# No markers\n",
+        f"{RUNNER._README_RESULTS_END}\ncontent\n{RUNNER._README_RESULTS_BEGIN}\n",
+        (
+            f"{RUNNER._README_RESULTS_BEGIN}\nfirst\n{RUNNER._README_RESULTS_END}\n"
+            f"{RUNNER._README_RESULTS_BEGIN}\nsecond\n{RUNNER._README_RESULTS_END}\n"
+        ),
+    ],
+)
+def test_publish_vm_matrix_presentation_invalid_markers_preserves_readme(
+    tmp_path: Path,
+    readme_content: str,
+) -> None:
+    """Invalid generated markers must fail without changing the README.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+        readme_content: Malformed README marker arrangement.
+    """
+    record = _history_record(tmp_path / "evidence")
+    readme_path = tmp_path / "README.md"
+    badge_path = tmp_path / "vm-matrix-badge.json"
+    readme_path.write_text(readme_content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="marker"):
+        RUNNER.publish_vm_matrix_presentation(record, readme_path, badge_path)
+
+    assert readme_path.read_text(encoding="utf-8") == readme_content
+    assert not badge_path.exists()
+
+
+def test_read_latest_full_history_record_newer_non_full_record_keeps_full_result(
+    tmp_path: Path,
+) -> None:
+    """A newer smoke record must not replace the public full-suite result.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    history_path = tmp_path / "vm-matrix-results.jsonl"
+    full_record = _history_record(tmp_path / "full", run_id="full-run")
+    smoke_record = json.loads(json.dumps(full_record))
+    smoke_record["run_id"] = "smoke-run"
+    smoke_record["mode"] = "smoke"
+    history_path.write_text(
+        json.dumps(full_record) + "\n" + json.dumps(smoke_record) + "\n",
+        encoding="utf-8",
+    )
+
+    latest = RUNNER.read_latest_full_history_record(history_path)
+
+    assert latest["run_id"] == "full-run"
+
+
+def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(
+    tmp_path: Path,
+) -> None:
+    """Presentation-only refresh must not require Multipass or SSD preflight.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source_root = tmp_path / "checkout"
+    history_path = source_root / "v2" / "doc" / "test-report" / "vm-matrix-results.jsonl"
+    history_path.parent.mkdir(parents=True)
+    record = _history_record(tmp_path / "evidence", run_id="refresh-run")
+    history_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    readme_path = source_root / "README.md"
+    readme_path.write_text(
+        f"before\n{RUNNER._README_RESULTS_BEGIN}\nold\n{RUNNER._README_RESULTS_END}\nafter\n",
+        encoding="utf-8",
+    )
+
+    exit_code = RUNNER.main(["--source", str(source_root), "--refresh-presentation"])
+
+    assert exit_code == 0
+    assert "Latest full VM matrix" in readme_path.read_text(encoding="utf-8")
+    badge_path = source_root / "v2" / "doc" / "test-report" / "vm-matrix-badge.json"
+    assert json.loads(badge_path.read_text(encoding="utf-8"))["message"] == "24.04 passing"
