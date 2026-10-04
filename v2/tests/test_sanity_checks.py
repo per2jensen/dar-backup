@@ -443,11 +443,20 @@ def test_print_aligned_settings_trimming_and_logging(env: EnvData, caplog):
     assert dangerous_found, "Dangerous setting line not found in logs"
 
     # ===== Printed Output (Secondary Check) =====
-    # Cannot assert strict line counts because rich wraps, but can still sanity check
-    assert "Startup Settings" in captured_output.getvalue(), "Header not printed"
-    assert "delete full backup" in captured_output.getvalue(), "Dangerous text not printed"
+    terminal_output = captured_output.getvalue()
+    assert "Startup Settings" in terminal_output, "Header not printed"
+    assert "|     | Setting" in terminal_output, "ASCII table header not printed"
+    assert "| [!] | delete_operation" in terminal_output, "Danger marker not printed"
+    assert "delete full backup" in terminal_output, "Dangerous text not printed"
 
 
+def test_print_aligned_settings_quiet_suppresses_terminal_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Quiet settings output logs nothing to the terminal."""
+    print_aligned_settings([("Backup type", "FULL")], log=False, quiet=True)
+
+    assert capsys.readouterr().out == ""
 
 
 # Custom RotatingFileHandler that announces rotation

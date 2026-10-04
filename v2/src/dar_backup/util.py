@@ -36,9 +36,6 @@ from datetime import UTC, datetime, date
 from dar_backup.config_settings import ConfigSettings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from rich.console import Console
-from rich.text import Text
-
 from dataclasses import dataclass
 from typing import ClassVar, List, Optional, Tuple
 
@@ -1199,21 +1196,27 @@ def patch_config_file(path: str, replacements: dict) -> None:
             os.unlink(tmp_path)
 
 
-
-
-console = Console()
-
 def print_aligned_settings(
-    settings: List[Tuple[str, str]],
+    settings: list[tuple[str, str]],
     log: bool = True,
     header: str = "Startup Settings",
     quiet: bool = True,
-    highlight_keywords: Optional[List[str]] = None
+    highlight_keywords: list[str] | None = None,
 ) -> None:
-    """
-    Print and optionally log settings nicely, using rich for color.
-    Highlights settings if dangerous keywords are found inside label or text,
-    but only if text is not None or empty.
+    """Print settings as a scan-friendly ASCII table and optionally log them.
+
+    Dangerous settings receive a ``[!]`` marker in terminal output when a
+    configured keyword occurs in a non-empty setting value or its label.
+
+    Args:
+        settings: Label and value pairs to display.
+        log: Whether to write the settings to the main logger.
+        header: Heading shown above the table and in the log.
+        quiet: Whether to suppress terminal output.
+        highlight_keywords: Keywords that mark a non-empty setting as dangerous.
+
+    Returns:
+        None.
     """
     if not settings:
         return
@@ -1222,55 +1225,52 @@ def print_aligned_settings(
     logger = get_logger()
 
     max_label_length = max(len(label) for label, _ in settings)
-
     header_line = f"========== {header} =========="
     footer_line = "=" * len(header_line)
 
-    if not quiet:
-        console.print(f"[bold cyan]{header_line}[/bold cyan]")
     if log:
         logger.info(header_line)
 
+    display_rows: list[tuple[str, str, str]] = []
     for label, text in settings:
         padded_label = f"{label:<{max_label_length}}"
-
         label_clean = label.rstrip(":").lower()
         text_clean = text.lower()
 
-        # Skip highlighting if text is empty
-        if not text_clean.strip():
-            danger = False
-        else:
-            danger = False
-            if highlight_keywords:
-                combined_text = f"{label_clean} {text_clean}"
-                danger = any(keyword.lower() in combined_text for keyword in highlight_keywords)
+        danger = False
+        if text_clean.strip() and highlight_keywords:
+            combined_text = f"{label_clean} {text_clean}"
+            danger = any(keyword.lower() in combined_text for keyword in highlight_keywords)
 
-        # Build the line
-        line_text = Text()
-        line_text.append(padded_label, style="bold")
-        line_text.append(" ", style="none")
+        # Escape line breaks so one setting cannot corrupt the table layout.
+        display_label = label.replace("\r", "\\r").replace("\n", "\\n")
+        display_text = text.replace("\r", "\\r").replace("\n", "\\n")
+        display_rows.append(("[!]" if danger else "", display_label, display_text))
 
-        if danger:
-            line_text.append("[!]", style="bold red")
-            line_text.append(" ", style="none")
-
-        line_text.append(text, style="white")
-
-        if not quiet:
-            console.print(line_text)
-
-        # Always log clean text (no [!] in log)
         final_line_for_log = f"{padded_label} {text}"
         if log:
             logger.info(final_line_for_log)
 
-    if not quiet:
-        console.print(f"[bold cyan]{footer_line}[/bold cyan]")
     if log:
         logger.info(footer_line)
 
+    if quiet:
+        return
 
+    marker_width = len("[!]")
+    label_width = max(len("Setting"), *(len(label) for _, label, _ in display_rows))
+    value_width = max(len("Value"), *(len(text) for _, _, text in display_rows))
+    border = (
+        f"+-{'-' * marker_width}-+-{'-' * label_width}-+-{'-' * value_width}-+"
+    )
+
+    print(header_line)
+    print(border)
+    print(f"| {'':<{marker_width}} | {'Setting':<{label_width}} | {'Value':<{value_width}} |")
+    print(border)
+    for marker, label, text in display_rows:
+        print(f"| {marker:<{marker_width}} | {label:<{label_width}} | {text:<{value_width}} |")
+    print(border)
 
 
 def compare_metadata(source: str, restored: str, check_ownership: bool = False) -> list[str]:

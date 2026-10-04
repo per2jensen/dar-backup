@@ -1616,6 +1616,56 @@ def test_print_markdown_pretty_falls_back_when_rich_missing(tmp_path, monkeypatc
     assert "Hello" in out and "World" in out
 
 
+def test_operational_verbose_output_does_not_import_rich() -> None:
+    """Verbose operational output renders without loading Rich."""
+    script = """
+import sys
+from dar_backup.util import print_aligned_settings
+import dar_backup.dar_backup
+
+print_aligned_settings([("Backup type", "FULL")], log=False, quiet=False)
+if any(name == "rich" or name.startswith("rich.") for name in sys.modules):
+    raise SystemExit("rich was imported by operational output")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "|     | Backup type | FULL  |" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_message"),
+    [
+        (False, "Success: all backups completed"),
+        (True, "Errors encountered"),
+    ],
+)
+def test_print_completion_status_verbose_prints_plain_message(
+    error: bool,
+    expected_message: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verbose completion output prints the matching plain-text status."""
+    db._print_completion_status(error=error, verbose=True)
+
+    assert capsys.readouterr().out == f"{expected_message}\n"
+
+
+def test_print_completion_status_not_verbose_suppresses_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Non-verbose completion output remains silent."""
+    db._print_completion_status(error=True, verbose=False)
+
+    assert capsys.readouterr().out == ""
+
+
 # --- restore-test sampling ---------------------------------------------------
 
 def test_select_restoretest_samples_returns_empty_when_sample_size_zero():

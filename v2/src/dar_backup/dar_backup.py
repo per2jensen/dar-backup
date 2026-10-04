@@ -37,8 +37,6 @@ from sys import exit
 from sys import stderr
 from sys import version_info
 from time import time
-from rich.console import Console
-from rich.text import Text
 from dataclasses import dataclass
 from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
 
@@ -2267,6 +2265,26 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
     return False
 
 
+def _print_completion_status(*, error: bool, verbose: bool) -> None:
+    """Print the final operational status when verbose output is enabled.
+
+    Args:
+        error: Whether the operation finished with an error.
+        verbose: Whether terminal status output is enabled.
+
+    Returns:
+        None.
+    """
+    if not verbose:
+        return
+
+    if error:
+        print("Errors encountered")
+        return
+
+    print("Success: all backups completed")
+
+
 def main() -> None:
     """CLI entrypoint: parse arguments and dispatch to the requested operation.
 
@@ -2762,15 +2780,11 @@ def main() -> None:
                 final_exit_code = 1
             i=i+1
 
-    console = Console()
+    _print_completion_status(error=error, verbose=args.verbose)
     if error:
-        if args.verbose:
-            console.print(Text("Errors encountered", style="bold red"))
         exit(final_exit_code or 1)
-    else:
-        if args.verbose:
-            console.print(Text("Success: all backups completed", style="bold green"))
-        exit(0)
+
+    exit(0)
 
 
 if __name__ == "__main__":
