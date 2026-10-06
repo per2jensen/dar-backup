@@ -1,10 +1,11 @@
 {
   "package": "dar-backup",
   "source": "https://pypistats.org/api/packages/dar-backup/overall?mirrors=false",
-  "updated": "2026-10-05",
+  "updated": "2026-10-06",
   "update_notice": {
-    "status": "ok",
-    "timestamp": "2026-10-05T04:56:27Z"
+    "status": "partial",
+    "timestamp": "2026-10-06T04:37:34Z",
+    "message": "Rate-limited fetching recent stats; kept existing data."
   },
   "recent": {
     "last_day": 4,
