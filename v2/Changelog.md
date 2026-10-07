@@ -8,6 +8,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 ### Added
 
 - dar-backup works on Ubuntu 26.04 with a compiled dar 2.7.21 (26.04 provides dar 2.8.3 which might work)
+- **Catalog database corruption recovery runbook** (`doc/troubleshooting.md`) — distinguishes a manager registration error code 5 from a DAR backup warning, documents the authoritative read-only integrity check, and shows how to preserve, recreate, repopulate, and verify only the affected catalog database.
 - **Fresh Ubuntu 24.04/26.04 VM compatibility matrix** (`vm_test/`) — a defensive Multipass controller verifies that its runtime root is a dedicated mounted SSD, archives one clean immutable Git revision, creates disposable guests sequentially, provisions real DAR/PAR2 and Python dependencies, and runs the existing pytest reporter. Test failures and infrastructure failures have distinct exit codes, while guest console output, structured metadata, pytest text/JSON/JUnit reports, coverage, and collection inventories are retrieved even after failures. Failed guests can be retained explicitly for interactive diagnosis.
 - **Published VM compatibility status** (`README.md`, `doc/test-report/vm-matrix-badge.json`) — each full matrix now regenerates a marker-delimited README table and Shields endpoint from the same validated evidence record. Test failures replace stale green results, non-full runs preserve the latest full-suite status, and `--refresh-presentation` repairs both outputs without launching VMs.
 

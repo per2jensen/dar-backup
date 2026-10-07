@@ -155,6 +155,60 @@ slices on disk; keep them only for diagnosis and do not add them manually to the
 catalog. After correcting the prompt or configuration problem, move or remove the partial
 slices before retrying the same dated backup.
 
+## Manager fails to add an archive with error code 5
+
+This is different from a backup operation returning DAR error code 5. If the archive
+completed verification but `manager --add-specific-archive` failed, inspect the command
+output log. It is named `dar-backup-commands.log` and is stored alongside the configured
+main log. A corrupt catalog database typically reports:
+
+```text
+Corrupted database :reached End of File before all expected data could be read
+```
+
+Confirm the affected manager database with a read-only integrity check:
+
+```bash
+dar_manager --base /path/to/manager/<definition>.db --check
+```
+
+`dar_manager --list` may still succeed because it does not necessarily read every part of
+the database. Treat a failed `--check` as authoritative. If the backup log says the DAR
+archive passed integrity and restore verification, the archive remains independently
+usable; only its manager registration failed. Retrying `--add-specific-archive` cannot
+repair an already-corrupt database.
+
+Stop any backup, cleanup, restore, or manager process that could be using the affected
+database. Then rebuild only that backup definition:
+
+```bash
+manager --create-db \
+  --backup-def <definition> \
+  --config-file /path/to/dar-backup.conf
+
+manager --add-dir /path/to/archive-directory \
+  --backup-def <definition> \
+  --config-file /path/to/dar-backup.conf
+```
+
+`--create-db` checks the existing database, renames a corrupt one with a
+`.corrupted.<timestamp>` suffix, and creates a fresh database. `--add-dir` then rebuilds it
+from the existing DAR archive catalogs in chronological order. The DAR archives themselves
+are not modified.
+
+Verify the rebuilt database and confirm that the newest expected archive is listed:
+
+```bash
+dar_manager --base /path/to/manager/<definition>.db --check
+
+manager --list-catalogs \
+  --backup-def <definition> \
+  --config-file /path/to/dar-backup.conf
+```
+
+Keep the preserved `.corrupted.<timestamp>` file until the rebuilt catalog has passed the
+integrity check and its archive list has been reviewed.
+
 ## Backup warning about error code 5
 
 `dar-backup` treats this as a warning because a usable dar backup (usually) is the result.
