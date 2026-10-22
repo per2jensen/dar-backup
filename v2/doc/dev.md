@@ -322,12 +322,9 @@ sudo apt-get update && sudo apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
       build-essential autoconf automake libtool pkg-config binutils \
       libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \
-      librsync-dev libcurl4-gnutls-dev libargon2-dev \
+      librsync-dev libcurl4-gnutls-dev libargon2-dev libssh-dev \
       bzip2 zlib1g-dev libbz2-dev liblzo2-dev liblzma-dev libzstd-dev liblz4-dev \
       groff doxygen graphviz upx
-sudo apt-get install libkrb5-dev
-sudo apt-get install libgcrypt-dev libgpgme-dev libext2fs-dev \
-     libthreadar-dev  librsync-dev  libcurl4-gnutls-dev
 cd "$SRC_CODE"
 CXXFLAGS=-O
 export CXXFLAGS
@@ -353,11 +350,9 @@ sudo apt-get update && apt-get sudo install -y --no-install-recommends \
       python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
       build-essential autoconf automake libtool pkg-config binutils \
       libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \
-      librsync-dev libcurl4-gnutls-dev libargon2-dev \
+      librsync-dev libcurl4-gnutls-dev libargon2-dev libssh-dev \
       bzip2 zlib1g-dev libbz2-dev liblzo2-dev liblzma-dev libzstd-dev liblz4-dev \
       groff doxygen graphviz upx
-sudo apt-get install libkrb5-dev
-sudo apt-get install libgcrypt-dev libgpgme-dev libext2fs-dev  libthreadar-dev  librsync-dev  libcurl4-gnutls-dev
 cd "$SRC_CODE"
 CXXFLAGS=-O
 export CXXFLAGS
@@ -371,6 +366,38 @@ ln -s $HOME/.local/dar-${DAR_VERSION} $HOME/.local/dar
 ````
 
 ---
+
+#### 26.06 - dar: 2.8.6
+
+
+This worked for dar version 2..8.6 on ubuntu 26.04
+
+
+```` bash
+export DAR_VERSION=2.8.6
+export SRC_CODE=/tmp/dar-2.8-.6
+export DAR_DIR=$HOME/.local/dar-${DAR_VERSION}
+
+
+sudo apt-get update && apt-get sudo install -y --no-install-recommends \
+      python3 python3-venv python3-pip gettext-base ca-certificates tzdata file gnupg \
+      build-essential autoconf automake libtool pkg-config binutils \
+      libkrb5-dev libgcrypt-dev libgpgme-dev libext2fs-dev libthreadar-dev \
+      librsync-dev libcurl4-gnutls-dev libargon2-dev libssh-dev \
+      bzip2 zlib1g-dev libbz2-dev liblzo2-dev liblzma-dev libzstd-dev liblz4-dev \
+      groff doxygen graphviz upx
+cd "$SRC_CODE"
+CXXFLAGS=-O
+export CXXFLAGS
+make clean distclean
+./configure --prefix="$DAR_DIR" LDFLAGS="-lgssapi_krb5"  --enable-dar-static
+make
+make install-strip
+
+rm $HOME/.local/dar  # remove link
+ln -s $HOME/.local/dar-${DAR_VERSION} $HOME/.local/dar
+````
+
 
 ## SQLite metrics DB
 
