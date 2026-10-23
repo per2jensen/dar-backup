@@ -21,6 +21,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Changed
 
+- **GitHub Pages version follows successful publications** (`release.sh`, `scripts/publish_pages_version.py`) — after PyPI accepts a release, the release tooling fetches `gh-pages` into a fresh temporary worktree, validates and updates its single current-version marker, records both application-source and orchestration commits, and pushes one Pages commit. Normal `main` commits do not redeploy the site; malformed or duplicate markers fail closed, and the temporary checkout is always removed.
 - **Operational output no longer loads Rich** (`dar_backup.py`, `util.py`) — normal and `--verbose` backup runs now use a scan-friendly ASCII settings table and plain completion messages. Rich is loaded only for explicit pretty-document commands, reducing the typical process footprint without sacrificing readable verbose output.
 
 ## v2-1.1.11 - 2026-08-16

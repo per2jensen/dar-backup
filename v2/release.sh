@@ -27,8 +27,9 @@
 #   PyPI project page never shows 404s for links that only work on GitHub.
 # - Build artifacts are created from the tagged commit only.
 # - All artifacts are cryptographically signed and verified before upload.
-# - On successful upload, build-history.json and the clone-pulse annotation are
-#   updated and committed in two separate post-release commits (beyond the tag).
+# - On successful upload, the current version is published from a separate
+#   gh-pages worktree, then build-history.json and the clone-pulse annotation
+#   are updated and committed in two separate post-release commits (beyond the tag).
 # - All output is captured to doc/releases/release-<tag>.log.
 #
 # Required environment
@@ -599,6 +600,7 @@ fi
 if $DRY_RUN; then
     echo ""
     dryrun "upload to PyPI with twine"
+    dryrun "publish ${VERSION} from an isolated gh-pages worktree"
     dryrun "append entry to build-history.json"
     dryrun "stamp clone annotation for ${VERSION}"
     dryrun "commit build-history.json, clone annotation, and release log"
@@ -609,6 +611,22 @@ elif $UPLOAD; then
     green "Uploading to PyPI..."
     if python3 -m twine upload "$DIST_DIR"/*; then
         green "🎉 Done: Version $VERSION uploaded successfully"
+
+        ########################################
+        # Publish the release version to GitHub Pages
+        ########################################
+        # GitHub's managed Pages workflow deploys only after this gh-pages push.
+        # The helper keeps page content and release tooling in separate checkouts.
+        if ! python3 scripts/publish_pages_version.py \
+            --repository "${REPO_ROOT}" \
+            --version "${VERSION}" \
+            --tag "${TAG}"; then
+            red "❌ PyPI upload succeeded, but the GitHub Pages version update failed"
+            red "   Recover manually without uploading to PyPI again:"
+            red "   python3 ${REPO_ROOT}/${REPO_REL}/scripts/publish_pages_version.py --repository ${REPO_ROOT} --version ${VERSION} --tag ${TAG}"
+            exit 1
+        fi
+        green "✅ GitHub Pages current version published: ${VERSION}"
 
         ########################################
         # Post-release: build history + clone annotation
