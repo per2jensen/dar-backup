@@ -24,6 +24,9 @@ NO_FILES_VERIFICATION = 5        # must be >= 1; 0 makes restore tests vacuously
 # If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
 # Use -1 to disable timeouts. Must be -1 or > 0 — 0 or other negative values are rejected.
 COMMAND_TIMEOUT_SECS = 86400
+# Optional shared instance-lock directory. Omit it to use /run/lock as root or
+# private state storage below the registered home directory as a normal user.
+# LOCK_DIR = /run/lock/dar-backup
 
 [DIRECTORIES]
 BACKUP_DIR = /some/where/dar-backup/backups/
@@ -64,6 +67,29 @@ SCRIPT_1 = ls -l /tmp
 SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
 ```
+
+### Instance lock directory
+
+Backup runs sharing one configuration must acquire the same advisory lock.
+By default, root always uses the historical `/run/lock` location. A non-root
+process always uses `.local/state/dar-backup/locks` below its registered home
+directory from the system account database. The environment variables `HOME`
+and `XDG_RUNTIME_DIR` do not affect this choice. The private directory is
+created with mode `0700`; a pre-existing directory with another owner or
+broader permissions is rejected. If the selected location cannot be created or
+used safely, dar-backup fails immediately and does not search for another one.
+
+Set optional `LOCK_DIR` in `[MISC]` when an administrator has provisioned a
+specific lock directory. `DAR_BACKUP_LOCK_DIR` overrides the config value.
+Configured paths must be absolute, must already exist, and are never silently
+replaced by a fallback if validation or lock creation fails. Directory symlinks
+and world-writable directories without the sticky bit are rejected.
+
+All processes that must exclude each other must resolve the same configuration
+path and lock directory. The automatic default coordinates processes belonging
+to one effective user. A deployment that runs the same configuration under
+multiple accounts must provide one shared lock directory with suitable
+ownership and traversal permissions.
 
 PAR2 notes:
 

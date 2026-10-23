@@ -55,6 +55,7 @@ class ConfigSettings:
     trace_log_backup_count: int = field(init=False, default=1)    # matches OPTIONAL_CONFIG_FIELDS default
     dar_backup_discord_webhook_url: Optional[str] = field(init=False, default=None)
     metrics_db_path: Optional[str] = field(init=False, default=None)
+    lock_dir: Optional[str] = field(init=False, default=None)
     manager_db_dir: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
@@ -116,6 +117,13 @@ class ConfigSettings:
             "section": "MISC",
             "key": "METRICS_DB_PATH",
             "attr": "metrics_db_path",
+            "type": str,
+            "default": None,
+        },
+        {
+            "section": "MISC",
+            "key": "LOCK_DIR",
+            "attr": "lock_dir",
             "type": str,
             "default": None,
         },
@@ -233,6 +241,11 @@ class ConfigSettings:
                     if isinstance(value, str):
                         setattr(self, f.name, expanduser(expandvars(value)))
 
+            env_lock_dir = os.getenv("DAR_BACKUP_LOCK_DIR")
+            if env_lock_dir is not None:
+                self.lock_dir = expanduser(expandvars(env_lock_dir.strip()))
+
+            self._validate_lock_dir_setting()
             self._validate_metrics_db_location()
 
         except ConfigSettingsError:
@@ -291,6 +304,24 @@ class ConfigSettings:
             "a different database and hide backup failures. Store the metrics "
             "database beside dar-backup.conf or on another always-available filesystem."
         )
+
+    def _validate_lock_dir_setting(self) -> None:
+        """Validate the optional lock-directory configuration syntax.
+
+        Returns:
+            None.
+
+        Raises:
+            ConfigSettingsError: If the configured path is empty or relative.
+        """
+        if self.lock_dir is None:
+            return
+        if not self.lock_dir.strip():
+            raise ConfigSettingsError("LOCK_DIR and DAR_BACKUP_LOCK_DIR must not be empty")
+        if not Path(self.lock_dir).is_absolute():
+            raise ConfigSettingsError(
+                f"LOCK_DIR and DAR_BACKUP_LOCK_DIR must be absolute paths, got: {self.lock_dir!r}"
+            )
 
     def _get_config_value(self, section: str, key: str, converter, default):
         """Read an optional config key and convert it with *converter*.

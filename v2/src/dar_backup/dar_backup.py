@@ -12,7 +12,6 @@ See section 15 and section 16 in the supplied "LICENSE" file
 
 This script can be used to control `dar` to backup parts of or the whole system.
 """
-import fcntl
 import argcomplete
 import argparse
 import filecmp
@@ -38,7 +37,7 @@ from sys import stderr
 from sys import version_info
 from time import time
 from dataclasses import dataclass
-from typing import IO, Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
+from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -76,6 +75,10 @@ from dar_backup.util import (
 )
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.instance_lock import InstanceLock
+from dar_backup.instance_lock import InstanceLockError
+from dar_backup.instance_lock import InstanceLockHeldError
+from dar_backup.instance_lock import acquire_instance_lock
 from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetPolicy
@@ -2514,8 +2517,7 @@ def main() -> None:
 
     filtered_darrc_path = None
     is_backup_run = args.full_backup or args.differential_backup or args.incremental_backup
-    _lock_fh:   Optional[IO[str]] = None
-    _lock_path: Optional[str]     = None
+    instance_lock: Optional[InstanceLock] = None
 
     try:
         if not args.darrc:
@@ -2623,23 +2625,21 @@ def main() -> None:
 
         # --- Instance lock: one backup run per config at a time ---
         if is_backup_run:
-            config_abs  = os.path.realpath(args.config_file)
-            lock_name   = config_abs.replace('/', '_').replace(' ', '_').lstrip('_') + '.lock'
-            lock_dir    = '/run/lock' if os.path.isdir('/run/lock') else tempfile.gettempdir()
-            _lock_path  = os.path.join(lock_dir, lock_name)
-            _lock_fh    = open(_lock_path, 'w')
             try:
-                fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                logger.debug("Lock acquired: %s (pid %d)", _lock_path, os.getpid())
-            except BlockingIOError:
-                _lock_fh.close()
-                _lock_fh = None
-                _bt  = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
-                _err = RuntimeError(
-                    f"Another dar-backup instance is already running (lock: {_lock_path})"
+                instance_lock = acquire_instance_lock(
+                    args.config_file,
+                    config_settings.lock_dir,
                 )
+                logger.debug("Lock acquired: %s (pid %d)", instance_lock.path, os.getpid())
+            except InstanceLockHeldError as exc:
+                _bt  = "FULL" if args.full_backup else "DIFF" if args.differential_backup else "INCR"
+                _err = RuntimeError(str(exc))
                 logger.exception(str(_err))
                 _record_prereq_failure(args, config_settings, [], _err, _bt, run_id=run_id)
+                exit(1)
+            except InstanceLockError as exc:
+                logger.exception("Cannot acquire the dar-backup instance lock")
+                print(f"Cannot acquire the dar-backup instance lock: {exc}", file=stderr)
                 exit(1)
 
         prereq_report: dict = {"status": "none", "failures": []}
@@ -2744,13 +2744,12 @@ def main() -> None:
         if is_backup_run:
             end_time=int(time())
             logger.info(f"END TIME: {end_time}")
-        if _lock_fh is not None:
+        if instance_lock is not None:
             try:
-                fcntl.flock(_lock_fh, fcntl.LOCK_UN)
-                _lock_fh.close()
-                logger.debug("Lock released: %s", _lock_path)
+                instance_lock.release()
+                logger.debug("Lock released: %s", instance_lock.path)
             except Exception as _lock_exc:  # noqa: BLE001 — logs with context and continues (lock release is best-effort)
-                logger.warning("Failed to release instance lock %s: %s", _lock_path, _lock_exc)
+                logger.warning("Failed to release instance lock %s: %s", instance_lock.path, _lock_exc)
         # Clean up
         if filtered_darrc_path and os.path.exists(filtered_darrc_path):
             os.remove(filtered_darrc_path)

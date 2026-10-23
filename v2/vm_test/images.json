@@ -3,6 +3,11 @@
     {
       "label": "ubuntu-24.04",
       "image": "24.04",
+      "distribution": "Ubuntu",
+      "expected_os_id": "ubuntu",
+      "expected_version_id": "24.04",
+      "expected_catalog_release": "24.04 LTS",
+      "provisioner": "debian",
       "instance_name": "dar-backup-test-2404",
       "disk": "30G",
       "memory": "4G",
@@ -11,7 +16,25 @@
     {
       "label": "ubuntu-26.04",
       "image": "26.04",
+      "distribution": "Ubuntu",
+      "expected_os_id": "ubuntu",
+      "expected_version_id": "26.04",
+      "expected_catalog_release": "26.04 LTS",
+      "provisioner": "debian",
       "instance_name": "dar-backup-test-2604",
+      "disk": "30G",
+      "memory": "4G",
+      "cpus": 2
+    },
+    {
+      "label": "fedora-44",
+      "image": "fedora",
+      "distribution": "Fedora",
+      "expected_os_id": "fedora",
+      "expected_version_id": "44",
+      "expected_catalog_release": "44",
+      "provisioner": "fedora",
+      "instance_name": "dar-backup-test-fedora-44",
       "disk": "30G",
       "memory": "4G",
       "cpus": 2

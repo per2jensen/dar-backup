@@ -1,5 +1,7 @@
 import logging
 import os
+import subprocess
+import sys
 from configparser import ConfigParser
 from pathlib import Path
 
@@ -317,6 +319,78 @@ def test_config_settings_repr_omits_none_fields(tmp_path):
     assert "config_file=" in output
     assert "manager_db_dir='/tmp/db'" in output  # declared field with non-None value appears in repr
     assert "par2_dir" not in output               # par2_dir is None so still absent
+
+
+def test_config_settings_absolute_lock_dir_is_accepted(tmp_path: Path) -> None:
+    """An absolute configured lock directory must be exposed to the application.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+    """
+    lock_dir = tmp_path / "locks"
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"LOCK_DIR": str(lock_dir)},
+    )
+
+    settings = ConfigSettings(str(config_path))
+
+    assert settings.lock_dir == str(lock_dir)
+
+
+def test_config_settings_relative_lock_dir_raises(tmp_path: Path) -> None:
+    """A relative lock-directory setting must fail configuration validation.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+    """
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"LOCK_DIR": "relative/locks"},
+    )
+
+    with pytest.raises(ConfigSettingsError, match="must be absolute"):
+        ConfigSettings(str(config_path))
+
+
+def test_config_settings_env_lock_dir_overrides_config_with_real_subprocess(
+    tmp_path: Path,
+) -> None:
+    """The environment override must win in an isolated real Python process.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+    """
+    configured_lock_dir = tmp_path / "configured-locks"
+    environment_lock_dir = tmp_path / "environment-locks"
+    config_path = write_config(
+        tmp_path / "cfg.conf",
+        tmp_path,
+        misc_overrides={"LOCK_DIR": str(configured_lock_dir)},
+    )
+    result_path = tmp_path / "resolved-lock-dir.txt"
+    child_script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from dar_backup.config_settings import ConfigSettings\n"
+        "settings = ConfigSettings(sys.argv[1])\n"
+        "Path(sys.argv[2]).write_text(settings.lock_dir or '', encoding='utf-8')\n"
+    )
+    child_environment = os.environ.copy()
+    child_environment["DAR_BACKUP_LOCK_DIR"] = str(environment_lock_dir)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", child_script, str(config_path), str(result_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=child_environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert result_path.read_text(encoding="utf-8") == str(environment_lock_dir)
 
 
 def test_config_settings_env_timeout_overrides_config(tmp_path, monkeypatch):

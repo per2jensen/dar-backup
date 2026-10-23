@@ -205,6 +205,7 @@ Prints the installed version and license information, then exits before loading 
 | DAR_BACKUP_CONFIG_FILE | Full path to config file | Overrides built-in default, overridden by --config-file |
 | DAR_BACKUP_DISCORD_WEBHOOK_URL | https://discord.com/api/webhooks/\<userID\>/\<webhook UUID\> | The full url |
 | DAR_BACKUP_COMMAND_TIMEOUT_SECS | -1 or > 0 | Overrides config `COMMAND_TIMEOUT_SECS`. Use `-1` to disable timeouts. |
+| DAR_BACKUP_LOCK_DIR | Absolute directory path | Overrides config `LOCK_DIR`; all mutually exclusive backup processes must use the same directory. |
 
 ---
 

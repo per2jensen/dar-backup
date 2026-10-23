@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the dar-backup test suite in fresh Multipass Ubuntu instances."""
+"""Run the dar-backup test suite in fresh Multipass Linux instances."""
 
 from __future__ import annotations
 
@@ -20,14 +20,15 @@ import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Sequence, cast
 
 
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
-HISTORY_SCHEMA_VERSION = 2
+HISTORY_SCHEMA_VERSION = 3
+READABLE_HISTORY_SCHEMA_VERSIONS = {2, HISTORY_SCHEMA_VERSION}
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -35,6 +36,7 @@ _SAFE_INSTANCE = re.compile(r"dar-backup-test-[a-z0-9-]+")
 _RESOURCE_SIZE = re.compile(r"[1-9][0-9]*[KMG]")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _DEBIAN_PACKAGE_KEY = re.compile(r"[a-z0-9][a-z0-9+.-]*:[a-z0-9][a-z0-9-]*")
+_RPM_PACKAGE_COMPONENT = re.compile(r"[^\r\n\t]+")
 _MYPY_ERROR_CODE = re.compile(r"[a-z][a-z0-9-]*")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
 # This parses pytest output; it does not create or trust a predictable temporary path.
@@ -53,11 +55,16 @@ class InfrastructureError(RuntimeError):
 
 @dataclass(frozen=True)
 class ImageSpec:
-    """Describe one Ubuntu image in the compatibility matrix.
+    """Describe one Linux image in the compatibility matrix.
 
     Attributes:
         label: Stable result-directory and summary label.
         image: Multipass image alias.
+        distribution: Human-readable distribution name.
+        expected_os_id: Required ``ID`` from the guest's ``os-release``.
+        expected_version_id: Required ``VERSION_ID`` from the guest's ``os-release``.
+        expected_catalog_release: Required release from ``multipass find``.
+        provisioner: Allow-listed guest provisioning implementation.
         instance_name: Dedicated Multipass instance name.
         disk: Virtual disk capacity passed to Multipass.
         memory: Guest memory passed to Multipass.
@@ -66,6 +73,11 @@ class ImageSpec:
 
     label: str
     image: str
+    distribution: str
+    expected_os_id: str
+    expected_version_id: str
+    expected_catalog_release: str
+    provisioner: str
     instance_name: str
     disk: str
     memory: str
@@ -401,7 +413,7 @@ def _require_string(value: Any, field: str) -> str:
 
 
 def load_image_specs(config_path: Path) -> list[ImageSpec]:
-    """Load and validate the Ubuntu image matrix.
+    """Load and validate the Linux image matrix.
 
     Args:
         config_path: JSON configuration path.
@@ -427,6 +439,17 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
         label = _require_string(image.get("label"), f"images[{index}].label")
         instance_name = _require_string(image.get("instance_name"), f"images[{index}].instance_name")
         image_alias = _require_string(image.get("image"), f"images[{index}].image")
+        distribution = _require_string(image.get("distribution"), f"images[{index}].distribution")
+        expected_os_id = _require_string(image.get("expected_os_id"), f"images[{index}].expected_os_id")
+        expected_version_id = _require_string(
+            image.get("expected_version_id"),
+            f"images[{index}].expected_version_id",
+        )
+        expected_catalog_release = _require_string(
+            image.get("expected_catalog_release"),
+            f"images[{index}].expected_catalog_release",
+        )
+        provisioner = _require_string(image.get("provisioner"), f"images[{index}].provisioner")
         disk = _require_string(image.get("disk"), f"images[{index}].disk")
         memory = _require_string(image.get("memory"), f"images[{index}].memory")
         cpus = image.get("cpus")
@@ -436,6 +459,17 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             raise ValueError(f"Refusing unsafe image label: {label!r}")
         if _SAFE_IMAGE.fullmatch(image_alias) is None:
             raise ValueError(f"Refusing unsafe Multipass image alias: {image_alias!r}")
+        if _SAFE_LABEL.fullmatch(expected_os_id) is None:
+            raise ValueError(f"Refusing unsafe expected OS ID: {expected_os_id!r}")
+        if provisioner not in {"debian", "fedora"}:
+            raise ValueError(f"Unsupported provisioner at images[{index}]: {provisioner!r}")
+        for field_name, field_value in (
+            ("distribution", distribution),
+            ("expected_version_id", expected_version_id),
+            ("expected_catalog_release", expected_catalog_release),
+        ):
+            if any(character in field_value for character in "\r\n\t"):
+                raise ValueError(f"images[{index}].{field_name} contains control characters")
         if _SAFE_INSTANCE.fullmatch(instance_name) is None:
             raise ValueError(f"Refusing unsafe instance name: {instance_name!r}")
         if _RESOURCE_SIZE.fullmatch(disk) is None or _RESOURCE_SIZE.fullmatch(memory) is None:
@@ -448,6 +482,11 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             ImageSpec(
                 label=label,
                 image=image_alias,
+                distribution=distribution,
+                expected_os_id=expected_os_id,
+                expected_version_id=expected_version_id,
+                expected_catalog_release=expected_catalog_release,
+                provisioner=provisioner,
                 instance_name=instance_name,
                 disk=disk,
                 memory=memory,
@@ -778,7 +817,7 @@ def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate public matrix metadata and return its image records.
 
     Args:
-        record: Schema-v2 VM matrix history record.
+        record: Readable VM matrix history record.
 
     Returns:
         Validated image dictionaries in matrix order.
@@ -787,9 +826,10 @@ def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
         TypeError: If a required field has the wrong type.
         ValueError: If the record cannot truthfully describe a full matrix run.
     """
-    if record.get("schema_version") != HISTORY_SCHEMA_VERSION:
+    if record.get("schema_version") not in READABLE_HISTORY_SCHEMA_VERSIONS:
         raise ValueError(
-            f"Presentation record schema_version must be {HISTORY_SCHEMA_VERSION}"
+            "Presentation record schema_version must be one of "
+            f"{sorted(READABLE_HISTORY_SCHEMA_VERSIONS)}"
         )
     if record.get("mode") != "full":
         raise ValueError("Public VM matrix presentation requires a full-mode record")
@@ -1018,6 +1058,28 @@ def _image_presentation_row(image: dict[str, Any]) -> str:
     return "| " + " | ".join(_markdown_table_cell(value) for value in values) + " |"
 
 
+def _image_presentation_name(image: dict[str, Any]) -> str:
+    """Return a distribution-neutral display name for one matrix image.
+
+    Args:
+        image: Public image evidence from schema v2 or v3.
+
+    Returns:
+        Human-readable distribution and release.
+
+    Raises:
+        ValueError: If no usable label is present.
+    """
+    distribution = image.get("distribution")
+    version = image.get("expected_version_id")
+    if isinstance(distribution, str) and distribution.strip() and isinstance(version, str) and version.strip():
+        return f"{distribution.strip()} {version.strip()}"
+    label = _require_string(image.get("label"), "image label")
+    if label.startswith("ubuntu-"):
+        return f"Ubuntu {label.removeprefix('ubuntu-')}"
+    return label
+
+
 def _matrix_resource_text(images: Sequence[dict[str, Any]]) -> str:
     """Describe shared VM resources when every matrix entry matches.
 
@@ -1054,7 +1116,7 @@ def render_vm_matrix_badge(record: dict[str, Any]) -> dict[str, Any]:
     """Build a Shields endpoint payload for the latest full VM matrix.
 
     Args:
-        record: Schema-v2 full VM matrix history record.
+        record: Readable full VM matrix history record.
 
     Returns:
         Shields endpoint JSON object.
@@ -1064,10 +1126,7 @@ def render_vm_matrix_badge(record: dict[str, Any]) -> dict[str, Any]:
         ValueError: If required evidence is missing or inconsistent.
     """
     images = _presentation_images(record)
-    versions = [
-        _require_string(image.get("label"), "image label").removeprefix("ubuntu-")
-        for image in images
-    ]
+    versions = [_image_presentation_name(image) for image in images]
     version_text = " + ".join(versions)
     completed = record["completed"]
     exit_code = record["exit_code"]
@@ -1085,7 +1144,7 @@ def render_vm_matrix_badge(record: dict[str, Any]) -> dict[str, Any]:
         is_error = True
     return {
         "schemaVersion": 1,
-        "label": "Ubuntu VM matrix",
+        "label": "Linux VM matrix",
         "message": message,
         "color": color,
         "isError": is_error,
@@ -1118,13 +1177,13 @@ def render_vm_matrix_readme_block(record: dict[str, Any]) -> str:
     commit_url = f"{_GITHUB_REPOSITORY_URL}/commit/{commit}"
     return (
         f"{_README_RESULTS_BEGIN}\n\n"
-        "## Tested on Ubuntu LTS VMs\n\n"
-        "`dar-backup` is tested in fresh Ubuntu LTS Multipass VMs created from the\n"
-        "standard Ubuntu images. Each VM installs the distribution's DAR, PAR2, and\n"
+        "## Tested on Linux VMs\n\n"
+        "`dar-backup` is tested in fresh Multipass VMs created from standard\n"
+        "distribution images. Each VM installs the distribution's DAR, PAR2, and\n"
         "Python dependencies before running the full pytest suite and mypy.\n\n"
         f"**Latest full VM matrix:** {outcome} at `{finished_at}` for\n"
         f"[commit `{commit[:12]}`]({commit_url}).\n\n"
-        "| Ubuntu | Python | DAR | PAR2 | pytest | mypy | Result |\n"
+        "| Distribution | Python | DAR | PAR2 | pytest | mypy | Result |\n"
         "|---|---:|---:|---:|---|---|---|\n"
         f"{rows}\n\n"
         f"{_matrix_resource_text(images)}\n\n"
@@ -1232,7 +1291,7 @@ def publish_vm_matrix_presentation(
 
 
 def read_latest_full_history_record(history_path: Path) -> dict[str, Any]:
-    """Read the newest schema-v2 full matrix record from tracked history.
+    """Read the newest readable full matrix record from tracked history.
 
     Args:
         history_path: JSONL VM matrix history.
@@ -1257,11 +1316,17 @@ def read_latest_full_history_record(history_path: Path) -> dict[str, Any]:
             ) from exc
         if not isinstance(raw_record, dict):
             raise TypeError(f"JSONL history record at {history_path}:{line_number} must be an object")
-        if raw_record.get("schema_version") == HISTORY_SCHEMA_VERSION and raw_record.get("mode") == "full":
+        if (
+            raw_record.get("schema_version") in READABLE_HISTORY_SCHEMA_VERSIONS
+            and raw_record.get("mode") == "full"
+        ):
             _presentation_images(raw_record)
             latest = raw_record
     if latest is None:
-        raise ValueError(f"No schema-v{HISTORY_SCHEMA_VERSION} full matrix record found in {history_path}")
+        raise ValueError(
+            "No readable full matrix record found in "
+            f"{history_path}; supported schemas: {sorted(READABLE_HISTORY_SCHEMA_VERSIONS)}"
+        )
     return latest
 
 
@@ -1333,11 +1398,11 @@ def _canonical_json_sha256(payload: object) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _package_manifest_sha256(manifest: dict[str, str]) -> str:
-    """Return the SHA-256 of one canonical Debian package manifest.
+def _package_manifest_sha256(manifest: object) -> str:
+    """Return the SHA-256 of one canonical package manifest.
 
     Args:
-        manifest: Installed package-and-architecture keys mapped to versions.
+        manifest: Normalized Debian mapping or RPM entry list.
 
     Returns:
         Lowercase SHA-256 digest.
@@ -1349,7 +1414,7 @@ def _package_manifest_evidence(
     guest: dict[str, Any],
     label: str,
     required: bool,
-) -> tuple[dict[str, str] | None, str | None]:
+) -> tuple[object | None, str | None, str | None, str | None]:
     """Validate package manifest evidence returned by one guest.
 
     Args:
@@ -1358,8 +1423,8 @@ def _package_manifest_evidence(
         required: Whether omission must fail evidence generation.
 
     Returns:
-        Sorted installed-package mapping and its verified SHA-256, or two
-        None values when optional evidence is absent.
+        Normalized manifest, verified SHA-256, package manager, and manifest
+        format. All values are ``None`` when optional evidence is absent.
 
     Raises:
         TypeError: If manifest fields have invalid JSON types.
@@ -1367,37 +1432,108 @@ def _package_manifest_evidence(
     """
     raw_manifest = guest.get("package_manifest")
     raw_sha256 = guest.get("package_manifest_sha256")
-    if raw_manifest is None and raw_sha256 is None:
+    raw_manager = guest.get("package_manager")
+    raw_format = guest.get("package_manifest_format")
+    if all(value is None for value in (raw_manifest, raw_sha256, raw_manager, raw_format)):
         if required:
             raise ValueError(f"Completed guest result has no package manifest for {label}")
-        return None, None
-    if not isinstance(raw_manifest, dict):
-        raise TypeError(f"Package manifest is not an object for {label}")
+        return None, None, None, None
+    manager = _require_string(raw_manager, f"package manager for {label}")
+    manifest_format = _require_string(raw_format, f"package manifest format for {label}")
     if not raw_manifest:
         raise ValueError(f"Package manifest is empty for {label}")
     if not isinstance(raw_sha256, str) or _SHA256.fullmatch(raw_sha256) is None:
         raise ValueError(f"Package manifest SHA-256 is invalid for {label}")
 
-    manifest: dict[str, str] = {}
-    for package_key, version in raw_manifest.items():
-        if (
-            not isinstance(package_key, str)
-            or _DEBIAN_PACKAGE_KEY.fullmatch(package_key) is None
-        ):
-            raise ValueError(f"Invalid Debian package key {package_key!r} for {label}")
-        if (
-            not isinstance(version, str)
-            or not version
-            or any(character in version for character in "\r\n\t")
-        ):
-            raise ValueError(f"Invalid version for Debian package {package_key!r} in {label}")
-        manifest[package_key] = version
+    manifest: object
+    if manifest_format == "dpkg-query-v1":
+        if manager != "apt":
+            raise ValueError(f"Debian package manifest requires apt for {label}")
+        if not isinstance(raw_manifest, dict):
+            raise TypeError(f"Debian package manifest is not an object for {label}")
+        debian_manifest: dict[str, str] = {}
+        for package_key, version in raw_manifest.items():
+            if not isinstance(package_key, str) or _DEBIAN_PACKAGE_KEY.fullmatch(package_key) is None:
+                raise ValueError(f"Invalid Debian package key {package_key!r} for {label}")
+            if (
+                not isinstance(version, str)
+                or not version
+                or any(character in version for character in "\r\n\t")
+            ):
+                raise ValueError(f"Invalid version for Debian package {package_key!r} in {label}")
+            debian_manifest[package_key] = version
+        manifest = dict(sorted(debian_manifest.items()))
+    elif manifest_format == "rpm-nevra-v1":
+        if manager != "dnf":
+            raise ValueError(f"RPM package manifest requires dnf for {label}")
+        if not isinstance(raw_manifest, list):
+            raise TypeError(f"RPM package manifest is not a list for {label}")
+        rpm_manifest: list[dict[str, str]] = []
+        identities: set[tuple[str, str, str, str, str]] = set()
+        required_fields = {"name", "epoch", "version", "release", "architecture"}
+        for index, raw_entry in enumerate(raw_manifest):
+            if not isinstance(raw_entry, dict) or set(raw_entry) != required_fields:
+                raise ValueError(f"Invalid RPM package entry {index} for {label}")
+            entry: dict[str, str] = {}
+            for field in sorted(required_fields):
+                value = raw_entry.get(field)
+                if not isinstance(value, str) or _RPM_PACKAGE_COMPONENT.fullmatch(value) is None:
+                    raise ValueError(f"Invalid RPM {field} in entry {index} for {label}")
+                entry[field] = value
+            identity = tuple(entry[field] for field in ("name", "epoch", "version", "release", "architecture"))
+            if identity in identities:
+                raise ValueError(f"Duplicate RPM package entry {index} for {label}")
+            identities.add(identity)
+            rpm_manifest.append(entry)
+        normalized_rpm_manifest = sorted(
+            rpm_manifest,
+            key=lambda entry: (
+                entry["name"],
+                entry["epoch"],
+                entry["version"],
+                entry["release"],
+                entry["architecture"],
+            ),
+        )
+        if rpm_manifest != normalized_rpm_manifest:
+            raise ValueError(f"RPM package manifest is not canonically ordered for {label}")
+        manifest = normalized_rpm_manifest
+    else:
+        raise ValueError(f"Unsupported package manifest format {manifest_format!r} for {label}")
 
-    manifest = dict(sorted(manifest.items()))
     calculated_sha256 = _package_manifest_sha256(manifest)
     if calculated_sha256 != raw_sha256:
         raise ValueError(f"Package manifest SHA-256 mismatch for {label}")
-    return manifest, raw_sha256
+    return manifest, raw_sha256, manager, manifest_format
+
+
+def _environment_adjustments_evidence(guest: dict[str, Any], label: str) -> list[str]:
+    """Validate explicit distribution-specific guest adjustments.
+
+    Args:
+        guest: Parsed guest result object.
+        label: Public image label used in diagnostic errors.
+
+    Returns:
+        Sorted adjustment identifiers, possibly empty.
+
+    Raises:
+        TypeError: If adjustment evidence is not a list.
+        ValueError: If an identifier is empty, unsafe, duplicated, or unsorted.
+    """
+    raw_adjustments = guest.get("environment_adjustments")
+    if not isinstance(raw_adjustments, list):
+        raise TypeError(f"Environment adjustments are not a list for {label}")
+    adjustments: list[str] = []
+    for index, value in enumerate(raw_adjustments):
+        if not isinstance(value, str) or _SAFE_LABEL.fullmatch(value) is None:
+            raise ValueError(f"Invalid environment adjustment {index} for {label}")
+        adjustments.append(value)
+    if len(adjustments) != len(set(adjustments)):
+        raise ValueError(f"Duplicate environment adjustment for {label}")
+    if adjustments != sorted(adjustments):
+        raise ValueError(f"Environment adjustments are not canonically ordered for {label}")
+    return adjustments
 
 
 def _validate_mypy_checks(checks: object, label: str) -> dict[str, Any]:
@@ -2014,6 +2150,8 @@ def _image_history_evidence(
             "mode": mode,
             "application_commit": application_commit,
             "orchestration_commit": orchestration_commit,
+            "os_id": spec.expected_os_id,
+            "os_version_id": spec.expected_version_id,
         }
         for field, expected in expected_guest_fields.items():
             if guest.get(field) != expected:
@@ -2021,7 +2159,12 @@ def _image_history_evidence(
                     f"Guest evidence field {field!r} for {spec.label} does not match "
                     "the controller result"
                 )
-        package_manifest, package_manifest_sha256 = _package_manifest_evidence(
+        (
+            package_manifest,
+            package_manifest_sha256,
+            package_manager,
+            package_manifest_format,
+        ) = _package_manifest_evidence(
             guest,
             spec.label,
             required=result.guest_status in {PASS, TEST_FAILED},
@@ -2032,6 +2175,8 @@ def _image_history_evidence(
                 "started_at",
                 "finished_at",
                 "os_release",
+                "os_id",
+                "os_version_id",
                 "kernel",
                 "python",
                 "pytest",
@@ -2042,10 +2187,21 @@ def _image_history_evidence(
         }
         guest_evidence["package_manifest"] = package_manifest
         guest_evidence["package_manifest_sha256"] = package_manifest_sha256
+        guest_evidence["package_manager"] = package_manager
+        guest_evidence["package_manifest_format"] = package_manifest_format
+        guest_evidence["environment_adjustments"] = _environment_adjustments_evidence(
+            guest,
+            spec.label,
+        )
 
     return {
         "label": spec.label,
         "image": spec.image,
+        "distribution": spec.distribution,
+        "expected_os_id": spec.expected_os_id,
+        "expected_version_id": spec.expected_version_id,
+        "expected_catalog_release": spec.expected_catalog_release,
+        "provisioner": spec.provisioner,
         "image_release": result.image_release,
         "image_sha256": result.image_sha256,
         "resources": {
@@ -2094,7 +2250,7 @@ def build_history_record(
         exit_code: Final controller exit code before evidence persistence.
 
     Returns:
-        JSON-serializable schema-v2 history record.
+        JSON-serializable schema-v3 history record.
 
     Raises:
         ValueError: If required state is empty or inconsistent.
@@ -2182,6 +2338,104 @@ def _list_instances(executor: CommandExecutor, log_path: Path) -> dict[str, str]
         return instances
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise InfrastructureError(f"Cannot parse multipass list JSON: {exc}") from exc
+
+
+def _validate_image_catalog(
+    executor: CommandExecutor,
+    spec: ImageSpec,
+    log_path: Path,
+) -> None:
+    """Require a configured image to resolve to the expected Multipass release.
+
+    Args:
+        executor: Multipass command executor.
+        spec: Declarative image specification.
+        log_path: Controller diagnostic log.
+
+    Returns:
+        None.
+
+    Raises:
+        InfrastructureError: If the catalogue is unavailable or has drifted.
+    """
+    completed = executor.run(["find", "--format", "json"], log_path)
+    if completed.returncode != 0:
+        raise InfrastructureError(
+            f"Cannot inspect the Multipass image catalogue (status {completed.returncode})"
+        )
+    try:
+        payload = json.loads(completed.output)
+    except json.JSONDecodeError as exc:
+        raise InfrastructureError(f"Multipass image catalogue is not valid JSON: {exc.msg}") from exc
+    raw_images = payload.get("images") if isinstance(payload, dict) else None
+    if not isinstance(raw_images, dict):
+        raise InfrastructureError("Multipass image catalogue contains no image mapping")
+    raw_image = raw_images.get(spec.image)
+    if raw_image is None:
+        for candidate in raw_images.values():
+            aliases = candidate.get("aliases") if isinstance(candidate, dict) else None
+            if isinstance(aliases, list) and spec.image in aliases:
+                raw_image = candidate
+                break
+    if not isinstance(raw_image, dict):
+        raise InfrastructureError(f"Multipass image {spec.image!r} is not available")
+    release = raw_image.get("release")
+    distribution = raw_image.get("os")
+    if release != spec.expected_catalog_release:
+        raise InfrastructureError(
+            f"Multipass image {spec.image!r} resolved to release {release!r}; "
+            f"expected {spec.expected_catalog_release!r}"
+        )
+    if not isinstance(distribution, str) or distribution.casefold() != spec.distribution.casefold():
+        raise InfrastructureError(
+            f"Multipass image {spec.image!r} resolved to distribution {distribution!r}; "
+            f"expected {spec.distribution!r}"
+        )
+
+
+def _guest_identity(
+    executor: CommandExecutor,
+    spec: ImageSpec,
+    log_path: Path,
+) -> str:
+    """Validate guest OS identity and return its safe default-user home path.
+
+    Args:
+        executor: Multipass command executor.
+        spec: Declarative image specification.
+        log_path: Controller diagnostic log.
+
+    Returns:
+        Absolute POSIX home path for the connected guest user.
+
+    Raises:
+        InfrastructureError: If identity output is missing, malformed, or unexpected.
+    """
+    script = (
+        ". /etc/os-release; "
+        "printf '%s\\n%s\\n%s\\n' \"${HOME:-}\" \"${ID:-}\" \"${VERSION_ID:-}\""
+    )
+    completed = executor.run(
+        ["exec", spec.instance_name, "--", "/bin/sh", "-c", script],
+        log_path,
+    )
+    if completed.returncode != 0:
+        raise InfrastructureError(
+            f"Cannot inspect guest identity for {spec.label} (status {completed.returncode})"
+        )
+    fields = completed.output.splitlines()
+    if len(fields) != 3:
+        raise InfrastructureError(f"Guest identity for {spec.label} must contain exactly three lines")
+    guest_home, os_id, version_id = fields
+    home_path = PurePosixPath(guest_home)
+    if not home_path.is_absolute() or guest_home == "/" or ".." in home_path.parts:
+        raise InfrastructureError(f"Guest home path is unsafe for {spec.label}: {guest_home!r}")
+    if os_id != spec.expected_os_id or version_id != spec.expected_version_id:
+        raise InfrastructureError(
+            f"Guest identity for {spec.label} is {os_id!r} {version_id!r}; expected "
+            f"{spec.expected_os_id!r} {spec.expected_version_id!r}"
+        )
+    return guest_home
 
 
 def _instance_image_provenance(
@@ -2339,10 +2593,10 @@ def run_image(
     keep_failed: bool,
     keep_all: bool,
 ) -> ImageRunResult:
-    """Launch, test, collect, and clean up one fresh Ubuntu instance.
+    """Launch, test, collect, and clean up one fresh Linux instance.
 
     Args:
-        spec: Ubuntu image definition.
+        spec: Linux image definition.
         executor: Multipass command executor.
         archive_path: Immutable application source archive.
         guest_script: Guest provisioning and test script.
@@ -2367,6 +2621,7 @@ def run_image(
     message = "VM test did not complete"
 
     try:
+        _validate_image_catalog(executor, spec, controller_log)
         existing = _list_instances(executor, controller_log)
         if spec.instance_name in existing:
             _append_log(controller_log, f"Removing stale test instance {spec.instance_name}\n")
@@ -2397,10 +2652,15 @@ def run_image(
             spec.instance_name,
             controller_log,
         )
+        guest_home = _guest_identity(executor, spec, controller_log)
+        guest_archive = f"{guest_home}/{archive_path.name}"
+        guest_runner = f"{guest_home}/{guest_script.name}"
+        guest_results = f"{guest_home}/results"
+        guest_results_archive = f"{guest_home}/results.tar.gz"
 
         for source in (archive_path, guest_script):
             transfer = executor.run(
-                ["transfer", "-", f"{spec.instance_name}:/home/ubuntu/{source.name}"],
+                ["transfer", "-", f"{spec.instance_name}:{guest_home}/{source.name}"],
                 controller_log,
                 input_path=source,
             )
@@ -2408,7 +2668,7 @@ def run_image(
                 raise InfrastructureError(f"Cannot transfer {source.name} to {spec.instance_name}")
 
         chmod = executor.run(
-            ["exec", spec.instance_name, "--", "chmod", "0700", f"/home/ubuntu/{guest_script.name}"],
+            ["exec", spec.instance_name, "--", "chmod", "0700", guest_runner],
             controller_log,
         )
         if chmod.returncode != 0:
@@ -2419,12 +2679,13 @@ def run_image(
                 "exec",
                 spec.instance_name,
                 "--",
-                f"/home/ubuntu/{guest_script.name}",
-                f"/home/ubuntu/{archive_path.name}",
+                guest_runner,
+                guest_archive,
                 mode,
-                "/home/ubuntu/results",
+                guest_results,
                 commit,
                 commit,
+                spec.provisioner,
             ],
             controller_log,
             stream=True,
@@ -2438,9 +2699,9 @@ def run_image(
                 "--",
                 "tar",
                 "-czf",
-                "/home/ubuntu/results.tar.gz",
+                guest_results_archive,
                 "-C",
-                "/home/ubuntu/results",
+                guest_results,
                 ".",
             ],
             controller_log,
@@ -2450,7 +2711,7 @@ def run_image(
 
         retrieved_archive = image_result_dir / "guest-results.tar.gz"
         retrieve = executor.run_with_stdout_file(
-            ["transfer", f"{spec.instance_name}:/home/ubuntu/results.tar.gz", "-"],
+            ["transfer", f"{spec.instance_name}:{guest_results_archive}", "-"],
             retrieved_archive,
             controller_log,
         )

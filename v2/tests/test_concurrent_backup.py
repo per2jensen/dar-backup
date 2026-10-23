@@ -24,9 +24,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import threading
-import time
 from contextlib import closing
 from configparser import ConfigParser
 from pathlib import Path
@@ -39,6 +37,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.config_settings import ConfigSettings
 from tests.envdata import EnvData
 
 
@@ -48,10 +47,31 @@ from tests.envdata import EnvData
 
 def _derive_lock_path(config_file: str) -> str:
     """Return the instance-lock path dar-backup will use for *config_file*."""
+    settings = ConfigSettings(config_file)
+    if not settings.lock_dir:
+        raise RuntimeError("Concurrent lock tests require an explicit LOCK_DIR")
     config_abs = os.path.realpath(config_file)
     lock_name = config_abs.replace('/', '_').replace(' ', '_').lstrip('_') + '.lock'
-    lock_dir = '/run/lock' if os.path.isdir('/run/lock') else tempfile.gettempdir()
-    return os.path.join(lock_dir, lock_name)
+    return os.path.join(settings.lock_dir, lock_name)
+
+
+def _configure_lock_directory(env: EnvData) -> str:
+    """Configure one private directory shared by every test subprocess.
+
+    Args:
+        env: Integration-test environment whose config file is updated.
+
+    Returns:
+        Absolute configured lock directory.
+    """
+    lock_dir = os.path.join(env.test_dir, "instance-locks")
+    os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["MISC"]["LOCK_DIR"] = lock_dir
+    with open(env.config_file, "w") as config_file:
+        config.write(config_file)
+    return lock_dir
 
 
 def _inject_metrics_db(env: EnvData) -> str:
@@ -142,6 +162,7 @@ def test_concurrent_same_definition_does_not_corrupt_catalog(
     (rc=0) and the other exits immediately (rc=1, lock held).
     """
     _disable_par2(env)
+    _configure_lock_directory(env)
 
     results = [None, None]
     threads = [
@@ -195,6 +216,7 @@ def test_concurrent_different_definitions_serialize(
     an in-progress DIFF archive that shares the same config and backup_dir.
     """
     _disable_par2(env)
+    _configure_lock_directory(env)
 
     second_data = os.path.join(env.test_dir, "data2")
     os.makedirs(second_data, exist_ok=True)
@@ -243,6 +265,7 @@ def test_instance_lock_released_after_backup(
     so a subsequent invocation can acquire it without error.
     """
     _disable_par2(env)
+    _configure_lock_directory(env)
 
     proc = subprocess.run(
         ["dar-backup", "--full-backup", "--log-stdout", "--config-file", env.config_file],
@@ -271,6 +294,7 @@ def test_instance_lock_blocks_second_invocation(
     invocation must exit rc=1 and write a FAILURE/PREREQ row to the metrics DB.
     """
     _disable_par2(env)
+    _configure_lock_directory(env)
     metrics_db = _inject_metrics_db(env)
 
     # "example" is skipped in _record_prereq_failure; create a real definition

@@ -44,10 +44,59 @@ PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
 
 
+def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
+    """The tracked matrix must declare Fedora 44 as a first-class image."""
+    config_path = Path(__file__).parents[1] / "vm_test" / "images.json"
+
+    specs = RUNNER.load_image_specs(config_path)
+
+    assert [spec.label for spec in specs] == ["ubuntu-24.04", "ubuntu-26.04", "fedora-44"]
+    fedora = specs[2]
+    assert fedora.image == "fedora"
+    assert fedora.expected_os_id == "fedora"
+    assert fedora.expected_version_id == "44"
+    assert fedora.provisioner == "fedora"
+
+
+def test_load_image_specs_unsupported_provisioner_raises(tmp_path: Path) -> None:
+    """Unknown provisioning implementations must fail configuration validation.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source = Path(__file__).parents[1] / "vm_test" / "images.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["images"][0]["provisioner"] = "arbitrary-script"
+    config_path = tmp_path / "images.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported provisioner"):
+        RUNNER.load_image_specs(config_path)
+
+
+def test_load_image_specs_ubuntu_only_subset_remains_supported(tmp_path: Path) -> None:
+    """A declarative Ubuntu-only matrix must retain the existing operation mode.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source = Path(__file__).parents[1] / "vm_test" / "images.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["images"] = payload["images"][:2]
+    config_path = tmp_path / "images.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    specs = RUNNER.load_image_specs(config_path)
+
+    assert [spec.label for spec in specs] == ["ubuntu-24.04", "ubuntu-26.04"]
+    assert all(spec.provisioner == "debian" for spec in specs)
+
+
 def _run_guest_result_writer(
     tmp_path: Path,
     manifest: str,
     guest_status: str,
+    manifest_format: str = "dpkg-query-v1",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """Execute the production guest-result writer with a real manifest file.
 
@@ -55,6 +104,7 @@ def _run_guest_result_writer(
         tmp_path: Isolated pytest directory.
         manifest: Debian package manifest contents.
         guest_status: Guest test outcome passed to the result writer.
+        manifest_format: Package inventory format exercised by the writer.
 
     Returns:
         Completed Python subprocess and expected result path.
@@ -78,7 +128,7 @@ def _run_guest_result_writer(
     if not separator:
         raise RuntimeError("Cannot locate the guest-result writer end marker")
 
-    manifest_path = tmp_path / "dpkg-manifest.tsv"
+    manifest_path = tmp_path / "package-manifest.tsv"
     manifest_path.write_text(manifest, encoding="utf-8")
     result_path = tmp_path / "result.json"
     arguments = [
@@ -94,12 +144,17 @@ def _run_guest_result_writer(
         "2026-10-02T16:00:00Z",
         "2026-10-02T16:15:00Z",
         "Ubuntu 24.04.5 LTS",
+        "ubuntu",
+        "24.04",
         "6.8.0-test",
         "Python 3.12.3",
         "pytest 9.1.1",
         "dar version 2.7.13",
         "dar_manager version 1.9.0",
         "par2cmdline version 0.8.1",
+        "apt" if manifest_format == "dpkg-query-v1" else "dnf",
+        manifest_format,
+        "[]",
         str(manifest_path),
     ]
     completed = subprocess.run(  # noqa: S603 - execute the repository-owned result writer.
@@ -116,6 +171,8 @@ def _write_fake_multipass(
     directory: Path,
     guest_status: str,
     image_sha256: str = "b" * 64,
+    catalog_release: str = "24.04 LTS",
+    guest_version_id: str = "24.04",
 ) -> Path:
     """Create a real subprocess executable implementing the used CLI surface.
 
@@ -123,6 +180,8 @@ def _write_fake_multipass(
         directory: Isolated fake-command directory.
         guest_status: PASS or TEST_FAILED result emitted by the fake guest.
         image_sha256: Image digest returned by the fake info command.
+        catalog_release: Release returned by the fake image catalogue.
+        guest_version_id: VERSION_ID returned by the fake guest.
 
     Returns:
         Executable fake Multipass path.
@@ -130,6 +189,8 @@ def _write_fake_multipass(
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "guest-status.txt").write_text(guest_status + "\n", encoding="utf-8")
     (directory / "image-sha256.txt").write_text(image_sha256 + "\n", encoding="utf-8")
+    (directory / "catalog-release.txt").write_text(catalog_release + "\n", encoding="utf-8")
+    (directory / "guest-version-id.txt").write_text(guest_version_id + "\n", encoding="utf-8")
     executable = directory / "multipass"
     executable.write_text(
         r'''#!/usr/bin/env python3
@@ -153,6 +214,20 @@ def remote_path(value):
 if args[:3] == ["list", "--format", "json"]:
     instances = [{"name": path.name, "state": "Running"} for path in state.iterdir() if path.is_dir()]
     print(json.dumps({"list": instances}))
+    raise SystemExit(0)
+
+if args[:3] == ["find", "--format", "json"]:
+    catalog_release = (root / "catalog-release.txt").read_text(encoding="utf-8").strip()
+    print(json.dumps({
+        "images": {
+            "test-image": {
+                "aliases": [],
+                "os": "Ubuntu",
+                "release": catalog_release,
+                "version": "test",
+            }
+        }
+    }))
     raise SystemExit(0)
 
 if args and args[0] == "launch":
@@ -202,6 +277,12 @@ if args and args[0] == "exec":
     instance = args[1]
     command = args[3:]
     guest_home = state / instance / "home" / "ubuntu"
+    if command[:2] == ["/bin/sh", "-c"]:
+        guest_version_id = (root / "guest-version-id.txt").read_text(encoding="utf-8").strip()
+        print("/home/ubuntu")
+        print("ubuntu")
+        print(guest_version_id)
+        raise SystemExit(0)
     if command and command[0] == "chmod":
         raise SystemExit(0)
     if command and command[0] == "tar":
@@ -255,6 +336,8 @@ def _run_fake_image(
     tmp_path: Path,
     guest_status: str,
     image_sha256: str = "b" * 64,
+    catalog_release: str = "24.04 LTS",
+    guest_version_id: str = "24.04",
 ) -> object:
     """Run one image through the controller using a fake external executable.
 
@@ -262,6 +345,8 @@ def _run_fake_image(
         tmp_path: Isolated pytest directory.
         guest_status: Guest result to simulate.
         image_sha256: Image digest returned by the fake info command.
+        catalog_release: Release returned by the fake image catalogue.
+        guest_version_id: VERSION_ID returned by the fake guest.
 
     Returns:
         Controller ImageRunResult.
@@ -270,6 +355,8 @@ def _run_fake_image(
         tmp_path / "fake-bin",
         guest_status,
         image_sha256,
+        catalog_release,
+        guest_version_id,
     )
     archive_path = tmp_path / "source.tar"
     archive_path.write_bytes(b"source archive")
@@ -280,6 +367,11 @@ def _run_fake_image(
     spec = RUNNER.ImageSpec(
         label="ubuntu-test",
         image="test-image",
+        distribution="Ubuntu",
+        expected_os_id="ubuntu",
+        expected_version_id="24.04",
+        expected_catalog_release="24.04 LTS",
+        provisioner="debian",
         instance_name="dar-backup-test-fake",
         disk="1G",
         memory="1G",
@@ -342,12 +434,17 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                 "started_at": "2026-09-30T10:00:00Z",
                 "finished_at": "2026-09-30T10:20:00Z",
                 "os_release": "Ubuntu 24.04.5 LTS",
+                "os_id": "ubuntu",
+                "os_version_id": "24.04",
                 "kernel": "6.8.0-test",
                 "python": "Python 3.12.3",
                 "pytest": "pytest 9.1.1",
                 "dar": "dar version 2.7.13",
                 "dar_manager": "dar_manager version 1.9.0",
                 "par2": "par2cmdline version 0.8.1",
+                "package_manager": "apt",
+                "package_manifest_format": "dpkg-query-v1",
+                "environment_adjustments": [],
                 "package_manifest": package_manifest,
                 "package_manifest_sha256": RUNNER._package_manifest_sha256(
                     package_manifest
@@ -425,6 +522,11 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
     spec = RUNNER.ImageSpec(
         label="ubuntu-24.04",
         image="24.04",
+        distribution="Ubuntu",
+        expected_os_id="ubuntu",
+        expected_version_id="24.04",
+        expected_catalog_release="24.04 LTS",
+        provisioner="debian",
         instance_name="dar-backup-test-2404",
         disk="30G",
         memory="4G",
@@ -453,7 +555,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         run_id: Record identity.
 
     Returns:
-        Valid schema-v2 history record.
+        Valid schema-v3 history record.
     """
     spec, result = _history_inputs(tmp_path)
     return RUNNER.build_history_record(
@@ -500,6 +602,36 @@ def test_run_image_invalid_image_digest_returns_infrastructure_failure(
     assert result.image_release is None
     assert result.image_sha256 is None
     assert "image hash is not a full SHA-256" in result.message
+    assert RUNNER._overall_exit_code([result]) == 2
+
+
+def test_run_image_catalog_release_drift_returns_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    """An unversioned image alias must fail when its catalogue release advances.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    result = _run_fake_image(tmp_path, "PASS", catalog_release="25.04 LTS")
+
+    assert result.status == RUNNER.INFRASTRUCTURE_FAILED
+    assert "expected '24.04 LTS'" in result.message
+    assert RUNNER._overall_exit_code([result]) == 2
+
+
+def test_run_image_guest_release_mismatch_returns_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    """A launched guest must match the configured OS release before transfer.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    result = _run_fake_image(tmp_path, "PASS", guest_version_id="25.04")
+
+    assert result.status == RUNNER.INFRASTRUCTURE_FAILED
+    assert "expected 'ubuntu' '24.04'" in result.message
     assert RUNNER._overall_exit_code([result]) == 2
 
 
@@ -566,6 +698,74 @@ def test_guest_result_writer_malformed_package_manifest_fails(
 
     assert completed.returncode != 0
     assert "malformed dpkg manifest line 1" in completed.stderr
+    assert not result_path.exists()
+
+
+def test_guest_result_writer_rpm_manifest_records_canonical_nevra(
+    tmp_path: Path,
+) -> None:
+    """RPM evidence must preserve every NEVRA field and normalize an absent epoch.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "dar\t1\t2.8.5\t1.fc44\tx86_64\nacl\t(none)\t2.3.2\t4.fc44\tx86_64\n",
+        RUNNER.PASS,
+        manifest_format="rpm-nevra-v1",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["package_manager"] == "dnf"
+    assert payload["package_manifest_format"] == "rpm-nevra-v1"
+    assert payload["environment_adjustments"] == []
+    assert payload["package_manifest"] == [
+        {
+            "architecture": "x86_64",
+            "epoch": "0",
+            "name": "acl",
+            "release": "4.fc44",
+            "version": "2.3.2",
+        },
+        {
+            "architecture": "x86_64",
+            "epoch": "1",
+            "name": "dar",
+            "release": "1.fc44",
+            "version": "2.8.5",
+        },
+    ]
+    assert payload["package_manifest_sha256"] == RUNNER._package_manifest_sha256(
+        payload["package_manifest"]
+    )
+    manifest, digest, manager, manifest_format = RUNNER._package_manifest_evidence(
+        payload,
+        "fedora-44",
+        required=True,
+    )
+    assert manifest == payload["package_manifest"]
+    assert digest == payload["package_manifest_sha256"]
+    assert manager == "dnf"
+    assert manifest_format == "rpm-nevra-v1"
+
+
+def test_guest_result_writer_malformed_rpm_manifest_fails(tmp_path: Path) -> None:
+    """An RPM manifest missing a NEVRA field must fail without evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "dar\t0\t2.8.5\tx86_64\n",
+        RUNNER.PASS,
+        manifest_format="rpm-nevra-v1",
+    )
+
+    assert completed.returncode != 0
+    assert "malformed RPM manifest line 1" in completed.stderr
     assert not result_path.exists()
 
 
@@ -655,10 +855,13 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     encoded = json.dumps(record)
     image = record["images"][0]
 
-    assert record["schema_version"] == 2
+    assert record["schema_version"] == 3
     assert record["passed"] is True
     assert image["guest"]["dar"] == "dar version 2.7.13"
     assert image["guest"]["dar_manager"] == "dar_manager version 1.9.0"
+    assert image["guest"]["os_id"] == "ubuntu"
+    assert image["guest"]["os_version_id"] == "24.04"
+    assert image["expected_catalog_release"] == "24.04 LTS"
     assert image["guest"]["package_manifest"] == {
         "acl:amd64": "2.3.2-2",
         "dar:amd64": "2.7.13-2",
@@ -666,6 +869,9 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert image["guest"]["package_manifest_sha256"] == (
         RUNNER._package_manifest_sha256(image["guest"]["package_manifest"])
     )
+    assert image["guest"]["package_manager"] == "apt"
+    assert image["guest"]["package_manifest_format"] == "dpkg-query-v1"
+    assert image["guest"]["environment_adjustments"] == []
     assert image["checks"]["mypy"]["status"] == "passed"
     assert image["checks"]["mypy"]["version"] == "mypy 2.3.1 (compiled: yes)"
     assert image["checks"]["mypy"]["checks"]["enabled_error_codes"] == [
@@ -1034,6 +1240,34 @@ def test_history_record_modified_package_manifest_raises(tmp_path: Path) -> None
         )
 
 
+def test_history_record_invalid_environment_adjustment_raises(tmp_path: Path) -> None:
+    """Unstructured environment exceptions must fail evidence validation.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["environment_adjustments"] = ["arbitrary adjustment text"]
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid environment adjustment"):
+        RUNNER.build_history_record(
+            run_id="run-invalid-environment-adjustment",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
 def test_history_record_completed_without_all_images_raises(
     tmp_path: Path,
 ) -> None:
@@ -1173,8 +1407,8 @@ def test_render_vm_matrix_presentation_passing_full_record_returns_green_outputs
 
     assert badge == {
         "schemaVersion": 1,
-        "label": "Ubuntu VM matrix",
-        "message": "24.04 passing",
+        "label": "Linux VM matrix",
+        "message": "Ubuntu 24.04 passing",
         "color": "brightgreen",
         "isError": False,
     }
@@ -1184,6 +1418,55 @@ def test_render_vm_matrix_presentation_passing_full_record_returns_green_outputs
     assert "Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk." in readme_block
     assert readme_block.count(RUNNER._README_RESULTS_BEGIN) == 1
     assert readme_block.count(RUNNER._README_RESULTS_END) == 1
+
+
+def test_render_vm_matrix_presentation_three_distributions_all_gate_status(
+    tmp_path: Path,
+) -> None:
+    """Fedora must appear in presentation and prevent green when it fails.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    record = _history_record(tmp_path)
+    ubuntu_24 = record["images"][0]
+    ubuntu_26 = json.loads(json.dumps(ubuntu_24))
+    ubuntu_26.update(
+        {
+            "label": "ubuntu-26.04",
+            "distribution": "Ubuntu",
+            "expected_version_id": "26.04",
+        }
+    )
+    ubuntu_26["guest"]["os_release"] = "Ubuntu 26.04.1 LTS"
+    fedora = json.loads(json.dumps(ubuntu_24))
+    fedora.update(
+        {
+            "label": "fedora-44",
+            "distribution": "Fedora",
+            "expected_version_id": "44",
+        }
+    )
+    fedora["guest"]["os_release"] = "Fedora Linux 44 (Cloud Edition)"
+    record["images"] = [ubuntu_24, ubuntu_26, fedora]
+
+    passing_badge = RUNNER.render_vm_matrix_badge(record)
+    passing_readme = RUNNER.render_vm_matrix_readme_block(record)
+
+    assert passing_badge["message"] == "Ubuntu 24.04 + Ubuntu 26.04 + Fedora 44 passing"
+    assert "| Fedora Linux 44 (Cloud Edition) |" in passing_readme
+    assert "| Distribution | Python | DAR | PAR2 |" in passing_readme
+
+    record["passed"] = False
+    record["exit_code"] = 1
+    fedora["status"] = RUNNER.TEST_FAILED
+    fedora["checks"]["pytest"]["status"] = "failed"
+    fedora["checks"]["pytest"]["exit_code"] = 1
+
+    failing_badge = RUNNER.render_vm_matrix_badge(record)
+
+    assert failing_badge["color"] == "red"
+    assert failing_badge["isError"] is True
 
 
 def test_render_vm_matrix_presentation_failed_full_record_returns_red_outputs(
@@ -1205,7 +1488,7 @@ def test_render_vm_matrix_presentation_failed_full_record_returns_red_outputs(
     badge = RUNNER.render_vm_matrix_badge(record)
     readme_block = RUNNER.render_vm_matrix_readme_block(record)
 
-    assert badge["message"] == "24.04 tests failing"
+    assert badge["message"] == "Ubuntu 24.04 tests failing"
     assert badge["color"] == "red"
     assert badge["isError"] is True
     assert "**Latest full VM matrix:** TEST FAILURE" in readme_block
@@ -1325,6 +1608,39 @@ def test_read_latest_full_history_record_newer_non_full_record_keeps_full_result
     assert latest["run_id"] == "full-run"
 
 
+def test_read_latest_full_history_record_schema_v2_remains_readable(
+    tmp_path: Path,
+) -> None:
+    """Presentation refresh must continue to consume historical schema-v2 records.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    history_path = tmp_path / "vm-matrix-results.jsonl"
+    historical = _history_record(tmp_path / "historical", run_id="schema-v2-run")
+    historical["schema_version"] = 2
+    for image in historical["images"]:
+        image.pop("distribution", None)
+        image.pop("expected_os_id", None)
+        image.pop("expected_version_id", None)
+        image.pop("expected_catalog_release", None)
+        image.pop("provisioner", None)
+        guest = image.get("guest")
+        if isinstance(guest, dict):
+            guest.pop("os_id", None)
+            guest.pop("os_version_id", None)
+            guest.pop("package_manager", None)
+            guest.pop("package_manifest_format", None)
+            guest.pop("environment_adjustments", None)
+    history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
+
+    latest = RUNNER.read_latest_full_history_record(history_path)
+    badge = RUNNER.render_vm_matrix_badge(latest)
+
+    assert latest["run_id"] == "schema-v2-run"
+    assert badge["message"] == "Ubuntu 24.04 passing"
+
+
 def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(
     tmp_path: Path,
 ) -> None:
@@ -1349,4 +1665,4 @@ def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(
     assert exit_code == 0
     assert "Latest full VM matrix" in readme_path.read_text(encoding="utf-8")
     badge_path = source_root / "v2" / "doc" / "test-report" / "vm-matrix-badge.json"
-    assert json.loads(badge_path.read_text(encoding="utf-8"))["message"] == "24.04 passing"
+    assert json.loads(badge_path.read_text(encoding="utf-8"))["message"] == "Ubuntu 24.04 passing"
