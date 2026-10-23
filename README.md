@@ -102,13 +102,14 @@ Version **1.1.11** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGE
 distribution images. Each VM installs the distribution's DAR, PAR2, and
 Python dependencies before running the full pytest suite and mypy.
 
-**Latest full VM matrix:** PASS at `2026-10-04T08:17:31Z` for
-[commit `a0737864d07b`](https://github.com/per2jensen/dar-backup/commit/a0737864d07b3df7401ac99516b64dd1d6799103).
+**Latest full VM matrix:** PASS at `2026-10-23T14:29:48Z` for
+[commit `0988f5dd180a`](https://github.com/per2jensen/dar-backup/commit/0988f5dd180aec97f6e6e7818e2d8f0ad83608b4).
 
 | Distribution | Python | DAR | PAR2 | pytest | mypy | Result |
 |---|---:|---:|---:|---|---|---|
-| Ubuntu 24.04.5 LTS | 3.12.3 | 2.7.13 | 0.8.1 | 1572 passed, 5 skipped, 0 failed | PASS | PASS |
-| Ubuntu 26.04.1 LTS | 3.14.4 | 2.8.3 | 1.1.1 | 1571 passed, 6 skipped, 0 failed | PASS | PASS |
+| Ubuntu 24.04.5 LTS | 3.12.3 | 2.7.13 | 0.8.1 | 1611 passed, 5 skipped, 0 failed | PASS | PASS |
+| Ubuntu 26.04.1 LTS | 3.14.4 | 2.8.3 | 1.1.1 | 1610 passed, 6 skipped, 0 failed | PASS | PASS |
+| Fedora Linux 44 (Cloud Edition) | 3.14.3 | 2.8.6 | 1.1.1 | 1624 passed, 5 skipped, 0 failed | PASS | PASS |
 
 Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk.
 
