@@ -17,6 +17,7 @@ import argparse
 import filecmp
 
 import glob
+import math
 import os
 import platform
 import random
@@ -24,6 +25,7 @@ import re
 import shlex
 import shutil
 import signal
+import sqlite3
 import subprocess
 import configparser
 import uuid
@@ -84,11 +86,19 @@ from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
 from dar_backup.restore_target_safety import validate_restore_target_identity
+from dar_backup.restoretest_catalog import DarCatalogueError
+from dar_backup.restoretest_catalog import RestoreTestCatalogIndex
+from dar_backup.restoretest_catalog import parse_slicing_listing_line as _parse_slicing_listing_line
+from dar_backup.restoretest_catalog import read_slicing_listing
 
 # Module-level by design: tests inject real logger/runner objects via save/restore
 # (see logger_runner_globals_accepted memory) — not a bug.
 logger = get_logger()
 runner: Optional[CommandRunner] = None
+
+# Compatibility export for callers and tests that imported this helper from the
+# original orchestration module before the DAR-format boundary was isolated.
+parse_slicing_listing_line = _parse_slicing_listing_line
 
 
 def _runner() -> CommandRunner:
@@ -109,12 +119,107 @@ class BackupResult(NamedTuple):
 
 @dataclass
 class VerifyResult:
+    """Summarize archive and restore-test verification.
+
+    Args:
+        passed: Overall verification result.
+        restore_test_passed: Restore comparison result, or None when skipped.
+        files_verified: Number of files selected for restore testing.
+        predicted_slices: Data slices predicted to be covered by selections.
+        extracted_slices: Predicted slices whose selected file appeared after extraction.
+        verified_slices: Predicted slices whose selected file passed comparison.
+        predicted_slice_numbers: Exact data-slice numbers predicted to be covered.
+        extracted_slice_numbers: Exact predicted slice numbers with extracted files.
+        verified_slice_numbers: Exact predicted slice numbers with verified files.
+        file_evidence: Per-selected-file extraction and comparison evidence.
+    """
+
     passed: bool                         # overall result; False if restore-compare failed
     restore_test_passed: Optional[bool]  # None = not attempted (do_not_compare or no eligible files)
     files_verified: int                  # number of files selected for restore testing
+    predicted_slices: int = 0
+    extracted_slices: int = 0
+    verified_slices: int = 0
+    predicted_slice_numbers: tuple[int, ...] = ()
+    extracted_slice_numbers: tuple[int, ...] = ()
+    verified_slice_numbers: tuple[int, ...] = ()
+    file_evidence: tuple["RestoreTestFileEvidence", ...] = ()
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
+        """Return the overall verification result.
+
+        Returns:
+            True when archive and restore-test verification passed.
+        """
         return self.passed
+
+
+@dataclass(frozen=True)
+class RestoreTestFileEvidence:
+    """Record extraction and comparison evidence for one selected file.
+
+    Args:
+        path: Archive-relative selected path.
+        predicted_slice_numbers: Slices DAR predicts contain the file payload.
+        extraction_attempted: Whether at least one DAR extraction command included the file.
+        extraction_succeeded: Whether a DAR extraction command for the file returned success.
+        target_present: Whether a regular file appeared at the restore target.
+        content_matched: Content comparison result, or None when not performed.
+        metadata_matched: Metadata comparison result, or None when not performed.
+    """
+
+    path: str
+    predicted_slice_numbers: tuple[int, ...]
+    extraction_attempted: bool
+    extraction_succeeded: bool
+    target_present: bool
+    content_matched: Optional[bool]
+    metadata_matched: Optional[bool]
+
+
+@dataclass(frozen=True)
+class RestoreTestSamplingPlan:
+    """Describe percentage-based restore-test sampling.
+
+    Args:
+        eligible_files: Number of files remaining after size and exclusion filters.
+        percentage_target: Rounded-up percentage target before applying the cap.
+        capped_target: Number of files to randomly sample after applying the cap.
+    """
+
+    eligible_files: int
+    percentage_target: int
+    capped_target: int
+
+
+@dataclass(frozen=True)
+class RestoreTestSliceCoverage:
+    """Describe files added to exercise every eligible data-bearing slice.
+
+    Args:
+        additional_files: Files added beyond the random sample.
+        data_slices: Slices containing saved regular-file data.
+        covered_slices: Data-bearing slices covered by selected files.
+        unavailable_slices: Data-bearing slices that no eligible file can cover.
+    """
+
+    additional_files: tuple[str, ...]
+    data_slices: frozenset[int]
+    covered_slices: frozenset[int]
+    unavailable_slices: frozenset[int]
+
+
+@dataclass(frozen=True)
+class BatchedRestoreResult:
+    """Record the outcome of opt-in batched restore-test extraction.
+
+    Args:
+        restored_files: Paths extracted successfully in a batch.
+        cleanup_errors: Paths whose stale restore target could not be removed.
+    """
+
+    restored_files: frozenset[str]
+    cleanup_errors: dict[str, str]
 
 
 _BACKUP_DEFINITION_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 \\-]*[A-Za-z0-9])?$")
@@ -521,13 +626,286 @@ def select_restoretest_samples(
     return reservoir
 
 
+def _eligible_restoretest_files(
+    backed_up_files: Iterable[Tuple[str, Optional[str]]],
+    config_settings: ConfigSettings,
+) -> dict[str, tuple[str, int]]:
+    """Return eligible restore-test files keyed by normalized archive path.
+
+    Args:
+        backed_up_files: Archive file paths paired with DAR-formatted sizes.
+        config_settings: Restore-test size and exclusion settings.
+
+    Returns:
+        Mapping from path without a leading slash to the original path and size
+        in bytes. Duplicate normalized paths retain their first entry.
+    """
+    eligible: dict[str, tuple[str, int]] = {}
+    for item in backed_up_files:
+        if item is None or len(item) < 2:
+            continue
+        path, size_text = item[0], item[1]
+        if not path or not size_text:
+            continue
+        if not _size_in_verification_range(size_text, config_settings):
+            continue
+        if not _is_restoretest_candidate(path, config_settings):
+            continue
+        size_bytes = _parse_size_bytes(size_text)
+        if size_bytes is None:
+            continue
+        eligible.setdefault(path.lstrip("/"), (path, size_bytes))
+    return eligible
+
+
+def build_restoretest_sampling_plan(
+    backed_up_files: Iterable[Tuple[str, Optional[str]]],
+    config_settings: ConfigSettings,
+) -> RestoreTestSamplingPlan:
+    """Calculate the opt-in percentage sample while retaining the fixed minimum.
+
+    Args:
+        backed_up_files: Archive file paths paired with DAR-formatted sizes.
+        config_settings: Configuration containing the fixed count, percentage,
+            cap, size window, and exclusion filters.
+
+    Returns:
+        Counts used to select and report the percentage sample.
+
+    Raises:
+        ValueError: If percentage mode is not configured or has invalid values.
+    """
+    eligible_count = len(_eligible_restoretest_files(backed_up_files, config_settings))
+    return build_restoretest_sampling_plan_from_count(eligible_count, config_settings)
+
+
+def build_restoretest_sampling_plan_from_count(
+    eligible_count: int,
+    config_settings: ConfigSettings,
+) -> RestoreTestSamplingPlan:
+    """Calculate percentage sampling counts from a validated eligible count.
+
+    Args:
+        eligible_count: Number of eligible saved regular files.
+        config_settings: Configuration containing percentage, cap, and minimum.
+
+    Returns:
+        Counts used to select and report the percentage sample.
+
+    Raises:
+        ValueError: If the count or percentage settings are invalid.
+    """
+    if not isinstance(eligible_count, int) or eligible_count < 0:
+        raise ValueError("eligible_count must be a non-negative integer")
+    percentage = getattr(config_settings, "restoretest_percent", None)
+    if percentage is None:
+        raise ValueError("RESTORETEST_PERCENT is not configured")
+    if not isinstance(percentage, (int, float)) or not math.isfinite(float(percentage)):
+        raise ValueError("RESTORETEST_PERCENT must be a finite number")
+    if not 0 < float(percentage) <= 100:
+        raise ValueError("RESTORETEST_PERCENT must be greater than 0 and at most 100")
+
+    maximum = getattr(config_settings, "restoretest_max_files", 100)
+    if not isinstance(maximum, int) or maximum < 1:
+        raise ValueError("RESTORETEST_MAX_FILES must be an integer greater than 0")
+    fixed_minimum = config_settings.no_files_verification
+    if maximum < fixed_minimum:
+        raise ValueError("RESTORETEST_MAX_FILES must be >= NO_FILES_VERIFICATION")
+
+    percentage_target = math.ceil(eligible_count * float(percentage) / 100.0)
+    uncapped_target = max(fixed_minimum, percentage_target)
+    capped_target = min(maximum, uncapped_target)
+    return RestoreTestSamplingPlan(
+        eligible_files=eligible_count,
+        percentage_target=percentage_target,
+        capped_target=capped_target,
+    )
+
+
+def get_restoretest_slice_map(
+    backup_name: str,
+    backup_dir: str,
+    timeout: Optional[int] = None,
+) -> dict[str, frozenset[int]]:
+    """Read saved regular-file slice locations from a DAR archive.
+
+    Args:
+        backup_name: Archive basename or absolute archive path without suffix.
+        backup_dir: Directory containing the archive when *backup_name* is relative.
+        timeout: Command timeout in seconds, or None for the runner default.
+
+    Returns:
+        Mapping from normalized archive paths to all slices containing their data.
+
+    Raises:
+        BackupError: If DAR fails or emits a malformed saved-file row.
+        ValueError: If an archive name or directory is empty.
+    """
+    if not backup_name:
+        raise ValueError("backup_name must not be empty")
+    if not backup_dir:
+        raise ValueError("backup_dir must not be empty")
+
+    backup_path = os.path.join(backup_dir, backup_name)
+    try:
+        listing = read_slicing_listing(backup_path, _runner(), logger, timeout=timeout)
+    except KeyboardInterrupt:
+        logger.exception("Slice-aware restore-test listing interrupted for '%s'", backup_name)
+        raise
+    except (DarCatalogueError, OSError, RuntimeError, ValueError) as exc:
+        logger.exception("Could not read slice locations from DAR archive '%s'", backup_name)
+        raise BackupError(
+            f"Could not read slice locations from DAR archive: '{backup_name}'"
+        ) from exc
+
+    return dict(listing.slice_map)
+
+
+def select_slice_coverage_files(
+    eligible_files: dict[str, tuple[str, int]],
+    initially_selected: Iterable[str],
+    slice_map: dict[str, frozenset[int]],
+) -> RestoreTestSliceCoverage:
+    """Greedily add small files until every data-bearing slice is covered.
+
+    Args:
+        eligible_files: Normalized paths mapped to original paths and byte sizes.
+        initially_selected: Files already selected by count or percentage sampling.
+        slice_map: Saved regular files mapped to slices containing their data.
+
+    Returns:
+        Slice coverage details and the additional files required.
+    """
+    data_slices = frozenset(
+        slice_number
+        for slices in slice_map.values()
+        for slice_number in slices
+    )
+    selected_normalized = {path.lstrip("/") for path in initially_selected}
+    covered: set[int] = set()
+    for path in selected_normalized:
+        covered.update(slice_map.get(path, frozenset()))
+
+    uncovered = set(data_slices) - covered
+    remaining = set(eligible_files) - selected_normalized
+    additions: list[str] = []
+
+    while uncovered:
+        best_path: Optional[str] = None
+        best_new_slices: set[int] = set()
+        best_size: Optional[int] = None
+        for normalized_path in sorted(remaining):
+            new_slices = set(slice_map.get(normalized_path, frozenset())) & uncovered
+            if not new_slices:
+                continue
+            file_size = eligible_files[normalized_path][1]
+            if len(new_slices) > len(best_new_slices):
+                best_path = normalized_path
+                best_new_slices = new_slices
+                best_size = file_size
+                continue
+            if len(new_slices) == len(best_new_slices) and (
+                best_size is None or file_size < best_size
+            ):
+                best_path = normalized_path
+                best_new_slices = new_slices
+                best_size = file_size
+
+        if best_path is None:
+            break
+        additions.append(eligible_files[best_path][0])
+        remaining.remove(best_path)
+        covered.update(best_new_slices)
+        uncovered.difference_update(best_new_slices)
+
+    return RestoreTestSliceCoverage(
+        additional_files=tuple(additions),
+        data_slices=data_slices,
+        covered_slices=frozenset(covered & set(data_slices)),
+        unavailable_slices=frozenset(uncovered),
+    )
+
+
+_RESTORETEST_BATCH_SIZE = 100
+
+
+def restore_test_files_in_batches(
+    args: argparse.Namespace,
+    backup_file: str,
+    files: list[str],
+    config_settings: ConfigSettings,
+) -> BatchedRestoreResult:
+    """Extract opt-in restore-test selections in bounded DAR invocations.
+
+    Failed batches are deliberately left out of ``restored_files`` so the caller
+    can retry those paths individually with the established legacy behavior.
+
+    Args:
+        args: Parsed CLI arguments containing the DAR configuration path.
+        backup_file: Archive path without a slice suffix.
+        files: Selected archive paths to restore.
+        config_settings: Restore directory, timeout, and ownership settings.
+
+    Returns:
+        Successfully batch-restored paths and per-path stale-cleanup errors.
+    """
+    if not files:
+        return BatchedRestoreResult(frozenset(), {})
+
+    cleanup_errors: dict[str, str] = {}
+    ready_files: list[str] = []
+    for path in files:
+        restore_path = os.path.join(config_settings.test_restore_dir, path.lstrip("/"))
+        if os.path.exists(restore_path):
+            try:
+                os.remove(restore_path)
+            except OSError as exc:
+                cleanup_errors[path] = str(exc)
+                logger.exception(
+                    "Cannot remove stale restore file '%s' before batched restore",
+                    restore_path,
+                )
+                continue
+        ready_files.append(path)
+
+    restored: set[str] = set()
+    ignore_ownership = resolve_ownership_flag(args, config_settings)
+    for offset in range(0, len(ready_files), _RESTORETEST_BATCH_SIZE):
+        batch = ready_files[offset:offset + _RESTORETEST_BATCH_SIZE]
+        command = ['dar', '-x', backup_file, '-wa']
+        for path in batch:
+            command.extend(['-g', path.lstrip("/")])
+        command.extend(['-R', config_settings.test_restore_dir, '--noconf', '-Q'])
+        if ignore_ownership:
+            command.append('--comparison-field=ignore-owner')
+        command.extend(['-B', args.darrc, 'restore-options'])
+        if args.verbose:
+            logger.info(
+                "Restoring verification batch %d-%d of %d files",
+                offset + 1,
+                offset + len(batch),
+                len(ready_files),
+            )
+        process = _runner().run(command, timeout=config_settings.command_timeout_secs)
+        if process.returncode == 0:
+            restored.update(batch)
+            continue
+        logger.warning(
+            "Batched restore-test extraction failed for files %d-%d; retrying each file individually",
+            offset + 1,
+            offset + len(batch),
+        )
+
+    return BatchedRestoreResult(frozenset(restored), cleanup_errors)
+
+
 def verify(
     args: argparse.Namespace,
     backup_file: str,
     backup_definition: str,
     config_settings: ConfigSettings,
     run_id: Optional[str] = None,
-):
+) -> VerifyResult:
     """
     Verify the integrity of a DAR backup by performing the following steps:
     1. Run an archive integrity test on the backup file.
@@ -579,29 +957,155 @@ def verify(
     if args.do_not_compare:
         return VerifyResult(passed=True, restore_test_passed=None, files_verified=0)
 
-    # Materialise the generator so it can be iterated twice: once for the size
-    # lookup dict and once by select_restoretest_samples.
-    backed_up_files: list[tuple[str, Optional[str]]] = list(get_backed_up_files(
-        backup_file,
-        config_settings.backup_dir,
-        timeout=config_settings.command_timeout_secs
-    ))
+    restoretest_percent = getattr(config_settings, "restoretest_percent", None)
+    cover_slices = bool(getattr(config_settings, "restoretest_cover_slices", False))
+    advanced_restoretest = restoretest_percent is not None or cover_slices
+    slice_map: dict[str, frozenset[int]] = {}
+    coverage: Optional[RestoreTestSliceCoverage] = None
+    size_lookup: dict[str, str] = {}
+    slice_inventory = None
+    if cover_slices:
+        try:
+            slice_inventory = inspect_archive_slices(backup_file)
+        except (OSError, ValueError) as exc:
+            raise BackupError(
+                f"Could not inspect physical DAR slices for '{backup_file}': {exc}"
+            ) from exc
+        if not slice_inventory.is_contiguous_from_one:
+            raise BackupError(
+                "RESTORETEST_COVER_SLICES requires one contiguous, unambiguous "
+                f"physical slice sequence; missing={slice_inventory.missing_numbers!r}, "
+                f"duplicates={slice_inventory.duplicate_numbers!r}, "
+                f"invalid={slice_inventory.invalid_numbers!r}"
+            )
 
-    # Build size lookup before sampling so we can record file_size_bytes per sample.
-    # Wrapped so a metrics failure here cannot abort the backup.
-    try:
-        size_lookup: dict[str, str] = {
-            path: size for path, size in backed_up_files if path and size
-        }
-    except Exception as exc:  # noqa: BLE001 — logs with context and falls back to a safe default
-        logger.warning(f"Failed to build size lookup for metrics; file_size_bytes will be NULL: {exc}")
-        size_lookup = {}
+    if advanced_restoretest:
+        try:
+            with RestoreTestCatalogIndex(logger) as catalog_index:
+                if cover_slices:
+                    assert slice_inventory is not None  # noqa: S101 -- established by validated branch above
+                    reconciliation = catalog_index.load_archive(
+                        backup_file,
+                        _runner(),
+                        frozenset(slice_inventory.slice_numbers),
+                        timeout=config_settings.command_timeout_secs,
+                    )
+                    logger.info(
+                        "Restore-test catalogue reconciliation: saved-files=%d "
+                        "mapped-files=%d data-slices=%d non-data-slices=%d",
+                        reconciliation.expected_saved_files,
+                        reconciliation.mapped_saved_files,
+                        len(reconciliation.data_slices),
+                        len(reconciliation.non_data_slices),
+                    )
+                else:
+                    catalog_index.load_xml_archive(
+                        backup_file,
+                        _runner(),
+                        timeout=config_settings.command_timeout_secs,
+                    )
 
-    files = select_restoretest_samples(
-        backed_up_files,
-        config_settings,
-        config_settings.no_files_verification
-    )
+                def eligible_size_bytes(
+                    path: str,
+                    size_text: Optional[str],
+                ) -> Optional[int]:
+                    """Return byte size when a catalogue file passes all filters.
+
+                    Args:
+                        path: Normalized archive-relative path.
+                        size_text: DAR-formatted file size, or None.
+
+                    Returns:
+                        Parsed byte size for an eligible file, otherwise None.
+                    """
+                    if not size_text:
+                        return None
+                    if not _size_in_verification_range(size_text, config_settings):
+                        return None
+                    if not _is_restoretest_candidate(path, config_settings):
+                        return None
+                    return _parse_size_bytes(size_text)
+
+                eligible_count = catalog_index.index_eligible_files(eligible_size_bytes)
+                sample_size = config_settings.no_files_verification
+                if restoretest_percent is not None:
+                    sampling_plan = build_restoretest_sampling_plan_from_count(
+                        eligible_count,
+                        config_settings,
+                    )
+                    sample_size = sampling_plan.capped_target
+                    logger.info(
+                        "Restore-test sampling: eligible=%d configured=%.6g%% "
+                        "calculated=%d capped=%d",
+                        sampling_plan.eligible_files,
+                        restoretest_percent,
+                        sampling_plan.percentage_target,
+                        sampling_plan.capped_target,
+                    )
+                files = catalog_index.sample_eligible_files(sample_size)
+
+                if cover_slices:
+                    indexed_coverage = catalog_index.select_slice_coverage_files(files)
+                    coverage = RestoreTestSliceCoverage(
+                        additional_files=indexed_coverage.additional_files,
+                        data_slices=indexed_coverage.data_slices,
+                        covered_slices=indexed_coverage.covered_slices,
+                        unavailable_slices=indexed_coverage.unavailable_slices,
+                    )
+                    if coverage.unavailable_slices:
+                        missing = ", ".join(
+                            str(number) for number in sorted(coverage.unavailable_slices)
+                        )
+                        raise BackupError(
+                            "RESTORETEST_COVER_SLICES could not cover data-bearing slice(s) "
+                            f"{missing}; their files were rejected by the configured "
+                            "restore-test size or exclusion filters"
+                        )
+                    files.extend(coverage.additional_files)
+                    slice_map = catalog_index.get_selected_slice_map(files)
+                    logger.info(
+                        "Restore-test slice coverage: data-bearing=%d covered=%d "
+                        "additional-files=%d",
+                        len(coverage.data_slices),
+                        len(coverage.covered_slices),
+                        len(coverage.additional_files),
+                    )
+                size_lookup = catalog_index.get_selected_size_texts(files)
+        except BackupError:
+            raise
+        except (DarCatalogueError, OSError, RuntimeError, sqlite3.Error, ValueError) as exc:
+            logger.exception(
+                "Could not prepare advanced restore testing for '%s'",
+                backup_file,
+            )
+            raise BackupError(
+                f"Could not prepare advanced restore testing from the DAR catalogue: {exc}"
+            ) from exc
+    else:
+        # Preserve the established listing and sampling path exactly when none
+        # of the new restore-test options is enabled.
+        backed_up_files = list(get_backed_up_files(
+            backup_file,
+            config_settings.backup_dir,
+            timeout=config_settings.command_timeout_secs
+        ))
+        # Build size lookup before sampling so metrics retain legacy behavior.
+        try:
+            size_lookup = {
+                path: size for path, size in backed_up_files if path and size
+            }
+        except Exception as exc:  # noqa: BLE001 -- metrics failure cannot abort verification
+            logger.warning(
+                "Failed to build size lookup for metrics; file_size_bytes will be NULL: %s",
+                exc,
+            )
+            size_lookup = {}
+        files = select_restoretest_samples(
+            backed_up_files,
+            config_settings,
+            config_settings.no_files_verification,
+        )
+
     if len(files) == 0:
         logger.info(
             "No files eligible for verification after size and restore-test filters, skipping"
@@ -622,12 +1126,40 @@ def verify(
     except OSError as exc:
         raise BackupError(f"Cannot create restore directory '{config_settings.test_restore_dir}': {exc}") from exc
 
+    batch_result: Optional[BatchedRestoreResult] = None
+    if advanced_restoretest:
+        batch_result = restore_test_files_in_batches(
+            args=args,
+            backup_file=backup_file,
+            files=random_files,
+            config_settings=config_settings,
+        )
+        logger.info(
+            "Restore-test selection complete: selected=%d batch-restored=%d",
+            len(random_files),
+            len(batch_result.restored_files),
+        )
+
     samples: list[dict] = []
+    file_evidence: list[RestoreTestFileEvidence] = []
     tested_at = datetime.now(UTC).isoformat()
+    extracted_files: set[str] = set()
+    verified_files: set[str] = set()
 
     for restored_file_path in random_files:
         restore_path = os.path.join(config_settings.test_restore_dir, restored_file_path.lstrip("/"))
         source_path = os.path.join(root_path, restored_file_path.lstrip("/"))
+        extraction_attempted = (
+            batch_result is not None
+            and restored_file_path not in batch_result.cleanup_errors
+        )
+        extraction_succeeded = (
+            batch_result is not None
+            and restored_file_path in batch_result.restored_files
+        )
+        target_present = False
+        content_matched: Optional[bool] = None
+        metadata_matched: Optional[bool] = None
 
         try:
             sample: dict = {
@@ -651,7 +1183,14 @@ def verify(
 
         _stale_removal_failed = False
         try:
-            if os.path.exists(restore_path):
+            if batch_result is not None and restored_file_path in batch_result.cleanup_errors:
+                cleanup_error = batch_result.cleanup_errors[restored_file_path]
+                result = False
+                sample["result"] = "FAIL"
+                sample["fail_reason_id"] = RESTORE_FAIL_PERMISSION_ERROR
+                sample["fail_detail"] = f"could not remove stale restore file: {cleanup_error}"[:500]
+                _stale_removal_failed = True
+            elif batch_result is None and os.path.exists(restore_path):
                 try:
                     os.remove(restore_path)
                 except OSError as exc:
@@ -664,10 +1203,14 @@ def verify(
                         restore_path,
                     )
                     _stale_removal_failed = True
-            if not _stale_removal_failed:
+            batch_restored = (
+                batch_result is not None
+                and restored_file_path in batch_result.restored_files
+            )
+            ignore_ownership = resolve_ownership_flag(args, config_settings)
+            if not _stale_removal_failed and not batch_restored:
                 if args.verbose:
                     logger.info(f"Restoring file: '{restored_file_path}' from backup to: '{config_settings.test_restore_dir}' for file comparing")  # noqa: E501
-                ignore_ownership = resolve_ownership_flag(args, config_settings)
                 command = [
                     'dar', '-x', backup_file, '-wa', '-g', restored_file_path.lstrip("/"),
                     '-R', config_settings.test_restore_dir, '--noconf', '-Q',
@@ -677,17 +1220,25 @@ def verify(
                 command.extend(['-B', args.darrc, 'restore-options'])
                 if args.verbose:
                     logger.info(f"Running command: {' '.join(map(shlex.quote, command))}")
+                extraction_attempted = True
                 process = _runner().run(command, timeout = config_settings.command_timeout_secs)
                 if process.returncode != 0:
                     raise BackupError(str(process))
+                extraction_succeeded = True
 
-                if not filecmp.cmp(restore_path, source_path, shallow=False):
+            if not _stale_removal_failed:
+                target_present = os.path.isfile(restore_path)
+                if target_present:
+                    extracted_files.add(restored_file_path)
+                content_matched = filecmp.cmp(restore_path, source_path, shallow=False)
+                if not content_matched:
                     result = False
                     sample["result"] = "FAIL"
                     sample["fail_reason_id"] = RESTORE_FAIL_CONTENT_MISMATCH
                     logger.error(f"Failure: file '{restored_file_path}' did not match the original")
                 else:
                     mismatches = compare_metadata(source_path, restore_path, check_ownership=not ignore_ownership)
+                    metadata_matched = not mismatches
                     if mismatches:
                         result = False
                         sample["result"] = "FAIL"
@@ -696,6 +1247,7 @@ def verify(
                         for m in mismatches:
                             logger.error(f"Metadata failure for '{restored_file_path}': {m}")
                     else:
+                        verified_files.add(restored_file_path)
                         if args.verbose:
                             logger.info(f"Success: file '{restored_file_path}' matches the original")
 
@@ -744,6 +1296,19 @@ def verify(
             samples.append(sample)
         except Exception as exc:  # noqa: BLE001 — logs with context and continues
             logger.warning(f"Failed to record metrics sample for '{restored_file_path}': {exc}")
+        file_evidence.append(
+            RestoreTestFileEvidence(
+                path=restored_file_path,
+                predicted_slice_numbers=tuple(
+                    sorted(slice_map.get(restored_file_path.lstrip("/"), frozenset()))
+                ),
+                extraction_attempted=extraction_attempted,
+                extraction_succeeded=extraction_succeeded,
+                target_present=target_present,
+                content_matched=content_matched,
+                metadata_matched=metadata_matched,
+            )
+        )
 
     if run_id:
         try:
@@ -757,7 +1322,43 @@ def verify(
         except Exception as exc:  # noqa: BLE001 — logs with context and continues
             logger.warning(f"Failed to write restore-test samples to metrics DB: {exc}")
 
-    return VerifyResult(passed=result, restore_test_passed=result, files_verified=len(random_files))
+    predicted_slices: set[int] = set()
+    extracted_slices: set[int] = set()
+    verified_slices: set[int] = set()
+    if cover_slices and coverage is not None:
+        for selected_path in random_files:
+            predicted_slices.update(slice_map.get(selected_path.lstrip("/"), frozenset()))
+        for extracted_path in extracted_files:
+            extracted_slices.update(slice_map.get(extracted_path.lstrip("/"), frozenset()))
+        for verified_path in verified_files:
+            verified_slices.update(slice_map.get(verified_path.lstrip("/"), frozenset()))
+        missing_verified_slices = set(coverage.data_slices) - verified_slices
+        logger.info(
+            "Restore-test slice evidence: data-bearing=%d predicted=%d extracted=%d verified=%d",
+            len(coverage.data_slices),
+            len(predicted_slices),
+            len(extracted_slices),
+            len(verified_slices),
+        )
+        if missing_verified_slices:
+            result = False
+            logger.error(
+                "Restore-test verification did not verify data-bearing slice(s): %s",
+                ", ".join(str(number) for number in sorted(missing_verified_slices)),
+            )
+
+    return VerifyResult(
+        passed=result,
+        restore_test_passed=result,
+        files_verified=len(random_files),
+        predicted_slices=len(predicted_slices),
+        extracted_slices=len(extracted_slices),
+        verified_slices=len(verified_slices),
+        predicted_slice_numbers=tuple(sorted(predicted_slices)),
+        extracted_slice_numbers=tuple(sorted(extracted_slices)),
+        verified_slice_numbers=tuple(sorted(verified_slices)),
+        file_evidence=tuple(file_evidence),
+    )
 
 
 

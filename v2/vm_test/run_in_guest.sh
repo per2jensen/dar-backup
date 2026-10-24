@@ -361,6 +361,8 @@ source venv/bin/activate
 collect_package_manifest
 
 mkdir -p "${RESULT_DIR}/pytest"
+mkdir -p "${RESULT_DIR}/restoretest-catalog"
+export DAR_BACKUP_VM_ARTIFACT_DIR="${RESULT_DIR}/restoretest-catalog"
 set +e
 ./scripts/pytest_report.sh "${MODE}" "${RESULT_DIR}/pytest"
 PYTEST_EXIT_CODE="$?"

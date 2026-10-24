@@ -19,6 +19,11 @@ LOGFILE_LOCATION=~/.dar-backup.log
 MAX_SIZE_VERIFICATION_MB = 20    # must be > 0
 MIN_SIZE_VERIFICATION_MB = 1     # must be >= 0 and <= MAX_SIZE_VERIFICATION_MB
 NO_FILES_VERIFICATION = 5        # must be >= 1; 0 makes restore tests vacuously pass
+# Optional large-backup restore testing. 0.1 means 0.1%, not 10%.
+# If RESTORETEST_PERCENT is absent, the existing fixed-count behaviour is unchanged.
+# RESTORETEST_PERCENT = 0.1       # > 0 and <= 100
+# RESTORETEST_MAX_FILES = 100     # percentage-sample cap; must be >= NO_FILES_VERIFICATION
+# RESTORETEST_COVER_SLICES = false # add files needed to cover every data-bearing slice
 # timeout in seconds for backup, test, restore and par2 operations
 # The author has such `dar` tasks running for 10-15 hours on the yearly backups, so a value of 24 hours is used.
 # If a timeout is not specified when using the util.run_command(), a default timeout of 30 secs is used.
@@ -67,6 +72,40 @@ SCRIPT_1 = ls -l /tmp
 SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
 ```
+
+`RESTORETEST_PERCENT` applies after the existing size and exclusion filters. The
+calculated percentage is rounded up, `NO_FILES_VERIFICATION` remains the minimum,
+and `RESTORETEST_MAX_FILES` caps only the random percentage sample. Files added
+for slice coverage may exceed that cap.
+
+`RESTORETEST_COVER_SLICES` uses DAR's slicing catalogue to select additional
+eligible files whose stored data collectively covers every slice containing
+regular-file data. Archive-only metadata and catalogue slices remain covered by
+the normal `dar -t` integrity test. If a data-bearing slice can only be reached
+through files rejected by the configured size or exclusion filters, verification
+fails with the uncovered slice numbers instead of silently claiming full coverage.
+
+This feature uses only the standard DAR command-line interfaces. It treats an
+unfiltered `dar -Txml` catalogue as the authoritative inventory and reconciles
+every regular file whose data state is `saved` with `dar -Tslicing`. Referenced
+and deleted DIFF/INCR entries have no payload in the current archive and therefore
+do not require a slice mapping. Missing, unexpected, conflicting, malformed, or
+out-of-range mappings fail verification and report the detected DAR version plus
+bounded raw-output evidence. DAR versions do not select parser branches.
+
+The opt-in inventory, eligibility calculation, and greedy coverage selection use
+a fresh temporary SQLite database that is removed after each verification. Only
+the bounded selected-file set is retained in memory. Percentage-only sampling
+does not invoke `-Tslicing`; it therefore remains independent of slicing-format
+compatibility.
+
+When either option is enabled, selected files are extracted in batches of at most
+100. A failed batch is retried with the established one-file-at-a-time restore
+path so individual failures remain diagnosable. Slice reporting distinguishes
+predicted coverage from files selected through `-Tslicing`, extraction coverage
+from files that actually appeared in the restore target, and verified coverage
+from files whose contents and configured metadata matched. Full verified coverage
+is required when `RESTORETEST_COVER_SLICES` is enabled.
 
 ### Instance lock directory
 

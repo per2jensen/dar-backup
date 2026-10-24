@@ -572,6 +572,103 @@ def test_config_settings_no_files_verification_valid_values_load_cleanly(tmp_pat
     assert cfg.no_files_verification == count
 
 
+def test_config_settings_restoretest_sampling_absent_preserves_defaults(tmp_path: Path) -> None:
+    """Leave legacy fixed-count configurations in their opt-out state.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    config_path = write_config(tmp_path / "legacy.conf", tmp_path)
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.restoretest_percent is None
+    assert config.restoretest_max_files == 100
+    assert config.restoretest_cover_slices is False
+
+
+def test_config_settings_restoretest_sampling_valid_values_load(tmp_path: Path) -> None:
+    """Load valid percentage, cap, and slice-coverage settings.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    config_path = write_config(
+        tmp_path / "sampling.conf",
+        tmp_path,
+        misc_overrides={
+            "RESTORETEST_PERCENT": "0.1",
+            "RESTORETEST_MAX_FILES": "250",
+            "RESTORETEST_COVER_SLICES": "true",
+        },
+    )
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.restoretest_percent == 0.1
+    assert config.restoretest_max_files == 250
+    assert config.restoretest_cover_slices is True
+
+
+@pytest.mark.parametrize("percent", ["0", "-0.1", "100.1", "nan", "inf"])
+def test_config_settings_restoretest_percent_invalid_value_raises(
+    tmp_path: Path,
+    percent: str,
+) -> None:
+    """Reject percentages that cannot describe a finite non-empty sample.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        percent: Invalid percentage text.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If invalid percentage configuration is accepted.
+    """
+    config_path = write_config(
+        tmp_path / "bad-percent.conf",
+        tmp_path,
+        misc_overrides={"RESTORETEST_PERCENT": percent},
+    )
+
+    with pytest.raises(ConfigSettingsError, match="RESTORETEST_PERCENT"):
+        ConfigSettings(str(config_path))
+
+
+def test_config_settings_restoretest_cap_below_fixed_minimum_raises(tmp_path: Path) -> None:
+    """Prevent percentage mode from reducing the established fixed minimum.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a cap below NO_FILES_VERIFICATION is accepted.
+    """
+    config_path = write_config(
+        tmp_path / "bad-cap.conf",
+        tmp_path,
+        misc_overrides={
+            "NO_FILES_VERIFICATION": "5",
+            "RESTORETEST_PERCENT": "1",
+            "RESTORETEST_MAX_FILES": "4",
+        },
+    )
+
+    with pytest.raises(ConfigSettingsError, match="NO_FILES_VERIFICATION"):
+        ConfigSettings(str(config_path))
+
+
 # ---------------------------------------------------------------------------
 # COMMAND_TIMEOUT_SECS range validation
 # ---------------------------------------------------------------------------

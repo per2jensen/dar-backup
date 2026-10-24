@@ -1,0 +1,1 @@
+dar version 2.7.21, Copyright (C) 2002-2026 Denis Corbin

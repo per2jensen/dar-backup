@@ -1,0 +1,7 @@
+Slice(s)|[Data ][D][ EA  ][FSA][Compr][S]|Permission| Filemane
+--------+--------------------------------+----------+-----------------------------
+1-3	 [Saved][ ]       [-L-][     ][ ] -rw-rw-r-- second.bin
+3-4	 [Saved][ ]       [-L-][     ][ ] -rw-rw-r-- first.bin
+-----
+All displayed files have their data in slice range [1-4]
+-----

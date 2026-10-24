@@ -50,6 +50,11 @@ RESTORE_OWNERSHIP = no
 MAX_SIZE_VERIFICATION_MB = 2
 MIN_SIZE_VERIFICATION_MB = 0
 NO_FILES_VERIFICATION = 1
+# Optional large-backup restore testing. Values are percentages, so 0.1 means 0.1%.
+# When unset, NO_FILES_VERIFICATION keeps its existing fixed-count behaviour.
+# RESTORETEST_PERCENT = 0.1
+# RESTORETEST_MAX_FILES = 100
+# RESTORETEST_COVER_SLICES = false
 # Optional restore test filters (case-insensitive)
 # RESTORETEST_EXCLUDE_PREFIXES = .cache/, .local/share/Trash/, .mozilla/
 # RESTORETEST_EXCLUDE_SUFFIXES = .sqlite-wal, .sqlite-shm, .log, .tmp, .lock, .journal

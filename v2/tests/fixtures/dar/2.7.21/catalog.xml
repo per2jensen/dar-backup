@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<!DOCTYPE Catalog SYSTEM "dar-catalog.dtd">
+<Catalog format="1.2">
+<File name="second.bin" size="4 kio" stored="4 kio" crc="d45423ea" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+<Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-rw-r--" atime="1792840184" mtime="1792840184" ctime="1792840184" />
+</File>
+<File name="first.bin" size="3 kio" stored="3 kio" crc="248a0a79" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+<Attributes data="saved" metadata="absent" user="pj" group="pj" permissions=" -rw-rw-r--" atime="1792840184" mtime="1792840184" ctime="1792840184" />
+</File>
+</Catalog>

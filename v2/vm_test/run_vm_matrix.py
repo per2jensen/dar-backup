@@ -39,6 +39,7 @@ _DEBIAN_PACKAGE_KEY = re.compile(r"[a-z0-9][a-z0-9+.-]*:[a-z0-9][a-z0-9-]*")
 _RPM_PACKAGE_COMPONENT = re.compile(r"[^\r\n\t]+")
 _MYPY_ERROR_CODE = re.compile(r"[a-z][a-z0-9-]*")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
+_DAR_BRANCH = re.compile(r"\bdar version (2\.[0-9]+)(?:\.[0-9]+)?\b")
 # This parses pytest output; it does not create or trust a predictable temporary path.
 _PYTEST_TEMP_ROOT = re.compile(r"/tmp/pytest-of-[^/\s'\"]+/pytest-[0-9]+")  # noqa: S108
 _FAILURE_MESSAGE_LIMIT = 500
@@ -2221,6 +2222,42 @@ def _image_history_evidence(
     }
 
 
+def _require_restoretest_dar_branches(images: list[dict[str, Any]]) -> None:
+    """Require successful multi-image evidence to cover DAR 2.7 and 2.8.
+
+    Args:
+        images: Public per-image evidence containing guest DAR versions.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If a DAR version is missing, malformed, or the required
+            compatibility branches are not both represented.
+    """
+    if len(images) < 2:
+        return
+    branches: set[str] = set()
+    for image in images:
+        label = _require_string(image.get("label"), "image label")
+        guest = image.get("guest")
+        if not isinstance(guest, dict):
+            raise ValueError(  # noqa: TRY004 -- project input-validation convention
+                f"Passing image {label!r} has no guest version evidence"
+            )
+        dar_version = _require_string(guest.get("dar"), f"DAR version for {label}")
+        match = _DAR_BRANCH.search(dar_version)
+        if match is None:
+            raise ValueError(f"Cannot determine DAR branch for {label!r}: {dar_version!r}")
+        branches.add(match.group(1))
+    missing = {"2.7", "2.8"} - branches
+    if missing:
+        raise ValueError(
+            "Successful full VM matrix does not exercise required DAR branch(es): "
+            + ", ".join(sorted(missing))
+        )
+
+
 def build_history_record(
     run_id: str,
     started_at: str,
@@ -2291,6 +2328,8 @@ def build_history_record(
         )
         for index, result in enumerate(results)
     ]
+    if completed and exit_code == 0 and mode == "full":
+        _require_restoretest_dar_branches(images)
     return {
         "schema_version": HISTORY_SCHEMA_VERSION,
         "run_id": run_id,

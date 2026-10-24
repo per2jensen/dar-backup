@@ -904,6 +904,25 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert "dar-backup-test-2404" not in encoded
 
 
+def test_restoretest_dar_branch_validation_accepts_2_7_and_2_8() -> None:
+    """Accept explicit compatibility evidence spanning both DAR branches."""
+    RUNNER._require_restoretest_dar_branches(
+        [
+            {"label": "older", "guest": {"dar": "dar version 2.7.21"}},
+            {"label": "newer", "guest": {"dar": "dar version 2.8.6"}},
+        ]
+    )
+
+
+def test_restoretest_dar_branch_validation_rejects_missing_branch() -> None:
+    """Reject a multi-image matrix that merely repeats one DAR branch."""
+    with pytest.raises(ValueError, match="required DAR branch.*2.8"):
+        RUNNER._require_restoretest_dar_branches(
+            [
+                {"label": "older-a", "guest": {"dar": "dar version 2.7.13"}},
+                {"label": "older-b", "guest": {"dar": "dar version 2.7.21"}},
+            ]
+        )
 def test_history_record_skip_count_mismatch_raises(tmp_path: Path) -> None:
     """Every summarized skip must have corresponding named evidence.
 

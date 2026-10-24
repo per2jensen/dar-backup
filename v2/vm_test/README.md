@@ -134,6 +134,12 @@ Guest console output, pytest text/JSON/JUnit reports, collection inventory,
 coverage, the complete structured mypy diagnostics, the raw distribution
 package manifest, tool versions, and host controller logs are retained for
 diagnosis.
+Restore-test compatibility artifacts are retained under each guest result's
+`restoretest-catalog/` directory: DAR version output, raw XML, raw slicing
+stdout/stderr, the parsed reconciliation mapping, selected-file extraction and
+comparison states, exact predicted/extracted/verified slice sets, and DAR command
+output from extraction. A successful multi-image full matrix is rejected unless
+its recorded DAR versions explicitly include both the 2.7 and 2.8 branches.
 Each SSD run directory also contains `vm-matrix-result.json`, the exact
 public-safe object appended to the tracked JSONL history. Evidence is written
 with an exclusive file lock, flushed, and synchronized before the controller

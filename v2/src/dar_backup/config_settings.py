@@ -2,6 +2,7 @@
 
 import configparser
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field, fields
@@ -60,6 +61,9 @@ class ConfigSettings:
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
+    restoretest_percent: Optional[float] = field(init=False, default=None)
+    restoretest_max_files: int = field(init=False, default=100)
+    restoretest_cover_slices: bool = field(init=False, default=False)
     restore_ownership: bool = field(init=False, default=False)
 
 
@@ -219,6 +223,40 @@ class ConfigSettings:
                 "RESTORETEST_EXCLUDE_REGEX",
                 default=None
             )
+            self.restoretest_percent = self._get_optional_float(
+                "MISC", "RESTORETEST_PERCENT", default=None
+            )
+            self.restoretest_max_files = cast(
+                int,
+                self._get_optional_int("MISC", "RESTORETEST_MAX_FILES", default=100),
+            )
+            self.restoretest_cover_slices = cast(
+                bool,
+                self._get_optional_bool("MISC", "RESTORETEST_COVER_SLICES", default=False),
+            )
+            if self.restoretest_percent is not None:
+                if not math.isfinite(self.restoretest_percent):
+                    raise ConfigSettingsError(
+                        "RESTORETEST_PERCENT must be a finite number greater than 0 and at most 100"
+                    )
+                if not 0 < self.restoretest_percent <= 100:
+                    raise ConfigSettingsError(
+                        "RESTORETEST_PERCENT must be greater than 0 and at most 100, "
+                        f"got: {self.restoretest_percent}"
+                    )
+            if self.restoretest_max_files < 1:
+                raise ConfigSettingsError(
+                    "RESTORETEST_MAX_FILES must be >= 1, "
+                    f"got: {self.restoretest_max_files}"
+                )
+            if (
+                self.restoretest_percent is not None
+                and self.restoretest_max_files < self.no_files_verification
+            ):
+                raise ConfigSettingsError(
+                    "RESTORETEST_MAX_FILES must be >= NO_FILES_VERIFICATION when "
+                    "RESTORETEST_PERCENT is configured"
+                )
             self.restore_ownership = self._get_optional_bool(
                 "MISC", "RESTORE_OWNERSHIP", default=False
             )
@@ -397,6 +435,27 @@ class ConfigSettings:
             ConfigSettingsError: If the key is present but cannot be parsed as an integer.
         """
         return self._get_config_value(section, key, int, default)
+
+    def _get_optional_float(
+        self,
+        section: str,
+        key: str,
+        default: Optional[float] = None,
+    ) -> Optional[float]:
+        """Read an optional floating-point configuration value.
+
+        Args:
+            section: Config file section name.
+            key: Config key within that section.
+            default: Value to return when the key is absent.
+
+        Returns:
+            Parsed floating-point value, or *default* if the key is absent.
+
+        Raises:
+            ConfigSettingsError: If the configured value is not a number.
+        """
+        return self._get_config_value(section, key, float, default)
 
     def _get_optional_bool(self, section: str, key: str, default: Optional[bool] = None) -> Optional[bool]:
         if not self.config.has_option(section, key):
