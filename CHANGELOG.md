@@ -9,7 +9,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 - Cleanup now retains metrics rows with a deletion timestamp while the dashboard shows only active archives and prints its database path
 - Reject metrics databases inside `BACKUP_DIR` to prevent mount-dependent split histories
 - Instance locks now use one deterministic directory per execution identity, with explicit shared-directory configuration available
-- Full Linux VM matrix runs cover Ubuntu 24.04/26.04 and Fedora 44, updating the README compatibility table and Shields badge from validated evidence
+- Full Linux VM matrix runs cover Ubuntu 24.04/26.04 and Fedora 44, recording mutually exclusive native SELinux/AppArmor evidence and updating the README compatibility table and Shields badge from validated evidence
 - Successful PyPI publications now update the GitHub Pages version from an isolated `gh-pages` checkout
 
 ## v2-1.1.11 - 2026-08-16

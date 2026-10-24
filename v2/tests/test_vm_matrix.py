@@ -57,7 +57,9 @@ def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
     assert fedora.expected_version_id == "44"
     assert fedora.provisioner == "fedora"
     assert fedora.expected_selinux_mode == "enforcing"
+    assert fedora.expected_apparmor_mode == "unavailable"
     assert all(spec.expected_selinux_mode == "unavailable" for spec in specs[:2])
+    assert all(spec.expected_apparmor_mode == "enabled" for spec in specs[:2])
 
 
 def test_load_image_specs_unsupported_provisioner_raises(tmp_path: Path) -> None:
@@ -92,6 +94,38 @@ def test_load_image_specs_invalid_selinux_mode_raises(tmp_path: Path) -> None:
         RUNNER.load_image_specs(config_path)
 
 
+def test_load_image_specs_invalid_apparmor_mode_raises(tmp_path: Path) -> None:
+    """Reject image expectations outside the AppArmor mode contract.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source = Path(__file__).parents[1] / "vm_test" / "images.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["images"][0]["expected_apparmor_mode"] = "sometimes"
+    config_path = tmp_path / "images.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported expected AppArmor mode"):
+        RUNNER.load_image_specs(config_path)
+
+
+def test_load_image_specs_both_mac_systems_active_raises(tmp_path: Path) -> None:
+    """Reject image policy that expects SELinux and AppArmor simultaneously.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source = Path(__file__).parents[1] / "vm_test" / "images.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["images"][2]["expected_apparmor_mode"] = "enabled"
+    config_path = tmp_path / "images.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot both be active"):
+        RUNNER.load_image_specs(config_path)
+
+
 def test_load_image_specs_ubuntu_only_subset_remains_supported(tmp_path: Path) -> None:
     """A declarative Ubuntu-only matrix must retain the existing operation mode.
 
@@ -118,6 +152,13 @@ def _run_guest_result_writer(
     selinux_availability: str = "unavailable",
     selinux_mode: str = "unavailable",
     selinux_policy: str = "",
+    apparmor_availability: str = "available",
+    apparmor_mode: str = "enabled",
+    apparmor_status_tool: str = "available",
+    apparmor_current_label: str = "unconfined",
+    apparmor_profiles_loaded: str = "10",
+    apparmor_profiles_enforcing: str = "9",
+    apparmor_profiles_complain: str = "1",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """Execute the production guest-result writer with a real manifest file.
 
@@ -129,6 +170,13 @@ def _run_guest_result_writer(
         selinux_availability: Whether SELinux runtime tooling is available.
         selinux_mode: Runtime SELinux mode.
         selinux_policy: Loaded SELinux policy name, or an empty string.
+        apparmor_availability: Whether the AppArmor kernel interface is available.
+        apparmor_mode: Runtime AppArmor mode.
+        apparmor_status_tool: Whether a native status tool is available.
+        apparmor_current_label: Current test-runner AppArmor label.
+        apparmor_profiles_loaded: Loaded-profile count, or an empty string.
+        apparmor_profiles_enforcing: Enforcing-profile count, or an empty string.
+        apparmor_profiles_complain: Complain-profile count, or an empty string.
 
     Returns:
         Completed Python subprocess and expected result path.
@@ -182,6 +230,13 @@ def _run_guest_result_writer(
         selinux_availability,
         selinux_mode,
         selinux_policy,
+        apparmor_availability,
+        apparmor_mode,
+        apparmor_status_tool,
+        apparmor_current_label,
+        apparmor_profiles_loaded,
+        apparmor_profiles_enforcing,
+        apparmor_profiles_complain,
         str(manifest_path),
     ]
     completed = subprocess.run(  # noqa: S603 - execute the repository-owned result writer.
@@ -399,6 +454,7 @@ def _run_fake_image(
         expected_version_id="24.04",
         expected_catalog_release="24.04 LTS",
         expected_selinux_mode="unavailable",
+        expected_apparmor_mode="enabled",
         provisioner="debian",
         instance_name="dar-backup-test-fake",
         disk="1G",
@@ -478,6 +534,17 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                         "availability": "unavailable",
                         "mode": "unavailable",
                         "policy": None,
+                    },
+                    "apparmor": {
+                        "availability": "available",
+                        "mode": "enabled",
+                        "status_tool": "available",
+                        "current_label": "unconfined",
+                        "profiles": {
+                            "loaded": 10,
+                            "enforcing": 9,
+                            "complain": 1,
+                        },
                     }
                 },
                 "package_manifest": package_manifest,
@@ -562,6 +629,7 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
         expected_version_id="24.04",
         expected_catalog_release="24.04 LTS",
         expected_selinux_mode="unavailable",
+        expected_apparmor_mode="enabled",
         provisioner="debian",
         instance_name="dar-backup-test-2404",
         disk="30G",
@@ -802,6 +870,13 @@ def test_guest_result_writer_records_enforcing_selinux_policy(tmp_path: Path) ->
         selinux_availability="available",
         selinux_mode="enforcing",
         selinux_policy="targeted",
+        apparmor_availability="unavailable",
+        apparmor_mode="unavailable",
+        apparmor_status_tool="unavailable",
+        apparmor_current_label="",
+        apparmor_profiles_loaded="",
+        apparmor_profiles_enforcing="",
+        apparmor_profiles_complain="",
     )
 
     assert completed.returncode == 0, completed.stderr
@@ -811,7 +886,14 @@ def test_guest_result_writer_records_enforcing_selinux_policy(tmp_path: Path) ->
             "availability": "available",
             "mode": "enforcing",
             "policy": "targeted",
-        }
+        },
+        "apparmor": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "status_tool": "unavailable",
+            "current_label": None,
+            "profiles": None,
+        },
     }
 
 
@@ -831,6 +913,26 @@ def test_guest_result_writer_rejects_inconsistent_selinux_state(tmp_path: Path) 
 
     assert completed.returncode != 0
     assert "unavailable SELinux must use unavailable mode" in completed.stderr
+    assert not result_path.exists()
+
+
+def test_guest_result_writer_rejects_apparmor_counts_without_status_tool(
+    tmp_path: Path,
+) -> None:
+    """Reject AppArmor profile counts without supporting status output.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\tii \n",
+        RUNNER.PASS,
+        apparmor_status_tool="unavailable",
+    )
+
+    assert completed.returncode != 0
+    assert "profile counts require an available status tool" in completed.stderr
     assert not result_path.exists()
 
 
@@ -945,6 +1047,8 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert image["guest"]["os_id"] == "ubuntu"
     assert image["guest"]["os_version_id"] == "24.04"
     assert image["expected_catalog_release"] == "24.04 LTS"
+    assert image["expected_selinux_mode"] == "unavailable"
+    assert image["expected_apparmor_mode"] == "enabled"
     assert image["guest"]["package_manifest"] == {
         "acl:amd64": "2.3.2-2",
         "dar:amd64": "2.7.13-2",
@@ -960,7 +1064,18 @@ def test_history_record_contains_badge_evidence_without_private_paths(
             "availability": "unavailable",
             "mode": "unavailable",
             "policy": None,
-        }
+        },
+        "apparmor": {
+            "availability": "available",
+            "mode": "enabled",
+            "status_tool": "available",
+            "current_label": "unconfined",
+            "profiles": {
+                "loaded": 10,
+                "enforcing": 9,
+                "complain": 1,
+            },
+        },
     }
     assert image["checks"]["mypy"]["status"] == "passed"
     assert image["checks"]["mypy"]["version"] == "mypy 2.3.1 (compiled: yes)"
@@ -1384,7 +1499,11 @@ def test_history_record_accepts_expected_enforcing_selinux(tmp_path: Path) -> No
         tmp_path: Isolated pytest directory.
     """
     original_spec, result = _history_inputs(tmp_path)
-    spec = replace(original_spec, expected_selinux_mode="enforcing")
+    spec = replace(
+        original_spec,
+        expected_selinux_mode="enforcing",
+        expected_apparmor_mode="unavailable",
+    )
     guest_path = Path(result.result_directory) / "result.json"
     guest = json.loads(guest_path.read_text(encoding="utf-8"))
     guest["mandatory_access_control"] = {
@@ -1392,7 +1511,14 @@ def test_history_record_accepts_expected_enforcing_selinux(tmp_path: Path) -> No
             "availability": "available",
             "mode": "enforcing",
             "policy": "targeted",
-        }
+        },
+        "apparmor": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "status_tool": "unavailable",
+            "current_label": None,
+            "profiles": None,
+        },
     }
     guest_path.write_text(json.dumps(guest), encoding="utf-8")
 
@@ -1415,6 +1541,38 @@ def test_history_record_accepts_expected_enforcing_selinux(tmp_path: Path) -> No
     )
 
 
+def test_history_record_accepts_expected_enabled_apparmor(tmp_path: Path) -> None:
+    """Retain AppArmor evidence while marking SELinux unavailable.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+
+    record = RUNNER.build_history_record(
+        run_id="run-enabled-apparmor",
+        started_at="2026-09-30T10:00:00Z",
+        finished_at="2026-09-30T10:20:01Z",
+        mode="full",
+        application_commit="a" * 40,
+        orchestration_commit="a" * 40,
+        specs=[spec],
+        results=[result],
+        completed=True,
+        aborted_phase=None,
+        exit_code=0,
+    )
+
+    mac = record["images"][0]["guest"]["mandatory_access_control"]
+    assert mac["selinux"] == {
+        "availability": "unavailable",
+        "mode": "unavailable",
+        "policy": None,
+    }
+    assert mac["apparmor"]["availability"] == "available"
+    assert mac["apparmor"]["mode"] == "enabled"
+
+
 def test_history_record_unexpected_selinux_mode_raises(tmp_path: Path) -> None:
     """Fail evidence validation when runtime mode differs from image policy.
 
@@ -1429,7 +1587,14 @@ def test_history_record_unexpected_selinux_mode_raises(tmp_path: Path) -> None:
             "availability": "available",
             "mode": "permissive",
             "policy": "targeted",
-        }
+        },
+        "apparmor": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "status_tool": "unavailable",
+            "current_label": None,
+            "profiles": None,
+        },
     }
     guest_path.write_text(json.dumps(guest), encoding="utf-8")
 
@@ -1462,13 +1627,128 @@ def test_history_record_malformed_selinux_evidence_raises(tmp_path: Path) -> Non
         "selinux": {
             "availability": "unavailable",
             "mode": "unavailable",
-        }
+        },
+        "apparmor": {
+            "availability": "available",
+            "mode": "enabled",
+            "status_tool": "available",
+            "current_label": "unconfined",
+            "profiles": None,
+        },
     }
     guest_path.write_text(json.dumps(guest), encoding="utf-8")
 
     with pytest.raises(TypeError, match="SELinux evidence is invalid"):
         RUNNER.build_history_record(
             run_id="run-malformed-selinux",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_accepts_no_mac_system_available(tmp_path: Path) -> None:
+    """Accept an explicit environment where neither MAC system is available.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    original_spec, result = _history_inputs(tmp_path)
+    spec = replace(original_spec, expected_apparmor_mode="unavailable")
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"] = {
+        "selinux": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "policy": None,
+        },
+        "apparmor": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "status_tool": "unavailable",
+            "current_label": None,
+            "profiles": None,
+        },
+    }
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    record = RUNNER.build_history_record(
+        run_id="run-no-mac-system",
+        started_at="2026-09-30T10:00:00Z",
+        finished_at="2026-09-30T10:20:01Z",
+        mode="full",
+        application_commit="a" * 40,
+        orchestration_commit="a" * 40,
+        specs=[spec],
+        results=[result],
+        completed=True,
+        aborted_phase=None,
+        exit_code=0,
+    )
+
+    mac = record["images"][0]["guest"]["mandatory_access_control"]
+    assert mac["selinux"]["availability"] == "unavailable"
+    assert mac["apparmor"]["availability"] == "unavailable"
+
+
+def test_history_record_both_mac_systems_active_raises(tmp_path: Path) -> None:
+    """Reject contradictory runtime evidence with both MAC systems active.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    original_spec, result = _history_inputs(tmp_path)
+    spec = replace(original_spec, expected_selinux_mode="permissive")
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"]["selinux"] = {
+        "availability": "available",
+        "mode": "permissive",
+        "policy": "targeted",
+    }
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="requires AppArmor unavailable"):
+        RUNNER.build_history_record(
+            run_id="run-both-mac-active",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_apparmor_profiles_without_status_tool_raises(
+    tmp_path: Path,
+) -> None:
+    """Reject profile counts that cannot have come from a status tool.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"]["apparmor"]["status_tool"] = "unavailable"
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="profile counts require"):
+        RUNNER.build_history_record(
+            run_id="run-impossible-apparmor-counts",
             started_at="2026-09-30T10:00:00Z",
             finished_at="2026-09-30T10:20:01Z",
             mode="full",
@@ -1839,6 +2119,7 @@ def test_read_latest_full_history_record_schema_v2_remains_readable(
         image.pop("expected_version_id", None)
         image.pop("expected_catalog_release", None)
         image.pop("expected_selinux_mode", None)
+        image.pop("expected_apparmor_mode", None)
         image.pop("provisioner", None)
         guest = image.get("guest")
         if isinstance(guest, dict):
@@ -1870,6 +2151,7 @@ def test_read_latest_full_history_record_schema_v3_remains_readable(
     historical["schema_version"] = 3
     for image in historical["images"]:
         image.pop("expected_selinux_mode", None)
+        image.pop("expected_apparmor_mode", None)
         guest = image.get("guest")
         if isinstance(guest, dict):
             guest.pop("mandatory_access_control", None)

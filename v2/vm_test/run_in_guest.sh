@@ -69,6 +69,9 @@ write_result() {
     local finished_at os_release os_id os_version_id kernel_version python_version pytest_version
     local dar_version dar_manager_version par2_version
     local selinux_availability selinux_mode selinux_policy
+    local apparmor_availability apparmor_mode apparmor_status_tool apparmor_current_label
+    local apparmor_profiles_loaded apparmor_profiles_enforcing apparmor_profiles_complain
+    local security_dir apparmor_status_command apparmor_status_output
 
     finished_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
     os_release="$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '\"')"
@@ -98,6 +101,80 @@ write_result() {
             )"
         fi
     fi
+    security_dir="${RESULT_DIR}/security"
+    mkdir -p "${security_dir}"
+    if [[ "${selinux_availability}" == "available" ]]; then
+        if command -v sestatus >/dev/null 2>&1; then
+            sestatus > "${security_dir}/selinux-status.txt" 2>&1 || true
+        else
+            printf 'sestatus unavailable; getenforce=%s\n' "${selinux_mode}" \
+                > "${security_dir}/selinux-status.txt"
+        fi
+    else
+        printf 'SELinux unavailable\n' > "${security_dir}/selinux-status.txt"
+    fi
+
+    apparmor_availability="unavailable"
+    apparmor_mode="unavailable"
+    apparmor_status_tool="unavailable"
+    apparmor_current_label=""
+    apparmor_profiles_loaded=""
+    apparmor_profiles_enforcing=""
+    apparmor_profiles_complain=""
+    if [[ "${selinux_mode}" != "enforcing" && "${selinux_mode}" != "permissive" ]]; then
+        if [[ -r /sys/module/apparmor/parameters/enabled ]]; then
+            apparmor_availability="available"
+            if grep -qx 'Y' /sys/module/apparmor/parameters/enabled; then
+                apparmor_mode="enabled"
+                # AppArmor is the effective host MAC. Keep the schema mutually
+                # exclusive even if inactive SELinux utilities are installed.
+                selinux_availability="unavailable"
+                selinux_mode="unavailable"
+                selinux_policy=""
+            else
+                apparmor_mode="disabled"
+            fi
+        fi
+    fi
+    if [[ "${apparmor_availability}" == "available" ]]; then
+        if [[ -r /proc/self/attr/current ]]; then
+            apparmor_current_label="$(tr -d '\r\n' < /proc/self/attr/current)"
+        fi
+        apparmor_status_command=""
+        if command -v aa-status >/dev/null 2>&1; then
+            apparmor_status_command="$(command -v aa-status)"
+        elif command -v apparmor_status >/dev/null 2>&1; then
+            apparmor_status_command="$(command -v apparmor_status)"
+        fi
+        if [[ -n "${apparmor_status_command}" ]]; then
+            apparmor_status_tool="available"
+            apparmor_status_output="$("${apparmor_status_command}" 2>&1 || true)"
+            printf '%s\n' "${apparmor_status_output}" > "${security_dir}/apparmor-status.txt"
+            apparmor_profiles_loaded="$(
+                printf '%s\n' "${apparmor_status_output}" \
+                    | sed -n 's/^[[:space:]]*\([0-9][0-9]*\) profiles are loaded\..*/\1/p' \
+                    | head -n 1
+            )"
+            apparmor_profiles_enforcing="$(
+                printf '%s\n' "${apparmor_status_output}" \
+                    | sed -n 's/^[[:space:]]*\([0-9][0-9]*\) profiles are in enforce mode\..*/\1/p' \
+                    | head -n 1
+            )"
+            apparmor_profiles_complain="$(
+                printf '%s\n' "${apparmor_status_output}" \
+                    | sed -n 's/^[[:space:]]*\([0-9][0-9]*\) profiles are in complain mode\..*/\1/p' \
+                    | head -n 1
+            )"
+        else
+            printf 'AppArmor status tool unavailable\n' > "${security_dir}/apparmor-status.txt"
+        fi
+        printf '%s\n' "${apparmor_current_label}" \
+            > "${security_dir}/apparmor-current-label.txt"
+    else
+        printf 'AppArmor unavailable; SELinux mode=%s\n' "${selinux_mode}" \
+            > "${security_dir}/apparmor-status.txt"
+        printf 'unavailable\n' > "${security_dir}/apparmor-current-label.txt"
+    fi
 
     /usr/bin/python3 - \
         "${RESULT_DIR}/result.json" \
@@ -124,6 +201,13 @@ write_result() {
         "${selinux_availability}" \
         "${selinux_mode}" \
         "${selinux_policy}" \
+        "${apparmor_availability}" \
+        "${apparmor_mode}" \
+        "${apparmor_status_tool}" \
+        "${apparmor_current_label}" \
+        "${apparmor_profiles_loaded}" \
+        "${apparmor_profiles_enforcing}" \
+        "${apparmor_profiles_complain}" \
         "${PACKAGE_MANIFEST_PATH}" <<'PY'
 import hashlib
 import json
@@ -155,6 +239,13 @@ from pathlib import Path
     selinux_availability,
     selinux_mode,
     selinux_policy,
+    apparmor_availability,
+    apparmor_mode,
+    apparmor_status_tool,
+    apparmor_current_label,
+    apparmor_profiles_loaded,
+    apparmor_profiles_enforcing,
+    apparmor_profiles_complain,
     package_manifest_path,
 ) = sys.argv[1:]
 
@@ -177,6 +268,72 @@ if selinux_availability == "available" and selinux_mode == "unavailable":
     raise SystemExit("ERROR: available SELinux cannot use unavailable mode")
 if selinux_policy and not all(character.isalnum() or character in "._-" for character in selinux_policy):
     raise SystemExit(f"ERROR: invalid SELinux policy name: {selinux_policy!r}")
+
+if apparmor_availability not in {"available", "unavailable"}:
+    raise SystemExit(f"ERROR: invalid AppArmor availability: {apparmor_availability!r}")
+if apparmor_mode not in {"disabled", "enabled", "unavailable"}:
+    raise SystemExit(f"ERROR: invalid AppArmor mode: {apparmor_mode!r}")
+if apparmor_status_tool not in {"available", "unavailable"}:
+    raise SystemExit(f"ERROR: invalid AppArmor status-tool state: {apparmor_status_tool!r}")
+if apparmor_availability == "unavailable" and (
+    apparmor_mode != "unavailable"
+    or apparmor_status_tool != "unavailable"
+    or apparmor_current_label
+):
+    raise SystemExit("ERROR: unavailable AppArmor section contains active state")
+if apparmor_availability == "available" and apparmor_mode == "unavailable":
+    raise SystemExit("ERROR: available AppArmor cannot use unavailable mode")
+if any(character in apparmor_current_label for character in "\r\n\t") or len(apparmor_current_label) > 256:
+    raise SystemExit("ERROR: invalid AppArmor current label")
+if selinux_mode in {"enforcing", "permissive"} and apparmor_availability != "unavailable":
+    raise SystemExit("ERROR: active SELinux requires AppArmor to be unavailable")
+if apparmor_mode == "enabled" and selinux_availability != "unavailable":
+    raise SystemExit("ERROR: enabled AppArmor requires SELinux to be unavailable")
+
+def optional_count(value: str, field: str) -> int | None:
+    """Parse one optional non-negative AppArmor counter.
+
+    Args:
+        value: Decimal counter text, or an empty string when unavailable.
+        field: Human-readable field name used in errors.
+
+    Returns:
+        Parsed counter, or ``None`` when the source did not report it.
+
+    Raises:
+        SystemExit: If the value is not a non-negative decimal integer.
+    """
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid {field} count: {value!r}") from exc
+    if parsed < 0:
+        raise SystemExit(f"ERROR: invalid {field} count: {value!r}")
+    return parsed
+
+profiles_loaded = optional_count(apparmor_profiles_loaded, "AppArmor loaded-profile")
+profiles_enforcing = optional_count(apparmor_profiles_enforcing, "AppArmor enforcing-profile")
+profiles_complain = optional_count(apparmor_profiles_complain, "AppArmor complain-profile")
+profile_counts = (profiles_loaded, profiles_enforcing, profiles_complain)
+if any(value is not None for value in profile_counts) and any(
+    value is None for value in profile_counts
+):
+    raise SystemExit("ERROR: incomplete AppArmor profile counts")
+if apparmor_status_tool == "unavailable" and any(
+    value is not None for value in profile_counts
+):
+    raise SystemExit("ERROR: AppArmor profile counts require an available status tool")
+if profiles_loaded is not None and profiles_enforcing + profiles_complain > profiles_loaded:
+    raise SystemExit("ERROR: AppArmor profile counts exceed loaded profiles")
+apparmor_profiles = None
+if profiles_loaded is not None:
+    apparmor_profiles = {
+        "loaded": profiles_loaded,
+        "enforcing": profiles_enforcing,
+        "complain": profiles_complain,
+    }
 
 package_manifest = None
 package_manifest_sha256 = None
@@ -271,7 +428,14 @@ payload = {
             "availability": selinux_availability,
             "mode": selinux_mode,
             "policy": selinux_policy or None,
-        }
+        },
+        "apparmor": {
+            "availability": apparmor_availability,
+            "mode": apparmor_mode,
+            "status_tool": apparmor_status_tool,
+            "current_label": apparmor_current_label or None,
+            "profiles": apparmor_profiles,
+        },
     },
     "package_manifest": package_manifest,
     "package_manifest_sha256": package_manifest_sha256,

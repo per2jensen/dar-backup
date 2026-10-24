@@ -66,6 +66,7 @@ class ImageSpec:
         expected_version_id: Required ``VERSION_ID`` from the guest's ``os-release``.
         expected_catalog_release: Required release from ``multipass find``.
         expected_selinux_mode: Required runtime SELinux mode in the guest.
+        expected_apparmor_mode: Required runtime AppArmor mode in the guest.
         provisioner: Allow-listed guest provisioning implementation.
         instance_name: Dedicated Multipass instance name.
         disk: Virtual disk capacity passed to Multipass.
@@ -80,6 +81,7 @@ class ImageSpec:
     expected_version_id: str
     expected_catalog_release: str
     expected_selinux_mode: str
+    expected_apparmor_mode: str
     provisioner: str
     instance_name: str
     disk: str
@@ -456,6 +458,10 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             image.get("expected_selinux_mode"),
             f"images[{index}].expected_selinux_mode",
         )
+        expected_apparmor_mode = _require_string(
+            image.get("expected_apparmor_mode"),
+            f"images[{index}].expected_apparmor_mode",
+        )
         provisioner = _require_string(image.get("provisioner"), f"images[{index}].provisioner")
         disk = _require_string(image.get("disk"), f"images[{index}].disk")
         memory = _require_string(image.get("memory"), f"images[{index}].memory")
@@ -479,6 +485,25 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             raise ValueError(
                 f"Unsupported expected SELinux mode at images[{index}]: "
                 f"{expected_selinux_mode!r}"
+            )
+        if expected_apparmor_mode not in {"enabled", "disabled", "unavailable"}:
+            raise ValueError(
+                f"Unsupported expected AppArmor mode at images[{index}]: "
+                f"{expected_apparmor_mode!r}"
+            )
+        if (
+            expected_selinux_mode in {"enforcing", "permissive"}
+            and expected_apparmor_mode != "unavailable"
+        ):
+            raise ValueError(
+                f"SELinux and AppArmor cannot both be active at images[{index}]"
+            )
+        if (
+            expected_apparmor_mode == "enabled"
+            and expected_selinux_mode != "unavailable"
+        ):
+            raise ValueError(
+                f"AppArmor and SELinux cannot both be active at images[{index}]"
             )
         for field_name, field_value in (
             ("distribution", distribution),
@@ -504,6 +529,7 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
                 expected_version_id=expected_version_id,
                 expected_catalog_release=expected_catalog_release,
                 expected_selinux_mode=expected_selinux_mode,
+                expected_apparmor_mode=expected_apparmor_mode,
                 provisioner=provisioner,
                 instance_name=instance_name,
                 disk=disk,
@@ -1558,23 +1584,25 @@ def _mandatory_access_control_evidence(
     guest: dict[str, Any],
     label: str,
     expected_selinux_mode: str,
-) -> dict[str, dict[str, str | None]]:
+    expected_apparmor_mode: str,
+) -> dict[str, Any]:
     """Validate runtime mandatory-access-control evidence from one guest.
 
     Args:
         guest: Parsed guest result object.
         label: Public image label used in diagnostic errors.
         expected_selinux_mode: SELinux mode required by the image specification.
+        expected_apparmor_mode: AppArmor mode required by the image specification.
 
     Returns:
-        Canonically shaped SELinux runtime evidence.
+        Canonically shaped SELinux and AppArmor runtime evidence.
 
     Raises:
         TypeError: If the evidence has invalid JSON types or object shape.
         ValueError: If values are invalid, inconsistent, or unexpected.
     """
     raw_mac = guest.get("mandatory_access_control")
-    if not isinstance(raw_mac, dict) or set(raw_mac) != {"selinux"}:
+    if not isinstance(raw_mac, dict) or set(raw_mac) != {"apparmor", "selinux"}:
         raise TypeError(f"Mandatory-access-control evidence is invalid for {label}")
     raw_selinux = raw_mac.get("selinux")
     required_fields = {"availability", "mode", "policy"}
@@ -1601,12 +1629,90 @@ def _mandatory_access_control_evidence(
             f"SELinux mode for {label} is {mode!r}, expected "
             f"{expected_selinux_mode!r}"
         )
+
+    raw_apparmor = raw_mac.get("apparmor")
+    apparmor_fields = {
+        "availability",
+        "current_label",
+        "mode",
+        "profiles",
+        "status_tool",
+    }
+    if not isinstance(raw_apparmor, dict) or set(raw_apparmor) != apparmor_fields:
+        raise TypeError(f"AppArmor evidence is invalid for {label}")
+    apparmor_availability = raw_apparmor.get("availability")
+    apparmor_mode = raw_apparmor.get("mode")
+    status_tool = raw_apparmor.get("status_tool")
+    current_label = raw_apparmor.get("current_label")
+    profiles = raw_apparmor.get("profiles")
+    if apparmor_availability not in {"available", "unavailable"}:
+        raise ValueError(
+            f"Invalid AppArmor availability for {label}: {apparmor_availability!r}"
+        )
+    if apparmor_mode not in {"disabled", "enabled", "unavailable"}:
+        raise ValueError(f"Invalid AppArmor mode for {label}: {apparmor_mode!r}")
+    if status_tool not in {"available", "unavailable"}:
+        raise ValueError(f"Invalid AppArmor status-tool state for {label}")
+    if current_label is not None and (
+        not isinstance(current_label, str)
+        or not current_label
+        or len(current_label) > 256
+        or any(character in current_label for character in "\r\n\t")
+    ):
+        raise ValueError(f"Invalid AppArmor current label for {label}")
+    if apparmor_availability == "unavailable" and (
+        apparmor_mode != "unavailable"
+        or status_tool != "unavailable"
+        or current_label is not None
+        or profiles is not None
+    ):
+        raise ValueError(f"Unavailable AppArmor contains active state for {label}")
+    if apparmor_availability == "available" and apparmor_mode == "unavailable":
+        raise ValueError(f"Available AppArmor has inconsistent mode for {label}")
+    if status_tool == "unavailable" and profiles is not None:
+        raise ValueError(
+            f"AppArmor profile counts require an available status tool for {label}"
+        )
+
+    normalized_profiles: dict[str, int] | None = None
+    if profiles is not None:
+        profile_fields = {"complain", "enforcing", "loaded"}
+        if not isinstance(profiles, dict) or set(profiles) != profile_fields:
+            raise TypeError(f"AppArmor profile counts are invalid for {label}")
+        normalized_profiles = {}
+        for field in sorted(profile_fields):
+            value = profiles.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"Invalid AppArmor {field} count for {label}")
+            normalized_profiles[field] = value
+        if (
+            normalized_profiles["enforcing"] + normalized_profiles["complain"]
+            > normalized_profiles["loaded"]
+        ):
+            raise ValueError(f"AppArmor profile counts exceed loaded count for {label}")
+
+    if apparmor_mode != expected_apparmor_mode:
+        raise ValueError(
+            f"AppArmor mode for {label} is {apparmor_mode!r}, expected "
+            f"{expected_apparmor_mode!r}"
+        )
+    if mode in {"enforcing", "permissive"} and apparmor_availability != "unavailable":
+        raise ValueError(f"Active SELinux requires AppArmor unavailable for {label}")
+    if apparmor_mode == "enabled" and availability != "unavailable":
+        raise ValueError(f"Enabled AppArmor requires SELinux unavailable for {label}")
     return {
         "selinux": {
             "availability": cast(str, availability),
             "mode": cast(str, mode),
             "policy": cast(str | None, policy),
-        }
+        },
+        "apparmor": {
+            "availability": cast(str, apparmor_availability),
+            "mode": cast(str, apparmor_mode),
+            "status_tool": cast(str, status_tool),
+            "current_label": cast(str | None, current_label),
+            "profiles": normalized_profiles,
+        },
     }
 
 
@@ -2271,6 +2377,7 @@ def _image_history_evidence(
             guest,
             spec.label,
             spec.expected_selinux_mode,
+            spec.expected_apparmor_mode,
         )
 
     return {
@@ -2281,6 +2388,7 @@ def _image_history_evidence(
         "expected_version_id": spec.expected_version_id,
         "expected_catalog_release": spec.expected_catalog_release,
         "expected_selinux_mode": spec.expected_selinux_mode,
+        "expected_apparmor_mode": spec.expected_apparmor_mode,
         "provisioner": spec.provisioner,
         "image_release": result.image_release,
         "image_sha256": result.image_sha256,

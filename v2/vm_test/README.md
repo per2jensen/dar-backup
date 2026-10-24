@@ -85,11 +85,17 @@ records. Schema-v2 and schema-v3 historical records remain readable.
 
 Fedora's standard `/run/lock` remains root-owned and mode `0755`; the VM runner
 does not alter it. Unprivileged backup processes use dar-backup's deterministic
-private lock directory below their registered home, while SELinux remains enabled and no test is
-skipped because of the distribution. Schema-v4 evidence records the actual
-SELinux availability, runtime mode, and loaded policy separately from the empty
-environment-adjustment list for this unmodified guest policy. Fedora requires
-enforcing mode; the Ubuntu images require SELinux tooling to be unavailable.
+private lock directory below their registered home, while SELinux remains
+enabled and no test is skipped because of the distribution. Schema-v4 evidence
+records the actual SELinux availability, runtime mode, and loaded policy, plus
+AppArmor availability, mode, current process label, status-tool availability,
+and profile counts. Fedora requires enforcing SELinux and records the complete
+AppArmor section as unavailable. The Ubuntu images require SELinux to be
+unavailable and AppArmor to be enabled. A host with neither system records both
+sections explicitly as unavailable. These mutually exclusive expectations are
+validated without installing packages, adding profiles, or changing native OS
+security policy. Raw status and current-label output is retained in each run's
+private `security/` result directory for diagnosis.
 
 Evidence also includes pytest counts and duration, the sorted pytest node ID
 and reason for every skipped test, compact pytest failure/error details, and a
