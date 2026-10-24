@@ -22,6 +22,7 @@ _SLICING_PERMISSION_RE = re.compile(
     r"(?P<permission>[bcdlps-][rwxStTs-]{9})(?:[+.])?\s+(?P<path>.+)$"
 )
 _SLICING_RANGE_RE = re.compile(r"^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
+_SLICING_DATA_STATES = frozenset({"-----", "InRef", "Saved"})
 _RAW_EXCERPT_LINE_LIMIT = 20
 
 
@@ -44,6 +45,29 @@ class DarSlicingListing:
     dar_version: str
     raw_excerpt: str
     raw_line_count: int
+
+
+@dataclass(frozen=True)
+class DarSlicingRowEvidence:
+    """Describe the positional states of one file-shaped slicing row.
+
+    Args:
+        path: Normalized archive-relative path.
+        data_state: First DAR slicing state, which alone describes file payload.
+        ea_state: Extended-attribute state when the standard-width field is present.
+        fsa_state: Filesystem-specific-attribute state when identifiable.
+        permission: DAR permission field used to classify the inode type.
+        slice_spec: Raw leading slice specification, or None when absent.
+        later_saved_markers: Saved markers after the data column, for diagnostics.
+    """
+
+    path: str
+    data_state: str
+    ea_state: Optional[str]
+    fsa_state: Optional[str]
+    permission: str
+    slice_spec: Optional[str]
+    later_saved_markers: int
 
 
 @dataclass(frozen=True)
@@ -1122,37 +1146,103 @@ def _parse_slice_numbers(slice_spec: str) -> frozenset[int]:
     return frozenset(slices)
 
 
-def parse_slicing_listing_line(line: str) -> Optional[tuple[str, frozenset[int]]]:
-    """Parse one saved regular-file row from ``dar -l -Tslicing`` output.
+def _optional_slicing_state(raw_field: str) -> Optional[str]:
+    """Normalize one optional fixed-width DAR slicing state field.
+
+    Args:
+        raw_field: Fixed-width field text, possibly blank or bracketed.
+
+    Returns:
+        State text without brackets, or None for a blank field.
+    """
+    stripped = raw_field.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return stripped[1:-1].strip() or None
+    return stripped
+
+
+def parse_slicing_listing_evidence(line: str) -> Optional[DarSlicingRowEvidence]:
+    """Parse positional states from one file-shaped DAR slicing row.
 
     Args:
         line: A single text line emitted by DAR.
 
     Returns:
-        A normalized archive path and its slice numbers, or None for headers,
-        summaries, directories, and non-saved entries.
+        Positional row evidence, or None for headers and summaries.
+
+    Raises:
+        ValueError: If a file-shaped row has an unknown data state or a saved
+            row cannot be interpreted safely.
+    """
+    if not isinstance(line, str):
+        raise ValueError("DAR slicing line must be text")  # noqa: TRY004 -- project input-validation convention
+    data_open = line.find("[")
+    if data_open < 0:
+        return None
+    data_close = line.find("]", data_open + 1)
+    if data_close < 0:
+        if _SLICING_PERMISSION_RE.search(line) is not None:
+            raise ValueError(f"Unterminated DAR slicing data state: {line!r}")
+        return None
+
+    data_state = line[data_open + 1:data_close].strip()
+    permission_match = _SLICING_PERMISSION_RE.search(line)
+    if permission_match is None:
+        if data_state == "Saved":
+            raise ValueError(f"Unrecognized saved DAR slicing row: {line!r}")
+        return None
+    if data_state not in _SLICING_DATA_STATES:
+        raise ValueError(
+            f"Unknown DAR slicing data state {data_state!r}: {line!r}"
+        )
+    prefix = line[:data_open].strip()
+    path = permission_match.group("path").strip().lstrip("/")
+    if not path:
+        raise ValueError(f"Missing file path in DAR slicing row: {line!r}")
+    state_tail = line[data_close + 1:permission_match.start()]
+    optional_states = re.match(
+        r"^\[[^\]]*\](?P<ea>.{7})(?P<fsa>.{5})",
+        state_tail,
+    )
+    ea_state = None
+    fsa_state = None
+    if optional_states is not None:
+        ea_state = _optional_slicing_state(optional_states.group("ea"))
+        fsa_state = _optional_slicing_state(optional_states.group("fsa"))
+    return DarSlicingRowEvidence(
+        path=path,
+        data_state=data_state,
+        ea_state=ea_state,
+        fsa_state=fsa_state,
+        permission=permission_match.group("permission"),
+        slice_spec=prefix.split(maxsplit=1)[0] if prefix else None,
+        later_saved_markers=state_tail.count("[Saved]"),
+    )
+
+
+def parse_slicing_listing_line(line: str) -> Optional[tuple[str, frozenset[int]]]:
+    """Parse one saved regular-file payload mapping from DAR slicing output.
+
+    Args:
+        line: A single text line emitted by DAR.
+
+    Returns:
+        A normalized archive path and its payload slice numbers, or None for
+        headers, summaries, non-regular files, and non-saved data states.
 
     Raises:
         ValueError: If a saved regular-file row has malformed slice data.
     """
-    if not isinstance(line, str):
-        raise ValueError("DAR slicing line must be text")  # noqa: TRY004 -- project input-validation convention
-    if "[Saved]" not in line:
+    evidence = parse_slicing_listing_evidence(line)
+    if evidence is None or evidence.data_state != "Saved":
         return None
-    permission_match = _SLICING_PERMISSION_RE.search(line)
-    if permission_match is None:
-        raise ValueError(f"Unrecognized saved DAR slicing row: {line!r}")
-    if not permission_match.group("permission").startswith("-"):
+    if not evidence.permission.startswith("-"):
         return None
-
-    prefix = line[:permission_match.start()].strip()
-    if not prefix:
+    if evidence.slice_spec is None:
         raise ValueError(f"Missing slice range in DAR slicing row: {line!r}")
-    slice_spec = prefix.split(maxsplit=1)[0]
-    path = permission_match.group("path").strip().lstrip("/")
-    if not path:
-        raise ValueError(f"Missing file path in DAR slicing row: {line!r}")
-    return path, _parse_slice_numbers(slice_spec)
+    return evidence.path, _parse_slice_numbers(evidence.slice_spec)
 
 
 def _dar_version() -> str:

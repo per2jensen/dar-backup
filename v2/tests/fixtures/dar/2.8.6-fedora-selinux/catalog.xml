@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<!DOCTYPE Catalog SYSTEM "dar-catalog.dtd">
+<Catalog format="1.2">
+<File name="payload.bin" size="8 kio" stored="" crc="acbc6898" dirty="no" sparse="no" delta_sig="no" patch_base_crc="" patch_result_crc="">
+<Attributes data="referenced" metadata="saved" user="ubuntu" group="ubuntu" permissions=" -rw-r--r--" atime="1792859669" mtime="1792859669" ctime="1792859669" />
+</File>
+</Catalog>

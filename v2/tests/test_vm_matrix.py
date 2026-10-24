@@ -56,6 +56,8 @@ def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
     assert fedora.expected_os_id == "fedora"
     assert fedora.expected_version_id == "44"
     assert fedora.provisioner == "fedora"
+    assert fedora.expected_selinux_mode == "enforcing"
+    assert all(spec.expected_selinux_mode == "unavailable" for spec in specs[:2])
 
 
 def test_load_image_specs_unsupported_provisioner_raises(tmp_path: Path) -> None:
@@ -71,6 +73,22 @@ def test_load_image_specs_unsupported_provisioner_raises(tmp_path: Path) -> None
     config_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported provisioner"):
+        RUNNER.load_image_specs(config_path)
+
+
+def test_load_image_specs_invalid_selinux_mode_raises(tmp_path: Path) -> None:
+    """Reject image expectations outside the SELinux mode contract.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    source = Path(__file__).parents[1] / "vm_test" / "images.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["images"][0]["expected_selinux_mode"] = "sometimes"
+    config_path = tmp_path / "images.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported expected SELinux mode"):
         RUNNER.load_image_specs(config_path)
 
 
@@ -97,6 +115,9 @@ def _run_guest_result_writer(
     manifest: str,
     guest_status: str,
     manifest_format: str = "dpkg-query-v1",
+    selinux_availability: str = "unavailable",
+    selinux_mode: str = "unavailable",
+    selinux_policy: str = "",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """Execute the production guest-result writer with a real manifest file.
 
@@ -105,6 +126,9 @@ def _run_guest_result_writer(
         manifest: Debian package manifest contents.
         guest_status: Guest test outcome passed to the result writer.
         manifest_format: Package inventory format exercised by the writer.
+        selinux_availability: Whether SELinux runtime tooling is available.
+        selinux_mode: Runtime SELinux mode.
+        selinux_policy: Loaded SELinux policy name, or an empty string.
 
     Returns:
         Completed Python subprocess and expected result path.
@@ -155,6 +179,9 @@ def _run_guest_result_writer(
         "apt" if manifest_format == "dpkg-query-v1" else "dnf",
         manifest_format,
         "[]",
+        selinux_availability,
+        selinux_mode,
+        selinux_policy,
         str(manifest_path),
     ]
     completed = subprocess.run(  # noqa: S603 - execute the repository-owned result writer.
@@ -371,6 +398,7 @@ def _run_fake_image(
         expected_os_id="ubuntu",
         expected_version_id="24.04",
         expected_catalog_release="24.04 LTS",
+        expected_selinux_mode="unavailable",
         provisioner="debian",
         instance_name="dar-backup-test-fake",
         disk="1G",
@@ -445,6 +473,13 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                 "package_manager": "apt",
                 "package_manifest_format": "dpkg-query-v1",
                 "environment_adjustments": [],
+                "mandatory_access_control": {
+                    "selinux": {
+                        "availability": "unavailable",
+                        "mode": "unavailable",
+                        "policy": None,
+                    }
+                },
                 "package_manifest": package_manifest,
                 "package_manifest_sha256": RUNNER._package_manifest_sha256(
                     package_manifest
@@ -526,6 +561,7 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
         expected_os_id="ubuntu",
         expected_version_id="24.04",
         expected_catalog_release="24.04 LTS",
+        expected_selinux_mode="unavailable",
         provisioner="debian",
         instance_name="dar-backup-test-2404",
         disk="30G",
@@ -555,7 +591,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         run_id: Record identity.
 
     Returns:
-        Valid schema-v3 history record.
+        Valid schema-v4 history record.
     """
     spec, result = _history_inputs(tmp_path)
     return RUNNER.build_history_record(
@@ -721,6 +757,7 @@ def test_guest_result_writer_rpm_manifest_records_canonical_nevra(
     assert payload["package_manager"] == "dnf"
     assert payload["package_manifest_format"] == "rpm-nevra-v1"
     assert payload["environment_adjustments"] == []
+    assert payload["mandatory_access_control"]["selinux"]["mode"] == "unavailable"
     assert payload["package_manifest"] == [
         {
             "architecture": "x86_64",
@@ -749,6 +786,52 @@ def test_guest_result_writer_rpm_manifest_records_canonical_nevra(
     assert digest == payload["package_manifest_sha256"]
     assert manager == "dnf"
     assert manifest_format == "rpm-nevra-v1"
+
+
+def test_guest_result_writer_records_enforcing_selinux_policy(tmp_path: Path) -> None:
+    """Record actual enforcing SELinux state independently of package inventory.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "dar\t0\t2.8.6\t1.fc44\tx86_64\n",
+        RUNNER.PASS,
+        manifest_format="rpm-nevra-v1",
+        selinux_availability="available",
+        selinux_mode="enforcing",
+        selinux_policy="targeted",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["mandatory_access_control"] == {
+        "selinux": {
+            "availability": "available",
+            "mode": "enforcing",
+            "policy": "targeted",
+        }
+    }
+
+
+def test_guest_result_writer_rejects_inconsistent_selinux_state(tmp_path: Path) -> None:
+    """Reject availability and mode combinations that cannot both be true.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\tii \n",
+        RUNNER.PASS,
+        selinux_availability="unavailable",
+        selinux_mode="enforcing",
+    )
+
+    assert completed.returncode != 0
+    assert "unavailable SELinux must use unavailable mode" in completed.stderr
+    assert not result_path.exists()
 
 
 def test_guest_result_writer_malformed_rpm_manifest_fails(tmp_path: Path) -> None:
@@ -855,7 +938,7 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     encoded = json.dumps(record)
     image = record["images"][0]
 
-    assert record["schema_version"] == 3
+    assert record["schema_version"] == 4
     assert record["passed"] is True
     assert image["guest"]["dar"] == "dar version 2.7.13"
     assert image["guest"]["dar_manager"] == "dar_manager version 1.9.0"
@@ -872,6 +955,13 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert image["guest"]["package_manager"] == "apt"
     assert image["guest"]["package_manifest_format"] == "dpkg-query-v1"
     assert image["guest"]["environment_adjustments"] == []
+    assert image["guest"]["mandatory_access_control"] == {
+        "selinux": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+            "policy": None,
+        }
+    }
     assert image["checks"]["mypy"]["status"] == "passed"
     assert image["checks"]["mypy"]["version"] == "mypy 2.3.1 (compiled: yes)"
     assert image["checks"]["mypy"]["checks"]["enabled_error_codes"] == [
@@ -1287,6 +1377,111 @@ def test_history_record_invalid_environment_adjustment_raises(tmp_path: Path) ->
         )
 
 
+def test_history_record_accepts_expected_enforcing_selinux(tmp_path: Path) -> None:
+    """Retain validated enforcing-mode and policy evidence in schema v4.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    original_spec, result = _history_inputs(tmp_path)
+    spec = replace(original_spec, expected_selinux_mode="enforcing")
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"] = {
+        "selinux": {
+            "availability": "available",
+            "mode": "enforcing",
+            "policy": "targeted",
+        }
+    }
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    record = RUNNER.build_history_record(
+        run_id="run-enforcing-selinux",
+        started_at="2026-09-30T10:00:00Z",
+        finished_at="2026-09-30T10:20:01Z",
+        mode="full",
+        application_commit="a" * 40,
+        orchestration_commit="a" * 40,
+        specs=[spec],
+        results=[result],
+        completed=True,
+        aborted_phase=None,
+        exit_code=0,
+    )
+
+    assert record["images"][0]["guest"]["mandatory_access_control"] == (
+        guest["mandatory_access_control"]
+    )
+
+
+def test_history_record_unexpected_selinux_mode_raises(tmp_path: Path) -> None:
+    """Fail evidence validation when runtime mode differs from image policy.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"] = {
+        "selinux": {
+            "availability": "available",
+            "mode": "permissive",
+            "policy": "targeted",
+        }
+    }
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="SELinux mode.*expected"):
+        RUNNER.build_history_record(
+            run_id="run-unexpected-selinux",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
+def test_history_record_malformed_selinux_evidence_raises(tmp_path: Path) -> None:
+    """Reject incomplete SELinux objects instead of guessing missing state.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    guest["mandatory_access_control"] = {
+        "selinux": {
+            "availability": "unavailable",
+            "mode": "unavailable",
+        }
+    }
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="SELinux evidence is invalid"):
+        RUNNER.build_history_record(
+            run_id="run-malformed-selinux",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
+
+
 def test_history_record_completed_without_all_images_raises(
     tmp_path: Path,
 ) -> None:
@@ -1643,6 +1838,7 @@ def test_read_latest_full_history_record_schema_v2_remains_readable(
         image.pop("expected_os_id", None)
         image.pop("expected_version_id", None)
         image.pop("expected_catalog_release", None)
+        image.pop("expected_selinux_mode", None)
         image.pop("provisioner", None)
         guest = image.get("guest")
         if isinstance(guest, dict):
@@ -1651,12 +1847,38 @@ def test_read_latest_full_history_record_schema_v2_remains_readable(
             guest.pop("package_manager", None)
             guest.pop("package_manifest_format", None)
             guest.pop("environment_adjustments", None)
+            guest.pop("mandatory_access_control", None)
     history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
 
     latest = RUNNER.read_latest_full_history_record(history_path)
     badge = RUNNER.render_vm_matrix_badge(latest)
 
     assert latest["run_id"] == "schema-v2-run"
+    assert badge["message"] == "Ubuntu 24.04 passing"
+
+
+def test_read_latest_full_history_record_schema_v3_remains_readable(
+    tmp_path: Path,
+) -> None:
+    """Presentation refresh must continue to consume schema-v3 history.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    history_path = tmp_path / "vm-matrix-results.jsonl"
+    historical = _history_record(tmp_path / "historical", run_id="schema-v3-run")
+    historical["schema_version"] = 3
+    for image in historical["images"]:
+        image.pop("expected_selinux_mode", None)
+        guest = image.get("guest")
+        if isinstance(guest, dict):
+            guest.pop("mandatory_access_control", None)
+    history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
+
+    latest = RUNNER.read_latest_full_history_record(history_path)
+    badge = RUNNER.render_vm_matrix_badge(latest)
+
+    assert latest["run_id"] == "schema-v3-run"
     assert badge["message"] == "Ubuntu 24.04 passing"
 
 

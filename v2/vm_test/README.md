@@ -75,19 +75,21 @@ These updates intentionally make the checkout dirty after testing. Review and
 commit the history, README, and badge together to publish the compatibility
 evidence on GitHub.
 
-Each schema-v3 record contains all VM outcomes, source commits, tool versions,
+Each schema-v4 record contains all VM outcomes, source commits, tool versions,
 the Multipass image alias and release, the full SHA-256 of the exact source
 image used to create each VM, package manager and manifest format, a complete
 installed package manifest, and its canonical SHA-256. Debian manifests retain
 the schema-v2 package-and-architecture mapping. Fedora manifests contain
 deterministically ordered RPM name, epoch, version, release, and architecture
-records. Schema-v2 historical records remain readable.
+records. Schema-v2 and schema-v3 historical records remain readable.
 
 Fedora's standard `/run/lock` remains root-owned and mode `0755`; the VM runner
 does not alter it. Unprivileged backup processes use dar-backup's deterministic
 private lock directory below their registered home, while SELinux remains enabled and no test is
-skipped because of the distribution. Schema-v3 evidence records an empty
-environment-adjustment list for this unmodified guest policy.
+skipped because of the distribution. Schema-v4 evidence records the actual
+SELinux availability, runtime mode, and loaded policy separately from the empty
+environment-adjustment list for this unmodified guest policy. Fedora requires
+enforcing mode; the Ubuntu images require SELinux tooling to be unavailable.
 
 Evidence also includes pytest counts and duration, the sorted pytest node ID
 and reason for every skipped test, compact pytest failure/error details, and a
@@ -136,9 +138,10 @@ package manifest, tool versions, and host controller logs are retained for
 diagnosis.
 Restore-test compatibility artifacts are retained under each guest result's
 `restoretest-catalog/` directory: DAR version output, raw XML, raw slicing
-stdout/stderr, the parsed reconciliation mapping, selected-file extraction and
-comparison states, exact predicted/extracted/verified slice sets, and DAR command
-output from extraction. A successful multi-image full matrix is rejected unless
+stdout/stderr, positional Data/EA/FSA row evidence, the parsed reconciliation
+mapping, selected-file extraction and comparison states, exact
+predicted/extracted/verified slice sets, and DAR command output from extraction.
+A successful multi-image full matrix is rejected unless
 its recorded DAR versions explicitly include both the 2.7 and 2.8 branches.
 Each SSD run directory also contains `vm-matrix-result.json`, the exact
 public-safe object appended to the tracked JSONL history. Evidence is written

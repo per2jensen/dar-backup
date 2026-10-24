@@ -7,6 +7,7 @@ import pytest
 
 from dar_backup.restoretest_catalog import DarCatalogueError
 from dar_backup.restoretest_catalog import RestoreTestCatalogIndex
+from dar_backup.restoretest_catalog import parse_slicing_listing_evidence
 from dar_backup.restoretest_catalog import parse_slicing_listing_line
 
 
@@ -175,6 +176,51 @@ def test_slicing_parser_accepts_whitespace_and_added_column_mutations() -> None:
     )
 
 
+def test_slicing_parser_fedora_saved_data_and_saved_ea_returns_mapping() -> None:
+    """Map Fedora payload when both data and SELinux EA states are saved.
+
+    Returns:
+        None.
+    """
+    parsed = parse_slicing_listing_line(
+        "1-3 [Saved][ ][Saved][-L-][     ][ ] -rw-r--r-- data/payload.bin"
+    )
+
+    assert parsed == ("data/payload.bin", frozenset({1, 2, 3}))
+
+
+def test_slicing_parser_referenced_data_with_saved_ea_returns_none() -> None:
+    """Do not mistake a saved SELinux EA for referenced file payload.
+
+    Returns:
+        None.
+    """
+    parsed = parse_slicing_listing_line(
+        "1-5 [InRef][ ][Saved][-L-][-----][ ] -rw-r--r-- payload.bin"
+    )
+
+    assert parsed is None
+
+
+def test_slicing_evidence_keeps_fedora_data_ea_and_fsa_states_separate() -> None:
+    """Expose the positional states that explain Fedora SELinux behavior.
+
+    Returns:
+        None.
+    """
+    evidence = parse_slicing_listing_evidence(
+        "1-5 [InRef][ ][Saved][-L-][-----][ ] -rw-r--r-- payload.bin"
+    )
+
+    assert evidence is not None
+    assert evidence.path == "payload.bin"
+    assert evidence.data_state == "InRef"
+    assert evidence.ea_state == "Saved"
+    assert evidence.fsa_state == "-L-"
+    assert evidence.slice_spec == "1-5"
+    assert evidence.later_saved_markers == 1
+
+
 def test_slicing_parser_rejects_descending_slice_range() -> None:
     """Reject a saved row whose inclusive slice range runs backwards.
 
@@ -184,6 +230,42 @@ def test_slicing_parser_rejects_descending_slice_range() -> None:
     with pytest.raises(ValueError, match="Invalid DAR slice range"):
         parse_slicing_listing_line(
             "3-1 [Saved][ ] [-L-][     ][ ] -rw-r--r-- data/saved.bin"
+        )
+
+
+def test_slicing_parser_unknown_data_state_raises() -> None:
+    """Fail closed when DAR emits an unfamiliar file data state.
+
+    Returns:
+        None.
+    """
+    with pytest.raises(ValueError, match="Unknown DAR slicing data state"):
+        parse_slicing_listing_line(
+            "1 [Future][ ][Saved][-L-][-----][ ] -rw-r--r-- data/file.bin"
+        )
+
+
+def test_slicing_parser_later_saved_marker_with_missing_data_state_raises() -> None:
+    """Never promote a later saved marker when the data state is empty.
+
+    Returns:
+        None.
+    """
+    with pytest.raises(ValueError, match="Unknown DAR slicing data state"):
+        parse_slicing_listing_line(
+            "1 [ ][ ][Saved][-L-][-----][ ] -rw-r--r-- data/file.bin"
+        )
+
+
+def test_slicing_parser_unterminated_data_state_raises() -> None:
+    """Reject a file-shaped row whose first state has no closing bracket.
+
+    Returns:
+        None.
+    """
+    with pytest.raises(ValueError, match="Unterminated DAR slicing data state"):
+        parse_slicing_listing_line(
+            "1 [Saved malformed-columns -rw-r--r-- data/file.bin"
         )
 
 
@@ -212,6 +294,33 @@ def test_catalog_index_unexpected_saved_mapping_raises(tmp_path: Path) -> None:
             DarCatalogueError,
             match="unexpected mappings=.*unexpected.bin",
         ):
+            index.reconcile(frozenset({1, 2, 3}))
+
+
+def test_catalog_index_xml_saved_but_slicing_inref_with_saved_ea_raises(
+    tmp_path: Path,
+) -> None:
+    """Do not let a later saved EA marker conceal missing saved payload.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    xml_path = tmp_path / "catalog.xml"
+    slicing_path = tmp_path / "slicing.txt"
+    _write_catalogue(xml_path)
+    slicing_path.write_text(
+        "1-2 [InRef][ ][Saved][-L-][-----][ ] "
+        "-rw-r--r-- data/saved.bin\n",
+        encoding="utf-8",
+    )
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        index.load_xml_file(xml_path)
+        assert index.load_slicing_file(slicing_path) == 0
+        with pytest.raises(DarCatalogueError, match="missing mappings=.*saved.bin"):
             index.reconcile(frozenset({1, 2, 3}))
 
 
@@ -269,3 +378,24 @@ def test_captured_dar_version_fixture_reconciles(fixture_version: str) -> None:
     assert report.expected_saved_files == 2
     assert report.mapped_saved_files == 2
     assert report.data_slices == frozenset({1, 2, 3, 4})
+
+
+def test_captured_fedora_selinux_isolated_catalogue_is_non_data() -> None:
+    """Ignore saved SELinux EA state when isolated file data is referenced.
+
+    Returns:
+        None.
+    """
+    fixture_dir = _FIXTURE_ROOT / "2.8.6-fedora-selinux"
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        index.load_xml_file(fixture_dir / "catalog.xml")
+        assert index.load_slicing_file(fixture_dir / "slicing.txt") == 0
+        report = index.reconcile(frozenset({1}))
+        saved_files = list(index.iter_saved_files())
+
+    assert saved_files == []
+    assert report.expected_saved_files == 0
+    assert report.mapped_saved_files == 0
+    assert report.data_slices == frozenset()
+    assert report.non_data_slices == frozenset({1})

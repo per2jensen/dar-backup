@@ -1,0 +1,6 @@
+Slice(s)|[Data ][D][ EA  ][FSA][Compr][S]|Permission| Filemane
+--------+--------------------------------+----------+-----------------------------
+1-5	 [InRef][ ][Saved][-L-][-----][ ] -rw-r--r-- payload.bin
+-----
+All displayed files have their data in slice range [1-5]
+-----

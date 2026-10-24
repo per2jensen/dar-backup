@@ -27,8 +27,8 @@ from typing import Any, BinaryIO, Sequence, cast
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
-HISTORY_SCHEMA_VERSION = 3
-READABLE_HISTORY_SCHEMA_VERSIONS = {2, HISTORY_SCHEMA_VERSION}
+HISTORY_SCHEMA_VERSION = 4
+READABLE_HISTORY_SCHEMA_VERSIONS = {2, 3, HISTORY_SCHEMA_VERSION}
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -65,6 +65,7 @@ class ImageSpec:
         expected_os_id: Required ``ID`` from the guest's ``os-release``.
         expected_version_id: Required ``VERSION_ID`` from the guest's ``os-release``.
         expected_catalog_release: Required release from ``multipass find``.
+        expected_selinux_mode: Required runtime SELinux mode in the guest.
         provisioner: Allow-listed guest provisioning implementation.
         instance_name: Dedicated Multipass instance name.
         disk: Virtual disk capacity passed to Multipass.
@@ -78,6 +79,7 @@ class ImageSpec:
     expected_os_id: str
     expected_version_id: str
     expected_catalog_release: str
+    expected_selinux_mode: str
     provisioner: str
     instance_name: str
     disk: str
@@ -450,6 +452,10 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             image.get("expected_catalog_release"),
             f"images[{index}].expected_catalog_release",
         )
+        expected_selinux_mode = _require_string(
+            image.get("expected_selinux_mode"),
+            f"images[{index}].expected_selinux_mode",
+        )
         provisioner = _require_string(image.get("provisioner"), f"images[{index}].provisioner")
         disk = _require_string(image.get("disk"), f"images[{index}].disk")
         memory = _require_string(image.get("memory"), f"images[{index}].memory")
@@ -464,6 +470,16 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
             raise ValueError(f"Refusing unsafe expected OS ID: {expected_os_id!r}")
         if provisioner not in {"debian", "fedora"}:
             raise ValueError(f"Unsupported provisioner at images[{index}]: {provisioner!r}")
+        if expected_selinux_mode not in {
+            "disabled",
+            "enforcing",
+            "permissive",
+            "unavailable",
+        }:
+            raise ValueError(
+                f"Unsupported expected SELinux mode at images[{index}]: "
+                f"{expected_selinux_mode!r}"
+            )
         for field_name, field_value in (
             ("distribution", distribution),
             ("expected_version_id", expected_version_id),
@@ -487,6 +503,7 @@ def load_image_specs(config_path: Path) -> list[ImageSpec]:
                 expected_os_id=expected_os_id,
                 expected_version_id=expected_version_id,
                 expected_catalog_release=expected_catalog_release,
+                expected_selinux_mode=expected_selinux_mode,
                 provisioner=provisioner,
                 instance_name=instance_name,
                 disk=disk,
@@ -1537,6 +1554,62 @@ def _environment_adjustments_evidence(guest: dict[str, Any], label: str) -> list
     return adjustments
 
 
+def _mandatory_access_control_evidence(
+    guest: dict[str, Any],
+    label: str,
+    expected_selinux_mode: str,
+) -> dict[str, dict[str, str | None]]:
+    """Validate runtime mandatory-access-control evidence from one guest.
+
+    Args:
+        guest: Parsed guest result object.
+        label: Public image label used in diagnostic errors.
+        expected_selinux_mode: SELinux mode required by the image specification.
+
+    Returns:
+        Canonically shaped SELinux runtime evidence.
+
+    Raises:
+        TypeError: If the evidence has invalid JSON types or object shape.
+        ValueError: If values are invalid, inconsistent, or unexpected.
+    """
+    raw_mac = guest.get("mandatory_access_control")
+    if not isinstance(raw_mac, dict) or set(raw_mac) != {"selinux"}:
+        raise TypeError(f"Mandatory-access-control evidence is invalid for {label}")
+    raw_selinux = raw_mac.get("selinux")
+    required_fields = {"availability", "mode", "policy"}
+    if not isinstance(raw_selinux, dict) or set(raw_selinux) != required_fields:
+        raise TypeError(f"SELinux evidence is invalid for {label}")
+
+    availability = raw_selinux.get("availability")
+    mode = raw_selinux.get("mode")
+    policy = raw_selinux.get("policy")
+    if availability not in {"available", "unavailable"}:
+        raise ValueError(f"Invalid SELinux availability for {label}: {availability!r}")
+    if mode not in {"disabled", "enforcing", "permissive", "unavailable"}:
+        raise ValueError(f"Invalid SELinux mode for {label}: {mode!r}")
+    if availability == "unavailable" and mode != "unavailable":
+        raise ValueError(f"Unavailable SELinux has inconsistent mode for {label}")
+    if availability == "available" and mode == "unavailable":
+        raise ValueError(f"Available SELinux has inconsistent mode for {label}")
+    if policy is not None and (
+        not isinstance(policy, str) or _SAFE_LABEL.fullmatch(policy) is None
+    ):
+        raise ValueError(f"Invalid SELinux policy for {label}: {policy!r}")
+    if mode != expected_selinux_mode:
+        raise ValueError(
+            f"SELinux mode for {label} is {mode!r}, expected "
+            f"{expected_selinux_mode!r}"
+        )
+    return {
+        "selinux": {
+            "availability": cast(str, availability),
+            "mode": cast(str, mode),
+            "policy": cast(str | None, policy),
+        }
+    }
+
+
 def _validate_mypy_checks(checks: object, label: str) -> dict[str, Any]:
     """Validate and normalize effective mypy check configuration.
 
@@ -2194,6 +2267,11 @@ def _image_history_evidence(
             guest,
             spec.label,
         )
+        guest_evidence["mandatory_access_control"] = _mandatory_access_control_evidence(
+            guest,
+            spec.label,
+            spec.expected_selinux_mode,
+        )
 
     return {
         "label": spec.label,
@@ -2202,6 +2280,7 @@ def _image_history_evidence(
         "expected_os_id": spec.expected_os_id,
         "expected_version_id": spec.expected_version_id,
         "expected_catalog_release": spec.expected_catalog_release,
+        "expected_selinux_mode": spec.expected_selinux_mode,
         "provisioner": spec.provisioner,
         "image_release": result.image_release,
         "image_sha256": result.image_sha256,
@@ -2287,7 +2366,7 @@ def build_history_record(
         exit_code: Final controller exit code before evidence persistence.
 
     Returns:
-        JSON-serializable schema-v3 history record.
+        JSON-serializable schema-v4 history record.
 
     Raises:
         ValueError: If required state is empty or inconsistent.

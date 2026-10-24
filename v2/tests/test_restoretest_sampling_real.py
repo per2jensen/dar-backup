@@ -16,6 +16,8 @@ import pytest
 import dar_backup.dar_backup as db
 from dar_backup.command_runner import CommandRunner
 from dar_backup.restoretest_catalog import RestoreTestCatalogIndex
+from dar_backup.restoretest_catalog import parse_slicing_listing_evidence
+from dar_backup.restoretest_catalog import parse_slicing_listing_line
 from dar_backup.util import BackupError
 from dar_backup.util import inspect_archive_slices
 
@@ -251,6 +253,34 @@ def _preserve_vm_catalogue_artifacts(archive_path: Path, label: str) -> None:
         if completed.returncode != 0:
             raise RuntimeError(
                 f"DAR {representation} artifact command failed: {completed.stderr}"
+            )
+        if representation == "slicing":
+            row_evidence: list[dict[str, object]] = []
+            for line_number, line in enumerate(completed.stdout.splitlines(), start=1):
+                parsed_evidence = parse_slicing_listing_evidence(line)
+                if parsed_evidence is None:
+                    continue
+                payload_mapping = parse_slicing_listing_line(line)
+                row_evidence.append(
+                    {
+                        "line_number": line_number,
+                        "path": parsed_evidence.path,
+                        "data_state": parsed_evidence.data_state,
+                        "ea_state": parsed_evidence.ea_state,
+                        "fsa_state": parsed_evidence.fsa_state,
+                        "permission": parsed_evidence.permission,
+                        "reported_slice_spec": parsed_evidence.slice_spec,
+                        "later_saved_markers": parsed_evidence.later_saved_markers,
+                        "payload_slice_numbers": (
+                            sorted(payload_mapping[1])
+                            if payload_mapping is not None
+                            else []
+                        ),
+                    }
+                )
+            (artifact_dir / f"{label}-slicing-records.json").write_text(
+                json.dumps(row_evidence, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
             )
 
 
@@ -947,6 +977,7 @@ def test_catalog_index_classifies_isolated_catalogue_slice_as_non_data(
     _create_archive(source_dir, full_archive)
     isolated_archive = tmp_path / "isolated"
     _create_isolated_catalogue(full_archive, isolated_archive)
+    _preserve_vm_catalogue_artifacts(isolated_archive, "isolated-catalogue")
     inventory = inspect_archive_slices(str(isolated_archive))
     test_logger = logging.getLogger("restoretest_sampling_real")
     command_runner = CommandRunner(logger=test_logger, command_logger=test_logger)

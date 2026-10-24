@@ -68,6 +68,7 @@ ENVIRONMENT_ADJUSTMENTS_JSON="[]"
 write_result() {
     local finished_at os_release os_id os_version_id kernel_version python_version pytest_version
     local dar_version dar_manager_version par2_version
+    local selinux_availability selinux_mode selinux_policy
 
     finished_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
     os_release="$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '\"')"
@@ -83,6 +84,20 @@ write_result() {
     [[ -n "${dar_version}" ]] || dar_version="unavailable"
     [[ -n "${dar_manager_version}" ]] || dar_manager_version="unavailable"
     par2_version="$(par2 -V 2>&1 | head -n 1 || printf 'unavailable')"
+    selinux_availability="unavailable"
+    selinux_mode="unavailable"
+    selinux_policy=""
+    if command -v getenforce >/dev/null 2>&1; then
+        selinux_availability="available"
+        selinux_mode="$(getenforce 2>/dev/null | tr '[:upper:]' '[:lower:]' || printf 'unknown')"
+        if command -v sestatus >/dev/null 2>&1; then
+            selinux_policy="$(
+                sestatus 2>/dev/null \
+                    | sed -n 's/^[[:space:]]*Loaded policy name:[[:space:]]*//p' \
+                    | head -n 1
+            )"
+        fi
+    fi
 
     /usr/bin/python3 - \
         "${RESULT_DIR}/result.json" \
@@ -106,6 +121,9 @@ write_result() {
         "${PACKAGE_MANAGER}" \
         "${PACKAGE_MANIFEST_FORMAT}" \
         "${ENVIRONMENT_ADJUSTMENTS_JSON}" \
+        "${selinux_availability}" \
+        "${selinux_mode}" \
+        "${selinux_policy}" \
         "${PACKAGE_MANIFEST_PATH}" <<'PY'
 import hashlib
 import json
@@ -134,6 +152,9 @@ from pathlib import Path
     package_manager,
     package_manifest_format,
     environment_adjustments_json,
+    selinux_availability,
+    selinux_mode,
+    selinux_policy,
     package_manifest_path,
 ) = sys.argv[1:]
 
@@ -145,6 +166,17 @@ if not isinstance(environment_adjustments, list) or any(
     not isinstance(value, str) or not value for value in environment_adjustments
 ):
     raise SystemExit("ERROR: environment adjustments must be a list of non-empty strings")
+
+if selinux_availability not in {"available", "unavailable"}:
+    raise SystemExit(f"ERROR: invalid SELinux availability: {selinux_availability!r}")
+if selinux_mode not in {"disabled", "enforcing", "permissive", "unavailable"}:
+    raise SystemExit(f"ERROR: invalid SELinux mode: {selinux_mode!r}")
+if selinux_availability == "unavailable" and selinux_mode != "unavailable":
+    raise SystemExit("ERROR: unavailable SELinux must use unavailable mode")
+if selinux_availability == "available" and selinux_mode == "unavailable":
+    raise SystemExit("ERROR: available SELinux cannot use unavailable mode")
+if selinux_policy and not all(character.isalnum() or character in "._-" for character in selinux_policy):
+    raise SystemExit(f"ERROR: invalid SELinux policy name: {selinux_policy!r}")
 
 package_manifest = None
 package_manifest_sha256 = None
@@ -234,6 +266,13 @@ payload = {
     "package_manager": package_manager,
     "package_manifest_format": package_manifest_format,
     "environment_adjustments": environment_adjustments,
+    "mandatory_access_control": {
+        "selinux": {
+            "availability": selinux_availability,
+            "mode": selinux_mode,
+            "policy": selinux_policy or None,
+        }
+    },
     "package_manifest": package_manifest,
     "package_manifest_sha256": package_manifest_sha256,
 }
