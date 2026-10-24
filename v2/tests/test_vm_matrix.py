@@ -149,6 +149,7 @@ def _run_guest_result_writer(
     manifest: str,
     guest_status: str,
     manifest_format: str = "dpkg-query-v1",
+    dar_backup_version: str = "dar-backup 1.1.12.dev90",
     selinux_availability: str = "unavailable",
     selinux_mode: str = "unavailable",
     selinux_policy: str = "",
@@ -167,6 +168,7 @@ def _run_guest_result_writer(
         manifest: Debian package manifest contents.
         guest_status: Guest test outcome passed to the result writer.
         manifest_format: Package inventory format exercised by the writer.
+        dar_backup_version: Version line reported by the installed application.
         selinux_availability: Whether SELinux runtime tooling is available.
         selinux_mode: Runtime SELinux mode.
         selinux_policy: Loaded SELinux policy name, or an empty string.
@@ -221,6 +223,7 @@ def _run_guest_result_writer(
         "6.8.0-test",
         "Python 3.12.3",
         "pytest 9.1.1",
+        dar_backup_version,
         "dar version 2.7.13",
         "dar_manager version 1.9.0",
         "par2cmdline version 0.8.1",
@@ -523,6 +526,7 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
                 "kernel": "6.8.0-test",
                 "python": "Python 3.12.3",
                 "pytest": "pytest 9.1.1",
+                "dar_backup": "dar-backup 1.1.12.dev90",
                 "dar": "dar version 2.7.13",
                 "dar_manager": "dar_manager version 1.9.0",
                 "par2": "par2cmdline version 0.8.1",
@@ -659,7 +663,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         run_id: Record identity.
 
     Returns:
-        Valid schema-v4 history record.
+        Valid schema-v5 history record.
     """
     spec, result = _history_inputs(tmp_path)
     return RUNNER.build_history_record(
@@ -783,7 +787,47 @@ def test_guest_result_writer_installed_package_preserves_pass_status(
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(result_path.read_text(encoding="utf-8"))
     assert payload["status"] == RUNNER.PASS
+    assert payload["dar_backup"] == "dar-backup 1.1.12.dev90"
     assert payload["package_manifest"] == {"acl:amd64": "2.3.2-2"}
+
+
+def test_guest_result_writer_invalid_dar_backup_version_fails(tmp_path: Path) -> None:
+    """Reject a malformed application version before writing guest evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\tii \n",
+        RUNNER.PASS,
+        dar_backup_version="unexpected version output",
+    )
+
+    assert completed.returncode != 0
+    assert "invalid dar-backup version" in completed.stderr
+    assert not result_path.exists()
+
+
+def test_guest_result_writer_setup_failure_allows_unavailable_version(
+    tmp_path: Path,
+) -> None:
+    """Preserve setup-failure evidence when installation never completed.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    completed, result_path = _run_guest_result_writer(
+        tmp_path,
+        "acl\t2.3.2-2\tamd64\tii \n",
+        "SETUP_FAILED",
+        dar_backup_version="unavailable",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "SETUP_FAILED"
+    assert payload["dar_backup"] == "unavailable"
 
 
 def test_guest_result_writer_malformed_package_manifest_fails(
@@ -1040,9 +1084,10 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     encoded = json.dumps(record)
     image = record["images"][0]
 
-    assert record["schema_version"] == 4
+    assert record["schema_version"] == 5
     assert record["passed"] is True
     assert image["guest"]["dar"] == "dar version 2.7.13"
+    assert image["guest"]["dar_backup"] == "dar-backup 1.1.12.dev90"
     assert image["guest"]["dar_manager"] == "dar_manager version 1.9.0"
     assert image["guest"]["os_id"] == "ubuntu"
     assert image["guest"]["os_version_id"] == "24.04"
@@ -1107,6 +1152,50 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert "/home/" not in encoded
     assert "/mnt/" not in encoded
     assert "dar-backup-test-2404" not in encoded
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (None, "Missing dar-backup version"),
+        ("unexpected version output", "Invalid dar-backup version"),
+    ],
+)
+def test_history_record_invalid_dar_backup_version_raises(
+    tmp_path: Path,
+    value: str | None,
+    message: str,
+) -> None:
+    """Reject missing or malformed application-version evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+        value: Replacement version value, or ``None`` to remove the field.
+        message: Expected validation-error fragment.
+    """
+    spec, result = _history_inputs(tmp_path)
+    guest_path = Path(result.result_directory) / "result.json"
+    guest = json.loads(guest_path.read_text(encoding="utf-8"))
+    if value is None:
+        guest.pop("dar_backup")
+    else:
+        guest["dar_backup"] = value
+    guest_path.write_text(json.dumps(guest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        RUNNER.build_history_record(
+            run_id="run-invalid-dar-backup-version",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+        )
 
 
 def test_restoretest_dar_branch_validation_accepts_2_7_and_2_8() -> None:
@@ -1907,7 +1996,10 @@ def test_render_vm_matrix_presentation_passing_full_record_returns_green_outputs
         "isError": False,
     }
     assert "**Latest full VM matrix:** PASS" in readme_block
-    assert "| Ubuntu 24.04.5 LTS | 3.12.3 | 2.7.13 | 0.8.1 |" in readme_block
+    assert (
+        "| Ubuntu 24.04.5 LTS | 1.1.12.dev90 | 3.12.3 | 2.7.13 | 0.8.1 |"
+        in readme_block
+    )
     assert "1548 passed, 2 skipped, 0 failed | PASS | PASS |" in readme_block
     assert "Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk." in readme_block
     assert readme_block.count(RUNNER._README_RESULTS_BEGIN) == 1
@@ -1949,7 +2041,7 @@ def test_render_vm_matrix_presentation_three_distributions_all_gate_status(
 
     assert passing_badge["message"] == "Ubuntu 24.04 + Ubuntu 26.04 + Fedora 44 passing"
     assert "| Fedora Linux 44 (Cloud Edition) |" in passing_readme
-    assert "| Distribution | Python | DAR | PAR2 |" in passing_readme
+    assert "| Distribution | dar-backup | Python | DAR | PAR2 |" in passing_readme
 
     record["passed"] = False
     record["exit_code"] = 1
@@ -2004,6 +2096,7 @@ def test_render_vm_matrix_presentation_incomplete_record_returns_orange_status(
     record["exit_code"] = 2
     image = record["images"][0]
     image["status"] = RUNNER.INFRASTRUCTURE_FAILED
+    image["guest"]["dar_backup"] = "unavailable"
     image["guest"]["dar"] = "unavailable"
     image["guest"]["par2"] = "unavailable"
     image["checks"] = None
@@ -2014,7 +2107,11 @@ def test_render_vm_matrix_presentation_incomplete_record_returns_orange_status(
     assert badge["message"] == "matrix infrastructure failure"
     assert badge["color"] == "orange"
     assert "**Latest full VM matrix:** INFRASTRUCTURE FAILURE" in readme_block
-    assert "| Ubuntu 24.04.5 LTS | 3.12.3 | not available | not available | not run | not run | INFRASTRUCTURE FAILED |" in readme_block
+    assert (
+        "| Ubuntu 24.04.5 LTS | not available | 3.12.3 | not available | "
+        "not available | not run | not run | INFRASTRUCTURE FAILED |"
+        in readme_block
+    )
 
 
 def test_publish_vm_matrix_presentation_valid_markers_updates_only_generated_block(
@@ -2123,6 +2220,7 @@ def test_read_latest_full_history_record_schema_v2_remains_readable(
         image.pop("provisioner", None)
         guest = image.get("guest")
         if isinstance(guest, dict):
+            guest.pop("dar_backup", None)
             guest.pop("os_id", None)
             guest.pop("os_version_id", None)
             guest.pop("package_manager", None)
@@ -2154,6 +2252,7 @@ def test_read_latest_full_history_record_schema_v3_remains_readable(
         image.pop("expected_apparmor_mode", None)
         guest = image.get("guest")
         if isinstance(guest, dict):
+            guest.pop("dar_backup", None)
             guest.pop("mandatory_access_control", None)
     history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
 
@@ -2162,6 +2261,30 @@ def test_read_latest_full_history_record_schema_v3_remains_readable(
 
     assert latest["run_id"] == "schema-v3-run"
     assert badge["message"] == "Ubuntu 24.04 passing"
+
+
+def test_read_latest_full_history_record_schema_v4_shows_unrecorded_version(
+    tmp_path: Path,
+) -> None:
+    """Schema-v4 presentation must identify absent version evidence explicitly.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    history_path = tmp_path / "vm-matrix-results.jsonl"
+    historical = _history_record(tmp_path / "historical", run_id="schema-v4-run")
+    historical["schema_version"] = 4
+    for image in historical["images"]:
+        guest = image.get("guest")
+        if isinstance(guest, dict):
+            guest.pop("dar_backup", None)
+    history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
+
+    latest = RUNNER.read_latest_full_history_record(history_path)
+    readme = RUNNER.render_vm_matrix_readme_block(latest)
+
+    assert latest["run_id"] == "schema-v4-run"
+    assert "| Ubuntu 24.04.5 LTS | not recorded | 3.12.3 |" in readme
 
 
 def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(

@@ -75,18 +75,20 @@ These updates intentionally make the checkout dirty after testing. Review and
 commit the history, README, and badge together to publish the compatibility
 evidence on GitHub.
 
-Each schema-v4 record contains all VM outcomes, source commits, tool versions,
+Each schema-v5 record contains all VM outcomes, source commits, the installed
+dar-backup version, tool versions,
 the Multipass image alias and release, the full SHA-256 of the exact source
 image used to create each VM, package manager and manifest format, a complete
 installed package manifest, and its canonical SHA-256. Debian manifests retain
 the schema-v2 package-and-architecture mapping. Fedora manifests contain
 deterministically ordered RPM name, epoch, version, release, and architecture
-records. Schema-v2 and schema-v3 historical records remain readable.
+records. Schema-v2, schema-v3, and schema-v4 historical records remain readable;
+older records without application-version evidence display `not recorded`.
 
 Fedora's standard `/run/lock` remains root-owned and mode `0755`; the VM runner
 does not alter it. Unprivileged backup processes use dar-backup's deterministic
 private lock directory below their registered home, while SELinux remains
-enabled and no test is skipped because of the distribution. Schema-v4 evidence
+enabled and no test is skipped because of the distribution. Schema-v5 evidence
 records the actual SELinux availability, runtime mode, and loaded policy, plus
 AppArmor availability, mode, current process label, status-tool availability,
 and profile counts. Fedora requires enforcing SELinux and records the complete

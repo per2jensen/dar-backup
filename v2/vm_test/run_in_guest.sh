@@ -67,7 +67,7 @@ ENVIRONMENT_ADJUSTMENTS_JSON="[]"
 # shellcheck disable=SC2329
 write_result() {
     local finished_at os_release os_id os_version_id kernel_version python_version pytest_version
-    local dar_version dar_manager_version par2_version
+    local dar_backup_version dar_version dar_manager_version par2_version
     local selinux_availability selinux_mode selinux_policy
     local apparmor_availability apparmor_mode apparmor_status_tool apparmor_current_label
     local apparmor_profiles_loaded apparmor_profiles_enforcing apparmor_profiles_complain
@@ -80,6 +80,11 @@ write_result() {
     kernel_version="$(uname -r 2>/dev/null || printf 'unknown')"
     python_version="$(python3 --version 2>&1 || printf 'unknown')"
     pytest_version="$(pytest --version 2>&1 | head -n 1 || printf 'unavailable')"
+    dar_backup_version="unavailable"
+    if command -v dar-backup >/dev/null 2>&1; then
+        dar_backup_version="$(dar-backup --version 2>&1 | sed -n '1p' || printf 'unavailable')"
+        [[ -n "${dar_backup_version}" ]] || dar_backup_version="unavailable"
+    fi
     # DAR prints a non-TTY warning before its version, so select the version
     # line explicitly instead of recording the first output line.
     dar_version="$(dar -V 2>&1 | sed -n '/^[[:space:]]*dar version /{s/^[[:space:]]*//;p;q;}')"
@@ -192,6 +197,7 @@ write_result() {
         "${kernel_version}" \
         "${python_version}" \
         "${pytest_version}" \
+        "${dar_backup_version}" \
         "${dar_version}" \
         "${dar_manager_version}" \
         "${par2_version}" \
@@ -211,6 +217,7 @@ write_result() {
         "${PACKAGE_MANIFEST_PATH}" <<'PY'
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -230,6 +237,7 @@ from pathlib import Path
     kernel_version,
     python_version,
     pytest_version,
+    dar_backup_version,
     dar_version,
     dar_manager_version,
     par2_version,
@@ -257,6 +265,17 @@ if not isinstance(environment_adjustments, list) or any(
     not isinstance(value, str) or not value for value in environment_adjustments
 ):
     raise SystemExit("ERROR: environment adjustments must be a list of non-empty strings")
+
+valid_dar_backup_version = (
+    re.fullmatch(r"dar-backup [0-9][A-Za-z0-9.+-]{0,79}", dar_backup_version)
+    is not None
+)
+if status in {"PASS", "TEST_FAILED"} and not valid_dar_backup_version:
+    raise SystemExit(f"ERROR: invalid dar-backup version: {dar_backup_version!r}")
+if status not in {"PASS", "TEST_FAILED"} and (
+    dar_backup_version != "unavailable" and not valid_dar_backup_version
+):
+    raise SystemExit(f"ERROR: invalid dar-backup version: {dar_backup_version!r}")
 
 if selinux_availability not in {"available", "unavailable"}:
     raise SystemExit(f"ERROR: invalid SELinux availability: {selinux_availability!r}")
@@ -417,6 +436,7 @@ payload = {
     "kernel": kernel_version,
     "python": python_version,
     "pytest": pytest_version,
+    "dar_backup": dar_backup_version,
     "dar": dar_version,
     "dar_manager": dar_manager_version,
     "par2": par2_version,

@@ -27,8 +27,8 @@ from typing import Any, BinaryIO, Sequence, cast
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
-HISTORY_SCHEMA_VERSION = 4
-READABLE_HISTORY_SCHEMA_VERSIONS = {2, 3, HISTORY_SCHEMA_VERSION}
+HISTORY_SCHEMA_VERSION = 5
+READABLE_HISTORY_SCHEMA_VERSIONS = {2, 3, 4, HISTORY_SCHEMA_VERSION}
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -39,6 +39,7 @@ _DEBIAN_PACKAGE_KEY = re.compile(r"[a-z0-9][a-z0-9+.-]*:[a-z0-9][a-z0-9-]*")
 _RPM_PACKAGE_COMPONENT = re.compile(r"[^\r\n\t]+")
 _MYPY_ERROR_CODE = re.compile(r"[a-z][a-z0-9-]*")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
+_DAR_BACKUP_VERSION = re.compile(r"dar-backup [0-9][A-Za-z0-9.+-]{0,79}")
 _DAR_BRANCH = re.compile(r"\bdar version (2\.[0-9]+)(?:\.[0-9]+)?\b")
 # This parses pytest output; it does not create or trust a predictable temporary path.
 _PYTEST_TEMP_ROOT = re.compile(r"/tmp/pytest-of-[^/\s'\"]+/pytest-[0-9]+")  # noqa: S108
@@ -928,6 +929,16 @@ def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
                 raise ValueError(f"Passing presentation image {label!r} has no passing pytest result")
             if _mypy_presentation(checks, label) != "PASS":
                 raise ValueError(f"Passing presentation image {label!r} has no passing mypy result")
+            if record["schema_version"] == HISTORY_SCHEMA_VERSION:
+                dar_backup_version = guest.get("dar_backup")
+                if (
+                    not isinstance(dar_backup_version, str)
+                    or _DAR_BACKUP_VERSION.fullmatch(dar_backup_version) is None
+                ):
+                    raise ValueError(
+                        f"Passing presentation image {label!r} has no valid "
+                        "dar-backup version"
+                    )
     return images
 
 
@@ -1073,13 +1084,31 @@ def _image_presentation_row(image: dict[str, Any]) -> str:
     guest = image.get("guest")
     checks = image.get("checks")
     if guest is None:
-        values = [label, "not available", "not available", "not available"]
+        values = [
+            label,
+            "not available",
+            "not available",
+            "not available",
+            "not available",
+        ]
     else:
         if not isinstance(guest, dict):
             raise TypeError(f"Guest evidence for {label} must be an object")
+        raw_dar_backup_version = guest.get("dar_backup")
+        if raw_dar_backup_version is None:
+            dar_backup_version = "not recorded"
+        elif status != PASS and raw_dar_backup_version == "unavailable":
+            dar_backup_version = "not available"
+        else:
+            dar_backup_version = _display_version(
+                raw_dar_backup_version,
+                "dar-backup ",
+                f"dar-backup version for {label}",
+            )
         if status == PASS:
             values = [
                 _require_string(guest.get("os_release"), f"OS release for {label}"),
+                dar_backup_version,
                 _display_version(guest.get("python"), "Python ", f"Python version for {label}"),
                 _display_version(guest.get("dar"), "dar version ", f"DAR version for {label}"),
                 _display_version(guest.get("par2"), "par2cmdline version ", f"PAR2 version for {label}"),
@@ -1088,6 +1117,7 @@ def _image_presentation_row(image: dict[str, Any]) -> str:
             os_release = guest.get("os_release")
             values = [
                 os_release.strip() if isinstance(os_release, str) and os_release.strip() else "not available",
+                dar_backup_version,
                 _optional_display_version(guest.get("python"), "Python "),
                 _optional_display_version(guest.get("dar"), "dar version "),
                 _optional_display_version(guest.get("par2"), "par2cmdline version "),
@@ -1106,7 +1136,7 @@ def _image_presentation_name(image: dict[str, Any]) -> str:
     """Return a distribution-neutral display name for one matrix image.
 
     Args:
-        image: Public image evidence from schema v2 or v3.
+        image: Public image evidence from a readable history schema.
 
     Returns:
         Human-readable distribution and release.
@@ -1199,7 +1229,7 @@ def render_vm_matrix_readme_block(record: dict[str, Any]) -> str:
     """Render the generated README section for one full matrix record.
 
     Args:
-        record: Schema-v2 full VM matrix history record.
+        record: Readable full VM matrix history record.
 
     Returns:
         Marker-delimited Markdown section ending in one newline.
@@ -1227,8 +1257,8 @@ def render_vm_matrix_readme_block(record: dict[str, Any]) -> str:
         "Python dependencies before running the full pytest suite and mypy.\n\n"
         f"**Latest full VM matrix:** {outcome} at `{finished_at}` for\n"
         f"[commit `{commit[:12]}`]({commit_url}).\n\n"
-        "| Distribution | Python | DAR | PAR2 | pytest | mypy | Result |\n"
-        "|---|---:|---:|---:|---|---|---|\n"
+        "| Distribution | dar-backup | Python | DAR | PAR2 | pytest | mypy | Result |\n"
+        "|---|---:|---:|---:|---:|---|---|---|\n"
         f"{rows}\n\n"
         f"{_matrix_resource_text(images)}\n\n"
         "[VM test methodology](v2/vm_test/README.md) · "
@@ -2339,6 +2369,23 @@ def _image_history_evidence(
                     f"Guest evidence field {field!r} for {spec.label} does not match "
                     "the controller result"
                 )
+        dar_backup_version = guest.get("dar_backup")
+        if dar_backup_version is not None and (
+            not isinstance(dar_backup_version, str)
+            or (
+                _DAR_BACKUP_VERSION.fullmatch(dar_backup_version) is None
+                and not (
+                    result.guest_status == "SETUP_FAILED"
+                    and dar_backup_version == "unavailable"
+                )
+            )
+        ):
+            raise ValueError(f"Invalid dar-backup version for {spec.label}")
+        if (
+            result.guest_status in {PASS, TEST_FAILED}
+            and dar_backup_version is None
+        ):
+            raise ValueError(f"Missing dar-backup version for {spec.label}")
         (
             package_manifest,
             package_manifest_sha256,
@@ -2358,6 +2405,7 @@ def _image_history_evidence(
                 "os_id",
                 "os_version_id",
                 "kernel",
+                "dar_backup",
                 "python",
                 "pytest",
                 "dar",
@@ -2474,7 +2522,7 @@ def build_history_record(
         exit_code: Final controller exit code before evidence persistence.
 
     Returns:
-        JSON-serializable schema-v4 history record.
+        JSON-serializable schema-v5 history record.
 
     Raises:
         ValueError: If required state is empty or inconsistent.
