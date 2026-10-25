@@ -33,6 +33,15 @@ open-source tools:
 management, and an optional preserved restore environment. The result is a backup workflow
 designed not only to survive hardware failure, but also **time**.
 
+## Table of Contents (short)
+
+- [Quick start](#quick-start-tldr) — try it in minutes
+- [Features](#features) — what dar-backup can do
+- [Why independent archives matter](#why-independent-archives-matter) — the core design philosophy
+- [Documentation map](#documentation-map) — where to start learning
+- [Full documentation index](#full-documentation-index) — complete reference
+- [License](#license) — GPLv3
+
 ## Start here
 
 If you are new to the project, the easiest way to get oriented is:
@@ -502,8 +511,12 @@ gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
 
 ## License
 
-  These scripts are licensed under the GPLv3 license.
-  Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](LICENSE) file in this repository.
+Licensed under GNU GENERAL PUBLIC LICENSE v3, see the supplied file "LICENSE" for details.
+
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See section 15 and section 16 in the supplied "LICENSE" file.
+
+Read more here: [GNU  GPL3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), or have a look at the ["LICENSE"](LICENSE) file in this repository.
 
 ## Requirements
 
