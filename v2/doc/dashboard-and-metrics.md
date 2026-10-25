@@ -46,6 +46,20 @@ three runs in a table with the following columns:
 Rows with failed inodes are highlighted with a left amber border so they stand
 out at a glance without needing to read every cell.
 
+### Filtering the dashboard
+
+The filter bar can limit the dashboard by backup definition, backup type
+(`FULL`, `DIFF`, or `INCR`), local start/end time, and whether PREREQ or POSTREQ
+failures are included. All selected filters apply consistently to the summary
+cards, recent-run tables, and trend charts.
+
+The **Runs** value controls how many of the most recent matching runs are shown
+per backup definition. For example, selecting `FULL` with **Runs** set to `3`
+shows the three most recent FULL backups for each definition; intervening DIFF
+and INCR runs do not consume those three positions. Select **All** to remove the
+recent-run limit. Trend charts always use the full history matching the other
+filters.
+
 Below the recent-run tables, one trend chart is rendered per backup definition,
 covering the full run history in the database.  See
 [Reading the trend charts](#reading-the-trend-charts) below.

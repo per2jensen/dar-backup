@@ -277,6 +277,53 @@ class TestCleanedArchiveFiltering:
 
 
 # ---------------------------------------------------------------------------
+# Backup-type filtering
+# ---------------------------------------------------------------------------
+
+class TestBackupTypeFiltering:
+    """Backup type must filter every dashboard data set consistently."""
+
+    def test_backup_type_dropdown_exists(self, dom: _AttrCollector) -> None:
+        """The filter bar must expose a select control for backup type."""
+        attrs = dom.by_id.get("filter-type")
+        assert attrs is not None, "Element id='filter-type' not found"
+
+    def test_backup_type_dropdown_lists_supported_types(self) -> None:
+        """The dropdown must offer all valid backup types and an all-types choice."""
+        for value in ('', "FULL", "DIFF", "INCR"):
+            assert f'<option value="{value}">' in _HTML
+
+    def test_backup_type_helper_reads_dropdown(self, dom: _AttrCollector) -> None:
+        """JavaScript must read and normalize the selected backup type."""
+        assert "function filterBackupType()" in dom.inline_js
+        assert "getElementById('filter-type').value.trim()" in dom.inline_js
+
+    def test_recent_query_applies_backup_type_clause(self, dom: _AttrCollector) -> None:
+        """The recent-run table and summary query must include the type clause."""
+        js = dom.inline_js
+        query_start = js.index("const recentSql")
+        query_end = js.index("const trendWhere", query_start)
+        assert "${typeClause}" in js[query_start:query_end]
+
+    def test_trend_query_applies_backup_type_clause(self, dom: _AttrCollector) -> None:
+        """Trend history must use the same selected backup type."""
+        assert "backupType   ? `backup_type =" in dom.inline_js
+
+    def test_run_limit_counts_only_selected_backup_type(self, dom: _AttrCollector) -> None:
+        """Last-N filtering must not count runs of other backup types."""
+        js = dom.inline_js
+        limit_start = js.index("SELECT COUNT(*) FROM backup_runs b2")
+        limit_end = js.index(") < ${limit}", limit_start)
+        assert "${limitTypeClause}" in js[limit_start:limit_end]
+
+    def test_all_types_choice_produces_empty_sql_clauses(self, dom: _AttrCollector) -> None:
+        """An empty selection must retain the existing all-types behavior."""
+        js = dom.inline_js
+        assert "const typeClause = backupType ?" in js
+        assert "const limitTypeClause = backupType" in js
+
+
+# ---------------------------------------------------------------------------
 # JavaScript: two-dataset chart design
 # ---------------------------------------------------------------------------
 

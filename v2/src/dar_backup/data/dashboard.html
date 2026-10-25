@@ -539,6 +539,13 @@
     <select id="filter-def">
       <option value="">— all —</option>
     </select>
+    <label for="filter-type">Backup type</label>
+    <select id="filter-type">
+      <option value="">— all —</option>
+      <option value="FULL">FULL</option>
+      <option value="DIFF">DIFF</option>
+      <option value="INCR">INCR</option>
+    </select>
   </div>
   <div class="config-row">
     <label for="filter-runs">Runs</label>
@@ -1082,6 +1089,10 @@ function filterDef() {
   return document.getElementById('filter-def').value.trim();
 }
 
+function filterBackupType() {
+  return document.getElementById('filter-type').value.trim();
+}
+
 function filterRunLimit() {
   if (document.getElementById('filter-all').checked) return null;
   const n = parseInt(document.getElementById('filter-runs').value, 10);
@@ -1148,16 +1159,22 @@ async function loadAll() {
   try {
     await populateDefDropdown();
 
-    const def       = filterDef();
-    const limit     = filterRunLimit();
-    const timeRange = filterTimeRange();
-    const phase     = filterPhaseExclusions();
+    const def        = filterDef();
+    const backupType = filterBackupType();
+    const limit      = filterRunLimit();
+    const timeRange  = filterTimeRange();
+    const phase      = filterPhaseExclusions();
 
-    const defClause   = def ? `AND b.backup_definition = '${def.replace(/'/g, "''")}'` : '';
+    const defClause  = def ? `AND b.backup_definition = '${def.replace(/'/g, "''")}'` : '';
+    const typeClause = backupType ? `AND b.backup_type = '${backupType.replace(/'/g, "''")}'` : '';
+    const limitTypeClause = backupType
+      ? `AND b2.backup_type = '${backupType.replace(/'/g, "''")}'`
+      : '';
     const limitClause = limit != null
       ? `AND (SELECT COUNT(*) FROM backup_runs b2
              WHERE b2.backup_definition = b.backup_definition
                AND b2.archive_deleted_at IS NULL
+               ${limitTypeClause}
                AND b2.run_started_at > b.run_started_at) < ${limit}`
       : '';
     const fromClause  = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
@@ -1171,6 +1188,7 @@ async function loadAll() {
         AND b.archive_deleted_at IS NULL
         ${limitClause}
         ${defClause}
+        ${typeClause}
         ${fromClause}
         ${toClause}
         ${phaseClauses}
@@ -1180,6 +1198,7 @@ async function loadAll() {
     const trendWhere = [
       `archive_deleted_at IS NULL`,
       def          ? `backup_definition = '${def.replace(/'/g, "''")}'`         : '',
+      backupType   ? `backup_type = '${backupType.replace(/'/g, "''")}'`       : '',
       timeRange.from ? `datetime(run_started_at) >= datetime('${timeRange.from}')` : '',
       timeRange.to   ? `datetime(run_started_at) <= datetime('${timeRange.to}')`   : '',
       ...phase.noAlias,
@@ -1218,10 +1237,11 @@ async function loadAll() {
 
     const limitLabel = limit != null ? `last ${limit} runs` : 'all runs';
     const defLabel   = def ? ` · ${def}` : '';
+    const typeLabel  = backupType ? ` · ${backupType}` : '';
     const fromLabel  = timeRange.from ? ` · from ${document.getElementById('filter-from').value}` : '';
     const toLabel    = timeRange.to   ? ` · to ${document.getElementById('filter-to').value}`     : '';
     document.getElementById('recent-runs-label').textContent =
-      `Recent runs (${limitLabel}${defLabel}${fromLabel}${toLabel})`;
+      `Recent runs (${limitLabel}${defLabel}${typeLabel}${fromLabel}${toLabel})`;
 
     document.getElementById('last-updated').textContent =
       'updated ' + new Date().toLocaleTimeString() + ' ' + localTzAbbr();
