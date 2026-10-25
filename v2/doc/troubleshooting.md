@@ -309,6 +309,45 @@ protected targets such as `/etc`. Follow the complete
 
 ---
 
+## Why was a data-bearing slice not restore-tested?
+
+Percentage restore-test selection happens only after the existing eligibility
+filters have been applied. Both the random percentage sample and files added by
+`RESTORETEST_COVER_SLICES` must:
+
+- have a size within the inclusive `MIN_SIZE_VERIFICATION_MB` through
+  `MAX_SIZE_VERIFICATION_MB` range; and
+- pass the configured `RESTORETEST_EXCLUDE_PREFIXES`,
+  `RESTORETEST_EXCLUDE_SUFFIXES`, and `RESTORETEST_EXCLUDE_REGEX` filters.
+
+`RESTORETEST_MAX_FILES` caps only the random percentage sample. Files added to
+cover data-bearing slices may take the final selection above that cap, but they
+do not bypass the size or exclusion filters.
+
+When `RESTORETEST_COVER_SLICES = true`, dar-backup does not silently accept an
+untested data-bearing slice. If every file capable of exercising a slice is
+ineligible, verification fails and the error log shows the slice number(s), the
+configured inclusive minimum and maximum sizes, and that exclusion filters may
+also be responsible. For example:
+
+```text
+RESTORETEST_COVER_SLICES could not cover data-bearing slice(s) 4: no eligible file remained after restore-test filtering. The configured inclusive size range is MIN_SIZE_VERIFICATION_MB=1 through MAX_SIZE_VERIFICATION_MB=20; files outside that range, and files matching configured RESTORETEST_EXCLUDE_* filters, are not selected
+```
+
+Review the named settings in the active configuration. Expanding the size range
+or narrowing an exclusion can make a file eligible, but may increase restore-test
+runtime and temporary disk usage.
+
+Without `RESTORETEST_COVER_SLICES`, percentage sampling does not inspect DAR's
+slicing catalogue and therefore makes no per-slice coverage guarantee. If no
+file is eligible at all, the log instead reports that verification was skipped
+after the size and restore-test filters.
+
+See [Restore test config](config-reference.md#restore-test-config) for all related
+settings.
+
+---
+
 ## Restore test fails with exit code 4
 
 By default, `RESTORE_OWNERSHIP = no` makes dar-backup add

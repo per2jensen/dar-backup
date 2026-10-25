@@ -83,7 +83,10 @@ eligible files whose stored data collectively covers every slice containing
 regular-file data. Archive-only metadata and catalogue slices remain covered by
 the normal `dar -t` integrity test. If a data-bearing slice can only be reached
 through files rejected by the configured size or exclusion filters, verification
-fails with the uncovered slice numbers instead of silently claiming full coverage.
+fails instead of silently claiming full coverage. The error log identifies the
+uncovered slice numbers, prints the configured inclusive
+`MIN_SIZE_VERIFICATION_MB` through `MAX_SIZE_VERIFICATION_MB` range, and notes
+that `RESTORETEST_EXCLUDE_*` filters also apply.
 
 This feature uses only the standard DAR command-line interfaces. It treats an
 unfiltered `dar -Txml` catalogue as the authoritative inventory and reconciles

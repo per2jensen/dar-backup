@@ -1056,11 +1056,18 @@ def verify(
                         missing = ", ".join(
                             str(number) for number in sorted(coverage.unavailable_slices)
                         )
-                        raise BackupError(
+                        message = (
                             "RESTORETEST_COVER_SLICES could not cover data-bearing slice(s) "
-                            f"{missing}; their files were rejected by the configured "
-                            "restore-test size or exclusion filters"
+                            f"{missing}: no eligible file remained after restore-test filtering. "
+                            "The configured inclusive size range is "
+                            f"MIN_SIZE_VERIFICATION_MB={config_settings.min_size_verification_mb} "
+                            "through "
+                            f"MAX_SIZE_VERIFICATION_MB={config_settings.max_size_verification_mb}; "
+                            "files outside that range, and files matching configured "
+                            "RESTORETEST_EXCLUDE_* filters, are not selected"
                         )
+                        logger.error(message)
+                        raise BackupError(message)
                     files.extend(coverage.additional_files)
                     slice_map = catalog_index.get_selected_slice_map(files)
                     logger.info(

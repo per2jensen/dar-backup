@@ -438,11 +438,13 @@ def _preserve_vm_verification_evidence(
 
 def test_verify_percentage_and_slice_coverage_restores_real_multislice_archive(
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Batch-restore and compare all percentage-selected files across real slices.
 
     Args:
         tmp_path: Isolated filesystem directory provided by pytest.
+        caplog: Pytest log capture fixture.
 
     Returns:
         None.
@@ -461,13 +463,14 @@ def test_verify_percentage_and_slice_coverage_restores_real_multislice_archive(
         percentage=100.0,
     )
 
-    result = _run_verify_with_real_runner(
-        args,
-        config,
-        archive_path,
-        backup_definition,
-        artifact_label="full-basic-verify",
-    )
+    with caplog.at_level(logging.ERROR):
+        result = _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+            artifact_label="full-basic-verify",
+        )
     _preserve_vm_verification_evidence(result, "full-basic-verify")
 
     assert result.passed is True
@@ -484,6 +487,10 @@ def test_verify_percentage_and_slice_coverage_restores_real_multislice_archive(
     assert all(item.target_present for item in result.file_evidence)
     assert all(item.content_matched is True for item in result.file_evidence)
     assert all(item.metadata_matched is True for item in result.file_evidence)
+    assert not any(
+        "could not cover data-bearing slice(s)" in record.getMessage()
+        for record in caplog.records
+    )
     assert (Path(config.test_restore_dir) / "first.bin").read_bytes() == (source_dir / "first.bin").read_bytes()
     assert (Path(config.test_restore_dir) / "second file.bin").read_bytes() == (source_dir / "second file.bin").read_bytes()
 
@@ -557,11 +564,13 @@ def test_verify_failed_batch_falls_back_to_successful_individual_restores(
 
 def test_verify_slice_coverage_rejects_slice_with_only_oversized_file(
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Fail rather than claim full coverage when filters exclude a data slice.
 
     Args:
         tmp_path: Isolated filesystem directory provided by pytest.
+        caplog: Pytest log capture fixture.
 
     Returns:
         None.
@@ -583,8 +592,19 @@ def test_verify_slice_coverage_rejects_slice_with_only_oversized_file(
         percentage=None,
     )
 
-    with pytest.raises(BackupError, match="could not cover data-bearing slice"):
-        _run_verify_with_real_runner(args, config, archive_path, backup_definition)
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(BackupError, match="could not cover data-bearing slice") as exc_info:
+            _run_verify_with_real_runner(args, config, archive_path, backup_definition)
+
+    message = str(exc_info.value)
+    assert "MIN_SIZE_VERIFICATION_MB=0" in message
+    assert "MAX_SIZE_VERIFICATION_MB=1" in message
+    assert "inclusive size range" in message
+    assert "RESTORETEST_EXCLUDE_*" in message
+    assert any(
+        record.levelno == logging.ERROR and record.getMessage() == message
+        for record in caplog.records
+    )
 
 
 def test_verify_missing_interior_slice_cannot_report_coverage(
