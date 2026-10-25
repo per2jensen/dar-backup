@@ -62,37 +62,55 @@ Not if you want:
 - You need **multiple backups per day** — dar-backup is designed around one backup run per day
    per definition (one FULL, one DIFF, one INCR)
 
----
-
 ## Quick start (TL;DR)
-
-```bash
-# prep
-sudo apt -y install dar par2 python3 python3-venv
-INSTALL_DIR=/tmp/dar-backup; mkdir "$INSTALL_DIR" && cd "$INSTALL_DIR"
-python3 -m venv venv    # create a virtual environment
-. venv/bin/activate     # activate the virtual environment
-# install and run dar-backup
-pip install dar-backup
-demo --install && manager --create-db
-dar-backup --full-backup
-```
-
-`dar-backup` runs FULL, DIFF, and INCR backup cycles across as many backup definitions as you
-need (e.g. `photos`, `documents`, `homevideos`). After each archive it:
-
-1. **Verifies** the archive with `dar -t`
-2. **Restore-tests** a random sample of files and compares them byte-for-byte against the source
-3. **Creates PAR2 redundancy files** so the archive can be repaired if bitrot occurs later
-4. **Notifies** your Discord channel on completion or failure
-
-Schedules are managed by systemd timers (generated for you). Catalogs of every archive are
-maintained by `dar_manager`, enabling single-file Point-in-Time Recovery without a database
-server.
-
 Version **1.1.11** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
 
----
+Try `dar-backup` in minutes using the built-in demo:
+
+```bash
+# 1. Install dependencies (Ubuntu/Debian)
+sudo apt install dar par2 python3 python3-venv
+
+# 2. Create and activate a virtual environment
+python3 -m venv ~/venv/dar-backup
+source ~/venv/dar-backup/bin/activate
+
+# 3. Install dar-backup
+pip install dar-backup
+
+# 4. Run the demo (creates sample archives, catalog db, and config)
+demo --install
+manager --create-db
+dar-backup --full-backup --demo
+```
+
+**What just happened?**
+- `demo --install` sets up a demo environment with test files
+- `manager --create-db` initializes the archive catalog database
+- `dar-backup --full-backup --demo` creates a full backup of the demo data
+
+After each backup, `dar-backup` automatically:
+1. **Verifies** archives with `dar -t`
+2. **Restore-tests** random files byte-for-byte against source
+3. **Creates PAR2 redundancy files** for bitrot repair
+4. **Notifies** Discord on success/failure
+
+Schedules are managed via systemd timers (auto-generated). Point-in-Time Recovery works through `dar_manager` catalogs — no database server needed.
+
+### Cleanup after trying the demo
+
+To remove the demo directories:
+```bash
+demo --cleanup
+```
+
+This removes `/tmp/dar-backup`, `/tmp/dar-backup-conf`, and `/tmp/dar-backup-data-dirs`.
+
+To uninstall `dar-backup` completely:
+```bash
+pip uninstall dar-backup
+rm -rf ~/venv/dar-backup
+```
 
 <!-- BEGIN GENERATED VM MATRIX RESULTS -->
 
@@ -116,8 +134,6 @@ Each VM uses 2 vCPUs, 4G RAM, and a 30G virtual disk.
 [VM test methodology](v2/vm_test/README.md) · [Detailed and historical results](v2/doc/test-report/vm-matrix-results.jsonl)
 
 <!-- END GENERATED VM MATRIX RESULTS -->
-
----
 
 ## A personal digital preservation system
 
@@ -151,8 +167,6 @@ irreplaceable.
 `dar-backup` is built around a single question: **will this archive be recoverable years from
 now, under conditions I cannot fully predict today?**
 
----
-
 ## Recovery confidence over storage efficiency
 
 Philosophy:
@@ -185,8 +199,6 @@ This priority is reflected throughout the design:
 - **Documentation as part of the system** — long-term preservation requires preserving the
   knowledge needed to understand and use the archives, not just the archive files themselves.
 
----
-
 ## Why independent archives matter
 
 Many modern backup systems maintain a single evolving repository — a shared pool of data that
@@ -205,8 +217,6 @@ format may evolve. Tooling may change or disappear.
 - Point-in-Time Recovery operates through `dar_manager` catalogs — no database server required
 
 The result is that recovery confidence does not degrade with distance — distance being time, location, or technical context.
-
----
 
 ## Preservation model
 
@@ -275,8 +285,6 @@ The author has used `dar-backup` ~6 years and has been saved by it multiple time
 > Sincere thanks to **Denis Corbin** for `dar`, and to the **Parchive team** for `par2`.
 > If you find `dar-backup` useful, consider giving those projects a star too.
 
----
-
 ## Documentation map
 
 For a first-time visitor, the best next steps are:
@@ -286,8 +294,6 @@ For a first-time visitor, the best next steps are:
 - [Configuration reference](v2/doc/config-reference.md) — the main reference for backup definitions and config options
 - [Restoring](v2/doc/restoring.md) — how to recover data when you need it
 - [Troubleshooting](v2/doc/troubleshooting.md) — common issues and fixes
-
----
 
 ## Dashboard
 
@@ -299,13 +305,9 @@ opens the dashboard in your browser:
 
 → [Dashboard & metrics documentation](v2/doc/dashboard-and-metrics.md)
 
----
-
 ## High-level architecture
 
 [![dar-backup overview](v2/doc/dar-backup-overview-small.png)](v2/doc/dar-backup-overview.png)
-
----
 
 ### Built for long-term recovery
 
@@ -315,8 +317,6 @@ Long-term recovery benefits from multiple independent layers of verification and
 1. **Deterministic Slicing:** Backups are divided into manageable chunk sizes (e.g., 10GB blocks) making transfers over networks or long-term disk sets reliable.
 2. **Isolated Parity Directories:** `par2` recovery files are maintained in a completely separate directory infrastructure from your data slices. If an underlying storage volume experiences filesystem bitrot, the parity blocks can cleanly rebuild damaged `.dar` slices automatically.
 3. **Point-in-Time Recovery (PITR):** Historical queries let you restore to the state captured by any backup in your archive history — one PITR per backup run, per calendar day.
-
----
 
 ## Full documentation index
 
@@ -338,16 +338,11 @@ Long-term recovery benefits from multiple independent layers of verification and
 | [Changelog](CHANGELOG.md) | High-level release history |
 | [Detailed Changelog](v2/Changelog.md) | Per-release details |
 
----
-
-
 ## Quick Guide
 
 Step-by-step walkthrough using the built-in `demo` application — install, backup, list, restore.
 
 → [Quick Guide](v2/doc/quick-guide.md)
-
----
 
 ## dar-backup principles
 
@@ -394,15 +389,13 @@ cleanup --dry-run --cleanup-specific-archives -d media-files media-files_INCR_20
 
 `dar-backup` adds archive catalogs to their databases (using the `manager` script). Should the operation fail, `dar-backup` logs an error and continue with testing and restore validation tests.
 
----
-
 ## How to run
 
 Manual setup for a real installation — configuration, catalog databases, first backup.
 
 → [Getting Started](v2/doc/getting-started.md)
 
----
+user
 
 ## Status
 
@@ -506,8 +499,6 @@ gpg --list-keys --with-subkey-fingerprints dar-backup@pm.me
 </details>
 
 </details>
-
----
 
 ## License
 
