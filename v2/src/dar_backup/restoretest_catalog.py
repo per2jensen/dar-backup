@@ -1193,6 +1193,10 @@ def parse_slicing_listing_evidence(line: str) -> Optional[DarSlicingRowEvidence]
         if data_state == "Saved":
             raise ValueError(f"Unrecognized saved DAR slicing row: {line!r}")
         return None
+    permission = permission_match.group("permission")
+    # DAR 2.7.21 leaves Data blank for directories, which have no file payload.
+    if not permission.startswith("-") and not data_state:
+        return None
     if data_state not in _SLICING_DATA_STATES:
         raise ValueError(
             f"Unknown DAR slicing data state {data_state!r}: {line!r}"
@@ -1216,7 +1220,7 @@ def parse_slicing_listing_evidence(line: str) -> Optional[DarSlicingRowEvidence]
         data_state=data_state,
         ea_state=ea_state,
         fsa_state=fsa_state,
-        permission=permission_match.group("permission"),
+        permission=permission,
         slice_spec=prefix.split(maxsplit=1)[0] if prefix else None,
         later_saved_markers=state_tail.count("[Saved]"),
     )

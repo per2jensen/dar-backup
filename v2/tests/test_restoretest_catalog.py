@@ -202,6 +202,19 @@ def test_slicing_parser_referenced_data_with_saved_ea_returns_none() -> None:
     assert parsed is None
 
 
+def test_slicing_parser_blank_data_directory_returns_none() -> None:
+    """Ignore DAR 2.7.21 directory rows without file payload state.
+
+    Returns:
+        None.
+    """
+    parsed = parse_slicing_listing_line(
+        "\t [     ][-]       [---][   1%][ ] drwxr-xr-x IT"
+    )
+
+    assert parsed is None
+
+
 def test_slicing_evidence_keeps_fedora_data_ea_and_fsa_states_separate() -> None:
     """Expose the positional states that explain Fedora SELinux behavior.
 
