@@ -74,6 +74,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Updated
 
+- **Per-slice restore verification regression coverage** — tests now exercise the production SQLite selector directly, force coverage additions beyond the percentage cap, use real nested FULL and DIFF archives, reject filter-created coverage gaps, prove permanent extraction failures cannot count as verified slices, and run the complete CLI pipeline through catalog registration.
 - **Internal cleanups** — removed per-call `_text_mode` state on `CommandRunner` (thread the mode through instead), replaced `expr and list.append(...)` side-effect statements with plain `if` blocks, simplified logger guards that could never be falsy, and renamed a loop variable that shadowed the imported `dataclasses.field`.
 
 ## v2-1.1.10 - 2026-07-07

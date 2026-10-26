@@ -39,6 +39,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from configparser import ConfigParser
 from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,7 +56,6 @@ from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
 from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
-
 
 # Content written to file1.txt by conftest.create_a_bit_of_testdata.
 _FILE1_ORIGINAL_CONTENT = "This is file 1."
@@ -136,6 +136,47 @@ def _set_no_files_verification(env: EnvData, n: int) -> None:
         fh.write(content)
 
 
+def _configure_full_pipeline_slice_coverage(env: EnvData) -> None:
+    """Enable per-slice verification and create nested multislice input data.
+
+    Args:
+        env: Isolated integration-test environment.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If the generated backup definition lacks its expected slice size.
+        OSError: If configuration or test data cannot be written.
+    """
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["MISC"]["NO_FILES_VERIFICATION"] = "1"
+    config["MISC"]["RESTORETEST_PERCENT"] = "1"
+    config["MISC"]["RESTORETEST_MAX_FILES"] = "1"
+    config["MISC"]["RESTORETEST_COVER_SLICES"] = "true"
+    config["MISC"]["MIN_SIZE_VERIFICATION_MB"] = "0"
+    config["MISC"]["MAX_SIZE_VERIFICATION_MB"] = "20"
+    config["PAR2"]["ENABLED"] = "false"
+    with Path(env.config_file).open("w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    definition_path = Path(env.backup_d_dir) / "example"
+    definition = definition_path.read_text(encoding="utf-8")
+    if "-s 10G" not in definition:
+        raise ValueError("Expected generated example definition to use '-s 10G'")
+    definition_path.write_text(
+        definition.replace("-s 10G", "-s 2K"),
+        encoding="utf-8",
+    )
+
+    nested_dir = Path(env.data_dir) / "nested" / "deeper"
+    nested_dir.mkdir(parents=True)
+    (Path(env.data_dir) / "large-top.bin").write_bytes(b"A" * (6 * 1024))
+    (nested_dir.parent / "large-middle.bin").write_bytes(b"B" * (6 * 1024))
+    (nested_dir / "large-bottom.bin").write_bytes(b"C" * (6 * 1024))
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -207,6 +248,57 @@ def test_full_backup_pipeline_runs_verify(setup_environment, env: EnvData) -> No
     assert "Archive integrity test passed" in result.stdout, (
         "Expected 'Archive integrity test passed' in backup stdout"
     )
+
+
+def test_full_backup_pipeline_with_slice_coverage_registers_verified_archive(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """Run config parsing through coverage verification and catalog registration.
+
+    Args:
+        setup_environment: Function-scoped repository integration fixture.
+        env: Isolated integration-test environment.
+
+    Returns:
+        None.
+    """
+    _configure_full_pipeline_slice_coverage(env)
+
+    result = run_backup_script("--full-backup", env)
+    archive_name = _find_archive_name(env.backup_dir, "FULL", "example")
+
+    selection_match = re.search(
+        r"Restore-test slice coverage: data-bearing=(\d+) covered=(\d+) "
+        r"additional-files=(\d+)",
+        result.stdout,
+    )
+    assert selection_match is not None
+    data_bearing, covered, additional_files = (
+        int(value) for value in selection_match.groups()
+    )
+    assert data_bearing > 1
+    assert covered == data_bearing
+    assert additional_files > 0
+
+    evidence_match = re.search(
+        r"Restore-test slice evidence: data-bearing=(\d+) predicted=(\d+) "
+        r"extracted=(\d+) verified=(\d+)",
+        result.stdout,
+    )
+    assert evidence_match is not None
+    evidence_counts = tuple(int(value) for value in evidence_match.groups())
+    assert evidence_counts == (data_bearing, data_bearing, data_bearing, data_bearing)
+
+    manager_result = CommandRunner(
+        logger=env.logger,
+        command_logger=env.command_logger,
+    ).run(
+        ["dar_manager", "--base", str(Path(env.backup_dir) / "example.db"), "--list"],
+        timeout=60,
+    )
+    assert manager_result.returncode == 0
+    assert archive_name in manager_result.stdout
 
 
 def test_verify_replaces_stale_restore_file(setup_environment, env: EnvData) -> None:

@@ -5,15 +5,59 @@ from pathlib import Path
 
 import pytest
 
-from dar_backup.restoretest_catalog import DarCatalogueError
-from dar_backup.restoretest_catalog import RestoreTestCatalogIndex
-from dar_backup.restoretest_catalog import parse_slicing_listing_evidence
-from dar_backup.restoretest_catalog import parse_slicing_listing_line
-
+from dar_backup.restoretest_catalog import (
+    CatalogRecord,
+    DarCatalogueError,
+    RestoreTestCatalogIndex,
+    parse_slicing_listing_evidence,
+    parse_slicing_listing_line,
+)
 
 pytestmark = pytest.mark.unit
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "dar"
+
+
+def _index_slice_coverage_records(
+    index: RestoreTestCatalogIndex,
+    records: dict[str, tuple[frozenset[int], int | None]],
+) -> None:
+    """Populate one open catalogue index for coverage-selection tests.
+
+    Args:
+        index: Open disk-backed catalogue index.
+        records: Paths mapped to payload slices and eligible byte sizes. A
+            byte size of None marks the file as ineligible.
+
+    Returns:
+        None.
+    """
+    for path, (slices, eligible_size) in records.items():
+        size_text = f"{eligible_size if eligible_size is not None else 1} o"
+        index.add_catalog_record(
+            CatalogRecord(
+                path=path,
+                entry_type="file",
+                data_state="saved",
+                metadata_state="absent",
+                size_text=size_text,
+            )
+        )
+        index.add_slicing_record(path, slices)
+
+    def eligibility(path: str, _size_text: str | None) -> int | None:
+        """Return the configured eligible size for one indexed path.
+
+        Args:
+            path: Normalized archive path.
+            _size_text: Unused DAR-formatted catalogue size.
+
+        Returns:
+            Eligible byte size, or None when the path is filtered out.
+        """
+        return records[path][1]
+
+    index.index_eligible_files(eligibility)
 
 
 def _write_catalogue(path: Path) -> None:
@@ -360,6 +404,51 @@ def test_catalog_index_unrecognized_saved_row_fails_parsing(
         index.load_xml_file(xml_path)
         with pytest.raises(DarCatalogueError, match="Unrecognized saved DAR slicing row"):
             index.load_slicing_file(slicing_path)
+
+
+def test_catalog_index_slice_coverage_selects_widest_smallest_and_first_path() -> None:
+    """Exercise production SQL selection and its deterministic tie-breaks.
+
+    Returns:
+        None.
+    """
+    records = {
+        "initial.bin": (frozenset({1}), 10),
+        "wide-large.bin": (frozenset({2, 3}), 500),
+        "wide-small.bin": (frozenset({2, 3}), 100),
+        "alpha.bin": (frozenset({4}), 50),
+        "beta.bin": (frozenset({4}), 50),
+    }
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        _index_slice_coverage_records(index, records)
+        selection = index.select_slice_coverage_files(["initial.bin"])
+
+    assert selection.additional_files == ("wide-small.bin", "alpha.bin")
+    assert selection.data_slices == frozenset({1, 2, 3, 4})
+    assert selection.covered_slices == selection.data_slices
+    assert selection.unavailable_slices == frozenset()
+
+
+def test_catalog_index_slice_coverage_reports_ineligible_slice_unavailable() -> None:
+    """Leave a slice uncovered when only a filtered file contains its data.
+
+    Returns:
+        None.
+    """
+    records = {
+        "eligible.bin": (frozenset({1}), 10),
+        "filtered.bin": (frozenset({2}), None),
+    }
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        _index_slice_coverage_records(index, records)
+        selection = index.select_slice_coverage_files([])
+
+    assert selection.additional_files == ("eligible.bin",)
+    assert selection.data_slices == frozenset({1, 2})
+    assert selection.covered_slices == frozenset({1})
+    assert selection.unavailable_slices == frozenset({2})
 
 
 def test_catalog_index_removes_temporary_database_after_context() -> None:

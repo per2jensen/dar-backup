@@ -1,7 +1,7 @@
 """Real-DAR coverage for opt-in percentage and slice-aware restore tests."""
 
-import logging
 import json
+import logging
 import os
 import re
 import shutil
@@ -15,12 +15,8 @@ import pytest
 
 import dar_backup.dar_backup as db
 from dar_backup.command_runner import CommandRunner
-from dar_backup.restoretest_catalog import RestoreTestCatalogIndex
-from dar_backup.restoretest_catalog import parse_slicing_listing_evidence
-from dar_backup.restoretest_catalog import parse_slicing_listing_line
-from dar_backup.util import BackupError
-from dar_backup.util import inspect_archive_slices
-
+from dar_backup.restoretest_catalog import RestoreTestCatalogIndex, parse_slicing_listing_evidence, parse_slicing_listing_line
+from dar_backup.util import BackupError, inspect_archive_slices
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
@@ -160,6 +156,71 @@ def _create_batch_failure_dar_wrapper(
         encoding="utf-8",
     )
     wrapper_path.chmod(0o755)
+
+
+def _create_extraction_failure_dar_wrapper(
+    wrapper_dir: Path,
+    real_dar: str,
+    invocation_log: Path,
+) -> None:
+    """Create a DAR wrapper that permanently rejects every extraction.
+
+    Args:
+        wrapper_dir: Directory in which to create an executable named ``dar``.
+        real_dar: Absolute path to the real DAR executable.
+        invocation_log: JSON-lines destination for every wrapper invocation.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If an input path is invalid.
+        OSError: If the wrapper cannot be written or made executable.
+    """
+    if not wrapper_dir.is_dir():
+        raise ValueError(f"Wrapper directory does not exist: {wrapper_dir}")
+    if not Path(real_dar).is_file():
+        raise ValueError(f"Real DAR executable does not exist: {real_dar}")
+    if invocation_log.exists():
+        raise ValueError(f"Invocation log already exists: {invocation_log}")
+
+    wrapper_path = wrapper_dir / "dar"
+    wrapper_path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"real_dar = {json.dumps(real_dar)}\n"
+        f"invocation_log = {json.dumps(str(invocation_log))}\n"
+        "arguments = sys.argv[1:]\n"
+        "with open(invocation_log, 'a', encoding='utf-8') as log_file:\n"
+        "    log_file.write(json.dumps(arguments) + '\\n')\n"
+        "if '-x' in arguments:\n"
+        "    print('deliberate permanent extraction failure', file=sys.stderr)\n"
+        "    raise SystemExit(7)\n"
+        "os.execv(real_dar, [real_dar, *arguments])\n",
+        encoding="utf-8",
+    )
+    wrapper_path.chmod(0o755)
+
+
+def _create_nested_multislice_source(tmp_path: Path) -> Path:
+    """Create nested regular files whose payloads occupy multiple DAR slices.
+
+    Args:
+        tmp_path: Isolated test directory.
+
+    Returns:
+        Source directory containing three deterministic payload files.
+    """
+    source_dir = tmp_path / "source"
+    (source_dir / "nested" / "deeper").mkdir(parents=True)
+    (source_dir / "top.bin").write_bytes(b"A" * (6 * 1024))
+    (source_dir / "nested" / "middle.bin").write_bytes(b"B" * (6 * 1024))
+    (source_dir / "nested" / "deeper" / "bottom.bin").write_bytes(
+        b"C" * (6 * 1024)
+    )
+    return source_dir
 
 
 @contextmanager
@@ -385,6 +446,28 @@ def _run_verify_with_real_runner(
         command_logger.setLevel(previous_command_logger_level)
 
 
+def _read_real_data_slices(archive_path: Path) -> frozenset[int]:
+    """Return reconciled data-bearing slices for one real DAR archive.
+
+    Args:
+        archive_path: Archive base path without a slice suffix.
+
+    Returns:
+        Physical slice numbers containing saved regular-file payload.
+    """
+    inventory = inspect_archive_slices(str(archive_path))
+    test_logger = logging.getLogger("restoretest_sampling_real")
+    command_runner = CommandRunner(logger=test_logger, command_logger=test_logger)
+    with RestoreTestCatalogIndex(test_logger) as index:
+        report = index.load_archive(
+            str(archive_path),
+            command_runner,
+            frozenset(inventory.slice_numbers),
+            timeout=30,
+        )
+    return report.data_slices
+
+
 def _preserve_vm_verification_evidence(
     result: db.VerifyResult,
     label: str,
@@ -493,6 +576,107 @@ def test_verify_percentage_and_slice_coverage_restores_real_multislice_archive(
     )
     assert (Path(config.test_restore_dir) / "first.bin").read_bytes() == (source_dir / "first.bin").read_bytes()
     assert (Path(config.test_restore_dir) / "second file.bin").read_bytes() == (source_dir / "second file.bin").read_bytes()
+
+
+def test_verify_nested_archive_adds_files_beyond_percentage_cap_for_all_slices(
+    tmp_path: Path,
+) -> None:
+    """Add nested files beyond the random cap and verify every data slice.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = _create_nested_multislice_source(tmp_path)
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path)
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=20,
+        percentage=1.0,
+    )
+    config.no_files_verification = 1
+    config.restoretest_max_files = 1
+
+    result = _run_verify_with_real_runner(
+        args,
+        config,
+        archive_path,
+        backup_definition,
+    )
+    data_slices = _read_real_data_slices(archive_path)
+
+    assert result.passed is True
+    assert result.files_verified > config.restoretest_max_files
+    assert set(result.predicted_slice_numbers) == data_slices
+    assert result.predicted_slice_numbers == result.extracted_slice_numbers
+    assert result.predicted_slice_numbers == result.verified_slice_numbers
+    assert {item.path for item in result.file_evidence} == {
+        "top.bin",
+        "nested/middle.bin",
+        "nested/deeper/bottom.bin",
+    }
+
+
+def test_verify_coverage_added_files_permanent_extraction_failure_is_reported(
+    tmp_path: Path,
+) -> None:
+    """Fail verification when selected coverage files cannot be extracted.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = _create_nested_multislice_source(tmp_path)
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path)
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=20,
+        percentage=1.0,
+    )
+    config.no_files_verification = 1
+    config.restoretest_max_files = 1
+    wrapper_dir = tmp_path / "wrapper-bin"
+    wrapper_dir.mkdir()
+    invocation_log = tmp_path / "dar-invocations.jsonl"
+    _create_extraction_failure_dar_wrapper(
+        wrapper_dir,
+        _require_dar(),
+        invocation_log,
+    )
+
+    with _temporary_path_prefix(wrapper_dir):
+        result = _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+        )
+
+    invocations = [
+        json.loads(line)
+        for line in invocation_log.read_text(encoding="utf-8").splitlines()
+    ]
+    extraction_invocations = [arguments for arguments in invocations if "-x" in arguments]
+
+    assert result.passed is False
+    assert result.files_verified > config.restoretest_max_files
+    assert result.predicted_slice_numbers
+    assert result.extracted_slice_numbers == ()
+    assert result.verified_slice_numbers == ()
+    assert extraction_invocations
+    assert all(item.extraction_attempted for item in result.file_evidence)
+    assert all(not item.extraction_succeeded for item in result.file_evidence)
+    assert all(not item.target_present for item in result.file_evidence)
 
 
 def test_verify_failed_batch_falls_back_to_successful_individual_restores(
@@ -605,6 +789,42 @@ def test_verify_slice_coverage_rejects_slice_with_only_oversized_file(
         record.levelno == logging.ERROR and record.getMessage() == message
         for record in caplog.records
     )
+
+
+def test_verify_slice_coverage_rejects_prefix_excluded_data_slices(
+    tmp_path: Path,
+) -> None:
+    """Fail when a prefix filter removes the only file for some data slices.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    excluded_dir = source_dir / "excluded"
+    excluded_dir.mkdir(parents=True)
+    (source_dir / "eligible.bin").write_bytes(b"E" * 1024)
+    (excluded_dir / "only.bin").write_bytes(b"X" * (8 * 1024))
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path)
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=20,
+        percentage=None,
+    )
+    config.restoretest_exclude_prefixes = ["excluded/"]
+
+    with pytest.raises(BackupError, match="could not cover data-bearing slice"):
+        _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+        )
 
 
 def test_verify_missing_interior_slice_cannot_report_coverage(
@@ -1083,3 +1303,60 @@ def test_catalog_index_reconciles_real_differential_and_incremental_states(
     assert "unchanged.bin" not in observed_saved_paths["differential"]
     assert "deleted.bin" not in observed_saved_paths["differential"]
     assert observed_saved_paths["incremental"] == {"incremental-only.bin"}
+
+
+def test_verify_real_differential_adds_files_and_covers_saved_data_slices(
+    tmp_path: Path,
+) -> None:
+    """Verify every DIFF payload slice while ignoring referenced file data.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    nested_dir = source_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    unchanged = source_dir / "unchanged.bin"
+    changed = nested_dir / "changed.bin"
+    unchanged.write_bytes(b"unchanged" * 128)
+    changed.write_bytes(b"full" * 768)
+    full_archive = tmp_path / "full"
+    _create_archive(source_dir, full_archive)
+
+    changed.write_bytes(b"differential" * 640)
+    (nested_dir / "new.bin").write_bytes(b"new" * 2048)
+    differential_archive = tmp_path / "differential"
+    _create_archive(
+        source_dir,
+        differential_archive,
+        reference_archive=full_archive,
+    )
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        differential_archive,
+        max_size_mb=20,
+        percentage=1.0,
+    )
+    config.no_files_verification = 1
+    config.restoretest_max_files = 1
+
+    result = _run_verify_with_real_runner(
+        args,
+        config,
+        differential_archive,
+        backup_definition,
+    )
+    data_slices = _read_real_data_slices(differential_archive)
+
+    assert result.passed is True
+    assert result.files_verified > config.restoretest_max_files
+    assert set(result.predicted_slice_numbers) == data_slices
+    assert result.predicted_slice_numbers == result.verified_slice_numbers
+    assert {item.path for item in result.file_evidence} == {
+        "nested/changed.bin",
+        "nested/new.bin",
+    }
