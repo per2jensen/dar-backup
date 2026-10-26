@@ -685,30 +685,59 @@ function typeBadge(type) {
 
 /* ── summary cards ──────────────────────────────────────────────── */
 
-function buildSummaryCards(rows) {
-  const total = rows.length;
-  const successCount = rows.filter(r => r.status === 'SUCCESS').length;
-  const warnCount    = rows.filter(r => r.status === 'WARNING').length;
-  const skippedCount = rows.filter(r => r.status === 'SKIPPED').length;
-  const failCount    = rows.filter(r => r.status === 'FAILURE').length;
+function latestMatchingRun(rows, predicate) {
+  let latest = null;
+  for (const row of rows) {
+    if (!predicate(row)) continue;
+    const candidateTime = Date.parse(row.run_started_at);
+    if (Number.isNaN(candidateTime)) continue;
+    const latestTime = latest == null ? null : Date.parse(latest.run_started_at);
+    const candidateId = Number(row.id) || 0;
+    const latestId = latest == null ? 0 : Number(latest.id) || 0;
+    if (latestTime == null || candidateTime > latestTime ||
+        (candidateTime === latestTime && candidateId > latestId)) {
+      latest = row;
+    }
+  }
+  return latest;
+}
+
+function summaryStatusClass(status) {
+  if (status === 'SUCCESS') return 'ok';
+  if (status === 'WARNING') return 'warn';
+  if (status === 'SKIPPED') return 'skip';
+  if (status === 'FAILURE') return 'fail';
+  return 'neutral';
+}
+
+function summaryRunDetail(run, emptyText) {
+  if (run == null) return emptyText;
+  return `${run.backup_definition} · ${run.backup_type} · ${fmtTs(run.run_started_at)}`;
+}
+
+function buildSummaryCards(recentRows, historyRows) {
+  const total = recentRows.length;
+  const successCount = recentRows.filter(r => r.status === 'SUCCESS').length;
+  const warnCount    = recentRows.filter(r => r.status === 'WARNING').length;
+  const skippedCount = recentRows.filter(r => r.status === 'SKIPPED').length;
+  const failCount    = recentRows.filter(r => r.status === 'FAILURE').length;
   const attemptedCount = total - skippedCount;
   const rate = attemptedCount > 0
     ? Math.round((successCount + warnCount) * 100 / attemptedCount)
     : null;
   const rateClass = rate == null ? 'neutral' : rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'fail';
   const rateText = rate == null ? 'N/A' : `${rate}%`;
-  const totalFailed = rows.reduce((acc, r) => acc + (r.inodes_failed || 0), 0);
+  const totalFailed = recentRows.reduce((acc, r) => acc + (r.inodes_failed || 0), 0);
   const failedClass = totalFailed === 0 ? 'ok' : totalFailed <= 20 ? 'warn' : 'fail';
 
-  const defs = [...new Set(rows.map(r => r.backup_definition))].length;
-
-  const last = rows[0];
-  const lastStatus = last ? last.status : '—';
-  const lastClass = lastStatus === 'SUCCESS'
-    ? 'ok'
-    : lastStatus === 'WARNING'
-      ? 'warn'
-      : lastStatus === 'SKIPPED' ? 'skip' : 'fail';
+  const defs = [...new Set(recentRows.map(r => r.backup_definition))].length;
+  const lastInvocation = latestMatchingRun(historyRows, () => true);
+  const lastSuccess = latestMatchingRun(
+    historyRows,
+    row => row.status === 'SUCCESS',
+  );
+  const lastInvocationStatus = lastInvocation ? lastInvocation.status : 'N/A';
+  const lastSuccessStatus = lastSuccess ? lastSuccess.status : 'N/A';
 
   return `
     <div class="summary-card">
@@ -732,9 +761,14 @@ function buildSummaryCards(rows) {
       <div class="sub">across all runs shown</div>
     </div>
     <div class="summary-card">
-      <div class="label">Last run status</div>
-      <div class="value ${lastClass}">${lastStatus}</div>
-      <div class="sub">${last ? fmtTs(last.run_started_at) : '—'}</div>
+      <div class="label">Last invocation</div>
+      <div class="value ${summaryStatusClass(lastInvocationStatus)}">${lastInvocationStatus}</div>
+      <div class="sub">${summaryRunDetail(lastInvocation, 'No matching runs')}</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Last successful backup</div>
+      <div class="value ${summaryStatusClass(lastSuccessStatus)}">${lastSuccessStatus}</div>
+      <div class="sub">${summaryRunDetail(lastSuccess, 'No matching successful backup')}</div>
     </div>
   `;
 }
@@ -1221,9 +1255,10 @@ async function loadAll() {
       timeRange.to   ? `datetime(run_started_at) <= datetime('${timeRange.to}')`   : '',
       ...phase.noAlias,
     ].filter(Boolean).join(' AND ');
-    // All runs for trend charts (no row limit — trends always show full history)
+    // Full filtered history for history summary cards and trend charts.
+    // The recent-run limit intentionally does not apply here.
     const trendSql = `
-      SELECT run_started_at, backup_definition, backup_type,
+      SELECT id, run_started_at, backup_definition, backup_type,
              archive_size_bytes, status, inodes_saved, inodes_failed
       FROM backup_runs
       ${trendWhere ? 'WHERE ' + trendWhere : ''}
@@ -1232,8 +1267,8 @@ async function loadAll() {
 
     const [recentRows, trendRows] = await Promise.all([query(recentSql), query(trendSql)]);
 
-    // Summary cards use all recent rows
-    document.getElementById('summary-cards').innerHTML = buildSummaryCards(recentRows);
+    // Counts use recent rows; latest-invocation/success cards use full filtered history.
+    document.getElementById('summary-cards').innerHTML = buildSummaryCards(recentRows, trendRows);
 
     // Trend panels
     _allTrendRuns = trendRows;

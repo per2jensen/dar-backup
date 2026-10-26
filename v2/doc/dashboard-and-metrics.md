@@ -25,7 +25,8 @@ At the top, summary metric cards give an instant health overview:
 - Number of distinct backup definitions
 - Total failed inodes across all runs shown — the key indicator for FUSE-mounted
   storage issues such as the pCloud Crypto Folder (see [Troubleshooting: error code 5](troubleshooting.md#backup-warning-about-error-code-5))
-- Status and timestamp of the most recent run
+- Status, definition, type, and timestamp of the latest invocation
+- Definition, type, and timestamp of the latest strictly successful backup
 
 Below the summary, each backup definition gets its own section showing the last
 three runs in a table with the following columns:
@@ -57,8 +58,9 @@ The **Runs** value controls how many of the most recent matching runs are shown
 per backup definition. For example, selecting `FULL` with **Runs** set to `3`
 shows the three most recent FULL backups for each definition; intervening DIFF
 and INCR runs do not consume those three positions. Select **All** to remove the
-recent-run limit. Trend charts always use the full history matching the other
-filters.
+recent-run limit. The latest-invocation card, latest-successful-backup card, and
+trend charts always use the full history matching the other filters. This keeps
+newer skipped invocations from hiding the most recent successful backup.
 
 Below the recent-run tables, one trend chart is rendered per backup definition,
 covering the full run history in the database.  See

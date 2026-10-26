@@ -289,6 +289,63 @@ class TestSkippedOutcome:
         assert ".detail-summary.SKIPPED" in _HTML
 
 
+class TestLatestBackupSummaryCards:
+    """History cards must not depend on grouped recent-row ordering."""
+
+    def test_latest_matching_run_compares_timestamps_and_ids(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Latest selection must compare timestamps with IDs as a tie-breaker."""
+        js = dom.inline_js
+        assert "function latestMatchingRun(rows, predicate)" in js
+        assert "candidateTime > latestTime" in js
+        assert "candidateTime === latestTime && candidateId > latestId" in js
+        assert "const last = rows[0]" not in js
+
+    def test_last_invocation_uses_all_history_statuses(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """The invocation card must accept SUCCESS, WARNING, SKIPPED, or FAILURE."""
+        js = dom.inline_js
+        assert "latestMatchingRun(historyRows, () => true)" in js
+        assert '<div class="label">Last invocation</div>' in js
+
+    def test_last_success_requires_strict_success_status(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Warnings, failures, and skips must not qualify as successful backups."""
+        js = dom.inline_js
+        assert "row => row.status === 'SUCCESS'" in js
+        assert '<div class="label">Last successful backup</div>' in js
+        assert "No matching successful backup" in js
+
+    def test_counts_use_recent_rows_but_history_cards_use_full_rows(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Runs limits affect counts while full history feeds both latest cards."""
+        js = dom.inline_js
+        assert "function buildSummaryCards(recentRows, historyRows)" in js
+        assert "const total = recentRows.length" in js
+        assert "recentRows.filter(r => r.status === 'SUCCESS')" in js
+        assert "buildSummaryCards(recentRows, trendRows)" in js
+
+    def test_full_history_query_has_no_recent_limit(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """History-card input must not contain the recent-run limit clause."""
+        js = dom.inline_js
+        query_start = js.index("const trendSql")
+        query_end = js.index("const [recentRows, trendRows]", query_start)
+        history_query = js[query_start:query_end]
+        assert "${limitClause}" not in history_query
+        assert "SELECT id, run_started_at" in history_query
+
+
 # ---------------------------------------------------------------------------
 # JavaScript: cleaned archive filtering
 # ---------------------------------------------------------------------------
