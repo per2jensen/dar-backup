@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from configparser import ConfigParser
 from time import time
 from typing import Generator
 import pytest
@@ -336,12 +337,39 @@ def test_skip_cache_directories(setup_environment, env):
     assert "cache-dir/test_file_1.txt" not in process.stdout
 
 
-def test_duplicate_full_backup_fails(setup_environment, env: EnvData):
-    first = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
+def test_duplicate_full_backup_is_skipped_with_exit_code_2(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """A duplicate backup reports SKIPPED while preserving exit code 2.
+
+    Args:
+        setup_environment: Fixture that prepares the real backup environment.
+        env: Paths and configuration for the isolated test environment.
+    """
+    lock_dir = Path(env.test_dir) / "locks"
+    lock_dir.mkdir()
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["MISC"]["LOCK_DIR"] = str(lock_dir)
+    with open(env.config_file, "w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    first = runner.run([
+        "dar-backup", "--full-backup", "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout",
+    ])
     assert first.returncode == 0
-    second = runner.run(["dar-backup", "--full-backup", "-d", "example", "--config-file", env.config_file, "--log-level", "debug", "--log-stdout"])
+    second = runner.run([
+        "dar-backup", "--full-backup", "-d", "example",
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout", "--verbose",
+    ])
     assert second.returncode == 2
     assert "already exists" in second.stderr or "already exists" in second.stdout
+    assert "Skipped: no backup performed" in second.stdout
+    assert "Errors encountered" not in second.stdout
 
 
 

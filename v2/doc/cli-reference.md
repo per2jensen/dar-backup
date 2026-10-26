@@ -198,6 +198,13 @@ Prints the installed version and license information, then exits before loading 
   - if the `dar -t` test fails, exit code 1 is emitted
   - restore tests could fail if the source file has changed after the backup
 
+With `--verbose`, the final completion line distinguishes these outcomes.
+Failures print `Errors encountered`, recoverable warnings print
+`Warnings encountered`, and an invocation in which every selected backup was
+already present prints `Skipped: no backup performed`. Mixed successful and
+skipped definitions report both counts. These messages do not change the exit
+codes above.
+
 ### Dar-backup env vars
 
 | Env var | Value | Description |

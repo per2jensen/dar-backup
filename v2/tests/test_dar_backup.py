@@ -713,6 +713,7 @@ def test_perform_backup_existing_archive_records_skipped_without_rewriting_phase
         archive.write("DAR FILE")
 
     stats = []
+    completion_statuses: list[str] = []
     with patch("dar_backup.dar_backup.logger"):
         results = perform_backup(
             args,
@@ -720,6 +721,7 @@ def test_perform_backup_existing_archive_records_skipped_without_rewriting_phase
             "FULL",
             stats,
             prereq_status="SUCCESS",
+            completion_statuses=completion_statuses,
         )
 
     assert any("already exists" in message and code == 2 for message, code in results)
@@ -729,6 +731,7 @@ def test_perform_backup_existing_archive_records_skipped_without_rewriting_phase
     assert stats[0]["type"] == "FULL"
     assert stats[0]["warning_count"] == 0
     assert stats[0]["error_count"] == 0
+    assert completion_statuses == ["SKIPPED"]
     with closing(sqlite3.connect(metrics_db)) as connection:
         connection.row_factory = sqlite3.Row
         row = connection.execute("SELECT * FROM backup_runs").fetchone()
@@ -741,6 +744,49 @@ def test_perform_backup_existing_archive_records_skipped_without_rewriting_phase
     assert row["restore_test_passed"] is None
     assert row["par2_passed"] is None
     assert "already exists" in row["error_summary"]
+
+
+def test_perform_backup_example_skip_records_completion_without_stats(
+    env: Any,
+) -> None:
+    """Example definitions must report SKIPPED without enabling stats output.
+
+    Args:
+        env: Isolated backup test environment fixture.
+    """
+    args = SimpleNamespace(
+        backup_definition="example.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "example.dcf"), "w") as definition:
+        definition.write("-R /\n")
+    date = datetime.now().astimezone().strftime('%Y-%m-%d')
+    archive_path = os.path.join(config.backup_dir, f"example_FULL_{date}.1.dar")
+    with open(archive_path, "w") as archive:
+        archive.write("DAR FILE")
+
+    stats: list[dict[str, Any]] = []
+    completion_statuses: list[str] = []
+    with patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(
+            args,
+            config,
+            "FULL",
+            stats,
+            completion_statuses=completion_statuses,
+        )
+
+    assert any("already exists" in message and code == 2 for message, code in results)
+    assert stats == []
+    assert completion_statuses == ["SKIPPED"]
 
 
 def test_perform_backup_handles_exception_during_processing(env):
@@ -1705,19 +1751,36 @@ if any(name == "rich" or name.startswith("rich.") for name in sys.modules):
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_message"),
+    ("final_exit_code", "backup_statuses", "expected_message"),
     [
-        (False, "Success: all backups completed"),
-        (True, "Errors encountered"),
+        (0, [], "Success: all backups completed"),
+        (0, ["SUCCESS", "SUCCESS"], "Success: all backups completed"),
+        (1, ["FAILURE", "SKIPPED"], "Errors encountered"),
+        (2, ["WARNING"], "Warnings encountered"),
+        (2, ["WARNING", "SKIPPED"], "Warnings encountered"),
+        (2, [], "Warnings encountered"),
+        (2, ["SKIPPED"], "Skipped: no backup performed"),
+        (2, ["SKIPPED", "SKIPPED"], "Skipped: no backup performed"),
+        (2, ["SUCCESS", "SKIPPED"], "Completed: 1 backup succeeded, 1 skipped"),
+        (
+            2,
+            ["SUCCESS", "SUCCESS", "SKIPPED"],
+            "Completed: 2 backups succeeded, 1 skipped",
+        ),
     ],
 )
 def test_print_completion_status_verbose_prints_plain_message(
-    error: bool,
+    final_exit_code: int,
+    backup_statuses: list[str],
     expected_message: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Verbose completion output prints the matching plain-text status."""
-    db._print_completion_status(error=error, verbose=True)
+    db._print_completion_status(
+        final_exit_code=final_exit_code,
+        backup_statuses=backup_statuses,
+        verbose=True,
+    )
 
     assert capsys.readouterr().out == f"{expected_message}\n"
 
@@ -1726,9 +1789,34 @@ def test_print_completion_status_not_verbose_suppresses_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Non-verbose completion output remains silent."""
-    db._print_completion_status(error=True, verbose=False)
+    db._print_completion_status(
+        final_exit_code=1,
+        backup_statuses=["FAILURE"],
+        verbose=False,
+    )
 
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    ("final_exit_code", "backup_statuses", "message"),
+    [
+        (3, [], "Unsupported final_exit_code"),
+        (0, ["UNKNOWN"], "Unsupported backup status"),
+    ],
+)
+def test_print_completion_status_invalid_outcome_raises_value_error(
+    final_exit_code: int,
+    backup_statuses: list[str],
+    message: str,
+) -> None:
+    """Unsupported completion inputs must fail fast with a clear error."""
+    with pytest.raises(ValueError, match=message):
+        db._print_completion_status(
+            final_exit_code=final_exit_code,
+            backup_statuses=backup_statuses,
+            verbose=True,
+        )
 
 
 # --- restore-test sampling ---------------------------------------------------

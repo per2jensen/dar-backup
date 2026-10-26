@@ -39,7 +39,7 @@ from sys import stderr
 from sys import version_info
 from time import time
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
+from typing import Any, Iterable, Iterator, List, NamedTuple, Optional, Tuple, cast
 
 from . import __about__ as about
 from dar_backup.config_settings import ConfigSettings
@@ -1857,7 +1857,7 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
 def _record_prereq_failure(
     args: argparse.Namespace,
     config_settings: ConfigSettings,
-    stats_accumulator: list,
+    stats_accumulator: list[dict[str, Any]],
     error: RuntimeError,
     backup_type: str,
     run_id: Optional[str] = None,
@@ -1956,9 +1956,10 @@ def perform_backup(
     args: argparse.Namespace,
     config_settings: ConfigSettings,
     backup_type: str,
-    stats_accumulator: list,
+    stats_accumulator: list[dict[str, Any]],
     run_id: Optional[str] = None,
     prereq_status: Optional[str] = None,
+    completion_statuses: Optional[list[str]] = None,
 ) -> List[Tuple[str, int]]:
     """
     Perform backup operation.
@@ -1972,6 +1973,8 @@ def perform_backup(
                 metrics row so that postreq_status can be back-filled via UPDATE.
         prereq_status: 'SUCCESS' if PREREQ ran and passed (always the case when
                        perform_backup is reached), or None if no PREREQ section.
+        completion_statuses: Optional list that receives every per-definition
+            outcome, including example definitions excluded from metrics.
 
     Returns:
       List[tuples] - each tuple consists of (<str message>, <exit code>)
@@ -2269,30 +2272,41 @@ def perform_backup(
             if has_error:
                 success = False
 
-            # Avoid spamming from example/demo backup definitions — skip both stats and metrics
-            if backup_definition.lower() == "example":
+            is_example_definition = backup_definition.lower() == "example"
+            _existing_slices = (
+                []
+                if is_example_definition or backup_file is None
+                else glob.glob(f"{backup_file}.*.dar")
+            )
+            # Example definitions intentionally bypass metrics and the existing
+            # silent-failure slice check, but still need an explicit CLI outcome.
+            slices_written = is_example_definition or bool(_existing_slices)
+
+            if not success or has_error or not slices_written:
+                status = "FAILURE"
+            elif backup_skipped:
+                status = "SKIPPED"
+            elif has_warning:
+                status = "WARNING"
+            else:
+                status = "SUCCESS"
+
+            if completion_statuses is not None:
+                completion_statuses.append(status)
+
+            # Avoid spamming from example/demo backup definitions — skip both stats and metrics.
+            if is_example_definition:
                 logger.debug("Skipping stats/metrics collection for example backup definition.")
             else:
-                _existing_slices = glob.glob(f"{backup_file}.*.dar") if backup_file is not None else []
-                slices_written = bool(_existing_slices)
-
-                if not success or has_error or not slices_written:
-                    status = "FAILURE"
-                    if not slices_written and not has_error:
-                        if backup_file is None:
-                            msg = "Archive path not constructed — exception raised before backup path was set up"
-                        else:
-                            msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
-                        logger.error(msg)
-                        results.append((msg, 1))
-                        metrics["error_summary"] = msg
-                        metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
-                elif backup_skipped:
-                    status = "SKIPPED"
-                elif has_warning:
-                    status = "WARNING"
-                else:
-                    status = "SUCCESS"
+                if status == "FAILURE" and not slices_written and not has_error:
+                    if backup_file is None:
+                        msg = "Archive path not constructed — exception raised before backup path was set up"
+                    else:
+                        msg = f"No archive slices found for '{backup_file}' - backup may have failed silently"
+                    logger.error(msg)
+                    results.append((msg, 1))
+                    metrics["error_summary"] = msg
+                    metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
 
                 # Finalise and write metrics row
                 run_finished_at = datetime.now(UTC)
@@ -2883,21 +2897,68 @@ def should_clean_restore_test_directory(args: argparse.Namespace, config_setting
     return False
 
 
-def _print_completion_status(*, error: bool, verbose: bool) -> None:
+def _print_completion_status(
+    *,
+    final_exit_code: int,
+    backup_statuses: list[str],
+    verbose: bool,
+) -> None:
     """Print the final operational status when verbose output is enabled.
 
     Args:
-        error: Whether the operation finished with an error.
+        final_exit_code: Final dar-backup process exit code.
+        backup_statuses: Per-definition backup outcomes for this invocation.
         verbose: Whether terminal status output is enabled.
 
     Returns:
         None.
+
+    Raises:
+        ValueError: If the exit code or a backup status is unsupported.
     """
+    if not isinstance(final_exit_code, int) or isinstance(final_exit_code, bool):
+        raise ValueError("final_exit_code must be an integer")  # noqa: TRY004 - project input-validation convention
+    if final_exit_code not in {0, 1, 2}:
+        raise ValueError(f"Unsupported final_exit_code: {final_exit_code}")
+    if not isinstance(backup_statuses, list):
+        raise ValueError("backup_statuses must be a list")  # noqa: TRY004 - project input-validation convention
+
+    supported_statuses = {"SUCCESS", "WARNING", "SKIPPED", "FAILURE"}
+    invalid_statuses = [
+        status
+        for status in backup_statuses
+        if not isinstance(status, str) or status not in supported_statuses
+    ]
+    if invalid_statuses:
+        raise ValueError(f"Unsupported backup status: {invalid_statuses[0]!r}")
+
     if not verbose:
         return
 
-    if error:
+    if final_exit_code == 1 or "FAILURE" in backup_statuses:
         print("Errors encountered")
+        return
+
+    if "WARNING" in backup_statuses:
+        print("Warnings encountered")
+        return
+
+    skipped_count = backup_statuses.count("SKIPPED")
+    success_count = backup_statuses.count("SUCCESS")
+    if skipped_count > 0 and skipped_count == len(backup_statuses):
+        print("Skipped: no backup performed")
+        return
+
+    if skipped_count > 0:
+        backup_word = "backup" if success_count == 1 else "backups"
+        print(
+            f"Completed: {success_count} {backup_word} succeeded, "
+            f"{skipped_count} skipped"
+        )
+        return
+
+    if final_exit_code == 2:
+        print("Warnings encountered")
         return
 
     print("Success: all backups completed")
@@ -2918,6 +2979,8 @@ def main() -> None:
     """
     global logger, runner
     results: List[Tuple[str, int]] = []  # a list of tuples (<msg>, <exit code>)
+    stats: list[dict[str, Any]] = []
+    completion_statuses: list[str] = []
 
     # Install a SIGTERM handler so that `kill <pid>` (SIGTERM) triggers the
     # same KeyboardInterrupt handling chain as Ctrl-C (SIGINT).  Without this,
@@ -3272,8 +3335,6 @@ def main() -> None:
             else "SUCCESS"
         )
 
-        stats: List[dict] = []
-
         if prereq_failed is not None:
             backup_type = (
                 "FULL" if args.full_backup
@@ -3292,11 +3353,35 @@ def main() -> None:
                     list_filter = args.list
             list_backups(config_settings.backup_dir, list_filter)
         elif args.full_backup and not args.differential_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "FULL", stats, run_id=run_id, prereq_status=prereq_status))
+            results.extend(perform_backup(
+                args,
+                config_settings,
+                "FULL",
+                stats,
+                run_id=run_id,
+                prereq_status=prereq_status,
+                completion_statuses=completion_statuses,
+            ))
         elif args.differential_backup and not args.full_backup and not args.incremental_backup:
-            results.extend(perform_backup(args, config_settings, "DIFF", stats, run_id=run_id, prereq_status=prereq_status))
+            results.extend(perform_backup(
+                args,
+                config_settings,
+                "DIFF",
+                stats,
+                run_id=run_id,
+                prereq_status=prereq_status,
+                completion_statuses=completion_statuses,
+            ))
         elif args.incremental_backup  and not args.full_backup and not args.differential_backup:
-            results.extend(perform_backup(args, config_settings, "INCR", stats, run_id=run_id, prereq_status=prereq_status))
+            results.extend(perform_backup(
+                args,
+                config_settings,
+                "INCR",
+                stats,
+                run_id=run_id,
+                prereq_status=prereq_status,
+                completion_statuses=completion_statuses,
+            ))
             logger.debug(f"results from perform_backup(): {results}")
         elif args.list_contents:
             list_contents(args.list_contents, config_settings.backup_dir, args.selection, timeout=config_settings.command_timeout_secs)
@@ -3372,17 +3457,14 @@ def main() -> None:
 
 
     # Determine exit code
-    error = False
     final_exit_code = 0
     logger.debug(f"results[]: {results}")
     if results:
-        i = 0
         for result in results:
             if isinstance(result, tuple) and len(result) == 2:
                 msg, exit_code = result
                 logger.debug(f"exit code: {exit_code}, msg: {msg}")
                 if exit_code > 0:
-                    error = True
                     args.verbose and print(msg)
                     if exit_code == 1:
                         final_exit_code = 1
@@ -3390,13 +3472,15 @@ def main() -> None:
                         final_exit_code = 2
             else:
                 logger.error(f"not correct result type: {result}, which must be a tuple (<msg>, <exit_code>)")
-                error = True
                 final_exit_code = 1
-            i=i+1
 
-    _print_completion_status(error=error, verbose=args.verbose)
-    if error:
-        exit(final_exit_code or 1)
+    _print_completion_status(
+        final_exit_code=final_exit_code,
+        backup_statuses=completion_statuses,
+        verbose=args.verbose,
+    )
+    if final_exit_code > 0:
+        exit(final_exit_code)
 
     exit(0)
 
