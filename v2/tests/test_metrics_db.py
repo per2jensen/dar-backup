@@ -260,6 +260,56 @@ def test_ensure_metrics_db_migration_preserves_existing_rows(tmp_path):
     assert row["status"]            == "SUCCESS"
 
 
+def test_ensure_metrics_db_status_migration_does_not_rewrite_warning_history(
+    tmp_path: Path,
+) -> None:
+    """Adding SKIPPED support must leave historical WARNING rows unchanged.
+
+    Args:
+        tmp_path: Temporary directory fixture for the legacy database.
+    """
+    db = str(tmp_path / "metrics.db")
+    _make_old_db(db)
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            """
+            INSERT INTO backup_runs (
+                backup_definition, backup_type, run_started_at, status,
+                error_summary
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-skip-shaped-warning",
+                "INCR",
+                "2025-01-02T00:00:00Z",
+                "WARNING",
+                "Backup file already exists. Skipping backup [1].",
+            ),
+        )
+        conn.commit()
+
+    ensure_metrics_db(db)
+
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            """
+            INSERT INTO backup_runs (
+                backup_definition, backup_type, run_started_at, status
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("new-skip", "INCR", "2026-01-02T00:00:00Z", "SKIPPED"),
+        )
+        statuses = dict(conn.execute(
+            "SELECT backup_definition, status FROM backup_runs"
+        ).fetchall())
+        indexes = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        ).fetchall()}
+    assert statuses["legacy-skip-shaped-warning"] == "WARNING"
+    assert statuses["new-skip"] == "SKIPPED"
+    assert "idx_runs_status" in indexes
+
+
 def test_ensure_metrics_db_migration_new_columns_are_null_for_old_rows(tmp_path):
     """New columns on pre-existing rows must be NULL (no default supplied)."""
     db = str(tmp_path / "metrics.db")
@@ -592,6 +642,33 @@ def test_write_metrics_row_warning_status_round_trip(tmp_path):
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT status FROM backup_runs").fetchone()
     assert row["status"] == "WARNING"
+
+
+def test_write_metrics_row_skipped_status_round_trip(tmp_path: Path) -> None:
+    """status='SKIPPED' must insert and read back correctly.
+
+    Args:
+        tmp_path: Temporary directory fixture for the metrics database.
+    """
+    db = str(tmp_path / "metrics.db")
+    skipped = {
+        **_FULL_METRICS,
+        "status": "SKIPPED",
+        "dar_exit_code": None,
+        "error_summary": "Archive already exists",
+        "catalog_updated": None,
+        "verify_passed": None,
+        "restore_test_passed": None,
+        "par2_passed": None,
+    }
+    write_metrics_row(skipped, _cfg(db))
+    with closing(sqlite3.connect(db)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT status, error_summary FROM backup_runs"
+        ).fetchone()
+    assert row["status"] == "SKIPPED"
+    assert row["error_summary"] == "Archive already exists"
 
 
 # ---------------------------------------------------------------------------

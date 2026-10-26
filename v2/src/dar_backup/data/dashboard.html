@@ -20,6 +20,7 @@
     --success:   #22c55e;
     --warning:   #f59e0b;
     --failure:   #ef4444;
+    --skipped:   #38bdf8;
     --info:      #38bdf8;
     --accent:    #6366f1;
     --font:      'IBM Plex Sans', sans-serif;
@@ -168,6 +169,7 @@
   .summary-card .value.ok   { color: var(--success); }
   .summary-card .value.warn { color: var(--warning); }
   .summary-card .value.fail { color: var(--failure); }
+  .summary-card .value.skip { color: var(--skipped); }
   .summary-card .value.neutral { color: var(--text); }
   .summary-card .value.accent { color: var(--accent); }
 
@@ -396,6 +398,7 @@
 
   .status-pill.SUCCESS { background: #14532d; color: #86efac; }
   .status-pill.WARNING { background: #451a03; color: #fcd34d; }
+  .status-pill.SKIPPED { background: #082f49; color: #7dd3fc; }
   .status-pill.FAILURE { background: #450a0a; color: #fca5a5; }
 
   .dot {
@@ -406,6 +409,7 @@
 
   .dot.SUCCESS { background: var(--success); }
   .dot.WARNING { background: var(--warning); }
+  .dot.SKIPPED { background: var(--skipped); }
   .dot.FAILURE { background: var(--failure); }
 
   /* Inode cell */
@@ -435,8 +439,8 @@
   .chk.fail  { color: var(--failure); }
   .chk.skip  { color: var(--faint); }
 
-  /* Error summary */
-  .error-summary {
+  /* Outcome details */
+  .detail-summary {
     font-size: 11px;
     color: var(--failure);
     font-family: var(--mono);
@@ -445,6 +449,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  .detail-summary.SKIPPED { color: var(--skipped); }
 
   /* Phase indicators */
   .phases {
@@ -683,9 +689,14 @@ function buildSummaryCards(rows) {
   const total = rows.length;
   const successCount = rows.filter(r => r.status === 'SUCCESS').length;
   const warnCount    = rows.filter(r => r.status === 'WARNING').length;
+  const skippedCount = rows.filter(r => r.status === 'SKIPPED').length;
   const failCount    = rows.filter(r => r.status === 'FAILURE').length;
-  const rate = total > 0 ? Math.round((total - failCount) * 100 / total) : 0;
-  const rateClass = rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'fail';
+  const attemptedCount = total - skippedCount;
+  const rate = attemptedCount > 0
+    ? Math.round((successCount + warnCount) * 100 / attemptedCount)
+    : null;
+  const rateClass = rate == null ? 'neutral' : rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'fail';
+  const rateText = rate == null ? 'N/A' : `${rate}%`;
   const totalFailed = rows.reduce((acc, r) => acc + (r.inodes_failed || 0), 0);
   const failedClass = totalFailed === 0 ? 'ok' : totalFailed <= 20 ? 'warn' : 'fail';
 
@@ -693,18 +704,22 @@ function buildSummaryCards(rows) {
 
   const last = rows[0];
   const lastStatus = last ? last.status : '—';
-  const lastClass = lastStatus === 'SUCCESS' ? 'ok' : lastStatus === 'WARNING' ? 'warn' : 'fail';
+  const lastClass = lastStatus === 'SUCCESS'
+    ? 'ok'
+    : lastStatus === 'WARNING'
+      ? 'warn'
+      : lastStatus === 'SKIPPED' ? 'skip' : 'fail';
 
   return `
     <div class="summary-card">
       <div class="label">Total runs</div>
       <div class="value neutral">${total}</div>
-      <div class="sub">${successCount} success · ${warnCount} warn · ${failCount} fail</div>
+      <div class="sub">${successCount} success · ${warnCount} warn · ${skippedCount} skipped · ${failCount} fail</div>
     </div>
     <div class="summary-card">
       <div class="label">Non-failure rate</div>
-      <div class="value ${rateClass}">${rate}%</div>
-      <div class="sub">last ${total} runs · warnings pass</div>
+      <div class="value ${rateClass}">${rateText}</div>
+      <div class="sub">${attemptedCount} backup attempts · skips excluded</div>
     </div>
     <div class="summary-card">
       <div class="label">Backup definitions</div>
@@ -754,17 +769,20 @@ function periodKey(tsStr, gran) {
 }
 
 /**
- * Worst status in an array of runs: FAILURE > WARNING > SUCCESS.
+ * Worst attempted status in an array of runs; all-skipped periods stay SKIPPED.
  */
 function worstStatus(runs) {
-  if (runs.some(r => r.status === 'FAILURE')) return 'FAILURE';
-  if (runs.some(r => r.status === 'WARNING')) return 'WARNING';
+  const attemptedRuns = runs.filter(r => r.status !== 'SKIPPED');
+  if (attemptedRuns.length === 0) return 'SKIPPED';
+  if (attemptedRuns.some(r => r.status === 'FAILURE')) return 'FAILURE';
+  if (attemptedRuns.some(r => r.status === 'WARNING')) return 'WARNING';
   return 'SUCCESS';
 }
 
 function statusColor(status) {
   if (status === 'FAILURE') return '#ef4444';
   if (status === 'WARNING') return '#f59e0b';
+  if (status === 'SKIPPED') return '#38bdf8';
   return '#22c55e';
 }
 
@@ -1021,8 +1039,8 @@ function buildTrendPanels(gran) {
 function buildRunRow(r) {
   const hasFail = r.inodes_failed > 0;
   const rowClass = hasFail ? 'has-failures' : '';
-  const errorCell = r.error_summary
-    ? `<div class="error-summary" title="${r.error_summary}">${r.error_summary}</div>`
+  const detailCell = r.error_summary
+    ? `<div class="detail-summary ${r.status}" title="${r.error_summary}">${r.error_summary}</div>`
     : `<span style="color:var(--faint);font-size:11px;font-family:var(--mono)">—</span>`;
 
   return `<tr class="${rowClass}">
@@ -1042,7 +1060,7 @@ function buildRunRow(r) {
       <div class="phase">${chk(r.par2_passed)}<span>par2</span></div>
       <div class="phase">${chk(r.postreq_status == null ? null : r.postreq_status === 'SUCCESS' ? 1 : 0)}<span>post</span></div>
     </td>
-    <td>${errorCell}</td>
+    <td>${detailCell}</td>
   </tr>`;
 }
 
@@ -1076,7 +1094,7 @@ function buildDefSection(defName, runs) {
           <th title="Files unchanged since last backup">Not saved</th>
           <th title="Excluded by filters">Excluded</th>
           <th>Phases</th>
-          <th>Error</th>
+          <th>Details</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>

@@ -2,7 +2,7 @@
 Start time: {{ start_time }}
 Backups:
 {% for b in backups %}
-  - {{ b.definition }}: {{ b.end_time }}  {{ "Completed" if b.status != "FAILURE" else "Failed" }} (warnings: {{ b.warning_count }}, errors: {{ b.error_count }})
+  - {{ b.definition }}: {{ b.end_time }}  {{ "Skipped" if b.status == "SKIPPED" else ("Failed" if b.status == "FAILURE" else "Completed") }}{{ "" if b.status == "SKIPPED" else " (warnings: " ~ b.warning_count ~ ", errors: " ~ b.error_count ~ ")" }}
 {% if not loop.last %}
 
 {% endif %}

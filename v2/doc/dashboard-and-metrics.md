@@ -21,7 +21,7 @@ a failed run is surfaced — highlighted in amber so it stands out immediately:
 At the top, summary metric cards give an instant health overview:
 
 - Total runs recorded
-- Success rate across all runs shown
+- Non-failure rate across attempted backups; skipped runs are excluded
 - Number of distinct backup definitions
 - Total failed inodes across all runs shown — the key indicator for FUSE-mounted
   storage issues such as the pCloud Crypto Folder (see [Troubleshooting: error code 5](troubleshooting.md#backup-warning-about-error-code-5))
@@ -34,14 +34,14 @@ three runs in a table with the following columns:
 | --- | --- |
 | Started | Timestamp of the run |
 | Type | `FULL`, `DIFF`, or `INCR` |
-| Status | `SUCCESS`, `WARNING`, or `FAILURE` pill — colour coded |
+| Status | `SUCCESS`, `WARNING`, `SKIPPED`, or `FAILURE` pill — colour coded |
 | Duration | Total wall-clock time; hover for the dar / verify / par2 breakdown |
 | Archive size | Total size of all `.dar` slices |
 | Inodes saved / failed | Files saved and files that could not be saved — failed inodes are highlighted in amber or red |
 | Not saved | Files unchanged since the last backup (expected for DIFF/INCR) |
 | Excluded | Files skipped by filters |
 | Phases | ✓ / ✗ for verify, restore test, and par2 |
-| Error | First error message from the run, if any |
+| Details | First error or skip reason from the run, if any |
 
 Rows with failed inodes are highlighted with a left amber border so they stand
 out at a glance without needing to read every cell.
@@ -212,8 +212,9 @@ Press `Ctrl+C` in the terminal to shut down Datasette when you are done.
 
 Every backup run appends one row to the `backup_runs` table in the SQLite
 metrics database.  The database is created automatically on first use and
-existing databases are migrated silently — columns added in later releases
-are appended with `ALTER TABLE ADD COLUMN` so no data is lost.
+existing databases are migrated silently. Columns added in later releases use
+`ALTER TABLE ADD COLUMN`; constraint changes use a transactional table rebuild
+that copies existing rows without rewriting their recorded outcomes.
 
 Errors writing metrics are logged as `WARNING` and never abort a backup.
 
@@ -257,10 +258,10 @@ later cleanup timestamps only rows that are active at that time.
 
 | Column | Type | Description |
 | --- | --- | --- |
-| `status` | TEXT | `SUCCESS`, `WARNING`, or `FAILURE`. |
+| `status` | TEXT | `SUCCESS`, `WARNING`, `SKIPPED`, or `FAILURE`. `SKIPPED` means no archive was created because the target archive already existed. |
 | `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.). |
 | `failed_phase` | TEXT | `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL on success. |
-| `error_summary` | TEXT | Short human-readable description of the first error encountered, or NULL. |
+| `error_summary` | TEXT | Short human-readable description of the first error or skip reason encountered, or NULL. |
 | `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or was skipped because DAR aborted or verification failed. |
 | `verify_passed` | INTEGER | `1` if the archive integrity test passed. |
 | `restore_test_passed` | INTEGER | `1` if the restore test passed. |

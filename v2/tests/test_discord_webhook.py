@@ -90,6 +90,24 @@ def test_render_discord_report_warning_backup_shows_completed():
     assert "Completed (warnings: 3, errors: 0)" in result
 
 
+def test_render_discord_report_skipped_backup_is_not_a_warning() -> None:
+    """A deliberately skipped backup must have its own report outcome."""
+    backups = [_make_backup("data", "SKIPPED")]
+
+    result = util.render_discord_report(
+        start_time="2026-05-14T09:00:00+00:00",
+        end_time="2026-05-14T09:45:00+00:00",
+        backups=backups,
+        prereqs={"status": "success", "failures": []},
+        postreqs={"status": "success", "failures": []},
+    )
+
+    assert "data" in result
+    assert "Skipped" in result
+    assert "Completed" not in result
+    assert "warnings:" not in result
+
+
 def test_render_discord_report_postreq_failure_shows_details():
     """
     A POSTREQ failure includes the failing script key and message.

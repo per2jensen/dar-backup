@@ -256,6 +256,39 @@ class TestJsFunctionsPresent:
         assert "function fmtBytes" in dom.inline_js
 
 
+class TestSkippedOutcome:
+    """SKIPPED must be distinct and excluded from backup-rate calculations."""
+
+    def test_skipped_status_has_blue_pill_and_dot(self) -> None:
+        """The dashboard must render SKIPPED with its own blue styling."""
+        assert ".status-pill.SKIPPED" in _HTML
+        assert ".dot.SKIPPED" in _HTML
+        assert "var(--skipped)" in _HTML
+
+    def test_summary_rate_excludes_skipped_runs(self, dom: _AttrCollector) -> None:
+        """Skipped invocations must not enter the non-failure-rate denominator."""
+        js = dom.inline_js
+        assert "const attemptedCount = total - skippedCount" in js
+        assert "(successCount + warnCount) * 100 / attemptedCount" in js
+        assert "attemptedCount > 0" in js
+        assert "rate == null ? 'N/A'" in js
+
+    def test_period_health_ignores_skips_unless_all_runs_skipped(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """A skip cannot mask an attempted result; an all-skip period stays blue."""
+        js = dom.inline_js
+        assert "runs.filter(r => r.status !== 'SKIPPED')" in js
+        assert "attemptedRuns.length === 0" in js
+        assert "return 'SKIPPED'" in js
+
+    def test_skip_reason_uses_neutral_details_column(self) -> None:
+        """Skip reasons must not be presented under a red Error heading."""
+        assert "<th>Details</th>" in _HTML
+        assert ".detail-summary.SKIPPED" in _HTML
+
+
 # ---------------------------------------------------------------------------
 # JavaScript: cleaned archive filtering
 # ---------------------------------------------------------------------------

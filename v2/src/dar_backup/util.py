@@ -1653,7 +1653,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     dar_duration_secs             REAL,
     verify_duration_secs          REAL,
     par2_duration_secs            REAL,
-    status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
+    status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'SKIPPED', 'FAILURE')),
     dar_exit_code                 INTEGER,
     failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREREQ', 'DAR', 'CATALOG', 'VERIFY', 'PAR2')),
     error_summary                 TEXT,
@@ -1827,20 +1827,27 @@ def ensure_metrics_db(db_path: str) -> None:
                     f"ALTER TABLE backup_runs ADD COLUMN {col_name} {col_type}"
                 )
 
-        # Structural migration: add CATALOG to the failed_phase CHECK constraint.
-        # SQLite cannot ALTER a CHECK constraint, so we recreate the table.
+        # Structural migration: keep the status and failed_phase CHECK constraints
+        # current. SQLite cannot ALTER a CHECK constraint, so recreate the table.
         # ADD COLUMN migrations above must run first so the old table has all
         # columns before we copy it.
         schema_row = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='backup_runs'"
         ).fetchone()
-        if schema_row and "'CATALOG'" not in schema_row[0]:
+        requires_structural_migration = bool(
+            schema_row
+            and (
+                "'CATALOG'" not in schema_row[0]
+                or "'SKIPPED'" not in schema_row[0]
+            )
+        )
+        if requires_structural_migration:
             old_cols = [row[1] for row in conn.execute("PRAGMA table_info(backup_runs)")]
             col_list = ", ".join(f'"{c}"' for c in old_cols)
             # Extract just the CREATE TABLE backup_runs (...); statement from _METRICS_DDL.
             new_table_ddl = _METRICS_DDL.split("\nCREATE INDEX")[0].strip().replace(
                 "CREATE TABLE IF NOT EXISTS backup_runs",
-                "CREATE TABLE IF NOT EXISTS backup_runs_catalog_mig",
+                "CREATE TABLE IF NOT EXISTS backup_runs_schema_mig",
                 1,
             )
             # col_list/new_table_ddl come from PRAGMA table_info() introspection and a
@@ -1848,14 +1855,17 @@ def ensure_metrics_db(db_path: str) -> None:
             # and SQL identifiers/DDL can't be parameterized anyway.
             migration_script = "\n".join((
                 "BEGIN;",
-                "DROP TABLE IF EXISTS backup_runs_catalog_mig;",
+                "DROP TABLE IF EXISTS backup_runs_schema_mig;",
                 new_table_ddl,
-                f"INSERT INTO backup_runs_catalog_mig ({col_list}) SELECT {col_list} FROM backup_runs;",  # noqa: S608
+                f"INSERT INTO backup_runs_schema_mig ({col_list}) SELECT {col_list} FROM backup_runs;",  # noqa: S608
                 "DROP TABLE backup_runs;",
-                "ALTER TABLE backup_runs_catalog_mig RENAME TO backup_runs;",
+                "ALTER TABLE backup_runs_schema_mig RENAME TO backup_runs;",
                 "COMMIT;",
             ))
             conn.executescript(migration_script)
+            # Recreate indexes dropped with the old backup_runs table. The full
+            # idempotent DDL also preserves the auxiliary restore-test schema.
+            conn.executescript(_METRICS_DDL)
 
 
 def write_metrics_row(metrics: dict, config_settings) -> None:

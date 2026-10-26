@@ -1,5 +1,8 @@
 import logging
 import os
+import sqlite3
+from contextlib import closing
+from typing import Any
 from unittest.mock import patch
 from types import SimpleNamespace
 from dar_backup.util import BackupError
@@ -676,6 +679,68 @@ def test_perform_backup_logs_warning_when_disk_usage_fails(env, monkeypatch):
     assert any("Could not determine free space" in c and config.backup_dir in c for c in warning_calls), (
         f"expected a warning naming the free-space lookup failure; got: {warning_calls}"
     )
+
+
+def test_perform_backup_existing_archive_records_skipped_without_rewriting_phases(
+    env: Any,
+    tmp_path: Path,
+) -> None:
+    """An existing target archive must produce SKIPPED metrics and keep rc=2.
+
+    Args:
+        env: Isolated backup test environment fixture.
+        tmp_path: Temporary directory fixture for the metrics database.
+    """
+    metrics_db = tmp_path / "metrics.db"
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=str(metrics_db),
+    )
+
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as definition:
+        definition.write("-R /\n")
+    date = datetime.now().astimezone().strftime('%Y-%m-%d')
+    archive_path = os.path.join(config.backup_dir, f"test_FULL_{date}.1.dar")
+    with open(archive_path, "w") as archive:
+        archive.write("DAR FILE")
+
+    stats = []
+    with patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(
+            args,
+            config,
+            "FULL",
+            stats,
+            prereq_status="SUCCESS",
+        )
+
+    assert any("already exists" in message and code == 2 for message, code in results)
+    assert len(stats) == 1
+    assert stats[0]["definition"] == "test"
+    assert stats[0]["status"] == "SKIPPED"
+    assert stats[0]["type"] == "FULL"
+    assert stats[0]["warning_count"] == 0
+    assert stats[0]["error_count"] == 0
+    with closing(sqlite3.connect(metrics_db)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM backup_runs").fetchone()
+
+    assert row["status"] == "SKIPPED"
+    assert row["prereq_status"] == "SUCCESS"
+    assert row["postreq_status"] is None
+    assert row["catalog_updated"] is None
+    assert row["verify_passed"] is None
+    assert row["restore_test_passed"] is None
+    assert row["par2_passed"] is None
+    assert "already exists" in row["error_summary"]
 
 
 def test_perform_backup_handles_exception_during_processing(env):

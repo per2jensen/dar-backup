@@ -507,7 +507,9 @@ backup that captures the database may not contain its own final metrics row,
 because that row is committed after the backup finishes; a later backup will
 contain it.
 
-The database is created automatically on first use. If an older database exists (created before this version), the new columns are added automatically; no data is lost.
+The database is created automatically on first use. If an older database exists
+(created before this version), schema updates are applied automatically while
+preserving its existing rows and recorded outcomes.
 
 Cleanup also preserves metrics history. When an archive is removed, its active
 metrics row is marked with an `archive_deleted_at` timestamp rather than being
@@ -520,7 +522,7 @@ the main database and its `-wal` file as one set while no dar-backup process is
 writing to them. A `-shm` file may also be present, but it is transient and
 SQLite can rebuild it.
 
-Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / FAILURE).
+Metrics recorded per run include timing (total, dar, verify, PAR2), archive size, free disk space, hostname, inode statistics from dar's summary output (files saved, failed, excluded, not saved, deleted, etc.), and the outcome (SUCCESS / WARNING / SKIPPED / FAILURE). `SKIPPED` records an invocation that created no archive because its target archive already existed.
 
 A metrics write failure never aborts or affects the backup — errors are logged at WARNING level and swallowed.
 

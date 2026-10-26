@@ -193,7 +193,7 @@ Prints the installed version and license information, then exits before loading 
   - includes DAR exit code 4: DAR aborted after a prompt, signal, or user response;
     any resulting archive is treated as incomplete and is not added to the PITR catalog
   - includes an invalid backup-definition name (see [naming rules](config-reference.md#backup-definition-example)) — as of v2-1.1.10 this is `rc=1` whether the invalid name was given explicitly via `-d` or found while scanning `BACKUP.D_DIR` for an all-definitions run; previously the latter case was only a warning (`rc=2`)
-- 2: Warning (restore test failed or backup already exists and is skipped).
+- 2: Warning or skipped (restore test failed, or the backup archive already exists). A skipped backup is recorded separately as `SKIPPED` in metrics.
 - 127: Typically an error during startup, file or config value missing
   - if the `dar -t` test fails, exit code 1 is emitted
   - restore tests could fail if the source file has changed after the backup

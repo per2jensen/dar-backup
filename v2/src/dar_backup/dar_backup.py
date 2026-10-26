@@ -2015,6 +2015,7 @@ def perform_backup(
     for backup_definition, backup_definition_path in backup_definitions:
         start_len = len(results)
         success = True
+        backup_skipped = False
         _current_phase = "DAR"
 
         # --- Per-definition banner ---
@@ -2084,6 +2085,7 @@ def perform_backup(
                 logger.warning(msg)
                 results.append((msg, 2))
                 metrics["error_summary"] = msg
+                backup_skipped = True
                 continue
 
             latest_base_backup = None
@@ -2285,6 +2287,8 @@ def perform_backup(
                         results.append((msg, 1))
                         metrics["error_summary"] = msg
                         metrics["failed_phase"] = metrics["failed_phase"] or "DAR"
+                elif backup_skipped:
+                    status = "SKIPPED"
                 elif has_warning:
                     status = "WARNING"
                 else:
@@ -2310,7 +2314,10 @@ def perform_backup(
                     "status": status,
                     "type": backup_type,
                     "end_time": run_finished_at.astimezone().isoformat(timespec='seconds'),
-                    "warning_count": sum(1 for _, code in new_results if code == 2),
+                    "warning_count": (
+                        0 if backup_skipped
+                        else sum(1 for _, code in new_results if code == 2)
+                    ),
                     "error_count": sum(1 for _, code in new_results if code == 1),
                 })
 

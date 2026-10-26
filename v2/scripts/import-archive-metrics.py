@@ -195,7 +195,7 @@ def _ensure_db(db_path: str) -> None:
         backup_type                   TEXT    NOT NULL CHECK (backup_type IN ('FULL', 'DIFF', 'INCR')),
         archive_name                  TEXT,
         run_started_at                TEXT    NOT NULL,
-        status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'FAILURE')),
+        status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'SKIPPED', 'FAILURE')),
         archive_size_bytes            INTEGER,
         num_slices                    INTEGER,
         inodes_saved                  INTEGER,
