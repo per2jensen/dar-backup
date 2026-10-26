@@ -11,17 +11,23 @@ framework, no build step.
 
 [![dar-backup dashboard](dar-backup-dashboard.png)](dar-backup-dashboard-full.png)
 
-The full dashboard shows multiple backup definitions side by side, including how
-a failed run is surfaced — highlighted in amber so it stands out immediately:
+The full dashboard shows multiple backup definitions side by side. A failed
+backup has a red `FAILURE` status; an amber row border separately calls attention
+to a run in which DAR reported one or more failed inodes:
 
 [![dar-backup full dashboard](dar-backup-dashboard-full.png)](dar-backup-dashboard-full.png)
 
 ### What the dashboard shows
 
-At the top, summary metric cards give an instant health overview:
+At the top, summary metric cards give an instant health overview. Except for the
+two latest-run cards described below, these cards summarize the matching rows in
+the displayed recent-run window:
 
-- Total runs recorded
-- Non-failure rate across attempted backups; skipped runs are excluded
+- Total matching runs displayed
+- Non-failure rate across attempted backups, calculated as
+  `(SUCCESS + WARNING) / (SUCCESS + WARNING + FAILURE)`; skipped runs are
+  excluded from both numerator and denominator, and an all-skipped selection
+  displays `N/A`
 - Number of distinct backup definitions
 - Total failed inodes across all runs shown — the key indicator for FUSE-mounted
   storage issues such as the pCloud Crypto Folder (see [Troubleshooting: error code 5](troubleshooting.md#backup-warning-about-error-code-5))
@@ -47,20 +53,37 @@ three runs in a table with the following columns:
 Rows with failed inodes are highlighted with a left amber border so they stand
 out at a glance without needing to read every cell.
 
+#### Run outcomes
+
+| Outcome | Meaning | Included in non-failure rate? |
+| --- | --- | --- |
+| `SUCCESS` | The backup completed and passed verification. | Yes, as a non-failure |
+| `WARNING` | The backup completed and passed verification, but DAR reported recoverable filesystem problems such as files it could not save. | Yes, as a non-failure |
+| `SKIPPED` | No backup was attempted because the target archive already existed. This is neither a successful nor a failed backup. | No |
+| `FAILURE` | The backup pipeline failed and did not complete successfully. | Yes, as a failure |
+
+`SKIPPED` retains the PREREQ and POSTREQ phase results because those phases still
+ran. Backup-only phases that were not attempted are displayed as dashes. Existing
+historical rows are not reclassified when the metrics schema gains `SKIPPED`;
+only newly recorded duplicate-archive invocations use the distinct outcome.
+
 ### Filtering the dashboard
 
 The filter bar can limit the dashboard by backup definition, backup type
 (`FULL`, `DIFF`, or `INCR`), local start/end time, and whether PREREQ or POSTREQ
-failures are included. All selected filters apply consistently to the summary
-cards, recent-run tables, and trend charts.
+failures are included. These filters apply consistently to the summary cards,
+recent-run tables, and trend charts.
 
 The **Runs** value controls how many of the most recent matching runs are shown
 per backup definition. For example, selecting `FULL` with **Runs** set to `3`
 shows the three most recent FULL backups for each definition; intervening DIFF
 and INCR runs do not consume those three positions. Select **All** to remove the
-recent-run limit. The latest-invocation card, latest-successful-backup card, and
-trend charts always use the full history matching the other filters. This keeps
-newer skipped invocations from hiding the most recent successful backup.
+recent-run limit. It therefore also defines the rows counted by **Total runs**,
+**Non-failure rate**, **Backup definitions**, and **Total failed inodes**. The
+**Last invocation** card, **Last successful backup** card, and trend charts
+always use the full history matching the other filters and ignore the **Runs**
+limit. The successful-backup card accepts only strict `SUCCESS` rows, so newer
+`SKIPPED`, `WARNING`, or `FAILURE` invocations cannot hide the last clean backup.
 
 Below the recent-run tables, one trend chart is rendered per backup definition,
 covering the full run history in the database.  See
@@ -250,33 +273,33 @@ later cleanup timestamps only rows that are active at that time.
 | Column | Type | Description |
 | --- | --- | --- |
 | `run_started_at` | TEXT | ISO-8601 timestamp when the backup started. |
-| `run_finished_at` | TEXT | ISO-8601 timestamp when the full run finished (including verify and par2). |
+| `run_finished_at` | TEXT | ISO-8601 timestamp when the invocation finished. For an attempted backup this includes verify and par2; a skipped invocation finishes without running backup-only phases. |
 | `duration_secs` | REAL | Total wall-clock seconds for the entire run. |
-| `dar_duration_secs` | REAL | Seconds spent in the dar backup phase only. |
-| `verify_duration_secs` | REAL | Seconds spent in the verify phase. |
-| `par2_duration_secs` | REAL | Seconds spent generating par2 redundancy files. |
+| `dar_duration_secs` | REAL | Seconds spent in the dar backup phase only, or NULL when DAR did not run. |
+| `verify_duration_secs` | REAL | Seconds spent in the verify phase, or NULL when verification did not run. |
+| `par2_duration_secs` | REAL | Seconds spent generating par2 redundancy files, or NULL when par2 did not run. |
 
 #### Outcome
 
 | Column | Type | Description |
 | --- | --- | --- |
 | `status` | TEXT | `SUCCESS`, `WARNING`, `SKIPPED`, or `FAILURE`. `SKIPPED` means no archive was created because the target archive already existed. |
-| `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.). |
-| `failed_phase` | TEXT | `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL on success. |
+| `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.), or NULL when DAR did not run. |
+| `failed_phase` | TEXT | `PREREQ`, `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL when no phase failed, including a skipped invocation. |
 | `error_summary` | TEXT | Short human-readable description of the first error or skip reason encountered, or NULL. |
-| `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or was skipped because DAR aborted or verification failed. |
-| `verify_passed` | INTEGER | `1` if the archive integrity test passed. |
-| `restore_test_passed` | INTEGER | `1` if the restore test passed. |
-| `par2_passed` | INTEGER | `1` if par2 file generation succeeded. |
+| `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or the attempted backup could not be published, and NULL when the catalog phase did not run. |
+| `verify_passed` | INTEGER | `1` if the archive integrity test passed, `0` for an explicitly recorded failed result, and NULL when no result was recorded or verification did not run. |
+| `restore_test_passed` | INTEGER | `1` if the restore comparison passed, `0` if it failed, and NULL when no restore comparison ran. |
+| `par2_passed` | INTEGER | `1` if par2 generation succeeded, `0` for an explicitly recorded failed result, and NULL when no result was recorded or the phase did not run. |
 
 #### Archive size
 
 | Column | Type | Description |
 | --- | --- | --- |
-| `archive_size_bytes` | INTEGER | Total size of all `.dar` slice files in bytes. |
-| `num_slices` | INTEGER | Number of dar archive slices. |
-| `par2_size_bytes` | INTEGER | Total size of all `.par2` files in bytes. |
-| `files_verified` | INTEGER | Number of files verified during the verify phase. |
+| `archive_size_bytes` | INTEGER | Total size of all `.dar` slice files in bytes, or NULL when no archive was measured, including skipped invocations. |
+| `num_slices` | INTEGER | Number of dar archive slices, or NULL when no archive was measured, including skipped invocations. |
+| `par2_size_bytes` | INTEGER | Total size of all `.par2` files in bytes, or NULL when no par2 output was measured. |
+| `files_verified` | INTEGER | Number of files verified during the restore-comparison phase, or NULL when no files were compared. |
 | `backup_dir_free_bytes` | INTEGER | Free space on the backup destination at run end. |
 
 #### dar inode statistics

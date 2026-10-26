@@ -6,7 +6,9 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 ## v2-1.1.12 - not released
 
 - Optional disk-backed percentage sampling and strictly reconciled data-slice coverage strengthen restore verification for large backups, including SELinux-EA-aware DAR slicing parsing, without changing existing configurations
-- The Datasette-backed metrics dashboard can now filter summaries, recent runs, and trends by FULL, DIFF, or INCR backup type
+- Duplicate-archive invocations are now recorded and displayed as distinct `SKIPPED` outcomes without rewriting historical rows; skips remain visible, retain PRE/POST phase results, and are excluded from backup success statistics
+- CLI completion and Discord reporting now distinguish skipped backups from warnings and failures while retaining exit code 2 for an already-existing archive
+- The Datasette-backed metrics dashboard can now filter summaries, recent runs, and trends by FULL, DIFF, or INCR backup type, and separately identifies the latest invocation and latest strictly successful backup from complete filtered history
 - Cleanup now retains metrics rows with a deletion timestamp while the dashboard shows only active archives and prints its database path
 - Reject metrics databases inside `BACKUP_DIR` to prevent mount-dependent split histories
 - Instance locks now use one deterministic directory per execution identity, with explicit shared-directory configuration available
