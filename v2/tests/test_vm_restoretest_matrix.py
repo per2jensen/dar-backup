@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 from configparser import ConfigParser
 from pathlib import Path
@@ -194,6 +195,33 @@ def _write_test_configuration(
         encoding="utf-8",
     )
     return config_path, definition_path, darrc_path
+
+
+def _remove_read_only_tree(path: Path) -> None:
+    """Remove a test-owned directory whose restored directories are read-only.
+
+    Args:
+        path: Absolute, non-symlinked test directory to remove.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If the path is relative, missing, not a directory, or a symlink.
+        OSError: If permissions cannot be changed or the tree cannot be removed.
+    """
+    if not path.is_absolute():
+        raise ValueError(f"Cleanup path must be absolute: {path}")
+    if path.is_symlink():
+        raise ValueError(f"Cleanup path must not be a symbolic link: {path}")
+    if not path.is_dir():
+        raise ValueError(f"Cleanup path is not a directory: {path}")
+
+    for current_root, _, _ in os.walk(path, topdown=True, followlinks=False):
+        current_path = Path(current_root)
+        current_mode = stat.S_IMODE(current_path.stat(follow_symlinks=False).st_mode)
+        current_path.chmod(current_mode | stat.S_IWUSR | stat.S_IXUSR)
+    shutil.rmtree(path)
 
 
 def _initialize_manager_catalog(
@@ -496,6 +524,52 @@ def test_vm_uninitialized_catalog_rejects_complete_backup_pipeline(tmp_path: Pat
     assert not (tmp_path / "configuration" / "catalogs" / "vm-large-restoretest.db").exists()
 
 
+def test_remove_read_only_tree_nested_directories_removes_tree(tmp_path: Path) -> None:
+    """Read-only restored directories must be made removable before deletion.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    restore_dir = tmp_path / "restore"
+    nested_dir = restore_dir / "restoretest-dataset"
+    nested_dir.mkdir(parents=True)
+    payload = nested_dir / "payload.bin"
+    payload.write_bytes(b"read-only")
+    payload.chmod(0o440)
+    nested_dir.chmod(0o550)
+    restore_dir.chmod(0o550)
+
+    _remove_read_only_tree(restore_dir)
+
+    assert not restore_dir.exists()
+
+
+def test_remove_read_only_tree_symlink_refuses_removal(tmp_path: Path) -> None:
+    """Cleanup must not follow a symlink to an unrelated directory.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    retained_file = target_dir / "retained.txt"
+    retained_file.write_text("retain", encoding="utf-8")
+    linked_dir = tmp_path / "restore-link"
+    linked_dir.symlink_to(target_dir, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        _remove_read_only_tree(linked_dir)
+
+    assert retained_file.is_file()
+    assert linked_dir.is_symlink()
+
+
 def _find_full_archive(backup_dir: Path) -> Path:
     """Return the unique VM test FULL archive base path.
 
@@ -575,7 +649,7 @@ def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
     assert len(inventory.slice_numbers) >= 5
 
     slice_restore_dir = tmp_path / "restore-slices"
-    shutil.rmtree(percentage_restore_dir)
+    _remove_read_only_tree(percentage_restore_dir)
     config_path, definition_path, darrc_path = _write_test_configuration(
         tmp_path,
         dataset_dir,

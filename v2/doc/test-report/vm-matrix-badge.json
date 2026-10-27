@@ -1,7 +1,7 @@
 {
-  "color": "brightgreen",
-  "isError": false,
+  "color": "red",
+  "isError": true,
   "label": "Linux VM matrix",
-  "message": "Ubuntu 24.04 + Ubuntu 26.04 + Fedora 44 passing",
+  "message": "Ubuntu 24.04 + Ubuntu 26.04 + Fedora 44 tests failing",
   "schemaVersion": 1
 }

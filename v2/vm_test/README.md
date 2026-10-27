@@ -68,6 +68,11 @@ and DAR slices remain disposable; compact dataset and restore evidence is
 retained with the normal guest results. Successful runs remove the staged host
 corpus, while failed runs retain it for diagnosis.
 
+Each matrix guest uses a 40 GB virtual disk. After successful extraction, the
+guest removes the transferred source and dataset tar archives, installs Python
+dependencies without a persistent pip cache, and records filesystem, inode,
+mount, and available quota diagnostics before pytest starts.
+
 After an initialized run, the controller appends one public, schema-versioned
 record to the tracked evidence file:
 

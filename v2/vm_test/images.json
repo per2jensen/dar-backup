@@ -11,7 +11,7 @@
       "expected_apparmor_mode": "enabled",
       "provisioner": "debian",
       "instance_name": "dar-backup-test-2404",
-      "disk": "30G",
+      "disk": "40G",
       "memory": "4G",
       "cpus": 2
     },
@@ -26,7 +26,7 @@
       "expected_apparmor_mode": "enabled",
       "provisioner": "debian",
       "instance_name": "dar-backup-test-2604",
-      "disk": "30G",
+      "disk": "40G",
       "memory": "4G",
       "cpus": 2
     },
@@ -41,7 +41,7 @@
       "expected_apparmor_mode": "unavailable",
       "provisioner": "fedora",
       "instance_name": "dar-backup-test-fedora-44",
-      "disk": "30G",
+      "disk": "40G",
       "memory": "4G",
       "cpus": 2
     }

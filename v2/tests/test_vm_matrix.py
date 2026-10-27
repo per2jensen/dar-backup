@@ -7,6 +7,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import re
 import stat
 import subprocess
 import sys
@@ -47,47 +49,56 @@ PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
 
 
-def _run_guest_cleanup_function(
+def _run_guest_shell_function(
     tmp_path: Path,
-    guest_home: Path,
-    work_dir: Path,
+    function_name: str,
+    arguments: list[Path],
+    *,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the production guest cleanup function in an isolated shell.
+    """Run one production guest shell function in an isolated harness.
 
     Args:
         tmp_path: Isolated directory for the extracted shell harness.
-        guest_home: Guest home passed to the cleanup function.
-        work_dir: Candidate work directory passed to the cleanup function.
+        function_name: Shell function to extract from run_in_guest.sh.
+        arguments: Positional path arguments passed to the function.
+        environment: Optional environment additions for the shell harness.
 
     Returns:
-        Completed shell process containing cleanup output and status.
+        Completed shell process containing function output and status.
 
     Raises:
-        ValueError: If the production cleanup function cannot be located.
+        ValueError: If the function name or production function is invalid.
         OSError: If the shell harness cannot be written or executed.
     """
+    if re.fullmatch(r"[a-z][a-z0-9_]*", function_name) is None:
+        raise ValueError(f"Invalid shell function name: {function_name}")
     source = RUN_IN_GUEST.read_text(encoding="utf-8")
-    start_marker = "cleanup_work_dir() {\n"
+    start_marker = f"{function_name}() {{\n"
     start = source.find(start_marker)
     if start < 0:
-        raise ValueError("run_in_guest.sh does not define cleanup_work_dir")
+        raise ValueError(f"run_in_guest.sh does not define {function_name}")
     end = source.find("\n}\n", start)
     if end < 0:
-        raise ValueError("cleanup_work_dir has no closing brace")
+        raise ValueError(f"{function_name} has no closing brace")
     function_source = source[start : end + len("\n}\n")]
-    harness = tmp_path / "cleanup-harness.sh"
+    harness = tmp_path / f"{function_name}-harness.sh"
     harness.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f"{function_source}"
-        'cleanup_work_dir "$1" "$2"\n',
+        f'{function_name} "$@"\n',
         encoding="utf-8",
     )
+    command_environment = os.environ.copy()
+    if environment is not None:
+        command_environment.update(environment)
     return subprocess.run(  # noqa: S603 - test-owned harness containing production function.
-        ["/usr/bin/bash", str(harness), str(guest_home), str(work_dir)],
+        ["/usr/bin/bash", str(harness), *(str(argument) for argument in arguments)],
         capture_output=True,
         check=False,
         text=True,
+        env=command_environment,
     )
 
 
@@ -196,6 +207,8 @@ def test_run_in_guest_full_mode_rejects_invalid_dataset_digest(tmp_path: Path) -
 
     assert completed.returncode == 2
     assert "restore-test dataset SHA-256 is invalid" in completed.stderr
+    assert source_archive.is_file()
+    assert dataset_archive.is_file()
 
 
 def test_guest_cleanup_read_only_dataset_removes_work_directory(tmp_path: Path) -> None:
@@ -216,7 +229,11 @@ def test_guest_cleanup_read_only_dataset_removes_work_directory(tmp_path: Path) 
     dataset_dir.chmod(0o550)
     work_dir = dataset_dir.parents[0]
 
-    completed = _run_guest_cleanup_function(tmp_path, guest_home, work_dir)
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "cleanup_work_dir",
+        [guest_home, work_dir],
+    )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert not work_dir.exists()
@@ -238,11 +255,115 @@ def test_guest_cleanup_unsafe_directory_refuses_removal(tmp_path: Path) -> None:
     unsafe_work_dir.mkdir()
     (unsafe_work_dir / "keep.txt").write_text("keep", encoding="utf-8")
 
-    completed = _run_guest_cleanup_function(tmp_path, guest_home, unsafe_work_dir)
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "cleanup_work_dir",
+        [guest_home, unsafe_work_dir],
+    )
 
     assert completed.returncode == 1
     assert "refusing to remove unexpected work directory" in completed.stderr
     assert (unsafe_work_dir / "keep.txt").is_file()
+
+
+def test_remove_transferred_archive_inside_guest_home_removes_file(tmp_path: Path) -> None:
+    """A consumed transfer inside the guest home must release its disk space.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    guest_home.mkdir()
+    archive_path = guest_home / "restoretest-dataset.tar"
+    archive_path.write_bytes(b"consumed archive")
+
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "remove_transferred_archive",
+        [guest_home, archive_path],
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not archive_path.exists()
+    assert "Removed consumed transferred archive" in completed.stdout
+
+
+def test_remove_transferred_archive_outside_guest_home_refuses_removal(
+    tmp_path: Path,
+) -> None:
+    """A transfer outside the guarded guest home must remain untouched.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    guest_home.mkdir()
+    outside_archive = tmp_path / "outside.tar"
+    outside_archive.write_bytes(b"retain archive")
+
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "remove_transferred_archive",
+        [guest_home, outside_archive],
+    )
+
+    assert completed.returncode == 1
+    assert "outside guest home" in completed.stderr
+    assert outside_archive.is_file()
+
+
+def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> None:
+    """Storage diagnostics must persist filesystem context before pytest.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    work_dir = guest_home / "dar-backup-vm-test.storage"
+    work_dir.mkdir(parents=True)
+    output_path = tmp_path / "storage-before-pytest.txt"
+
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "record_storage_diagnostics",
+        [output_path],
+        environment={"GUEST_HOME": str(guest_home), "WORK_DIR": str(work_dir)},
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    evidence = output_path.read_text(encoding="utf-8")
+    assert "Guest storage diagnostics before pytest" in evidence
+    assert "Filesystem" in evidence
+    assert str(work_dir) in evidence
+
+
+def test_record_storage_diagnostics_missing_output_refuses_run(tmp_path: Path) -> None:
+    """Storage diagnostics must fail clearly when its output path is absent.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "record_storage_diagnostics",
+        [],
+        environment={"GUEST_HOME": str(tmp_path), "WORK_DIR": str(tmp_path)},
+    )
+
+    assert completed.returncode == 1
+    assert "requires an output path" in completed.stderr
 
 
 def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
@@ -259,6 +380,7 @@ def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
     assert fedora.provisioner == "fedora"
     assert fedora.expected_selinux_mode == "enforcing"
     assert fedora.expected_apparmor_mode == "unavailable"
+    assert all(spec.disk == "40G" for spec in specs)
     assert all(spec.expected_selinux_mode == "unavailable" for spec in specs[:2])
     assert all(spec.expected_apparmor_mode == "enabled" for spec in specs[:2])
 

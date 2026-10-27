@@ -519,6 +519,71 @@ cleanup_work_dir() {
     fi
 }
 
+# Invoked after a transferred archive has been successfully consumed.
+# shellcheck disable=SC2329
+remove_transferred_archive() {
+    if [[ "$#" -ne 2 ]]; then
+        >&2 echo "ERROR: remove_transferred_archive requires GUEST_HOME and ARCHIVE"
+        return 1
+    fi
+    local guest_home="$1"
+    local archive_path="$2"
+    local canonical_guest_home canonical_archive
+
+    if [[ -z "${guest_home}" || "${guest_home}" != /* || "${guest_home}" == "/" || ! -d "${guest_home}" ]]; then
+        >&2 echo "ERROR: refusing archive removal with unsafe guest home: ${guest_home:-<empty>}"
+        return 1
+    fi
+    if [[ -z "${archive_path}" || ! -f "${archive_path}" || -L "${archive_path}" ]]; then
+        >&2 echo "ERROR: transferred archive is missing or unsafe: ${archive_path:-<empty>}"
+        return 1
+    fi
+    canonical_guest_home="$(realpath -e -- "${guest_home}")"
+    canonical_archive="$(realpath -e -- "${archive_path}")"
+    case "${canonical_archive}" in
+        "${canonical_guest_home}"/*)
+            ;;
+        *)
+            >&2 echo "ERROR: refusing to remove archive outside guest home: ${archive_path}"
+            return 1
+            ;;
+    esac
+
+    if ! rm -f -- "${canonical_archive}"; then
+        >&2 echo "ERROR: cannot remove consumed transferred archive: ${canonical_archive}"
+        return 1
+    fi
+    if [[ -e "${canonical_archive}" || -L "${canonical_archive}" ]]; then
+        >&2 echo "ERROR: consumed transferred archive still exists: ${canonical_archive}"
+        return 1
+    fi
+    echo "Removed consumed transferred archive: ${canonical_archive}"
+}
+
+# Record storage capacity and quota context immediately before pytest.
+# shellcheck disable=SC2329
+record_storage_diagnostics() {
+    if [[ "$#" -ne 1 || -z "$1" ]]; then
+        >&2 echo "ERROR: record_storage_diagnostics requires an output path"
+        return 1
+    fi
+    local output_path="$1"
+
+    {
+        echo "=== Guest storage diagnostics before pytest ==="
+        date --utc +%Y-%m-%dT%H:%M:%SZ
+        df -hP "${GUEST_HOME}" /tmp || true
+        df -iP "${GUEST_HOME}" /tmp || true
+        du -sh "${WORK_DIR}" || true
+        findmnt -no TARGET,SOURCE,FSTYPE,OPTIONS "${GUEST_HOME}" || true
+        if command -v quota >/dev/null 2>&1; then
+            quota -s || true
+        else
+            echo "quota command unavailable"
+        fi
+    } 2>&1 | tee "${output_path}"
+}
+
 # Invoked indirectly by the EXIT trap.
 # shellcheck disable=SC2329
 finalize() {
@@ -613,6 +678,7 @@ export LC_ALL=en_US.UTF-8
 
 WORK_DIR="$(mktemp -d --tmpdir="${GUEST_HOME}" dar-backup-vm-test.XXXXXXXX)"
 tar -xf "${SOURCE_ARCHIVE}" -C "${WORK_DIR}"
+remove_transferred_archive "${GUEST_HOME}" "${SOURCE_ARCHIVE}"
 CHECKOUT_ROOT="${WORK_DIR}/dar-backup"
 PROJECT_DIR="${CHECKOUT_ROOT}/v2"
 if [[ "${MODE}" == "full" ]]; then
@@ -640,6 +706,7 @@ with tarfile.open(archive_path, mode="r:") as archive:
             raise SystemExit(f"ERROR: unsupported restore-test dataset member: {member.name!r}")
     archive.extractall(destination, members=members, filter="data")
 PY
+    remove_transferred_archive "${GUEST_HOME}" "${DATASET_ARCHIVE}"
     export DAR_BACKUP_VM_DATASET_DIR="${DATASET_ROOT}/restoretest-dataset"
     export DAR_BACKUP_VM_DATASET_MANIFEST="${DATASET_ROOT}/restoretest-dataset-manifest.json"
     export DAR_BACKUP_VM_DATASET_SHA256="${DATASET_SHA256}"
@@ -654,12 +721,13 @@ bash "${PREPARE_CHECKOUT}" "${CHECKOUT_ROOT}"
 
 cd "${PROJECT_DIR}"
 python3 -m venv venv
-venv/bin/python -m pip install --upgrade pip
-venv/bin/python -m pip install -e '.[dev]'
+venv/bin/python -m pip install --no-cache-dir --upgrade pip
+venv/bin/python -m pip install --no-cache-dir -e '.[dev]'
 # shellcheck disable=SC1091
 source venv/bin/activate
 
 collect_package_manifest
+record_storage_diagnostics "${RESULT_DIR}/storage-before-pytest.txt"
 
 mkdir -p "${RESULT_DIR}/pytest"
 mkdir -p "${RESULT_DIR}/restoretest-catalog"

@@ -21,6 +21,7 @@ For a high-level summary see [CHANGELOG.md](../CHANGELOG.md) in the repo root.
 
 ### Fixed
 
+- **Large VM restore tests failed on restored permissions and guest storage quotas** (`test_vm_restoretest_matrix.py`, `run_in_guest.sh`, `images.json`) — read-only restored trees are made safely removable, consumed source/dataset transfers and pip caches no longer occupy peak test space, guests use 40 GB disks, and retained pre-pytest diagnostics record filesystem, inode, mount, and quota context.
 - **DAR 2.7.21 directory rows could abort per-slice restore verification** (`restoretest_catalog.py`) — slicing output can leave the Data field blank for directories because they carry no regular-file payload. The parser now ignores those non-regular rows while continuing to reject an empty Data state for regular files.
 - **Fedora SELinux extended attributes could be mistaken for saved file payload** (`restoretest_catalog.py`) — DAR 2.8.6 emits slicing rows whose data state is `InRef` while a later EA column is `Saved` for SELinux-labelled files. The parser searched the whole row for `[Saved]`, so an isolated one-slice catalogue incorrectly mapped the referenced archive's slice range and failed reconciliation. Slicing states are now read positionally: only the first Data column can establish payload, while EA/FSA states are retained as separate VM diagnostics. Captured Fedora output and real DAR 2.7/2.8 tests cover the boundary.
 
