@@ -57,6 +57,17 @@ source and tests to each guest from `HEAD`:
 python3 v2/vm_test/run_vm_matrix.py --mode full
 ```
 
+Full runs also generate one deterministic restore-test corpus on the dedicated
+SSD and stream the identical tar archive into every VM. The corpus contains
+1,000 files between 5 KiB and 5 MiB (approximately 2.5 GB in total). Each VM
+verifies the transfer digest, extracts the corpus onto its native filesystem,
+and independently creates a 500 MB-sliced archive through `dar-backup`. That
+VM-local archive is then checked once with 10% percentage sampling and once
+with 1% sampling plus complete data-slice coverage. The multi-gigabyte corpus
+and DAR slices remain disposable; compact dataset and restore evidence is
+retained with the normal guest results. Successful runs remove the staged host
+corpus, while failed runs retain it for diagnosis.
+
 After an initialized run, the controller appends one public, schema-versioned
 record to the tracked evidence file:
 

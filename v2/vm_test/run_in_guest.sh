@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-if [[ "$#" -ne 6 ]]; then
-    >&2 echo "ERROR: usage: $0 SOURCE_ARCHIVE MODE RESULT_DIR APPLICATION_COMMIT ORCHESTRATION_COMMIT PROVISIONER"
+if [[ "$#" -ne 8 ]]; then
+    >&2 echo "ERROR: usage: $0 SOURCE_ARCHIVE MODE RESULT_DIR APPLICATION_COMMIT ORCHESTRATION_COMMIT PROVISIONER DATASET_ARCHIVE DATASET_SHA256"
     exit 2
 fi
 
@@ -15,6 +15,8 @@ RESULT_DIR="$3"
 APPLICATION_COMMIT="$4"
 ORCHESTRATION_COMMIT="$5"
 PROVISIONER="$6"
+DATASET_ARCHIVE="$7"
+DATASET_SHA256="$8"
 
 case "${MODE}" in
     fast|smoke|integration|full)
@@ -27,6 +29,20 @@ esac
 
 if [[ ! -f "${SOURCE_ARCHIVE}" ]]; then
     >&2 echo "ERROR: source archive does not exist: ${SOURCE_ARCHIVE}"
+    exit 2
+fi
+
+if [[ "${MODE}" == "full" ]]; then
+    if [[ ! -f "${DATASET_ARCHIVE}" ]]; then
+        >&2 echo "ERROR: restore-test dataset archive does not exist: ${DATASET_ARCHIVE}"
+        exit 2
+    fi
+    if [[ ! "${DATASET_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+        >&2 echo "ERROR: restore-test dataset SHA-256 is invalid"
+        exit 2
+    fi
+elif [[ "${DATASET_ARCHIVE}" != "-" || "${DATASET_SHA256}" != "-" ]]; then
+    >&2 echo "ERROR: restore-test dataset is only valid in full mode"
     exit 2
 fi
 
@@ -567,6 +583,36 @@ WORK_DIR="$(mktemp -d --tmpdir="${GUEST_HOME}" dar-backup-vm-test.XXXXXXXX)"
 tar -xf "${SOURCE_ARCHIVE}" -C "${WORK_DIR}"
 CHECKOUT_ROOT="${WORK_DIR}/dar-backup"
 PROJECT_DIR="${CHECKOUT_ROOT}/v2"
+if [[ "${MODE}" == "full" ]]; then
+    actual_dataset_sha256="$(sha256sum "${DATASET_ARCHIVE}" | awk '{print $1}')"
+    if [[ "${actual_dataset_sha256}" != "${DATASET_SHA256}" ]]; then
+        >&2 echo "ERROR: restore-test dataset digest mismatch: expected ${DATASET_SHA256}, got ${actual_dataset_sha256}"
+        exit 2
+    fi
+    DATASET_ROOT="${WORK_DIR}/restoretest-input"
+    mkdir -p "${DATASET_ROOT}"
+    /usr/bin/python3 - "${DATASET_ARCHIVE}" "${DATASET_ROOT}" <<'PY'
+import sys
+import tarfile
+from pathlib import Path, PurePosixPath
+
+archive_path = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+with tarfile.open(archive_path, mode="r:") as archive:
+    members = archive.getmembers()
+    for member in members:
+        path = PurePosixPath(member.name)
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit(f"ERROR: unsafe restore-test dataset member: {member.name!r}")
+        if not member.isfile():
+            raise SystemExit(f"ERROR: unsupported restore-test dataset member: {member.name!r}")
+    archive.extractall(destination, members=members, filter="data")
+PY
+    export DAR_BACKUP_VM_DATASET_DIR="${DATASET_ROOT}/restoretest-dataset"
+    export DAR_BACKUP_VM_DATASET_MANIFEST="${DATASET_ROOT}/restoretest-dataset-manifest.json"
+    export DAR_BACKUP_VM_DATASET_SHA256="${DATASET_SHA256}"
+    chmod -R a-w "${DATASET_ROOT}"
+fi
 PREPARE_CHECKOUT="${PROJECT_DIR}/vm_test/prepare_checkout.sh"
 if [[ ! -f "${PREPARE_CHECKOUT}" ]]; then
     >&2 echo "ERROR: source archive does not contain the checkout preparation script"

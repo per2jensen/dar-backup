@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import stat
 import subprocess
 import sys
+import tarfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -42,6 +44,113 @@ def _load_runner_module() -> ModuleType:
 RUNNER = _load_runner_module()
 PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
+
+
+def test_create_restoretest_dataset_archive_is_deterministic(tmp_path: Path) -> None:
+    """Small generated corpora must have stable payloads, metadata, and digest.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    first = RUNNER.create_restoretest_dataset_archive(
+        tmp_path / "first.tar",
+        file_count=4,
+        minimum_bytes=5,
+        maximum_bytes=50,
+        seed=17,
+    )
+    second = RUNNER.create_restoretest_dataset_archive(
+        tmp_path / "second.tar",
+        file_count=4,
+        minimum_bytes=5,
+        maximum_bytes=50,
+        seed=17,
+    )
+
+    assert first.sha256 == second.sha256
+    assert first.file_count == 4
+    assert 20 <= first.total_bytes <= 200
+    with tarfile.open(first.archive_path, mode="r:") as archive:
+        names = archive.getnames()
+        manifest_stream = archive.extractfile("restoretest-dataset-manifest.json")
+        assert manifest_stream is not None
+        manifest = json.load(manifest_stream)
+        for record in manifest["files"]:
+            payload_stream = archive.extractfile(record["path"])
+            assert payload_stream is not None
+            assert hashlib.sha256(payload_stream.read()).hexdigest() == record["sha256"]
+    assert names == [
+        "restoretest-dataset/file-0000.bin",
+        "restoretest-dataset/file-0001.bin",
+        "restoretest-dataset/file-0002.bin",
+        "restoretest-dataset/file-0003.bin",
+        "restoretest-dataset-manifest.json",
+    ]
+    assert manifest["file_count"] == 4
+    assert manifest["total_bytes"] == first.total_bytes
+
+
+def test_create_restoretest_dataset_archive_invalid_size_range_raises(
+    tmp_path: Path,
+) -> None:
+    """A reversed payload-size range must fail before creating an archive.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    archive_path = tmp_path / "invalid.tar"
+
+    with pytest.raises(ValueError, match="maximum_bytes"):
+        RUNNER.create_restoretest_dataset_archive(
+            archive_path,
+            file_count=1,
+            minimum_bytes=10,
+            maximum_bytes=9,
+        )
+
+    assert not archive_path.exists()
+
+
+def test_run_in_guest_full_mode_rejects_invalid_dataset_digest(tmp_path: Path) -> None:
+    """The guest must reject malformed dataset identity before provisioning.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    source_archive = tmp_path / "source.tar"
+    source_archive.write_bytes(b"source")
+    dataset_archive = tmp_path / "dataset.tar"
+    dataset_archive.write_bytes(b"dataset")
+
+    completed = subprocess.run(  # noqa: S603 - repository-owned shell script.
+        [
+            "/usr/bin/bash",
+            str(RUN_IN_GUEST),
+            str(source_archive),
+            "full",
+            str(tmp_path / "results"),
+            "a" * 40,
+            "a" * 40,
+            "debian",
+            str(dataset_archive),
+            "not-a-sha256",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "restore-test dataset SHA-256 is invalid" in completed.stderr
 
 
 def test_load_image_specs_production_matrix_contains_fedora_44() -> None:
@@ -447,6 +556,14 @@ def _run_fake_image(
     archive_path.write_bytes(b"source archive")
     guest_script = tmp_path / "run_in_guest.sh"
     guest_script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    dataset_path = tmp_path / "restoretest-dataset.tar"
+    dataset_path.write_bytes(b"fake dataset")
+    dataset = RUNNER.RestoreTestDataset(
+        archive_path=dataset_path,
+        sha256=RUNNER._sha256_file(dataset_path),
+        file_count=1,
+        total_bytes=len(b"fake dataset"),
+    )
     result_root = tmp_path / "results"
     result_root.mkdir()
     spec = RUNNER.ImageSpec(
@@ -469,6 +586,7 @@ def _run_fake_image(
         executor=RUNNER.CommandExecutor(str(fake_multipass)),
         archive_path=archive_path,
         guest_script=guest_script,
+        restoretest_dataset=dataset,
         mode="full",
         commit="a" * 40,
         result_root=result_root,
