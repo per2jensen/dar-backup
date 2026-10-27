@@ -14,6 +14,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 - Instance locks now use one deterministic directory per execution identity, with explicit shared-directory configuration available
 - Full Linux VM matrix runs cover Ubuntu 24.04/26.04 and Fedora 44, recording the installed dar-backup version and mutually exclusive native SELinux/AppArmor evidence while updating the README compatibility table and Shields badge from validated evidence
 - Full VM matrix runs now create independent 500 MB-sliced backups from one verified 1,000-file, approximately 2.5 GB corpus and exercise both percentage and complete data-slice restore verification
+- Command output now preserves UTF-8 characters split across read boundaries; interrupted VM matrix runs clean up according to retention policy and no longer attempt status publication
 - Successful PyPI publications now update the GitHub Pages version from an isolated `gh-pages` checkout
 
 ## v2-1.1.11 - 2026-08-16

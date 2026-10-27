@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -886,6 +887,99 @@ def test_run_image_setup_failure_returns_infrastructure_exit(tmp_path: Path) -> 
     assert result.exit_code == 2
     assert RUNNER._overall_exit_code([result]) == 2
     assert "guest setup failed" in (result_directory / "guest-console.log").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("keep_failed", "expected_preserved"),
+    [(False, False), (True, True)],
+)
+def test_run_image_keyboard_interrupt_honors_retention_policy(
+    tmp_path: Path,
+    keep_failed: bool,
+    expected_preserved: bool,
+) -> None:
+    """Ctrl-C must stop the matrix and clean up unless retention was requested.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+        keep_failed: Whether interrupted infrastructure should be retained.
+        expected_preserved: Expected VM preservation state.
+
+    Returns:
+        None.
+    """
+    archive_path = tmp_path / "source.tar"
+    archive_path.write_bytes(b"source")
+    guest_script = tmp_path / "run_in_guest.sh"
+    guest_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    dataset_path = tmp_path / "dataset.tar"
+    dataset_path.write_bytes(b"dataset")
+    dataset = RUNNER.RestoreTestDataset(
+        archive_path=dataset_path,
+        sha256=RUNNER._sha256_file(dataset_path),
+        file_count=1,
+        total_bytes=7,
+    )
+    result_root = tmp_path / "results"
+    result_root.mkdir()
+    spec = RUNNER.ImageSpec(
+        label="ubuntu-test",
+        image="test-image",
+        distribution="Ubuntu",
+        expected_os_id="ubuntu",
+        expected_version_id="24.04",
+        expected_catalog_release="24.04 LTS",
+        expected_selinux_mode="unavailable",
+        expected_apparmor_mode="enabled",
+        provisioner="debian",
+        instance_name="dar-backup-test-interrupt",
+        disk="1G",
+        memory="1G",
+        cpus=1,
+    )
+    executor = MagicMock()
+    successful_command = RUNNER.CommandResult(returncode=0, output="")
+    executor.run.side_effect = [
+        successful_command,
+        successful_command,
+        successful_command,
+        successful_command,
+        successful_command,
+        KeyboardInterrupt(),
+    ]
+
+    # A real SIGINT would interrupt the pytest process itself, so the OS-level
+    # boundary is simulated while all cleanup decisions run through production code.
+    with patch.object(RUNNER, "_validate_image_catalog"), \
+         patch.object(RUNNER, "_list_instances", return_value={}), \
+         patch.object(
+             RUNNER,
+             "_instance_image_provenance",
+             return_value=("24.04 LTS", "b" * 64),
+         ), \
+         patch.object(RUNNER, "_guest_identity", return_value="/home/ubuntu"), \
+         patch.object(RUNNER, "_remove_instance") as remove_instance:
+        with pytest.raises(KeyboardInterrupt):
+            RUNNER.run_image(
+                spec=spec,
+                executor=executor,
+                archive_path=archive_path,
+                guest_script=guest_script,
+                restoretest_dataset=dataset,
+                mode="full",
+                commit="a" * 40,
+                result_root=result_root,
+                keep_failed=keep_failed,
+                keep_all=False,
+            )
+
+    assert remove_instance.call_count == (0 if expected_preserved else 1)
+    host_result = json.loads(
+        (result_root / spec.label / "host-result.json").read_text(encoding="utf-8")
+    )
+    assert host_result["status"] == RUNNER.INFRASTRUCTURE_FAILED
+    assert host_result["instance_preserved"] is expected_preserved
+    assert host_result["message"] == "VM matrix interrupted"
 
 
 def test_guest_result_writer_installed_package_preserves_pass_status(
@@ -2430,3 +2524,25 @@ def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(
     assert "Latest full VM matrix" in readme_path.read_text(encoding="utf-8")
     badge_path = source_root / "v2" / "doc" / "test-report" / "vm-matrix-badge.json"
     assert json.loads(badge_path.read_text(encoding="utf-8"))["message"] == "Ubuntu 24.04 passing"
+
+
+def test_should_publish_vm_matrix_presentation_completed_full_run_returns_true() -> None:
+    """A persisted and completed full run may replace published status.
+
+    Returns:
+        None.
+    """
+    assert RUNNER.should_publish_vm_matrix_presentation({"schema_version": 5}, "full", True)
+
+
+def test_should_publish_vm_matrix_presentation_interrupted_run_returns_false() -> None:
+    """An interrupted full run must not attempt presentation publication.
+
+    Returns:
+        None.
+    """
+    assert not RUNNER.should_publish_vm_matrix_presentation(
+        {"schema_version": 5},
+        "full",
+        False,
+    )

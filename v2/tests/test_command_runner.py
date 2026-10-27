@@ -959,6 +959,70 @@ def test_tail_assembles_line_split_at_chunk_boundary(tmp_path):
     )
 
 
+def test_command_runner_utf8_split_at_chunk_boundary_preserves_character(
+    tmp_path: Path,
+) -> None:
+    """Incremental decoding must preserve a multibyte character across reads.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    script = tmp_path / "split_utf8.py"
+    script.write_text(
+        "import os\n"
+        "os.write(1, b'x' * 1023 + 'æ\\n'.encode('utf-8'))\n"
+        "os.write(2, b'y' * 1023 + 'ø\\n'.encode('utf-8'))\n",
+        encoding="utf-8",
+    )
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["python3", str(script)])
+
+    assert result.returncode == 0
+    assert result.stdout == ("x" * 1023) + "æ\n"
+    assert result.stderr == ("y" * 1023) + "ø\n"
+    assert result.stdout_tail.endswith("æ")
+    assert result.stderr_tail.endswith("ø")
+    log_text = Path(command_log_path).read_text(encoding="utf-8")
+    assert "�" not in log_text
+    assert "æ" in log_text
+    assert "ø" in log_text
+
+
+def test_command_runner_invalid_utf8_replaces_bad_byte_without_failure(
+    tmp_path: Path,
+) -> None:
+    """Invalid command output must remain recoverable and visibly replaced.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    script = tmp_path / "invalid_utf8.py"
+    script.write_text(
+        "import os\n"
+        "os.write(1, b'valid-before-\\xff-valid-after\\n')\n",
+        encoding="utf-8",
+    )
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.run(["python3", str(script)])
+
+    assert result.returncode == 0
+    assert result.stdout == "valid-before-�-valid-after\n"
+    assert result.stdout_tail == "valid-before-�-valid-after"
+    assert "valid-before-�-valid-after" in Path(command_log_path).read_text(
+        encoding="utf-8"
+    )
+
+
 def test_command_runner_overrides_caller_locale(tmp_path, monkeypatch):
     """
     Even when the caller's process has a non-C locale, subprocesses spawned
@@ -1024,6 +1088,33 @@ def test_stream_command_stderr_captured(tmp_path):
 
     assert result.returncode != 0
     assert "error-output" in result.stderr
+
+
+def test_stream_command_stderr_utf8_split_preserves_character(tmp_path: Path) -> None:
+    """Streaming stderr logging must preserve UTF-8 split across pipe reads.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    script = tmp_path / "stream_split_utf8.py"
+    script.write_text(
+        "import os\n"
+        "os.write(2, b'z' * 1023 + 'å\\n'.encode('utf-8'))\n",
+        encoding="utf-8",
+    )
+    logger, command_logger, command_log_path = _make_loggers(tmp_path)
+    runner = CommandRunner(logger=logger, command_logger=command_logger)
+
+    result = runner.stream_command(["python3", str(script)], lambda _line: None)
+
+    assert result.returncode == 0
+    assert result.stderr == ("z" * 1023) + "å\n"
+    log_text = Path(command_log_path).read_text(encoding="utf-8")
+    assert "�" not in log_text
+    assert "å" in log_text
 
 
 def test_run_inherits_only_explicitly_passed_descriptor(tmp_path: Path) -> None:

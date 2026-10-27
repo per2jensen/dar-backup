@@ -3105,6 +3105,7 @@ def run_image(
     image_sha256: str | None = None
     status = INFRASTRUCTURE_FAILED
     message = "VM test did not complete"
+    interrupted = False
 
     if mode == "full" and restoretest_dataset is None:
         raise ValueError("full VM mode requires a restore-test dataset")
@@ -3252,6 +3253,11 @@ def run_image(
         status = INFRASTRUCTURE_FAILED
         message = str(exc)
         _append_log(controller_log, f"ERROR: {exc}\n")
+    except KeyboardInterrupt:
+        status = INFRASTRUCTURE_FAILED
+        message = "VM matrix interrupted"
+        interrupted = True
+        _append_log(controller_log, "ERROR: VM matrix interrupted\n")
 
     preserve = instance_created and (keep_all or (keep_failed and status != PASS))
     if instance_created and not preserve:
@@ -3276,6 +3282,8 @@ def run_image(
         message=message,
     )
     write_json(image_result_dir / "host-result.json", asdict(result))
+    if interrupted:
+        raise KeyboardInterrupt
     return result
 
 
@@ -3358,6 +3366,29 @@ def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--multipass", default="multipass", help=argparse.SUPPRESS)
     parser.add_argument("--images", type=Path, default=script_directory / "images.json", help=argparse.SUPPRESS)
     return parser.parse_args(arguments)
+
+
+def should_publish_vm_matrix_presentation(
+    history_record: dict[str, Any] | None,
+    mode: str,
+    completed: bool,
+) -> bool:
+    """Return whether a run may replace the published full-matrix status.
+
+    Args:
+        history_record: Persisted evidence record, or None if persistence failed.
+        mode: Requested matrix mode.
+        completed: Whether every configured image was attempted.
+
+    Returns:
+        True only for a persisted, completed full-matrix run.
+
+    Raises:
+        ValueError: If mode is unsupported.
+    """
+    if mode not in {"fast", "smoke", "integration", "full"}:
+        raise ValueError(f"Unsupported VM matrix mode: {mode}")
+    return history_record is not None and mode == "full" and completed
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
@@ -3539,7 +3570,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
     # Publish only after immutable-source testing and durable evidence storage.
     # A partial suite cannot substantiate the README's full-suite claim.
-    if history_record is not None and args.mode == "full":
+    if should_publish_vm_matrix_presentation(history_record, args.mode, completed):
         try:
             publish_vm_matrix_presentation(history_record, readme_path, badge_path)
             print(f"README VM matrix: {readme_path}")

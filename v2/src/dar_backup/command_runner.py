@@ -5,6 +5,7 @@ import subprocess
 import logging
 import traceback
 import threading
+import codecs
 import os
 import re
 import shlex
@@ -493,17 +494,31 @@ class CommandRunner:
                 ever sees a mid-word split."""
                 captured_bytes = 0
                 partial = ""  # incomplete line carried over from the previous chunk
+                stream_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace") if text else None
+                capture_decoder = (
+                    codecs.getincrementaldecoder("utf-8")(errors="replace")
+                    if text and capture_output
+                    else None
+                )
                 try:
                     while True:
                         chunk = stream.read(1024)
                         if not chunk:
+                            if text:
+                                assert stream_decoder is not None  # noqa: S101 - established by the text branch.
+                                partial += stream_decoder.decode(b"", final=True)
+                                if capture_decoder is not None:
+                                    final_captured = capture_decoder.decode(b"", final=True)
+                                    if final_captured:
+                                        lines.append(final_captured)
                             if partial:
                                 if log_output:
                                     self.command_logger.log(level, partial)
                                 tail_deque.append(partial)
                             break
                         if text:
-                            decoded = chunk.decode('utf-8', errors='replace')
+                            assert stream_decoder is not None  # noqa: S101 - established by the text branch.
+                            decoded = stream_decoder.decode(chunk, final=False)
                             # Prepend any leftover fragment, split on newlines, and
                             # hold back the final element: it is either "" (trailing
                             # newline) or an incomplete line continued by the next chunk.
@@ -516,18 +531,20 @@ class CommandRunner:
                             for line in complete_lines:
                                 tail_deque.append(line)
                             if capture_output:
+                                assert capture_decoder is not None  # noqa: S101 - established by capture_output.
                                 if capture_output_limit_bytes is None:
-                                    lines.append(decoded)
+                                    captured = capture_decoder.decode(chunk, final=False)
+                                    if captured:
+                                        lines.append(captured)
                                 else:
                                     remaining = capture_output_limit_bytes - captured_bytes
                                     if remaining > 0:
-                                        if len(chunk) <= remaining:
-                                            lines.append(decoded)
-                                            captured_bytes += len(chunk)
-                                        else:
-                                            piece = chunk[:remaining]
-                                            lines.append(piece.decode('utf-8', errors='replace'))
-                                            captured_bytes = capture_output_limit_bytes
+                                        piece = chunk[:remaining]
+                                        captured = capture_decoder.decode(piece, final=False)
+                                        if captured:
+                                            lines.append(captured)
+                                        captured_bytes += len(piece)
+                                        if len(piece) < len(chunk):
                                             truncated_flag["value"] = True
                                     else:
                                         truncated_flag["value"] = True
@@ -754,12 +771,17 @@ class CommandRunner:
         def _read_stderr() -> None:
             nonlocal stderr_bytes_seen
             assert process.stderr is not None  # noqa: S101 — internal invariant — stderr=PIPE was requested, so this is always set
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
             while True:
                 chunk = process.stderr.read(1024)
                 if not chunk:
+                    final_text = decoder.decode(b"", final=True)
+                    if final_text:
+                        self.command_logger.error(final_text.rstrip("\n"))
                     break
-                decoded = chunk.decode("utf-8", errors="replace")
-                self.command_logger.error(decoded.rstrip("\n"))
+                decoded = decoder.decode(chunk, final=False)
+                if decoded:
+                    self.command_logger.error(decoded.rstrip("\n"))
                 with lock:
                     if cap is None:
                         stderr_lines.append(chunk)
