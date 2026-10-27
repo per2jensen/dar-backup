@@ -183,8 +183,124 @@ def _write_test_configuration(
         encoding="utf-8",
     )
     darrc_path = root / ".darrc"
-    darrc_path.write_text("restore-options:\n--comparison-field=ignore-owner\n", encoding="utf-8")
+    darrc_path.write_text(
+        "restore-options:\n"
+        "--comparison-field=ignore-owner\n"
+        "compress-exclusion:\n"
+        "verbose:\n",
+        encoding="utf-8",
+    )
     return config_path, definition_path, darrc_path
+
+
+def _run_direct_dar_creation(
+    archive_path: Path,
+    definition_path: Path,
+    darrc_path: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run the DAR creation command used by dar-backup for a tiny fixture.
+
+    Args:
+        archive_path: Output archive base path without a slice suffix.
+        definition_path: DAR backup definition to load.
+        darrc_path: DAR configuration containing requested targets.
+
+    Returns:
+        Completed DAR process with captured text output.
+
+    Raises:
+        RuntimeError: If DAR is unavailable in the test environment.
+        OSError: If the archive output directory cannot be created.
+    """
+    dar_executable = shutil.which("dar")
+    if dar_executable is None:
+        raise RuntimeError("DAR executable is unavailable")
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    return subprocess.run(  # noqa: S603 - installed DAR with test-owned arguments.
+        [
+            dar_executable,
+            "-c",
+            str(archive_path),
+            "-N",
+            "-B",
+            str(darrc_path),
+            "-B",
+            str(definition_path),
+            "-Q",
+            "compress-exclusion",
+            "verbose",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+
+def test_vm_darrc_required_targets_allow_archive_creation(tmp_path: Path) -> None:
+    """The generated VM DAR configuration must satisfy dar-backup's targets.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    dataset_dir = tmp_path / "input" / "restoretest-dataset"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "payload.bin").write_bytes(b"payload")
+    _, definition_path, darrc_path = _write_test_configuration(
+        tmp_path / "configuration",
+        dataset_dir,
+        restore_dir=tmp_path / "restore",
+        percentage=10.0,
+        maximum_files=1,
+        cover_slices=False,
+    )
+
+    completed = _run_direct_dar_creation(
+        tmp_path / "archive" / "positive",
+        definition_path,
+        darrc_path,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (tmp_path / "archive" / "positive.1.dar").is_file()
+
+
+def test_vm_darrc_missing_targets_rejects_archive_creation(tmp_path: Path) -> None:
+    """DAR must reject the incomplete target configuration that regressed.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    dataset_dir = tmp_path / "input" / "restoretest-dataset"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "payload.bin").write_bytes(b"payload")
+    _, definition_path, darrc_path = _write_test_configuration(
+        tmp_path / "configuration",
+        dataset_dir,
+        restore_dir=tmp_path / "restore",
+        percentage=10.0,
+        maximum_files=1,
+        cover_slices=False,
+    )
+    darrc_path.write_text(
+        "restore-options:\n--comparison-field=ignore-owner\n",
+        encoding="utf-8",
+    )
+
+    completed = _run_direct_dar_creation(
+        tmp_path / "archive" / "negative",
+        definition_path,
+        darrc_path,
+    )
+
+    assert completed.returncode != 0
+    assert "compress-exclusion" in completed.stdout + completed.stderr
+    assert not (tmp_path / "archive" / "negative.1.dar").exists()
 
 
 def _find_full_archive(backup_dir: Path) -> Path:

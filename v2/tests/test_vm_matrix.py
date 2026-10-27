@@ -47,6 +47,50 @@ PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
 
 
+def _run_guest_cleanup_function(
+    tmp_path: Path,
+    guest_home: Path,
+    work_dir: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run the production guest cleanup function in an isolated shell.
+
+    Args:
+        tmp_path: Isolated directory for the extracted shell harness.
+        guest_home: Guest home passed to the cleanup function.
+        work_dir: Candidate work directory passed to the cleanup function.
+
+    Returns:
+        Completed shell process containing cleanup output and status.
+
+    Raises:
+        ValueError: If the production cleanup function cannot be located.
+        OSError: If the shell harness cannot be written or executed.
+    """
+    source = RUN_IN_GUEST.read_text(encoding="utf-8")
+    start_marker = "cleanup_work_dir() {\n"
+    start = source.find(start_marker)
+    if start < 0:
+        raise ValueError("run_in_guest.sh does not define cleanup_work_dir")
+    end = source.find("\n}\n", start)
+    if end < 0:
+        raise ValueError("cleanup_work_dir has no closing brace")
+    function_source = source[start : end + len("\n}\n")]
+    harness = tmp_path / "cleanup-harness.sh"
+    harness.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"{function_source}"
+        'cleanup_work_dir "$1" "$2"\n',
+        encoding="utf-8",
+    )
+    return subprocess.run(  # noqa: S603 - test-owned harness containing production function.
+        ["/usr/bin/bash", str(harness), str(guest_home), str(work_dir)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+
 def test_create_restoretest_dataset_archive_is_deterministic(tmp_path: Path) -> None:
     """Small generated corpora must have stable payloads, metadata, and digest.
 
@@ -152,6 +196,53 @@ def test_run_in_guest_full_mode_rejects_invalid_dataset_digest(tmp_path: Path) -
 
     assert completed.returncode == 2
     assert "restore-test dataset SHA-256 is invalid" in completed.stderr
+
+
+def test_guest_cleanup_read_only_dataset_removes_work_directory(tmp_path: Path) -> None:
+    """Guest cleanup must remove a worktree containing read-only test data.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    dataset_dir = guest_home / "dar-backup-vm-test.positive" / "restoretest-input"
+    dataset_dir.mkdir(parents=True)
+    payload = dataset_dir / "payload.bin"
+    payload.write_bytes(b"read-only payload")
+    payload.chmod(0o440)
+    dataset_dir.chmod(0o550)
+    work_dir = dataset_dir.parents[0]
+
+    completed = _run_guest_cleanup_function(tmp_path, guest_home, work_dir)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not work_dir.exists()
+    assert "Permission denied" not in completed.stderr
+
+
+def test_guest_cleanup_unsafe_directory_refuses_removal(tmp_path: Path) -> None:
+    """Guest cleanup must reject a directory outside its guarded namespace.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    guest_home.mkdir()
+    unsafe_work_dir = tmp_path / "unrelated-work"
+    unsafe_work_dir.mkdir()
+    (unsafe_work_dir / "keep.txt").write_text("keep", encoding="utf-8")
+
+    completed = _run_guest_cleanup_function(tmp_path, guest_home, unsafe_work_dir)
+
+    assert completed.returncode == 1
+    assert "refusing to remove unexpected work directory" in completed.stderr
+    assert (unsafe_work_dir / "keep.txt").is_file()
 
 
 def test_load_image_specs_production_matrix_contains_fedora_44() -> None:

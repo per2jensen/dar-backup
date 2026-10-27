@@ -480,20 +480,52 @@ Path(result_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n
 PY
 }
 
+# Invoked indirectly through finalize's EXIT trap.
+# shellcheck disable=SC2329
+cleanup_work_dir() {
+    if [[ "$#" -ne 2 ]]; then
+        >&2 echo "ERROR: cleanup_work_dir requires GUEST_HOME and WORK_DIR"
+        return 1
+    fi
+    local guest_home="$1"
+    local work_dir="$2"
+
+    if [[ -z "${guest_home}" || "${guest_home}" != /* || "${guest_home}" == "/" ]]; then
+        >&2 echo "ERROR: refusing cleanup with unsafe guest home: ${guest_home:-<empty>}"
+        return 1
+    fi
+    if [[ -z "${work_dir}" || ! -d "${work_dir}" || -L "${work_dir}" ]]; then
+        >&2 echo "ERROR: guest work directory is missing or unsafe: ${work_dir:-<empty>}"
+        return 1
+    fi
+    case "${work_dir}" in
+        "${guest_home}"/dar-backup-vm-test.*)
+            ;;
+        *)
+            >&2 echo "ERROR: refusing to remove unexpected work directory: ${work_dir}"
+            return 1
+            ;;
+    esac
+
+    # Test inputs stay read-only during pytest, but teardown must be able to
+    # unlink their directories without producing one error for every file.
+    if ! chmod -R u+w -- "${work_dir}"; then
+        >&2 echo "ERROR: cannot make guest work directory writable for cleanup: ${work_dir}"
+        return 1
+    fi
+    if ! rm -rf -- "${work_dir}"; then
+        >&2 echo "ERROR: cannot remove guest work directory: ${work_dir}"
+        return 1
+    fi
+}
+
 # Invoked indirectly by the EXIT trap.
 # shellcheck disable=SC2329
 finalize() {
     set +e
     write_result
     if [[ -n "${WORK_DIR}" && -d "${WORK_DIR}" ]]; then
-        case "${WORK_DIR}" in
-            "${GUEST_HOME}"/dar-backup-vm-test.*)
-                rm -rf "${WORK_DIR}"
-                ;;
-            *)
-                >&2 echo "ERROR: refusing to remove unexpected work directory: ${WORK_DIR}"
-                ;;
-        esac
+        cleanup_work_dir "${GUEST_HOME}" "${WORK_DIR}"
     fi
     trap - EXIT
     exit "${FINAL_EXIT_CODE}"
