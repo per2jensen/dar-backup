@@ -47,20 +47,23 @@ def _load_runner_module() -> ModuleType:
 RUNNER = _load_runner_module()
 PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
+PYTEST_REPORT = Path(__file__).parents[1] / "scripts" / "pytest_report.sh"
 
 
-def _run_guest_shell_function(
+def _run_shell_function(
     tmp_path: Path,
+    script_path: Path,
     function_name: str,
     arguments: list[Path],
     *,
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run one production guest shell function in an isolated harness.
+    """Run one production shell function in an isolated harness.
 
     Args:
         tmp_path: Isolated directory for the extracted shell harness.
-        function_name: Shell function to extract from run_in_guest.sh.
+        script_path: Production shell script containing the function.
+        function_name: Shell function to extract from the production script.
         arguments: Positional path arguments passed to the function.
         environment: Optional environment additions for the shell harness.
 
@@ -73,11 +76,11 @@ def _run_guest_shell_function(
     """
     if re.fullmatch(r"[a-z][a-z0-9_]*", function_name) is None:
         raise ValueError(f"Invalid shell function name: {function_name}")
-    source = RUN_IN_GUEST.read_text(encoding="utf-8")
+    source = script_path.read_text(encoding="utf-8")
     start_marker = f"{function_name}() {{\n"
     start = source.find(start_marker)
     if start < 0:
-        raise ValueError(f"run_in_guest.sh does not define {function_name}")
+        raise ValueError(f"{script_path.name} does not define {function_name}")
     end = source.find("\n}\n", start)
     if end < 0:
         raise ValueError(f"{function_name} has no closing brace")
@@ -99,6 +102,33 @@ def _run_guest_shell_function(
         check=False,
         text=True,
         env=command_environment,
+    )
+
+
+def _run_guest_shell_function(
+    tmp_path: Path,
+    function_name: str,
+    arguments: list[Path],
+    *,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run one production guest shell function in an isolated harness.
+
+    Args:
+        tmp_path: Isolated directory for the extracted shell harness.
+        function_name: Shell function to extract from run_in_guest.sh.
+        arguments: Positional path arguments passed to the function.
+        environment: Optional environment additions for the shell harness.
+
+    Returns:
+        Completed shell process containing function output and status.
+    """
+    return _run_shell_function(
+        tmp_path,
+        RUN_IN_GUEST,
+        function_name,
+        arguments,
+        environment=environment,
     )
 
 
@@ -318,6 +348,118 @@ def test_remove_transferred_archive_outside_guest_home_refuses_removal(
     assert outside_archive.is_file()
 
 
+def test_prepare_test_runtime_directory_valid_work_dir_creates_isolated_tree(
+    tmp_path: Path,
+) -> None:
+    """A guarded guest work directory must receive fresh disk-backed scratch space.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    work_dir = guest_home / "dar-backup-vm-test.runtime"
+    work_dir.mkdir(parents=True)
+
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "prepare_test_runtime_directory",
+        [guest_home, work_dir],
+    )
+
+    runtime_dir = work_dir / "test-runtime"
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == str(runtime_dir.resolve())
+    assert [path.name for path in sorted(runtime_dir.iterdir())] == [
+        "coverage",
+        "pytest",
+        "tmp",
+    ]
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o700 for path in runtime_dir.iterdir())
+
+
+def test_prepare_test_runtime_directory_outside_guest_namespace_refuses_creation(
+    tmp_path: Path,
+) -> None:
+    """A work directory outside the guarded guest namespace must be rejected.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    guest_home = tmp_path / "guest-home"
+    guest_home.mkdir()
+    outside_work_dir = tmp_path / "dar-backup-vm-test.outside"
+    outside_work_dir.mkdir()
+
+    completed = _run_guest_shell_function(
+        tmp_path,
+        "prepare_test_runtime_directory",
+        [guest_home, outside_work_dir],
+    )
+
+    assert completed.returncode == 1
+    assert "outside guest work namespace" in completed.stderr
+    assert not (outside_work_dir / "test-runtime").exists()
+
+
+def test_validate_pytest_basetemp_root_empty_directory_returns_canonical_path(
+    tmp_path: Path,
+) -> None:
+    """The report runner must accept a fresh empty pytest temporary root.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    basetemp_root = tmp_path / "pytest-root"
+    basetemp_root.mkdir()
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "validate_pytest_basetemp_root",
+        [basetemp_root],
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == str(basetemp_root.resolve())
+
+
+def test_validate_pytest_basetemp_root_nonempty_directory_refuses_use(
+    tmp_path: Path,
+) -> None:
+    """The report runner must not let pytest erase a populated directory.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    basetemp_root = tmp_path / "pytest-root"
+    basetemp_root.mkdir()
+    retained_file = basetemp_root / "retain.txt"
+    retained_file.write_text("retain", encoding="utf-8")
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "validate_pytest_basetemp_root",
+        [basetemp_root],
+    )
+
+    assert completed.returncode == 1
+    assert "must be empty" in completed.stderr
+    assert retained_file.read_text(encoding="utf-8") == "retain"
+
+
 def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> None:
     """Storage diagnostics must persist filesystem context before pytest.
 
@@ -330,13 +472,19 @@ def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> 
     guest_home = tmp_path / "guest-home"
     work_dir = guest_home / "dar-backup-vm-test.storage"
     work_dir.mkdir(parents=True)
+    test_runtime_dir = work_dir / "test-runtime"
+    test_runtime_dir.mkdir()
     output_path = tmp_path / "storage-before-pytest.txt"
 
     completed = _run_guest_shell_function(
         tmp_path,
         "record_storage_diagnostics",
         [output_path],
-        environment={"GUEST_HOME": str(guest_home), "WORK_DIR": str(work_dir)},
+        environment={
+            "GUEST_HOME": str(guest_home),
+            "WORK_DIR": str(work_dir),
+            "TEST_RUNTIME_DIR": str(test_runtime_dir),
+        },
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -344,6 +492,8 @@ def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> 
     assert "Guest storage diagnostics before pytest" in evidence
     assert "Filesystem" in evidence
     assert str(work_dir) in evidence
+    assert str(test_runtime_dir) in evidence
+    assert f"{Path(os.sep) / 'tmp'}:" in evidence
 
 
 def test_record_storage_diagnostics_missing_output_refuses_run(tmp_path: Path) -> None:
@@ -359,7 +509,11 @@ def test_record_storage_diagnostics_missing_output_refuses_run(tmp_path: Path) -
         tmp_path,
         "record_storage_diagnostics",
         [],
-        environment={"GUEST_HOME": str(tmp_path), "WORK_DIR": str(tmp_path)},
+        environment={
+            "GUEST_HOME": str(tmp_path),
+            "WORK_DIR": str(tmp_path),
+            "TEST_RUNTIME_DIR": str(tmp_path),
+        },
     )
 
     assert completed.returncode == 1

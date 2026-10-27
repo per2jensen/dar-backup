@@ -71,7 +71,10 @@ corpus, while failed runs retain it for diagnosis.
 Each matrix guest uses a 40 GB virtual disk. After successful extraction, the
 guest removes the transferred source and dataset tar archives, installs Python
 dependencies without a persistent pip cache, and records filesystem, inode,
-mount, and available quota diagnostics before pytest starts.
+mount, and available quota diagnostics before pytest starts. Pytest base
+directories, application temporary files, and parallel coverage databases use
+a fresh guarded directory below the disk-backed guest work directory. They do
+not use `/tmp`, which is a size-limited tmpfs on some matrix distributions.
 
 After an initialized run, the controller appends one public, schema-versioned
 record to the tracked evidence file:

@@ -24,6 +24,44 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 MODE="${1:-fast}"
 OUTDIR="${2:-doc/test-report}"
 
+validate_pytest_basetemp_root() {
+  if [[ "$#" -ne 1 ]]; then
+    >&2 echo "ERROR: validate_pytest_basetemp_root requires one path"
+    return 1
+  fi
+  local basetemp_root="$1"
+  local canonical_root first_entry
+
+  if [[ -z "${basetemp_root}" || "${basetemp_root}" != /* || "${basetemp_root}" == "/" ]]; then
+    >&2 echo "ERROR: pytest base temporary root must be an absolute non-root path"
+    return 1
+  fi
+  if [[ ! -d "${basetemp_root}" || -L "${basetemp_root}" || ! -r "${basetemp_root}" || ! -w "${basetemp_root}" || ! -x "${basetemp_root}" ]]; then
+    >&2 echo "ERROR: pytest base temporary root is missing or unsafe: ${basetemp_root}"
+    return 1
+  fi
+  if ! first_entry="$(find "${basetemp_root}" -mindepth 1 -maxdepth 1 -print -quit)"; then
+    >&2 echo "ERROR: cannot inspect pytest base temporary root: ${basetemp_root}"
+    return 1
+  fi
+  if [[ -n "${first_entry}" ]]; then
+    >&2 echo "ERROR: pytest base temporary root must be empty: ${basetemp_root}"
+    return 1
+  fi
+
+  canonical_root="$(realpath -e -- "${basetemp_root}")"
+  printf '%s\n' "${canonical_root}"
+}
+
+PYTEST_BASETEMP_ROOT=""
+COLLECT_BASETEMP_ARGS=()
+EXECUTION_BASETEMP_ARGS=()
+if [[ -n "${DAR_BACKUP_PYTEST_BASETEMP_ROOT:-}" ]]; then
+  PYTEST_BASETEMP_ROOT="$(validate_pytest_basetemp_root "${DAR_BACKUP_PYTEST_BASETEMP_ROOT}")"
+  COLLECT_BASETEMP_ARGS=("--basetemp=${PYTEST_BASETEMP_ROOT}/collect")
+  EXECUTION_BASETEMP_ARGS=("--basetemp=${PYTEST_BASETEMP_ROOT}/execution")
+fi
+
 case "$MODE" in
   fast)
     MARKS='unit or component'
@@ -88,6 +126,9 @@ echo "Mode:        $MODE"
 echo "Markers:     $MARKS"
 echo "Version:     $VER"
 echo "UTC time:    $TS"
+if [[ -n "${PYTEST_BASETEMP_ROOT}" ]]; then
+  echo "Pytest temp: ${PYTEST_BASETEMP_ROOT}"
+fi
 echo
 
 # 0) Static type check (fails the run on error, same as ruff in release.sh)
@@ -100,10 +141,10 @@ echo
 COV_XML="${OUTDIR}/coverage.xml"
 
 # 1) Collection inventory (skip coverage to avoid noisy reports)
-pytest -q --collect-only --no-cov -m "$MARKS" | tee "$COLLECT"
+pytest "${COLLECT_BASETEMP_ARGS[@]}" -q --collect-only --no-cov -m "$MARKS" | tee "$COLLECT"
 
 # 2) Execution (TXT + JSON)
-pytest -q -m "$MARKS" \
+pytest "${EXECUTION_BASETEMP_ARGS[@]}" -q -m "$MARKS" \
   --json-report \
   --json-report-file="$JSON" \
   --junitxml="$JUNIT" \

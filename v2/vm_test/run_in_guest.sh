@@ -76,6 +76,7 @@ DETAIL="Guest setup did not complete"
 FINAL_EXIT_CODE=2
 WORK_DIR=""
 GUEST_HOME=""
+TEST_RUNTIME_DIR=""
 PACKAGE_MANIFEST_PATH=""
 ENVIRONMENT_ADJUSTMENTS_JSON="[]"
 
@@ -560,6 +561,57 @@ remove_transferred_archive() {
     echo "Removed consumed transferred archive: ${canonical_archive}"
 }
 
+# Create fresh disk-backed scratch directories for pytest and coverage.
+# shellcheck disable=SC2329
+prepare_test_runtime_directory() {
+    if [[ "$#" -ne 2 ]]; then
+        >&2 echo "ERROR: prepare_test_runtime_directory requires GUEST_HOME and WORK_DIR"
+        return 1
+    fi
+    local guest_home="$1"
+    local work_dir="$2"
+    local canonical_guest_home canonical_work_dir runtime_dir
+
+    if [[ -z "${guest_home}" || "${guest_home}" != /* || "${guest_home}" == "/" || ! -d "${guest_home}" || -L "${guest_home}" ]]; then
+        >&2 echo "ERROR: guest home directory is missing or unsafe: ${guest_home:-<empty>}"
+        return 1
+    fi
+    if [[ -z "${work_dir}" || "${work_dir}" != /* || ! -d "${work_dir}" || -L "${work_dir}" ]]; then
+        >&2 echo "ERROR: guest work directory is missing or unsafe: ${work_dir:-<empty>}"
+        return 1
+    fi
+
+    canonical_guest_home="$(realpath -e -- "${guest_home}")"
+    canonical_work_dir="$(realpath -e -- "${work_dir}")"
+    case "${canonical_work_dir}" in
+        "${canonical_guest_home}"/dar-backup-vm-test.*)
+            ;;
+        *)
+            >&2 echo "ERROR: refusing test runtime outside guest work namespace: ${work_dir}"
+            return 1
+            ;;
+    esac
+
+    runtime_dir="${canonical_work_dir}/test-runtime"
+    if [[ -e "${runtime_dir}" || -L "${runtime_dir}" ]]; then
+        >&2 echo "ERROR: test runtime directory already exists: ${runtime_dir}"
+        return 1
+    fi
+    if ! mkdir -m 0700 -- "${runtime_dir}"; then
+        >&2 echo "ERROR: cannot create test runtime directory: ${runtime_dir}"
+        return 1
+    fi
+    if ! mkdir -m 0700 -- \
+        "${runtime_dir}/tmp" \
+        "${runtime_dir}/coverage" \
+        "${runtime_dir}/pytest"; then
+        >&2 echo "ERROR: cannot create test runtime subdirectories: ${runtime_dir}"
+        return 1
+    fi
+
+    printf '%s\n' "${runtime_dir}"
+}
+
 # Record storage capacity and quota context immediately before pytest.
 # shellcheck disable=SC2329
 record_storage_diagnostics() {
@@ -572,10 +624,13 @@ record_storage_diagnostics() {
     {
         echo "=== Guest storage diagnostics before pytest ==="
         date --utc +%Y-%m-%dT%H:%M:%SZ
-        df -hP "${GUEST_HOME}" /tmp || true
-        df -iP "${GUEST_HOME}" /tmp || true
+        df -hP "${GUEST_HOME}" "${WORK_DIR}" "${TEST_RUNTIME_DIR}" /tmp || true
+        df -iP "${GUEST_HOME}" "${WORK_DIR}" "${TEST_RUNTIME_DIR}" /tmp || true
         du -sh "${WORK_DIR}" || true
-        findmnt -no TARGET,SOURCE,FSTYPE,OPTIONS "${GUEST_HOME}" || true
+        for storage_path in "${GUEST_HOME}" "${WORK_DIR}" "${TEST_RUNTIME_DIR}" /tmp; do
+            printf '%s: ' "${storage_path}"
+            findmnt -T "${storage_path}" -no TARGET,SOURCE,FSTYPE,OPTIONS || true
+        done
         if command -v quota >/dev/null 2>&1; then
             quota -s || true
         else
@@ -677,6 +732,12 @@ export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
 WORK_DIR="$(mktemp -d --tmpdir="${GUEST_HOME}" dar-backup-vm-test.XXXXXXXX)"
+TEST_RUNTIME_DIR="$(prepare_test_runtime_directory "${GUEST_HOME}" "${WORK_DIR}")"
+export TMPDIR="${TEST_RUNTIME_DIR}/tmp"
+export TMP="${TMPDIR}"
+export TEMP="${TMPDIR}"
+export COVERAGE_FILE="${TEST_RUNTIME_DIR}/coverage/.coverage"
+export DAR_BACKUP_PYTEST_BASETEMP_ROOT="${TEST_RUNTIME_DIR}/pytest"
 tar -xf "${SOURCE_ARCHIVE}" -C "${WORK_DIR}"
 remove_transferred_archive "${GUEST_HOME}" "${SOURCE_ARCHIVE}"
 CHECKOUT_ROOT="${WORK_DIR}/dar-backup"
