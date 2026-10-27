@@ -149,8 +149,10 @@ def _write_test_configuration(
     """
     backup_dir = root / "backups"
     definition_dir = root / "backup.d"
+    catalog_dir = root / "catalogs"
     backup_dir.mkdir(parents=True, exist_ok=True)
     definition_dir.mkdir(parents=True, exist_ok=True)
+    catalog_dir.mkdir(parents=True, exist_ok=True)
     restore_dir.mkdir(parents=True, exist_ok=True)
 
     config = ConfigParser()
@@ -170,6 +172,7 @@ def _write_test_configuration(
         "BACKUP.D_DIR": str(definition_dir),
         "DATA_DIR": str(dataset_dir),
         "TEST_RESTORE_DIR": str(restore_dir),
+        "MANAGER_DB_DIR": str(catalog_dir),
     }
     config["AGE"] = {"DIFF_AGE": "30", "INCR_AGE": "15"}
     config["PAR2"] = {"ERROR_CORRECTION_PERCENT": "5", "ENABLED": "false"}
@@ -191,6 +194,123 @@ def _write_test_configuration(
         encoding="utf-8",
     )
     return config_path, definition_path, darrc_path
+
+
+def _initialize_manager_catalog(
+    config_path: Path,
+    backup_definition: str,
+    *,
+    artifact_path: Path | None = None,
+) -> Path:
+    """Create and validate the manager catalog required by the backup pipeline.
+
+    Args:
+        config_path: Complete dar-backup configuration path.
+        backup_definition: Definition whose catalog must be initialized.
+        artifact_path: Optional destination for captured manager output.
+
+    Returns:
+        Validated manager catalog database path.
+
+    Raises:
+        ValueError: If an input is empty or does not identify a regular file.
+        RuntimeError: If manager is unavailable, fails, or omits the catalog.
+        OSError: If diagnostic output cannot be persisted.
+    """
+    if not config_path.is_file():
+        raise ValueError(f"Configuration is not a regular file: {config_path}")
+    if not backup_definition:
+        raise ValueError("backup_definition must not be empty")
+    manager_executable = shutil.which("manager")
+    if manager_executable is None:
+        raise RuntimeError("Installed manager executable is unavailable")
+
+    completed = subprocess.run(  # noqa: S603 - installed project CLI with test-owned arguments.
+        [
+            manager_executable,
+            "--create-db",
+            "--backup-def",
+            backup_definition,
+            "--config-file",
+            str(config_path),
+            "--log-stdout",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
+    )
+    output = completed.stdout + completed.stderr
+    if artifact_path is not None:
+        artifact_path.write_text(output, encoding="utf-8")
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"manager --create-db failed with status {completed.returncode}:\n{output}"
+        )
+
+    config = ConfigSettings(str(config_path))
+    if not config.manager_db_dir:
+        raise RuntimeError("VM restore-test configuration has no MANAGER_DB_DIR")
+    catalog_path = Path(config.manager_db_dir) / f"{backup_definition}.db"
+    if not catalog_path.is_file() or catalog_path.stat().st_size <= 0:
+        raise RuntimeError(f"manager did not create a valid catalog: {catalog_path}")
+    return catalog_path
+
+
+def _run_dar_backup_pipeline(
+    config_path: Path,
+    darrc_path: Path,
+    backup_definition: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run a full dar-backup pipeline with isolated locking.
+
+    Args:
+        config_path: Complete dar-backup configuration path.
+        darrc_path: DAR configuration path.
+        backup_definition: Definition to back up.
+
+    Returns:
+        Completed dar-backup process with captured text output.
+
+    Raises:
+        ValueError: If a required path or definition is invalid.
+        RuntimeError: If dar-backup is unavailable.
+        OSError: If the isolated lock directory cannot be created.
+    """
+    if not config_path.is_file():
+        raise ValueError(f"Configuration is not a regular file: {config_path}")
+    if not darrc_path.is_file():
+        raise ValueError(f"DAR configuration is not a regular file: {darrc_path}")
+    if not backup_definition:
+        raise ValueError("backup_definition must not be empty")
+    dar_backup_executable = shutil.which("dar-backup")
+    if dar_backup_executable is None:
+        raise RuntimeError("Installed dar-backup executable is unavailable")
+    lock_dir = config_path.parent / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    command_environment = os.environ.copy()
+    command_environment["DAR_BACKUP_LOCK_DIR"] = str(lock_dir)
+    return subprocess.run(  # noqa: S603 - installed project CLI with test-owned arguments.
+        [
+            dar_backup_executable,
+            "--full-backup",
+            "-d",
+            backup_definition,
+            "--config-file",
+            str(config_path),
+            "--darrc",
+            str(darrc_path),
+            "--verbose",
+            "--log-level",
+            "debug",
+            "--log-stdout",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=7200,
+        env=command_environment,
+    )
 
 
 def _run_direct_dar_creation(
@@ -303,6 +423,79 @@ def test_vm_darrc_missing_targets_rejects_archive_creation(tmp_path: Path) -> No
     assert not (tmp_path / "archive" / "negative.1.dar").exists()
 
 
+def test_vm_initialized_catalog_allows_complete_backup_pipeline(tmp_path: Path) -> None:
+    """The VM fixture must support backup, verification, and registration.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    dataset_dir = tmp_path / "input" / "restoretest-dataset"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "payload.bin").write_bytes(b"pipeline payload")
+    config_path, _, darrc_path = _write_test_configuration(
+        tmp_path / "configuration",
+        dataset_dir,
+        restore_dir=tmp_path / "restore",
+        percentage=100.0,
+        maximum_files=5,
+        cover_slices=False,
+    )
+    catalog_path = _initialize_manager_catalog(
+        config_path,
+        "vm-large-restoretest",
+    )
+    empty_catalog_size = catalog_path.stat().st_size
+
+    completed = _run_dar_backup_pipeline(
+        config_path,
+        darrc_path,
+        "vm-large-restoretest",
+    )
+    output = completed.stdout + completed.stderr
+
+    assert completed.returncode == 0, output
+    assert "Verification completed successfully" in output
+    assert "added successfully to its manager" in output
+    assert catalog_path.stat().st_size > empty_catalog_size
+
+
+def test_vm_uninitialized_catalog_rejects_complete_backup_pipeline(tmp_path: Path) -> None:
+    """The regression fixture must prove a missing catalog fails registration.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    dataset_dir = tmp_path / "input" / "restoretest-dataset"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "payload.bin").write_bytes(b"pipeline payload")
+    config_path, _, darrc_path = _write_test_configuration(
+        tmp_path / "configuration",
+        dataset_dir,
+        restore_dir=tmp_path / "restore",
+        percentage=100.0,
+        maximum_files=5,
+        cover_slices=False,
+    )
+
+    completed = _run_dar_backup_pipeline(
+        config_path,
+        darrc_path,
+        "vm-large-restoretest",
+    )
+    output = completed.stdout + completed.stderr
+
+    assert completed.returncode != 0
+    assert "Catalog entry not added for verified archive" in output
+    assert list((tmp_path / "configuration" / "backups").glob("*.1.dar"))
+    assert not (tmp_path / "configuration" / "catalogs" / "vm-large-restoretest.db").exists()
+
+
 def _find_full_archive(backup_dir: Path) -> Path:
     """Return the unique VM test FULL archive base path.
 
@@ -332,9 +525,10 @@ def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
     """
     dataset_dir, manifest_path, archive_sha256 = _required_vm_dataset()
     manifest = _load_dataset_manifest(dataset_dir, manifest_path)
-    dar_backup_executable = shutil.which("dar-backup")
-    if dar_backup_executable is None:
-        raise RuntimeError("Installed dar-backup executable is unavailable")
+    artifact_dir_text = os.environ.get("DAR_BACKUP_VM_ARTIFACT_DIR")
+    artifact_dir = Path(artifact_dir_text) if artifact_dir_text else None
+    if artifact_dir is not None and not artifact_dir.is_dir():
+        raise ValueError(f"VM artifact directory does not exist: {artifact_dir}")
     percentage_restore_dir = tmp_path / "restore-percentage"
     config_path, definition_path, darrc_path = _write_test_configuration(
         tmp_path,
@@ -344,40 +538,32 @@ def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
         maximum_files=100,
         cover_slices=False,
     )
+    manager_artifact_path = (
+        artifact_dir / "large-vm-manager-create.log"
+        if artifact_dir is not None
+        else None
+    )
+    _initialize_manager_catalog(
+        config_path,
+        "vm-large-restoretest",
+        artifact_path=manager_artifact_path,
+    )
 
-    completed = subprocess.run(  # noqa: S603 - installed project CLI with test-owned arguments.
-        [
-            dar_backup_executable,
-            "--full-backup",
-            "-d",
-            "vm-large-restoretest",
-            "--config-file",
-            str(config_path),
-            "--darrc",
-            str(darrc_path),
-            "--verbose",
-            "--log-level",
-            "debug",
-            "--log-stdout",
-        ],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=7200,
+    completed = _run_dar_backup_pipeline(
+        config_path,
+        darrc_path,
+        "vm-large-restoretest",
     )
     output = completed.stdout + completed.stderr
-    assert completed.returncode == 0, output
-    assert "Restore-test sampling: eligible=1000 configured=10% calculated=100 capped=100" in output
-    assert "Restore-test selection complete: selected=100 batch-restored=100" in output
-    artifact_dir_text = os.environ.get("DAR_BACKUP_VM_ARTIFACT_DIR")
-    artifact_dir = Path(artifact_dir_text) if artifact_dir_text else None
     if artifact_dir is not None:
-        if not artifact_dir.is_dir():
-            raise ValueError(f"VM artifact directory does not exist: {artifact_dir}")
         (artifact_dir / "large-vm-percentage-command.log").write_text(
             output,
             encoding="utf-8",
         )
+    assert completed.returncode == 0, output
+    assert "Restore-test sampling: eligible=1000 configured=10% calculated=100 capped=100" in output
+    assert "Restore-test selection complete: selected=100 batch-restored=100" in output
+    if artifact_dir is not None:
         shutil.copyfile(
             manifest_path,
             artifact_dir / "large-vm-dataset-manifest.json",
