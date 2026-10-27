@@ -27,6 +27,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner, CommandResult
+from tests.dar_test_helpers import dar_root_relative_selection
 from tests.envdata import EnvData
 
 
@@ -86,14 +87,15 @@ def _create_backup_definition(env: EnvData, name: str) -> None:
     Mirrors the structure used by conftest.py's create_backup_definitions().
     Also creates the dar_manager catalog DB for this definition.
     """
+    data_selection = dar_root_relative_selection(env.data_dir)
     content = (
         "-R /\n"
         "-s 10G\n"
         "-z6\n"
         "-am\n"
         "--cache-directory-tagging\n"
-        f"-g {env.data_dir}\n"
-    ).replace("-g /tmp/", "-g tmp/")
+        f"-g {data_selection}\n"
+    )
 
     def_path = os.path.join(env.test_dir, "backup.d", name)
     with open(def_path, "w") as fh:

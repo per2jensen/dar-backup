@@ -129,7 +129,7 @@ def _test_env_vars_in_backup_definition(setup_environment, env: EnvData):
 -am
 --cache-directory-tagging
 -g "$TEST_DATA_DIR"
-""".replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
+"""
 
     # Write the backup definition file
     backup_def_path = os.path.join(env.backup_d_dir, "example")

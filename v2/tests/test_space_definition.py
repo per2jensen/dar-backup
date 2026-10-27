@@ -10,6 +10,7 @@ pytestmark = pytest.mark.integration
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from tests.envdata import EnvData
+from tests.dar_test_helpers import dar_root_relative_selection
 from dar_backup.command_runner import CommandRunner
 
 
@@ -55,6 +56,7 @@ def create_backup_definitions(env: EnvData) -> None:
     This method creates the backup definition files using the backup_definitions dictionary.
     """
     logging.info("Generating backup definition")
+    data_selection = dar_root_relative_selection(os.path.join(env.test_dir, 'data'))
     backup_definitions = {
         "example 2" : f"""
         -Q 
@@ -63,8 +65,8 @@ def create_backup_definitions(env: EnvData) -> None:
         -s 10G
         -z6
         -am
-        -g {os.path.join(env.test_dir, 'data')}
-        """.replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
+        -g {data_selection}
+        """
     }
 
     for filename, content in backup_definitions.items():

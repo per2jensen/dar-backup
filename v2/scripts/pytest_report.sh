@@ -53,6 +53,51 @@ validate_pytest_basetemp_root() {
   printf '%s\n' "${canonical_root}"
 }
 
+validate_pytest_stream_output() {
+  if [[ "$#" -ne 1 ]]; then
+    >&2 echo "ERROR: validate_pytest_stream_output requires one value"
+    return 1
+  fi
+  case "$1" in
+    yes|no)
+      printf '%s\n' "$1"
+      ;;
+    *)
+      >&2 echo "ERROR: DAR_BACKUP_PYTEST_STREAM_OUTPUT must be 'yes' or 'no'"
+      return 1
+      ;;
+  esac
+}
+
+run_report_command() {
+  if [[ "$#" -lt 3 ]]; then
+    >&2 echo "ERROR: run_report_command requires OUTPUT_PATH, STREAM_OUTPUT, and COMMAND"
+    return 1
+  fi
+  local output_path="$1"
+  local stream_output="$2"
+  shift 2
+
+  if [[ -z "${output_path}" || -d "${output_path}" || -L "${output_path}" || ! -d "$(dirname "${output_path}")" ]]; then
+    >&2 echo "ERROR: report output path is missing or unsafe: ${output_path:-<empty>}"
+    return 1
+  fi
+  case "${stream_output}" in
+    yes|no)
+      ;;
+    *)
+      >&2 echo "ERROR: STREAM_OUTPUT must be 'yes' or 'no'"
+      return 1
+      ;;
+  esac
+
+  if [[ "${stream_output}" == "yes" ]]; then
+    "$@" 2>&1 | tee "${output_path}"
+    return
+  fi
+  "$@" > "${output_path}" 2>&1
+}
+
 PYTEST_BASETEMP_ROOT=""
 COLLECT_BASETEMP_ARGS=()
 EXECUTION_BASETEMP_ARGS=()
@@ -61,6 +106,7 @@ if [[ -n "${DAR_BACKUP_PYTEST_BASETEMP_ROOT:-}" ]]; then
   COLLECT_BASETEMP_ARGS=("--basetemp=${PYTEST_BASETEMP_ROOT}/collect")
   EXECUTION_BASETEMP_ARGS=("--basetemp=${PYTEST_BASETEMP_ROOT}/execution")
 fi
+PYTEST_STREAM_OUTPUT="$(validate_pytest_stream_output "${DAR_BACKUP_PYTEST_STREAM_OUTPUT:-yes}")"
 
 case "$MODE" in
   fast)
@@ -126,6 +172,7 @@ echo "Mode:        $MODE"
 echo "Markers:     $MARKS"
 echo "Version:     $VER"
 echo "UTC time:    $TS"
+echo "Stream logs: $PYTEST_STREAM_OUTPUT"
 if [[ -n "${PYTEST_BASETEMP_ROOT}" ]]; then
   echo "Pytest temp: ${PYTEST_BASETEMP_ROOT}"
 fi
@@ -141,15 +188,20 @@ echo
 COV_XML="${OUTDIR}/coverage.xml"
 
 # 1) Collection inventory (skip coverage to avoid noisy reports)
-pytest "${COLLECT_BASETEMP_ARGS[@]}" -q --collect-only --no-cov -m "$MARKS" | tee "$COLLECT"
+run_report_command \
+  "$COLLECT" \
+  "$PYTEST_STREAM_OUTPUT" \
+  pytest "${COLLECT_BASETEMP_ARGS[@]}" -q --collect-only --no-cov -m "$MARKS"
 
 # 2) Execution (TXT + JSON)
-pytest "${EXECUTION_BASETEMP_ARGS[@]}" -q -m "$MARKS" \
+run_report_command \
+  "$TXT" \
+  "$PYTEST_STREAM_OUTPUT" \
+  pytest "${EXECUTION_BASETEMP_ARGS[@]}" -q -m "$MARKS" \
   --json-report \
   --json-report-file="$JSON" \
   --junitxml="$JUNIT" \
-  --cov-report="xml:$COV_XML" \
-  | tee "$TXT"
+  --cov-report="xml:$COV_XML"
 
 # 3) Coverage XML (only if coverage data exists)
 if [[ ! -f "$COV_XML" ]]; then

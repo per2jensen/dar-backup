@@ -75,6 +75,11 @@ mount, and available quota diagnostics before pytest starts. Pytest base
 directories, application temporary files, and parallel coverage databases use
 a fresh guarded directory below the disk-backed guest work directory. They do
 not use `/tmp`, which is a size-limited tmpfs on some matrix distributions.
+The complete pytest collection and execution logs are written directly to
+retrieved guest artifacts instead of being streamed through Multipass. The
+controller prints a host-side heartbeat once per minute while guest tests run,
+so verbose failures cannot fill the SSH output channel and quiet work remains
+visibly alive.
 
 After an initialized run, the controller appends one public, schema-versioned
 record to the tracked evidence file:

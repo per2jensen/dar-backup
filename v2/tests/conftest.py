@@ -45,6 +45,7 @@ from datetime import datetime
 from tests.envdata import EnvData
 from dar_backup.command_runner import CommandRunner
 from dar_backup.util import get_logger as get_command_logger
+from tests.dar_test_helpers import dar_root_relative_selection
 
 test_files = {
         'file1.txt': 'This is file 1.',
@@ -184,6 +185,7 @@ def setup_environment(request, logger, tmp_path):
 
 def create_backup_definitions(env : EnvData) -> None:
     logging.info("Generating backup definition")
+    data_selection = dar_root_relative_selection(env.data_dir)
     backup_definitions = {
         "example" : f"""
 -R /
@@ -191,8 +193,8 @@ def create_backup_definitions(env : EnvData) -> None:
 -z6
 -am
 --cache-directory-tagging
--g {env.data_dir}
-""".replace("-g /tmp/", "-g tmp/")  # because dar does not allow first "/"
+-g {data_selection}
+"""
     }
 
     for filename, content in backup_definitions.items():

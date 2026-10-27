@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -223,12 +224,17 @@ def _stream_file_to_pipe(source: BinaryIO, destination: BinaryIO) -> None:
         destination.close()
 
 
-def _read_pipe_as_text(source: BinaryIO, log_path: Path | None) -> str:
+def _read_pipe_as_text(
+    source: BinaryIO,
+    log_path: Path | None,
+    stream: bool = False,
+) -> str:
     """Read, decode, and log all output from a subprocess pipe.
 
     Args:
         source: Open binary subprocess output pipe.
         log_path: Optional diagnostic log path.
+        stream: Whether to echo decoded output while reading it.
 
     Returns:
         Decoded subprocess output.
@@ -242,6 +248,9 @@ def _read_pipe_as_text(source: BinaryIO, log_path: Path | None) -> str:
             line = raw_line.decode("utf-8", errors="replace")
             output_lines.append(line)
             _append_log(log_path, line)
+            if stream:
+                sys.stdout.write(line)
+                sys.stdout.flush()
     finally:
         source.close()
     return "".join(output_lines)
@@ -302,6 +311,8 @@ class CommandExecutor:
         log_path: Path | None = None,
         stream: bool = False,
         input_path: Path | None = None,
+        heartbeat_seconds: float | None = None,
+        heartbeat_message: str | None = None,
     ) -> CommandResult:
         """Run a Multipass command and optionally append its output to a log.
 
@@ -310,13 +321,24 @@ class CommandExecutor:
             log_path: Optional combined-output log.
             stream: Whether to echo output while the process runs.
             input_path: Optional file for the command's standard input.
+            heartbeat_seconds: Optional interval for host-side progress messages.
+            heartbeat_message: Message printed at each heartbeat interval.
 
         Returns:
             Completed command status and combined output.
 
         Raises:
+            ValueError: If heartbeat configuration is invalid.
             InfrastructureError: If the input is invalid or the executable cannot be started.
         """
+        if heartbeat_seconds is not None and (
+            not math.isfinite(heartbeat_seconds) or heartbeat_seconds <= 0
+        ):
+            raise ValueError("heartbeat_seconds must be a positive finite value")
+        if heartbeat_message is not None and not heartbeat_message.strip():
+            raise ValueError("heartbeat_message must not be empty")
+        if heartbeat_message is not None and heartbeat_seconds is None:
+            raise ValueError("heartbeat_message requires heartbeat_seconds")
         if input_path is not None and not input_path.is_file():
             raise InfrastructureError(f"Command input is not a file: {input_path}")
 
@@ -345,6 +367,8 @@ class CommandExecutor:
 
         input_executor: ThreadPoolExecutor | None = None
         input_future: Future[None] | None = None
+        output_executor: ThreadPoolExecutor | None = None
+        output_future: Future[str] | None = None
         if process.stdout is None:
             process.kill()
             process.wait()
@@ -361,17 +385,41 @@ class CommandExecutor:
             input_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="multipass-input")
             input_future = input_executor.submit(_stream_file_to_pipe, input_file, cast(BinaryIO, process.stdin))
 
-        output_lines: list[str] = []
+        output_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="multipass-output")
+        output_future = output_executor.submit(
+            _read_pipe_as_text,
+            cast(BinaryIO, process.stdout),
+            log_path,
+            stream,
+        )
+        next_heartbeat = (
+            time.monotonic() + heartbeat_seconds
+            if heartbeat_seconds is not None
+            else None
+        )
+        output_text = ""
         try:
-            for raw_line in process.stdout:
-                line = raw_line.decode("utf-8", errors="replace")
-                output_lines.append(line)
-                _append_log(log_path, line)
-                if stream:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
+            while True:
+                wait_timeout = 1.0
+                if next_heartbeat is not None:
+                    wait_timeout = max(0.001, min(wait_timeout, next_heartbeat - time.monotonic()))
+                try:
+                    returncode = process.wait(timeout=wait_timeout)
+                    break
+                except subprocess.TimeoutExpired:
+                    if output_future.done():
+                        output_future.result()
+                    if next_heartbeat is None or heartbeat_seconds is None:
+                        continue
+                    current_time = time.monotonic()
+                    if current_time < next_heartbeat:
+                        continue
+                    message = heartbeat_message or f"Command still running: {command[0]}"
+                    print(message, flush=True)
+                    _append_log(log_path, message + "\n")
+                    next_heartbeat = current_time + heartbeat_seconds
 
-            returncode = process.wait()
+            output_text = output_future.result()
             if input_future is not None:
                 try:
                     input_future.result()
@@ -385,9 +433,11 @@ class CommandExecutor:
                 process.wait()
             if input_executor is not None:
                 input_executor.shutdown(wait=True)
+            if output_executor is not None:
+                output_executor.shutdown(wait=True)
             if input_file is not None:
                 input_file.close()
-        return CommandResult(returncode=returncode, output="".join(output_lines))
+        return CommandResult(returncode=returncode, output=output_text)
 
     def run_with_stdout_file(
         self,
@@ -3207,6 +3257,10 @@ def run_image(
             ],
             controller_log,
             stream=True,
+            heartbeat_seconds=60.0,
+            heartbeat_message=(
+                f"{spec.label}: guest tests still running; detailed output is retained in guest reports"
+            ),
         )
         guest_exit_code = guest.returncode
 

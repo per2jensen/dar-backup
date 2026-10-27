@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -54,7 +55,7 @@ def _run_shell_function(
     tmp_path: Path,
     script_path: Path,
     function_name: str,
-    arguments: list[Path],
+    arguments: Sequence[str | Path],
     *,
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -458,6 +459,101 @@ def test_validate_pytest_basetemp_root_nonempty_directory_refuses_use(
     assert completed.returncode == 1
     assert "must be empty" in completed.stderr
     assert retained_file.read_text(encoding="utf-8") == "retain"
+
+
+def test_validate_pytest_stream_output_supported_value_returns_value(
+    tmp_path: Path,
+) -> None:
+    """The report runner must accept its explicit non-streaming mode.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "validate_pytest_stream_output",
+        ["no"],
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "no"
+
+
+def test_validate_pytest_stream_output_unsupported_value_refuses_run(
+    tmp_path: Path,
+) -> None:
+    """An ambiguous report streaming value must fail closed.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "validate_pytest_stream_output",
+        ["sometimes"],
+    )
+
+    assert completed.returncode == 1
+    assert "must be 'yes' or 'no'" in completed.stderr
+
+
+def test_run_report_command_non_streaming_large_output_retains_file(
+    tmp_path: Path,
+) -> None:
+    """Multi-megabyte test output must go to disk instead of the transport pipe.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    output_path = tmp_path / "pytest-output.txt"
+    output_bytes = 2 * 1024 * 1024
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "run_report_command",
+        [output_path, "no", "/usr/bin/head", "-c", str(output_bytes), "/dev/zero"],
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout == ""
+    assert output_path.stat().st_size == output_bytes
+
+
+def test_run_report_command_invalid_stream_mode_preserves_output_path(
+    tmp_path: Path,
+) -> None:
+    """Invalid streaming configuration must not create or replace a report.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    output_path = tmp_path / "pytest-output.txt"
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "run_report_command",
+        [output_path, "sometimes", "/usr/bin/true"],
+    )
+
+    assert completed.returncode == 1
+    assert "must be 'yes' or 'no'" in completed.stderr
+    assert not output_path.exists()
 
 
 def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> None:
@@ -1611,6 +1707,73 @@ def test_command_executor_failed_stdout_capture_preserves_destination(tmp_path: 
     assert "unsupported fake multipass arguments" in result.output
     assert destination.read_bytes() == b"existing result"
     assert list(tmp_path.glob(".result.tar.gz.*.tmp")) == []
+
+
+def test_command_executor_long_running_command_emits_heartbeat(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A quiet guest command must produce host-side liveness messages.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+        capsys: Captured controller terminal output.
+
+    Returns:
+        None.
+    """
+    log_path = tmp_path / "controller.log"
+    executor = RUNNER.CommandExecutor("/usr/bin/bash")
+
+    result = executor.run(
+        ["-c", "sleep 0.05"],
+        log_path,
+        heartbeat_seconds=0.01,
+        heartbeat_message="guest test heartbeat",
+    )
+
+    assert result.returncode == 0
+    assert "guest test heartbeat" in capsys.readouterr().out
+    assert "guest test heartbeat" in log_path.read_text(encoding="utf-8")
+
+
+def test_command_executor_invalid_heartbeat_refuses_command(tmp_path: Path) -> None:
+    """A non-positive heartbeat interval must fail before starting a command.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    executor = RUNNER.CommandExecutor("/usr/bin/true")
+
+    with pytest.raises(ValueError, match="positive finite"):
+        executor.run([], tmp_path / "controller.log", heartbeat_seconds=0)
+
+    assert not (tmp_path / "controller.log").exists()
+
+
+def test_command_executor_large_unterminated_output_is_fully_drained(
+    tmp_path: Path,
+) -> None:
+    """A multi-megabyte line must not fill the subprocess output pipe.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    output_bytes = 2 * 1024 * 1024
+    log_path = tmp_path / "controller.log"
+    executor = RUNNER.CommandExecutor("/usr/bin/head")
+
+    result = executor.run(["-c", str(output_bytes), "/dev/zero"], log_path)
+
+    assert result.returncode == 0
+    assert len(result.output.encode("utf-8")) == output_bytes
+    assert log_path.stat().st_size >= output_bytes
 
 
 def test_prepare_checkout_copies_root_readme_into_v2(tmp_path: Path) -> None:

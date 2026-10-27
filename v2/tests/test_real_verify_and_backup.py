@@ -54,6 +54,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 import dar_backup.dar_backup as db
 from dar_backup.command_runner import CommandRunner
 from dar_backup.config_settings import ConfigSettings
+from tests.dar_test_helpers import dar_root_relative_selection
 from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
 
@@ -717,14 +718,15 @@ def _latest_metrics_row(db_path: str) -> sqlite3.Row:
 
 def _create_restore_test_definition(env: EnvData) -> None:
     """Write a backup definition pointing at env.data_dir and create its catalog."""
+    data_selection = dar_root_relative_selection(env.data_dir)
     content = (
         "-R /\n"
         "-s 10G\n"
         "-z6\n"
         "-am\n"
         "--cache-directory-tagging\n"
-        f"-g {env.data_dir}\n"
-    ).replace("-g /tmp/", "-g tmp/")
+        f"-g {data_selection}\n"
+    )
     def_path = os.path.join(env.backup_d_dir, _RESTORE_TEST_DEF_NAME)
     with open(def_path, "w") as fh:
         fh.write(content)

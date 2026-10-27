@@ -26,6 +26,7 @@ from dar_backup.config_settings import ConfigSettings
 from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetPolicy
 from dar_backup.restore_target_safety import prepare_restore_target
+from tests.dar_test_helpers import dar_root_relative_selection
 from tests.envdata import EnvData
 from tests.testdata_verification import run_backup_script
 
@@ -3445,14 +3446,15 @@ def test_pitr_two_backup_definitions_catalog_isolation(setup_environment, env):
 
     def make_def(name: str, data_dir: str) -> str:
         """Write a backup definition file and return its path."""
+        data_selection = dar_root_relative_selection(data_dir)
         content = (
             f"-R /\n"
             f"-s 10G\n"
             f"-z6\n"
             f"-am\n"
             f"--cache-directory-tagging\n"
-            f"-g {data_dir}\n"
-        ).replace("-g /tmp/", "-g tmp/")
+            f"-g {data_selection}\n"
+        )
         def_path = os.path.join(env.backup_d_dir, name)
         with open(def_path, "w") as f:
             f.write(content)
