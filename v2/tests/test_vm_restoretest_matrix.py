@@ -14,6 +14,7 @@ import subprocess
 from configparser import ConfigParser
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Sequence
 
 import pytest
 
@@ -28,6 +29,114 @@ _EXPECTED_FILE_COUNT = 1_000
 _EXPECTED_MINIMUM_BYTES = 5 * 1024
 _EXPECTED_MAXIMUM_BYTES = 5 * 1024 * 1024
 _SLICE_SIZE = "500M"
+
+
+def _percentage_restore_metrics(output: str, expected_selected: int) -> dict[str, int]:
+    """Extract and validate percentage restore-test counts from command output.
+
+    Args:
+        output: Combined stdout and stderr from the dar-backup pipeline.
+        expected_selected: Exact number of files the configured sample must select.
+
+    Returns:
+        Validated selected, restored, verified, and failure counts.
+
+    Raises:
+        ValueError: If output is ambiguous or any selected file was not verified.
+    """
+    if not isinstance(output, str) or not output:
+        raise ValueError("Percentage restore-test output must be non-empty")
+    if (
+        not isinstance(expected_selected, int)
+        or isinstance(expected_selected, bool)
+        or expected_selected < 1
+    ):
+        raise ValueError("Expected percentage selection must be a positive integer")
+
+    selections = re.findall(
+        r"Restore-test selection complete: selected=(\d+) batch-restored=(\d+)",
+        output,
+    )
+    if len(selections) != 1:
+        raise ValueError(
+            "Percentage restore-test output must contain exactly one selection summary"
+        )
+    selected_files, restored_files = (int(value) for value in selections[0])
+    verified_files = len(
+        re.findall(r"Success: file '[^\r\n]+' matches the original", output)
+    )
+    verification_failures = selected_files - verified_files
+    if selected_files != expected_selected:
+        raise ValueError(
+            f"Percentage restore-test selected {selected_files} files, "
+            f"expected {expected_selected}"
+        )
+    if restored_files != selected_files or verified_files != selected_files:
+        raise ValueError(
+            "Percentage restore-test did not restore and verify every selected file: "
+            f"selected={selected_files}, restored={restored_files}, "
+            f"verified={verified_files}"
+        )
+    return {
+        "selected_files": selected_files,
+        "restored_files": restored_files,
+        "verified_files": verified_files,
+        "verification_failures": verification_failures,
+    }
+
+
+def _slice_restore_metrics(result: db.VerifyResult) -> dict[str, int]:
+    """Validate and summarize per-file evidence from all-slices restore testing.
+
+    Args:
+        result: Completed dar-backup verification result.
+
+    Returns:
+        Validated selected, restored, verified, and failure counts.
+
+    Raises:
+        ValueError: If evidence is incomplete or any selected file was not verified.
+    """
+    if not isinstance(result, db.VerifyResult):
+        raise ValueError(  # noqa: TRY004 - project input-validation convention.
+            "Slice restore-test result has an invalid type"
+        )
+    selected_files = result.files_verified
+    if selected_files < 1:
+        raise ValueError("Slice restore-test selected no files")
+    evidence: Sequence[db.RestoreTestFileEvidence] = result.file_evidence
+    if len(evidence) != selected_files:
+        raise ValueError(
+            "Slice restore-test per-file evidence count does not match its selection: "
+            f"selected={selected_files}, evidence={len(evidence)}"
+        )
+    restored_files = sum(
+        item.extraction_attempted and item.extraction_succeeded and item.target_present
+        for item in evidence
+    )
+    verified_files = sum(
+        item.extraction_attempted
+        and item.extraction_succeeded
+        and item.target_present
+        and item.content_matched is True
+        and item.metadata_matched is True
+        for item in evidence
+    )
+    verification_failures = selected_files - verified_files
+    if result.passed is not True or result.restore_test_passed is not True:
+        raise ValueError("Slice restore-test result did not pass")
+    if restored_files != selected_files or verified_files != selected_files:
+        raise ValueError(
+            "Slice restore-test did not restore and verify every selected file: "
+            f"selected={selected_files}, restored={restored_files}, "
+            f"verified={verified_files}"
+        )
+    return {
+        "selected_files": selected_files,
+        "restored_files": restored_files,
+        "verified_files": verified_files,
+        "verification_failures": verification_failures,
+    }
 
 
 def _required_vm_dataset() -> tuple[Path, Path, str]:
@@ -588,6 +697,104 @@ def _find_full_archive(backup_dir: Path) -> Path:
     return Path(str(first_slices[0])[: -len(".1.dar")])
 
 
+def test_percentage_restore_metrics_complete_output_returns_counts() -> None:
+    """Complete percentage output must produce exact verification metrics.
+
+    Returns:
+        None.
+    """
+    output = "\n".join(
+        [
+            "Restore-test selection complete: selected=2 batch-restored=2",
+            "Success: file 'first.bin' matches the original",
+            "Success: file 'second.bin' matches the original",
+        ]
+    )
+
+    assert _percentage_restore_metrics(output, expected_selected=2) == {
+        "selected_files": 2,
+        "restored_files": 2,
+        "verified_files": 2,
+        "verification_failures": 0,
+    }
+
+
+def test_percentage_restore_metrics_missing_verification_raises() -> None:
+    """Missing per-file success evidence must fail metric generation.
+
+    Returns:
+        None.
+    """
+    output = "\n".join(
+        [
+            "Restore-test selection complete: selected=2 batch-restored=2",
+            "Success: file 'first.bin' matches the original",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="did not restore and verify every selected file"):
+        _percentage_restore_metrics(output, expected_selected=2)
+
+
+def test_slice_restore_metrics_complete_evidence_returns_counts() -> None:
+    """Complete all-slices evidence must produce exact verification metrics.
+
+    Returns:
+        None.
+    """
+    evidence = tuple(
+        db.RestoreTestFileEvidence(
+            path=f"file-{index}.bin",
+            predicted_slice_numbers=(index,),
+            extraction_attempted=True,
+            extraction_succeeded=True,
+            target_present=True,
+            content_matched=True,
+            metadata_matched=True,
+        )
+        for index in (1, 2)
+    )
+    result = db.VerifyResult(
+        passed=True,
+        restore_test_passed=True,
+        files_verified=2,
+        file_evidence=evidence,
+    )
+
+    assert _slice_restore_metrics(result) == {
+        "selected_files": 2,
+        "restored_files": 2,
+        "verified_files": 2,
+        "verification_failures": 0,
+    }
+
+
+def test_slice_restore_metrics_content_failure_raises() -> None:
+    """A selected file without a content match must fail metric generation.
+
+    Returns:
+        None.
+    """
+    evidence = db.RestoreTestFileEvidence(
+        path="failed.bin",
+        predicted_slice_numbers=(1,),
+        extraction_attempted=True,
+        extraction_succeeded=True,
+        target_present=True,
+        content_matched=False,
+        metadata_matched=True,
+    )
+    result = db.VerifyResult(
+        passed=True,
+        restore_test_passed=True,
+        files_verified=1,
+        file_evidence=(evidence,),
+    )
+
+    with pytest.raises(ValueError, match="did not restore and verify every selected file"):
+        _slice_restore_metrics(result)
+
+
 def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
     """Create one VM-local archive and exercise both advanced restore modes.
 
@@ -637,6 +844,7 @@ def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
     assert completed.returncode == 0, output
     assert "Restore-test sampling: eligible=1000 configured=10% calculated=100 capped=100" in output
     assert "Restore-test selection complete: selected=100 batch-restored=100" in output
+    percentage_metrics = _percentage_restore_metrics(output, expected_selected=100)
     if artifact_dir is not None:
         shutil.copyfile(
             manifest_path,
@@ -685,18 +893,51 @@ def test_vm_large_percentage_and_slice_restoretests(tmp_path: Path) -> None:
     assert result.predicted_slice_numbers == result.verified_slice_numbers
     assert all(item.content_matched is True for item in result.file_evidence)
     assert all(item.metadata_matched is True for item in result.file_evidence)
+    slice_metrics = _slice_restore_metrics(result)
+
+    physical_slices = list(inventory.slice_numbers)
+    predicted_slices = list(result.predicted_slice_numbers)
+    extracted_slices = list(result.extracted_slice_numbers)
+    verified_slices = list(result.verified_slice_numbers)
+    if not (
+        physical_slices == predicted_slices == extracted_slices == verified_slices
+    ):
+        raise ValueError(
+            "All-slices restore-test did not cover every physical archive slice: "
+            f"physical={physical_slices}, predicted={predicted_slices}, "
+            f"extracted={extracted_slices}, verified={verified_slices}"
+        )
 
     if artifact_dir is not None:
         evidence = {
-            "dataset_archive_sha256": archive_sha256,
-            "dataset_file_count": manifest["file_count"],
-            "dataset_total_bytes": manifest["total_bytes"],
-            "physical_slice_numbers": list(inventory.slice_numbers),
-            "percentage_files_verified": 100,
-            "coverage_files_verified": result.files_verified,
-            "predicted_slice_numbers": list(result.predicted_slice_numbers),
-            "extracted_slice_numbers": list(result.extracted_slice_numbers),
-            "verified_slice_numbers": list(result.verified_slice_numbers),
+            "mode": "percentage+all-slices",
+            "dataset": {
+                "files": manifest["file_count"],
+                "bytes": manifest["total_bytes"],
+                "sha256": archive_sha256,
+            },
+            "percentage": {
+                "requested_percent": 10,
+                "selected_files": percentage_metrics["selected_files"],
+                "restored_files": percentage_metrics["restored_files"],
+                "verified_files": percentage_metrics["verified_files"],
+            },
+            "slice_coverage": {
+                "requested_percent": 1,
+                "selected_files": slice_metrics["selected_files"],
+                "restored_files": slice_metrics["restored_files"],
+                "verified_files": slice_metrics["verified_files"],
+            },
+            "slices": {
+                "physical": physical_slices,
+                "predicted": predicted_slices,
+                "extracted": extracted_slices,
+                "verified": verified_slices,
+            },
+            "verification_failures": (
+                percentage_metrics["verification_failures"]
+                + slice_metrics["verification_failures"]
+            ),
         }
         artifact_path = artifact_dir / "large-vm-restoretest.json"
         artifact_path.write_text(

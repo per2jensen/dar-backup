@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1178,6 +1179,23 @@ def _run_fake_image(
     )
 
 
+def _history_restoretest_dataset(tmp_path: Path) -> Any:
+    """Return host provenance matching the history fixture's restore artifact.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        Restore-test dataset provenance for history construction.
+    """
+    return RUNNER.RestoreTestDataset(
+        archive_path=tmp_path / "restoretest-dataset.tar",
+        sha256="b" * 64,
+        file_count=1_000,
+        total_bytes=2_588_250_939,
+    )
+
+
 def _history_inputs(tmp_path: Path) -> tuple[object, object]:
     """Create one image specification and retrieved result for history tests.
 
@@ -1326,6 +1344,41 @@ def _history_inputs(tmp_path: Path) -> tuple[object, object]:
         ),
         encoding="utf-8",
     )
+    restoretest_dir = image_result_dir / "restoretest-catalog"
+    restoretest_dir.mkdir()
+    dataset = _history_restoretest_dataset(tmp_path)
+    (restoretest_dir / "large-vm-restoretest.json").write_text(
+        json.dumps(
+            {
+                "mode": "percentage+all-slices",
+                "dataset": {
+                    "files": dataset.file_count,
+                    "bytes": dataset.total_bytes,
+                    "sha256": dataset.sha256,
+                },
+                "percentage": {
+                    "requested_percent": 10,
+                    "selected_files": 100,
+                    "restored_files": 100,
+                    "verified_files": 100,
+                },
+                "slice_coverage": {
+                    "requested_percent": 1,
+                    "selected_files": 11,
+                    "restored_files": 11,
+                    "verified_files": 11,
+                },
+                "slices": {
+                    "physical": [1, 2, 3, 4, 5],
+                    "predicted": [1, 2, 3, 4, 5],
+                    "extracted": [1, 2, 3, 4, 5],
+                    "verified": [1, 2, 3, 4, 5],
+                },
+                "verification_failures": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
     spec = RUNNER.ImageSpec(
         label="ubuntu-24.04",
         image="24.04",
@@ -1364,7 +1417,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         run_id: Record identity.
 
     Returns:
-        Valid schema-v5 history record.
+        Valid schema-v6 history record.
     """
     spec, result = _history_inputs(tmp_path)
     return RUNNER.build_history_record(
@@ -1379,6 +1432,7 @@ def _history_record(tmp_path: Path, run_id: str = "run-1") -> dict[str, object]:
         completed=True,
         aborted_phase=None,
         exit_code=0,
+        restoretest_dataset=_history_restoretest_dataset(tmp_path),
     )
 
 
@@ -2005,7 +2059,7 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     encoded = json.dumps(record)
     image = record["images"][0]
 
-    assert record["schema_version"] == 5
+    assert record["schema_version"] == 6
     assert record["passed"] is True
     assert image["guest"]["dar"] == "dar version 2.7.13"
     assert image["guest"]["dar_backup"] == "dar-backup 1.1.12.dev90"
@@ -2025,6 +2079,33 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert image["guest"]["package_manager"] == "apt"
     assert image["guest"]["package_manifest_format"] == "dpkg-query-v1"
     assert image["guest"]["environment_adjustments"] == []
+    assert image["checks"]["restoretest"] == {
+        "mode": "percentage+all-slices",
+        "dataset": {
+            "files": 1_000,
+            "bytes": 2_588_250_939,
+            "sha256": "b" * 64,
+        },
+        "percentage": {
+            "requested_percent": 10,
+            "selected_files": 100,
+            "restored_files": 100,
+            "verified_files": 100,
+        },
+        "slice_coverage": {
+            "requested_percent": 1,
+            "selected_files": 11,
+            "restored_files": 11,
+            "verified_files": 11,
+        },
+        "slices": {
+            "physical": [1, 2, 3, 4, 5],
+            "predicted": [1, 2, 3, 4, 5],
+            "extracted": [1, 2, 3, 4, 5],
+            "verified": [1, 2, 3, 4, 5],
+        },
+        "verification_failures": 0,
+    }
     assert image["guest"]["mandatory_access_control"] == {
         "selinux": {
             "availability": "unavailable",
@@ -2073,6 +2154,103 @@ def test_history_record_contains_badge_evidence_without_private_paths(
     assert "/home/" not in encoded
     assert "/mnt/" not in encoded
     assert "dar-backup-test-2404" not in encoded
+
+
+def test_history_record_restoretest_dataset_mismatch_raises(tmp_path: Path) -> None:
+    """Guest restore evidence must match the host-generated dataset identity.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    mismatched_dataset = replace(
+        _history_restoretest_dataset(tmp_path),
+        sha256="c" * 64,
+    )
+
+    with pytest.raises(ValueError, match="does not match the host dataset"):
+        RUNNER.build_history_record(
+            run_id="run-restoretest-dataset-mismatch",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+            restoretest_dataset=mismatched_dataset,
+        )
+
+
+def test_history_record_restoretest_incomplete_verification_raises(
+    tmp_path: Path,
+) -> None:
+    """A selected restore-test file without verification must fail evidence.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    artifact_path = (
+        Path(result.result_directory)
+        / "restoretest-catalog"
+        / "large-vm-restoretest.json"
+    )
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["percentage"]["verified_files"] = 99
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="failure count.*expected 1"):
+        RUNNER.build_history_record(
+            run_id="run-restoretest-incomplete",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+            restoretest_dataset=_history_restoretest_dataset(tmp_path),
+        )
+
+
+def test_history_record_restoretest_slice_gap_raises(tmp_path: Path) -> None:
+    """Incomplete verified slice coverage must fail evidence generation.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    spec, result = _history_inputs(tmp_path)
+    artifact_path = (
+        Path(result.result_directory)
+        / "restoretest-catalog"
+        / "large-vm-restoretest.json"
+    )
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["slices"]["verified"] = [1, 2, 3, 4]
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not cover all physical slices"):
+        RUNNER.build_history_record(
+            run_id="run-restoretest-slice-gap",
+            started_at="2026-09-30T10:00:00Z",
+            finished_at="2026-09-30T10:20:01Z",
+            mode="full",
+            application_commit="a" * 40,
+            orchestration_commit="a" * 40,
+            specs=[spec],
+            results=[result],
+            completed=True,
+            aborted_phase=None,
+            exit_code=0,
+            restoretest_dataset=_history_restoretest_dataset(tmp_path),
+        )
 
 
 @pytest.mark.parametrize(
@@ -2544,6 +2722,7 @@ def test_history_record_accepts_expected_enforcing_selinux(tmp_path: Path) -> No
         completed=True,
         aborted_phase=None,
         exit_code=0,
+        restoretest_dataset=_history_restoretest_dataset(tmp_path),
     )
 
     assert record["images"][0]["guest"]["mandatory_access_control"] == (
@@ -2571,6 +2750,7 @@ def test_history_record_accepts_expected_enabled_apparmor(tmp_path: Path) -> Non
         completed=True,
         aborted_phase=None,
         exit_code=0,
+        restoretest_dataset=_history_restoretest_dataset(tmp_path),
     )
 
     mac = record["images"][0]["guest"]["mandatory_access_control"]
@@ -2702,6 +2882,7 @@ def test_history_record_accepts_no_mac_system_available(tmp_path: Path) -> None:
         completed=True,
         aborted_phase=None,
         exit_code=0,
+        restoretest_dataset=_history_restoretest_dataset(tmp_path),
     )
 
     mac = record["images"][0]["guest"]["mandatory_access_control"]
@@ -3206,6 +3387,30 @@ def test_read_latest_full_history_record_schema_v4_shows_unrecorded_version(
 
     assert latest["run_id"] == "schema-v4-run"
     assert "| Ubuntu 24.04.5 LTS | not recorded | 3.12.3 |" in readme
+
+
+def test_read_latest_full_history_record_schema_v5_remains_readable(
+    tmp_path: Path,
+) -> None:
+    """Presentation refresh must accept schema-v5 records without restore metrics.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+    """
+    history_path = tmp_path / "vm-matrix-results.jsonl"
+    historical = _history_record(tmp_path / "historical", run_id="schema-v5-run")
+    historical["schema_version"] = 5
+    for image in historical["images"]:
+        checks = image.get("checks")
+        if isinstance(checks, dict):
+            checks.pop("restoretest", None)
+    history_path.write_text(json.dumps(historical) + "\n", encoding="utf-8")
+
+    latest = RUNNER.read_latest_full_history_record(history_path)
+    badge = RUNNER.render_vm_matrix_badge(latest)
+
+    assert latest["run_id"] == "schema-v5-run"
+    assert badge["message"] == "Ubuntu 24.04 passing"
 
 
 def test_main_refresh_presentation_valid_history_updates_outputs_without_vm(

@@ -30,8 +30,8 @@ from typing import Any, BinaryIO, Sequence, cast
 PASS = "PASS"  # noqa: S105 - test outcome, not a credential.
 TEST_FAILED = "TEST_FAILED"
 INFRASTRUCTURE_FAILED = "INFRASTRUCTURE_FAILED"
-HISTORY_SCHEMA_VERSION = 5
-READABLE_HISTORY_SCHEMA_VERSIONS = {2, 3, 4, HISTORY_SCHEMA_VERSION}
+HISTORY_SCHEMA_VERSION = 6
+READABLE_HISTORY_SCHEMA_VERSIONS = {2, 3, 4, 5, HISTORY_SCHEMA_VERSION}
 _GUEST_STATUSES = {PASS, TEST_FAILED, "SETUP_FAILED"}
 _SAFE_LABEL = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -1189,7 +1189,7 @@ def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
                 raise ValueError(f"Passing presentation image {label!r} has no passing pytest result")
             if _mypy_presentation(checks, label) != "PASS":
                 raise ValueError(f"Passing presentation image {label!r} has no passing mypy result")
-            if record["schema_version"] == HISTORY_SCHEMA_VERSION:
+            if record["schema_version"] >= 5:
                 dar_backup_version = guest.get("dar_backup")
                 if (
                     not isinstance(dar_backup_version, str)
@@ -1199,6 +1199,12 @@ def _presentation_images(record: dict[str, Any]) -> list[dict[str, Any]]:
                         f"Passing presentation image {label!r} has no valid "
                         "dar-backup version"
                     )
+            if record["schema_version"] >= 6:
+                _normalize_restoretest_evidence(
+                    checks.get("restoretest"),
+                    label,
+                    expected_dataset=None,
+                )
     return images
 
 
@@ -2568,12 +2574,261 @@ def _pytest_evidence(image_result_dir: Path) -> dict[str, Any] | None:
     }
 
 
+def _restoretest_count(value: object, field: str, minimum: int = 0) -> int:
+    """Validate one integer restore-test metric.
+
+    Args:
+        value: Untrusted metric value.
+        field: Public field name used in errors.
+        minimum: Smallest accepted value.
+
+    Returns:
+        Validated integer.
+
+    Raises:
+        ValueError: If the value is not an integer in the accepted range.
+    """
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+        raise ValueError(f"Restore-test field {field!r} must be an integer >= {minimum}")
+    return value
+
+
+def _restoretest_slice_numbers(value: object, field: str) -> list[int]:
+    """Validate one complete ordered set of restore-test slice numbers.
+
+    Args:
+        value: Untrusted slice-number array.
+        field: Public field name used in errors.
+
+    Returns:
+        Validated slice numbers.
+
+    Raises:
+        ValueError: If numbers are absent, invalid, duplicated, or unordered.
+    """
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"Restore-test field {field!r} must be a non-empty array")
+    numbers = [
+        _restoretest_count(item, f"{field}[{index}]", minimum=1)
+        for index, item in enumerate(value)
+    ]
+    if numbers != sorted(set(numbers)):
+        raise ValueError(
+            f"Restore-test field {field!r} must contain sorted unique slice numbers"
+        )
+    if numbers != list(range(1, numbers[-1] + 1)):
+        raise ValueError(
+            f"Restore-test field {field!r} must be contiguous from slice 1"
+        )
+    return numbers
+
+
+def _restoretest_mode_counts(
+    value: object,
+    field: str,
+    expected_percent: int,
+) -> tuple[dict[str, int], int]:
+    """Validate one restore-test mode's selection and verification counts.
+
+    Args:
+        value: Untrusted mode metrics object.
+        field: Mode field name used in errors.
+        expected_percent: Percentage configured by the VM workload.
+
+    Returns:
+        Normalized metrics and the number of unverified selected files.
+
+    Raises:
+        TypeError: If the mode metrics are not an object.
+        ValueError: If percentages or counts are inconsistent.
+    """
+    if not isinstance(value, dict):
+        raise TypeError(f"Restore-test field {field!r} must be an object")
+    requested_percent = _restoretest_count(
+        value.get("requested_percent"),
+        f"{field}.requested_percent",
+        minimum=1,
+    )
+    if requested_percent != expected_percent:
+        raise ValueError(
+            f"Restore-test field {field!r} requested {requested_percent}%, "
+            f"expected {expected_percent}%"
+        )
+    selected_files = _restoretest_count(
+        value.get("selected_files"),
+        f"{field}.selected_files",
+        minimum=1,
+    )
+    restored_files = _restoretest_count(
+        value.get("restored_files"),
+        f"{field}.restored_files",
+    )
+    verified_files = _restoretest_count(
+        value.get("verified_files"),
+        f"{field}.verified_files",
+    )
+    if not selected_files >= restored_files >= verified_files:
+        raise ValueError(
+            f"Restore-test field {field!r} has inconsistent counts: "
+            f"selected={selected_files}, restored={restored_files}, "
+            f"verified={verified_files}"
+        )
+    return (
+        {
+            "requested_percent": requested_percent,
+            "selected_files": selected_files,
+            "restored_files": restored_files,
+            "verified_files": verified_files,
+        },
+        selected_files - verified_files,
+    )
+
+
+def _normalize_restoretest_evidence(
+    payload: object,
+    label: str,
+    expected_dataset: RestoreTestDataset | None,
+) -> dict[str, Any]:
+    """Validate and normalize one VM's structured restore-test evidence.
+
+    Args:
+        payload: Untrusted JSON payload from the guest or tracked history.
+        label: VM image label used in errors.
+        expected_dataset: Host dataset provenance to reconcile, if available.
+
+    Returns:
+        Normalized public restore-test evidence.
+
+    Raises:
+        TypeError: If a required object has the wrong type.
+        ValueError: If provenance, counts, slices, or verification disagree.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError(f"Restore-test evidence for {label!r} must be an object")
+    if payload.get("mode") != "percentage+all-slices":
+        raise ValueError(f"Restore-test evidence for {label!r} has an invalid mode")
+
+    dataset = payload.get("dataset")
+    if not isinstance(dataset, dict):
+        raise TypeError(f"Restore-test dataset evidence for {label!r} must be an object")
+    dataset_files = _restoretest_count(
+        dataset.get("files"), "dataset.files", minimum=1
+    )
+    dataset_bytes = _restoretest_count(
+        dataset.get("bytes"), "dataset.bytes", minimum=1
+    )
+    dataset_sha256 = dataset.get("sha256")
+    if not isinstance(dataset_sha256, str) or _SHA256.fullmatch(dataset_sha256) is None:
+        raise ValueError(f"Restore-test dataset SHA-256 is invalid for {label!r}")
+    if expected_dataset is not None:
+        expected_identity = (
+            expected_dataset.file_count,
+            expected_dataset.total_bytes,
+            expected_dataset.sha256,
+        )
+        actual_identity = (dataset_files, dataset_bytes, dataset_sha256)
+        if actual_identity != expected_identity:
+            raise ValueError(
+                f"Restore-test dataset evidence for {label!r} does not match "
+                "the host dataset"
+            )
+
+    percentage, percentage_failures = _restoretest_mode_counts(
+        payload.get("percentage"), "percentage", expected_percent=10
+    )
+    slice_coverage, slice_failures = _restoretest_mode_counts(
+        payload.get("slice_coverage"), "slice_coverage", expected_percent=1
+    )
+    failures = _restoretest_count(
+        payload.get("verification_failures"), "verification_failures"
+    )
+    calculated_failures = percentage_failures + slice_failures
+    if failures != calculated_failures:
+        raise ValueError(
+            f"Restore-test failure count for {label!r} is {failures}, "
+            f"expected {calculated_failures} from mode counts"
+        )
+    if failures != 0:
+        raise ValueError(
+            f"Restore-test evidence for {label!r} contains {failures} verification failure(s)"
+        )
+
+    slices = payload.get("slices")
+    if not isinstance(slices, dict):
+        raise TypeError(f"Restore-test slice evidence for {label!r} must be an object")
+    normalized_slices = {
+        field: _restoretest_slice_numbers(slices.get(field), f"slices.{field}")
+        for field in ("physical", "predicted", "extracted", "verified")
+    }
+    physical = normalized_slices["physical"]
+    for field in ("predicted", "extracted", "verified"):
+        if normalized_slices[field] != physical:
+            raise ValueError(
+                f"Restore-test slices.{field} for {label!r} does not cover all "
+                "physical slices"
+            )
+
+    return {
+        "mode": "percentage+all-slices",
+        "dataset": {
+            "files": dataset_files,
+            "bytes": dataset_bytes,
+            "sha256": dataset_sha256,
+        },
+        "percentage": percentage,
+        "slice_coverage": slice_coverage,
+        "slices": normalized_slices,
+        "verification_failures": failures,
+    }
+
+
+def _restoretest_evidence(
+    image_result_dir: Path,
+    label: str,
+    expected_dataset: RestoreTestDataset | None,
+    required: bool,
+) -> dict[str, Any] | None:
+    """Read and validate one retrieved restore-test artifact.
+
+    Args:
+        image_result_dir: Retrieved per-image result directory.
+        label: VM image label used in errors.
+        expected_dataset: Host dataset provenance to reconcile.
+        required: Whether missing evidence must fail record creation.
+
+    Returns:
+        Normalized evidence, or None when optional evidence is absent.
+
+    Raises:
+        OSError: If the artifact cannot be read.
+        TypeError: If the artifact has an invalid structure.
+        ValueError: If required evidence is missing or validation fails.
+    """
+    artifact_path = (
+        image_result_dir / "restoretest-catalog" / "large-vm-restoretest.json"
+    )
+    payload = _read_optional_json_object(artifact_path)
+    if payload is None:
+        if required:
+            raise ValueError(f"Passing full VM {label!r} has no restore-test evidence")
+        return None
+    if expected_dataset is None:
+        if not required:
+            return None
+        raise ValueError(
+            f"Restore-test evidence for {label!r} cannot be reconciled without "
+            "host dataset provenance"
+        )
+    return _normalize_restoretest_evidence(payload, label, expected_dataset)
+
+
 def _image_history_evidence(
     spec: ImageSpec,
     result: ImageRunResult,
     mode: str,
     application_commit: str,
     orchestration_commit: str,
+    restoretest_dataset: RestoreTestDataset | None,
 ) -> dict[str, Any]:
     """Build one public-safe image result for tracked history.
 
@@ -2583,6 +2838,7 @@ def _image_history_evidence(
         mode: Expected pytest matrix mode.
         application_commit: Expected immutable application commit.
         orchestration_commit: Expected immutable tooling commit.
+        restoretest_dataset: Host-generated dataset provenance for full mode.
 
     Returns:
         JSON-serializable image evidence without host-local paths or identities.
@@ -2688,6 +2944,13 @@ def _image_history_evidence(
             spec.expected_apparmor_mode,
         )
 
+    restoretest_result = _restoretest_evidence(
+        image_result_dir,
+        spec.label,
+        restoretest_dataset,
+        required=mode == "full" and result.status == PASS,
+    )
+
     return {
         "label": spec.label,
         "image": spec.image,
@@ -2712,6 +2975,7 @@ def _image_history_evidence(
         "checks": {
             "mypy": mypy_result,
             "pytest": pytest_result,
+            "restoretest": restoretest_result,
         },
         "guest": guest_evidence,
     }
@@ -2765,6 +3029,7 @@ def build_history_record(
     completed: bool,
     aborted_phase: str | None,
     exit_code: int,
+    restoretest_dataset: RestoreTestDataset | None = None,
 ) -> dict[str, Any]:
     """Build and validate one public VM-matrix evidence record.
 
@@ -2780,9 +3045,10 @@ def build_history_record(
         completed: Whether every configured image was attempted.
         aborted_phase: Public-safe phase name when the matrix stopped early.
         exit_code: Final controller exit code before evidence persistence.
+        restoretest_dataset: Host-generated dataset provenance for full mode.
 
     Returns:
-        JSON-serializable schema-v5 history record.
+        JSON-serializable schema-v6 history record.
 
     Raises:
         ValueError: If required state is empty or inconsistent.
@@ -2820,6 +3086,7 @@ def build_history_record(
             mode,
             application_commit,
             orchestration_commit,
+            restoretest_dataset,
         )
         for index, result in enumerate(results)
     ]
@@ -3675,6 +3942,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             completed=completed,
             aborted_phase=aborted_phase,
             exit_code=exit_code,
+            restoretest_dataset=restoretest_dataset,
         )
         write_json(local_evidence_path, history_record)
         append_jsonl_record(evidence_path, history_record)
@@ -3708,6 +3976,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 completed=completed,
                 aborted_phase="evidence",
                 exit_code=exit_code,
+                restoretest_dataset=restoretest_dataset,
             )
             write_json(local_evidence_path, failed_record)
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as local_exc:

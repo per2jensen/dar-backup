@@ -104,14 +104,19 @@ These updates intentionally make the checkout dirty after testing. Review and
 commit the history, README, and badge together to publish the compatibility
 evidence on GitHub.
 
-Each schema-v5 record contains all VM outcomes, source commits, the installed
+Each schema-v6 record contains all VM outcomes, source commits, the installed
 dar-backup version, tool versions,
 the Multipass image alias and release, the full SHA-256 of the exact source
 image used to create each VM, package manager and manifest format, a complete
 installed package manifest, and its canonical SHA-256. Debian manifests retain
 the schema-v2 package-and-architecture mapping. Fedora manifests contain
 deterministically ordered RPM name, epoch, version, release, and architecture
-records. Schema-v2, schema-v3, and schema-v4 historical records remain readable;
+records. Passing full-run image records also contain a structured `restoretest`
+summary with the host corpus identity, percentage and all-slices
+selected/restored/verified counts, physical/predicted/extracted/verified slice
+sets, and a zero verification-failure count. The controller reconciles this
+summary with the host-generated dataset before recording it. Schema-v2 through
+schema-v5 historical records remain readable;
 older records without application-version evidence display `not recorded`.
 
 Fedora's standard `/run/lock` remains root-owned and mode `0755`; the VM runner
