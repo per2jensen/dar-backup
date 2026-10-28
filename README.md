@@ -129,14 +129,14 @@ rm -rf ~/venv/dar-backup
 distribution images. Each VM installs the distribution's DAR, PAR2, and
 Python dependencies before running the full pytest suite and mypy.
 
-**Latest full VM matrix:** TEST FAILURE at `2026-10-27T22:44:38Z` for
-[commit `be591b1e12fd`](https://github.com/per2jensen/dar-backup/commit/be591b1e12fd5bb31d98c3ef0b5c284be9349544).
+**Latest full VM matrix:** PASS at `2026-10-28T07:51:15Z` for
+[commit `64d6a9184865`](https://github.com/per2jensen/dar-backup/commit/64d6a9184865634c5ac5a0b48b09e29213821e86).
 
 | Distribution | dar-backup | Python | DAR | PAR2 | pytest | mypy | Result |
 |---|---:|---:|---:|---:|---|---|---|
-| Ubuntu 24.04.5 LTS | 1.1.12.dev113 | 3.12.3 | 2.7.13 | 0.8.1 | 1761 passed, 5 skipped, 1 failed | PASS | TEST FAILED |
-| Ubuntu 26.04.1 LTS | 1.1.12.dev113 | 3.14.4 | 2.8.3 | 1.1.1 | 1760 passed, 6 skipped, 1 failed | PASS | TEST FAILED |
-| Fedora Linux 44 (Cloud Edition) | 1.1.12.dev113 | 3.14.3 | 2.8.6 | 1.1.1 | 1774 passed, 5 skipped, 1 failed | PASS | TEST FAILED |
+| Ubuntu 24.04.5 LTS | 1.1.12.dev114 | 3.12.3 | 2.7.13 | 0.8.1 | 1766 passed, 5 skipped, 0 failed | PASS | PASS |
+| Ubuntu 26.04.1 LTS | 1.1.12.dev114 | 3.14.4 | 2.8.3 | 1.1.1 | 1765 passed, 6 skipped, 0 failed | PASS | PASS |
+| Fedora Linux 44 (Cloud Edition) | 1.1.12.dev114 | 3.14.3 | 2.8.6 | 1.1.1 | 1779 passed, 5 skipped, 0 failed | PASS | PASS |
 
 Each VM uses 2 vCPUs, 4G RAM, and a 40G virtual disk.
 
