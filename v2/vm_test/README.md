@@ -80,6 +80,11 @@ retrieved guest artifacts instead of being streamed through Multipass. The
 controller prints a host-side heartbeat once per minute while guest tests run,
 so verbose failures cannot fill the SSH output channel and quiet work remains
 visibly alive.
+Pytest JSON omits duplicate logs, streams, warnings, keywords, and structured
+tracebacks while retaining the per-test outcomes and concise failure evidence
+used by matrix publication. After the evidence record is written durably, the
+controller verifies the extracted JSON byte-for-byte against its copy in
+`guest-results.tar.gz` and removes only the redundant extracted file.
 
 After an initialized run, the controller appends one public, schema-versioned
 record to the tracked evidence file:

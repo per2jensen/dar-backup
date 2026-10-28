@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import importlib.util
 import json
 import os
@@ -49,6 +50,35 @@ RUNNER = _load_runner_module()
 PREPARE_CHECKOUT = Path(__file__).parents[1] / "vm_test" / "prepare_checkout.sh"
 RUN_IN_GUEST = Path(__file__).parents[1] / "vm_test" / "run_in_guest.sh"
 PYTEST_REPORT = Path(__file__).parents[1] / "scripts" / "pytest_report.sh"
+
+
+def _write_archived_pytest_report(
+    image_result_dir: Path,
+    extracted_content: bytes,
+    archived_content: bytes | None = None,
+) -> Path:
+    """Create one extracted pytest report and its guest archive counterpart.
+
+    Args:
+        image_result_dir: Per-image result directory to populate.
+        extracted_content: Bytes written to the extracted report.
+        archived_content: Optional different bytes written into the archive.
+
+    Returns:
+        Path to the extracted pytest JSON report.
+    """
+    report_name = "dar-backup-1.1.12__pytest-full__test.json"
+    pytest_dir = image_result_dir / "pytest"
+    pytest_dir.mkdir(parents=True)
+    report_path = pytest_dir / report_name
+    report_path.write_bytes(extracted_content)
+
+    archived_bytes = extracted_content if archived_content is None else archived_content
+    member = tarfile.TarInfo(f"./pytest/{report_name}")
+    member.size = len(archived_bytes)
+    with tarfile.open(image_result_dir / "guest-results.tar.gz", mode="w:gz") as archive:
+        archive.addfile(member, io.BytesIO(archived_bytes))
+    return report_path
 
 
 def _run_shell_function(
@@ -554,6 +584,95 @@ def test_run_report_command_invalid_stream_mode_preserves_output_path(
     assert completed.returncode == 1
     assert "must be 'yes' or 'no'" in completed.stderr
     assert not output_path.exists()
+
+
+def test_run_pytest_with_reports_omits_bulk_and_retains_failure_evidence(
+    tmp_path: Path,
+) -> None:
+    """Compact JSON must retain failure identity without duplicated diagnostics.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    sample_test = tmp_path / "test_sample_failure.py"
+    sample_test.write_text(
+        "import logging\n"
+        "import warnings\n\n"
+        "def test_sample_failure():\n"
+        "    print('captured stdout')\n"
+        "    logging.warning('captured log')\n"
+        "    warnings.warn('captured warning', stacklevel=1)\n"
+        "    assert False, 'expected compact-report failure'\n",
+        encoding="utf-8",
+    )
+    json_path = tmp_path / "pytest.json"
+    junit_path = tmp_path / "pytest.xml"
+    coverage_path = tmp_path / "coverage.xml"
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "run_pytest_with_reports",
+        [
+            json_path,
+            junit_path,
+            coverage_path,
+            "-c",
+            "/dev/null",
+            "--rootdir",
+            tmp_path,
+            "-q",
+            sample_test,
+        ],
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert "collectors" in payload
+    assert "warnings" not in payload
+    test_result = payload["tests"][0]
+    assert "keywords" not in test_result
+    failed_call = test_result["call"]
+    assert failed_call["outcome"] == "failed"
+    assert "expected compact-report failure" in failed_call["crash"]["message"]
+    assert "expected compact-report failure" in failed_call["longrepr"]
+    assert not {"log", "stdout", "stderr", "traceback"}.intersection(failed_call)
+
+
+def test_run_pytest_with_reports_symlink_output_refuses_run(
+    tmp_path: Path,
+) -> None:
+    """A symlink report destination must fail before pytest is started.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    retained_path = tmp_path / "retained.json"
+    retained_path.write_text("retain", encoding="utf-8")
+    json_path = tmp_path / "pytest.json"
+    json_path.symlink_to(retained_path)
+
+    completed = _run_shell_function(
+        tmp_path,
+        PYTEST_REPORT,
+        "run_pytest_with_reports",
+        [
+            json_path,
+            tmp_path / "pytest.xml",
+            tmp_path / "coverage.xml",
+            "-q",
+        ],
+    )
+
+    assert completed.returncode == 1
+    assert "missing or unsafe" in completed.stderr
+    assert retained_path.read_text(encoding="utf-8") == "retain"
 
 
 def test_record_storage_diagnostics_writes_capacity_evidence(tmp_path: Path) -> None:
@@ -1774,6 +1893,66 @@ def test_command_executor_large_unterminated_output_is_fully_drained(
     assert result.returncode == 0
     assert len(result.output.encode("utf-8")) == output_bytes
     assert log_path.stat().st_size >= output_bytes
+
+
+def test_prune_archived_pytest_json_reports_identical_archive_removes_copy(
+    tmp_path: Path,
+) -> None:
+    """An identical archived report makes its extracted copy redundant.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    content = b'{"exitcode":0,"summary":{"passed":1}}\n'
+    result_root = tmp_path / "run"
+    report_path = _write_archived_pytest_report(
+        result_root / "ubuntu-24.04",
+        content,
+    )
+
+    removed_count, removed_bytes = RUNNER.prune_archived_pytest_json_reports(
+        result_root
+    )
+
+    assert removed_count == 1
+    assert removed_bytes == len(content)
+    assert not report_path.exists()
+    assert (result_root / "ubuntu-24.04" / "guest-results.tar.gz").is_file()
+
+
+def test_prune_archived_pytest_json_reports_mismatch_preserves_all_copies(
+    tmp_path: Path,
+) -> None:
+    """One archive mismatch must preserve every extracted report in the run.
+
+    Args:
+        tmp_path: Isolated pytest directory.
+
+    Returns:
+        None.
+    """
+    result_root = tmp_path / "run"
+    first_report = _write_archived_pytest_report(
+        result_root / "ubuntu-24.04",
+        b'{"result":"safe"}\n',
+    )
+    second_report = _write_archived_pytest_report(
+        result_root / "ubuntu-26.04",
+        b'{"result":"safe"}\n',
+        b'{"result":"evil"}\n',
+    )
+
+    with pytest.raises(
+        RUNNER.InfrastructureError,
+        match="Archived pytest JSON differs",
+    ):
+        RUNNER.prune_archived_pytest_json_reports(result_root)
+
+    assert first_report.is_file()
+    assert second_report.is_file()
 
 
 def test_prepare_checkout_copies_root_readme_into_v2(tmp_path: Path) -> None:

@@ -3087,6 +3087,88 @@ def _extract_result_archive(archive_path: Path, destination: Path) -> None:
         raise InfrastructureError(f"Cannot extract guest results: {exc}") from exc
 
 
+def prune_archived_pytest_json_reports(result_root: Path) -> tuple[int, int]:
+    """Remove extracted pytest JSON reports after verifying archived copies.
+
+    Every report is validated before any report is removed. The compressed
+    guest archive remains the recoverable source for the complete raw report.
+
+    Args:
+        result_root: One VM matrix run directory containing per-image results.
+
+    Returns:
+        Number of removed reports and their total uncompressed byte count.
+
+    Raises:
+        InfrastructureError: If a report has no identical regular-file archive member.
+        OSError: If paths cannot be inspected, read, or removed.
+        ValueError: If result_root is missing, unsafe, or not a directory.
+    """
+    if not result_root.is_absolute() or not result_root.is_dir() or result_root.is_symlink():
+        raise ValueError(f"VM result root is missing or unsafe: {result_root}")
+
+    canonical_root = result_root.resolve(strict=True)
+    reports = sorted(
+        canonical_root.glob("*/pytest/dar-backup-*__pytest-*.json")
+    )
+    validated_reports: list[tuple[Path, int]] = []
+
+    for report_path in reports:
+        if not report_path.is_file() or report_path.is_symlink():
+            raise InfrastructureError(f"Pytest JSON report is not a regular file: {report_path}")
+        canonical_report = report_path.resolve(strict=True)
+        if not canonical_report.is_relative_to(canonical_root):
+            raise InfrastructureError(f"Pytest JSON report escapes result root: {report_path}")
+
+        image_result_dir = canonical_report.parents[1]
+        if image_result_dir.parent != canonical_root:
+            raise InfrastructureError(f"Unexpected pytest JSON report layout: {report_path}")
+        archive_path = image_result_dir / "guest-results.tar.gz"
+        if not archive_path.is_file() or archive_path.is_symlink():
+            raise InfrastructureError(f"Guest result archive is missing or unsafe: {archive_path}")
+
+        expected_member_path = PurePosixPath("pytest") / canonical_report.name
+        try:
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                matching_members = [
+                    member
+                    for member in archive.getmembers()
+                    if PurePosixPath(member.name) == expected_member_path
+                ]
+                if len(matching_members) != 1 or not matching_members[0].isfile():
+                    raise InfrastructureError(
+                        f"Guest result archive does not contain one regular copy of {expected_member_path}"
+                    )
+                member = matching_members[0]
+                report_size = canonical_report.stat().st_size
+                if member.size != report_size:
+                    raise InfrastructureError(
+                        f"Archived pytest JSON size differs from extracted report: {canonical_report}"
+                    )
+                archived_report = archive.extractfile(member)
+                if archived_report is None:
+                    raise InfrastructureError(
+                        f"Cannot read archived pytest JSON report: {expected_member_path}"
+                    )
+                archived_digest = hashlib.sha256()
+                with archived_report:
+                    while chunk := archived_report.read(1024 * 1024):
+                        archived_digest.update(chunk)
+        except (OSError, tarfile.TarError) as exc:
+            raise InfrastructureError(f"Cannot verify guest result archive {archive_path}: {exc}") from exc
+
+        if archived_digest.hexdigest() != _sha256_file(canonical_report):
+            raise InfrastructureError(
+                f"Archived pytest JSON differs from extracted report: {canonical_report}"
+            )
+        validated_reports.append((canonical_report, report_size))
+
+    for report_path, _report_size in validated_reports:
+        report_path.unlink()
+
+    return len(validated_reports), sum(size for _path, size in validated_reports)
+
+
 def _read_guest_result(result_path: Path) -> tuple[str, str]:
     """Validate the guest result contract.
 
@@ -3597,6 +3679,18 @@ def main(arguments: Sequence[str] | None = None) -> int:
         write_json(local_evidence_path, history_record)
         append_jsonl_record(evidence_path, history_record)
         print(f"Evidence: {evidence_path}")
+        try:
+            removed_reports, removed_bytes = prune_archived_pytest_json_reports(result_root)
+            if removed_reports:
+                print(
+                    "Removed recoverable extracted pytest JSON reports: "
+                    f"{removed_reports} file(s), {removed_bytes / 1024**2:.1f} MiB"
+                )
+        except (InfrastructureError, OSError, ValueError) as exc:
+            print(
+                f"WARNING: Retaining extracted pytest JSON reports: {exc}",
+                file=sys.stderr,
+            )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: Cannot persist VM matrix evidence: {exc}", file=sys.stderr)
         exit_code = 2

@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 
 from types import SimpleNamespace
@@ -32,12 +33,17 @@ def test_expand_path(monkeypatch):
     assert expanded == expected
 
 
-def test_default_completer_logfile_includes_uid():
+def test_default_completer_logfile_includes_uid() -> None:
+    """The default completer log must use the active temp directory and UID.
+
+    Returns:
+        None.
+    """
     if not hasattr(os, "getuid"):
         pytest.skip("os.getuid not available on this platform")
     logfile = _default_completer_logfile()
     assert str(os.getuid()) in os.path.basename(logfile)
-    assert logfile.startswith("/tmp/")
+    assert Path(logfile).parent == Path(tempfile.gettempdir())
 
 
 def test_setup_completer_logger_failure_does_not_raise(monkeypatch):

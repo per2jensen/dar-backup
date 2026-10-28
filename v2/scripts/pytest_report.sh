@@ -98,6 +98,32 @@ run_report_command() {
   "$@" > "${output_path}" 2>&1
 }
 
+run_pytest_with_reports() {
+  if [[ "$#" -lt 4 ]]; then
+    >&2 echo "ERROR: run_pytest_with_reports requires JSON, JUNIT, COVERAGE_XML, and pytest arguments"
+    return 1
+  fi
+  local json_path="$1"
+  local junit_path="$2"
+  local coverage_path="$3"
+  shift 3
+
+  local output_path
+  for output_path in "${json_path}" "${junit_path}" "${coverage_path}"; do
+    if [[ -z "${output_path}" || -d "${output_path}" || -L "${output_path}" || ! -d "$(dirname "${output_path}")" ]]; then
+      >&2 echo "ERROR: pytest report output path is missing or unsafe: ${output_path:-<empty>}"
+      return 1
+    fi
+  done
+
+  pytest "$@" \
+    --json-report \
+    --json-report-file="${json_path}" \
+    --json-report-omit log streams warnings keywords traceback \
+    --junitxml="${junit_path}" \
+    --cov-report="xml:${coverage_path}"
+}
+
 PYTEST_BASETEMP_ROOT=""
 COLLECT_BASETEMP_ARGS=()
 EXECUTION_BASETEMP_ARGS=()
@@ -197,11 +223,11 @@ run_report_command \
 run_report_command \
   "$TXT" \
   "$PYTEST_STREAM_OUTPUT" \
-  pytest "${EXECUTION_BASETEMP_ARGS[@]}" -q -m "$MARKS" \
-  --json-report \
-  --json-report-file="$JSON" \
-  --junitxml="$JUNIT" \
-  --cov-report="xml:$COV_XML"
+  run_pytest_with_reports \
+  "$JSON" \
+  "$JUNIT" \
+  "$COV_XML" \
+  "${EXECUTION_BASETEMP_ARGS[@]}" -q -m "$MARKS"
 
 # 3) Coverage XML (only if coverage data exists)
 if [[ ! -f "$COV_XML" ]]; then
