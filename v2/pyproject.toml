@@ -137,7 +137,7 @@ dev = [
 ]
 
 packaging = [
- "build>=1.2.2",
+ "build>=1.6.1",
  "hatchling>=1.32.4",
  "hatch>=1.18.0",
  "packaging>=26.0",
