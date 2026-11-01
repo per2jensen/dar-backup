@@ -35,11 +35,17 @@ COMMAND_TIMEOUT_SECS = 86400
 
 [DIRECTORIES]
 BACKUP_DIR = /some/where/dar-backup/backups/
+# Optional: fail closed if BACKUP_DIR is not on the expected mounted filesystem.
+# Inspect values with: findmnt -T /some/where/dar-backup/backups -no SOURCE,FSTYPE,TARGET
+# BACKUP_DIR_MOUNT_SOURCE = server:/export/backups
+# BACKUP_DIR_MOUNT_FSTYPE = nfs4
 BACKUP.D_DIR = /some/where/dar-backup/backup.d
 TEST_RESTORE_DIR = /tmp/dar-backup/restore/
 # Optional parameter
 # If you want to store the catalog databases away from the BACKUP_DIR, use the MANAGER_DB_DIR variable.
 #MANAGER_DB_DIR = /some/where/else/
+# MANAGER_DB_DIR_MOUNT_SOURCE = server:/export/catalogs
+# MANAGER_DB_DIR_MOUNT_FSTYPE = nfs4
 
 [AGE]
 # age settings are in days
@@ -53,6 +59,8 @@ ERROR_CORRECTION_PERCENT = 5   # must be 1–90; 0 gives no redundancy, >90 is r
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /path/to/par2-store
+# PAR2_DIR_MOUNT_SOURCE = server:/export/par2
+# PAR2_DIR_MOUNT_FSTYPE = nfs4
 # PAR2_RATIO_FULL = 10
 # PAR2_RATIO_DIFF = 5
 # PAR2_RATIO_INCR = 5
@@ -61,6 +69,8 @@ ENABLED = True
 # Optional per-backup overrides (section name = backup definition)
 [media-files]
 PAR2_DIR = /mnt/par2/media-files
+PAR2_DIR_MOUNT_SOURCE = server:/export/media-par2
+PAR2_DIR_MOUNT_FSTYPE = nfs4
 PAR2_RATIO_FULL = 10
 
 # scripts to run before the backup to setup the environment
@@ -72,6 +82,28 @@ SCRIPT_1 = ls -l /tmp
 SCRIPT_1 = df -h
 #SCRIPT_2 = another_script.sh
 ```
+
+When `BACKUP_DIR` is backed by NFS or another mounted filesystem, configure
+`BACKUP_DIR_MOUNT_SOURCE`, `BACKUP_DIR_MOUNT_FSTYPE`, or both. Preflight reads
+the kernel mount table and verifies the filesystem containing `BACKUP_DIR`
+before it checks whether today's archive already exists. A missing or incorrect
+mount is therefore recorded as `FAILURE` with reason `PREFLIGHT_FAILED`; it is
+never reported as `SKIPPED`. Exact source and filesystem-type matching is used.
+For strongest validation, configure both values.
+
+The same optional suffixes apply to separate catalog and PAR2 destinations:
+`MANAGER_DB_DIR_MOUNT_SOURCE`, `MANAGER_DB_DIR_MOUNT_FSTYPE`,
+`PAR2_DIR_MOUNT_SOURCE`, and `PAR2_DIR_MOUNT_FSTYPE`. Mount settings must be
+declared beside their associated directory. A definition that inherits the
+global `PAR2_DIR` also inherits its mount expectations; a definition that
+overrides `PAR2_DIR` must declare any expectations in that definition section.
+
+A `MANAGER_DB_DIR` mount mismatch is a required-preflight failure for both
+`dar-backup` and standalone `manager` commands. A PAR2 mount mismatch is
+deliberately different: the verified archive remains usable and cataloged,
+PAR2 generation is skipped without writing to the exposed underlying directory,
+and the run is recorded as `WARNING` with `PAR2_PREFLIGHT_FAILED`,
+`failed_phase=PAR2`, and `par2_passed=0`.
 
 `RESTORETEST_PERCENT` applies after the existing size and exclusion filters. The
 calculated percentage is rounded up, `NO_FILES_VERIFICATION` remains the minimum,

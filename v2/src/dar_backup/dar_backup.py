@@ -81,6 +81,7 @@ from dar_backup.instance_lock import InstanceLock
 from dar_backup.instance_lock import InstanceLockError
 from dar_backup.instance_lock import InstanceLockHeldError
 from dar_backup.instance_lock import acquire_instance_lock
+from dar_backup.mounts import validate_expected_mount
 from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetPolicy
@@ -1732,9 +1733,21 @@ def initialize_runtime_logging(args: argparse.Namespace, config_settings: Config
     return trace_log_file
 
 
-def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -> bool:
+def preflight_check(
+    args: argparse.Namespace,
+    config_settings: ConfigSettings,
+    errors_out: Optional[list[str]] = None,
+) -> bool:
     """
     Run preflight checks to validate environment before backup.
+
+    Args:
+        args: Parsed command-line arguments.
+        config_settings: Loaded application configuration.
+        errors_out: Optional list that receives fatal preflight diagnostics.
+
+    Returns:
+        ``True`` when all fatal checks pass, otherwise ``False``.
     """
     errors: List[str] = []
     warnings: List[str] = []
@@ -1787,10 +1800,48 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
     log_dir = os.path.dirname(config_settings.logfile_location)
     check_dir("LOGFILE_LOCATION directory", log_dir, issues=warnings)
 
+    backup_mount_valid = True
+    expected_mount_source = getattr(config_settings, "backup_dir_mount_source", None)
+    expected_mount_fstype = getattr(config_settings, "backup_dir_mount_fstype", None)
+    if expected_mount_source is not None or expected_mount_fstype is not None:
+        mount_error = validate_expected_mount(
+            "BACKUP_DIR",
+            config_settings.backup_dir,
+            expected_mount_source,
+            expected_mount_fstype,
+        )
+        if mount_error is not None:
+            errors.append(mount_error)
+            backup_mount_valid = False
+
+    manager_mount_valid = True
+    expected_manager_source = getattr(
+        config_settings, "manager_db_dir_mount_source", None
+    )
+    expected_manager_fstype = getattr(
+        config_settings, "manager_db_dir_mount_fstype", None
+    )
+    if (
+        config_settings.manager_db_dir
+        and (expected_manager_source is not None or expected_manager_fstype is not None)
+    ):
+        mount_error = validate_expected_mount(
+            "MANAGER_DB_DIR",
+            config_settings.manager_db_dir,
+            expected_manager_source,
+            expected_manager_fstype,
+        )
+        if mount_error is not None:
+            errors.append(mount_error)
+            manager_mount_valid = False
+
     # Write probes catch unavailable/stale mounts that may still pass os.access().
-    probe_write("BACKUP_DIR", config_settings.backup_dir)
+    # Identity checks run first so a mismatched mount never receives even a
+    # temporary probe file on the exposed underlying filesystem.
+    if backup_mount_valid:
+        probe_write("BACKUP_DIR", config_settings.backup_dir)
     probe_write("TEST_RESTORE_DIR", config_settings.test_restore_dir)
-    if config_settings.manager_db_dir:
+    if config_settings.manager_db_dir and manager_mount_valid:
         probe_write("MANAGER_DB_DIR", config_settings.manager_db_dir)
 
     # Binaries present
@@ -1834,6 +1885,8 @@ def preflight_check(args: argparse.Namespace, config_settings: ConfigSettings) -
                 errors.append(f"Backup definition not found: {candidate}")
 
     if errors:
+        if errors_out is not None:
+            errors_out.extend(errors)
         print("Preflight checks failed:")
         logger.error("Preflight checks failed.")
         for err in errors:
@@ -1861,6 +1914,9 @@ def _record_prereq_failure(
     error: RuntimeError,
     backup_type: str,
     run_id: Optional[str] = None,
+    failed_phase: str = "PREREQ",
+    reason_code: str = "PREREQ failed",
+    prereq_status: Optional[str] = "FAILURE",
 ) -> None:
     """
     Record a PREREQ failure in the metrics DB and stats accumulator for every
@@ -1879,6 +1935,10 @@ def _record_prereq_failure(
         backup_type: One of "FULL", "DIFF", "INCR".
         run_id: UUID generated once per main() invocation so that
                 postreq_status can be back-filled via UPDATE later.
+        failed_phase: Metrics phase identifying where execution stopped.
+        reason_code: Stable reason prefix stored in ``error_summary``.
+        prereq_status: Result of the configured PREREQ phase, or ``None`` if
+            execution stopped before that phase.
     """
     if args.backup_definition:
         definitions = [args.backup_definition]
@@ -1890,7 +1950,7 @@ def _record_prereq_failure(
             definitions = []
 
     now = datetime.now(UTC)
-    error_summary = f"PREREQ failed: {error}"[:500]
+    error_summary = f"{reason_code}: {error}"[:500]
 
     for definition in definitions:
         if definition.lower() == "example":
@@ -1910,7 +1970,7 @@ def _record_prereq_failure(
             "par2_duration_secs":            None,
             "status":                        "FAILURE",
             "dar_exit_code":                 None,
-            "failed_phase":                  "PREREQ",
+            "failed_phase":                  failed_phase,
             "error_summary":                 error_summary,
             "catalog_updated":               None,
             "verify_passed":                 None,
@@ -1934,7 +1994,7 @@ def _record_prereq_failure(
             "ea_saved":                      None,
             "fsa_saved":                     None,
             "run_id":                        run_id,
-            "prereq_status":                 "FAILURE",
+            "prereq_status":                 prereq_status,
             "postreq_status":                None,
         }
         try:
@@ -2084,7 +2144,10 @@ def perform_backup(
             metrics["archive_name"] = os.path.basename(backup_file)
 
             if archive_exists(backup_file):
-                msg = f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
+                msg = (
+                    "ALREADY_CURRENT: "
+                    f"Backup file {backup_file}.1.dar already exists. Skipping backup [1]."
+                )
                 logger.warning(msg)
                 results.append((msg, 2))
                 metrics["error_summary"] = msg
@@ -2220,15 +2283,45 @@ def perform_backup(
             _current_phase = "PAR2"
             logger.info("Generate par2 redundancy files.")
             _t2 = datetime.now(UTC)
-            generate_par2_files(backup_file, config_settings, args, backup_definition=backup_definition)
+            par2_mount_error = _validate_par2_mount(
+                config_settings,
+                backup_definition,
+            )
+            if par2_mount_error is not None:
+                msg = (
+                    f"PAR2_PREFLIGHT_FAILED: {par2_mount_error}. "
+                    "The backup archive was created and verified successfully, but "
+                    "PAR2 redundancy was not created."
+                )
+                logger.error(msg)
+                results.append((msg, 2))
+                metrics["par2_passed"] = 0
+                metrics["failed_phase"] = metrics["failed_phase"] or "PAR2"
+                metrics["error_summary"] = metrics["error_summary"] or msg[:500]
+            else:
+                generate_par2_files(
+                    backup_file,
+                    config_settings,
+                    args,
+                    backup_definition=backup_definition,
+                )
+                metrics["par2_passed"] = 1
+                logger.info("par2 files completed successfully.")
             metrics["par2_duration_secs"] = (datetime.now(UTC) - _t2).total_seconds()
-            metrics["par2_passed"] = 1
-            logger.info("par2 files completed successfully.")
 
             # par2 total size
             par2_cfg = config_settings.get_par2_config(backup_definition) if hasattr(config_settings, "get_par2_config") else {}
             par2_dir = par2_cfg.get("par2_dir") or config_settings.backup_dir
-            par2_files = glob.glob(os.path.join(par2_dir, f"{os.path.basename(backup_file)}*.par2"))
+            par2_files = (
+                glob.glob(
+                    os.path.join(
+                        par2_dir,
+                        f"{os.path.basename(backup_file)}*.par2",
+                    )
+                )
+                if metrics["par2_passed"] == 1
+                else []
+            )
             if par2_files:
                 # Measure per-file so a single missing file does not zero out the metric.
                 # par2 files are redundancy protection, not the archive itself; a missing
@@ -2417,13 +2510,61 @@ def _write_par2_manifest(
 
 def _default_par2_config(config_settings: ConfigSettings) -> dict:
     return {
-        "par2_dir": config_settings.par2_dir,
-        "par2_ratio_full": config_settings.par2_ratio_full,
-        "par2_ratio_diff": config_settings.par2_ratio_diff,
-        "par2_ratio_incr": config_settings.par2_ratio_incr,
-        "par2_run_verify": config_settings.par2_run_verify,
-        "par2_enabled": config_settings.par2_enabled,
+        "par2_dir": getattr(config_settings, "par2_dir", None),
+        "par2_dir_mount_source": getattr(
+            config_settings, "par2_dir_mount_source", None
+        ),
+        "par2_dir_mount_fstype": getattr(
+            config_settings, "par2_dir_mount_fstype", None
+        ),
+        "par2_ratio_full": getattr(config_settings, "par2_ratio_full", None),
+        "par2_ratio_diff": getattr(config_settings, "par2_ratio_diff", None),
+        "par2_ratio_incr": getattr(config_settings, "par2_ratio_incr", None),
+        "par2_run_verify": getattr(config_settings, "par2_run_verify", None),
+        "par2_enabled": getattr(config_settings, "par2_enabled", False),
     }
+
+
+def _validate_par2_mount(
+    config_settings: ConfigSettings,
+    backup_definition: str,
+) -> Optional[str]:
+    """Validate the effective PAR2 destination mount for one definition.
+
+    Args:
+        config_settings: Loaded application configuration.
+        backup_definition: Definition whose effective PAR2 settings are used.
+
+    Returns:
+        ``None`` when PAR2 is disabled, uses ``BACKUP_DIR``, has no configured
+        mount expectation, or matches its expectation. Otherwise a diagnostic
+        error string describing the unavailable or incorrect mount.
+    """
+    if not isinstance(backup_definition, str) or not backup_definition.strip():
+        raise ValueError("backup_definition must be a non-empty string")
+
+    if hasattr(config_settings, "get_par2_config"):
+        par2_config = config_settings.get_par2_config(backup_definition)
+    else:
+        par2_config = _default_par2_config(config_settings)
+    if not par2_config.get("par2_enabled", False):
+        return None
+
+    par2_dir = par2_config.get("par2_dir")
+    if not par2_dir:
+        return None
+    expected_source = par2_config.get("par2_dir_mount_source")
+    expected_fstype = par2_config.get("par2_dir_mount_fstype")
+    if expected_source is None and expected_fstype is None:
+        return None
+
+    expanded_par2_dir = os.path.expanduser(os.path.expandvars(par2_dir))
+    return validate_expected_mount(
+        "PAR2_DIR",
+        expanded_par2_dir,
+        expected_source,
+        expected_fstype,
+    )
 
 
 def generate_par2_files(backup_file: str, config_settings: ConfigSettings, args, backup_definition: Optional[str] = None):
@@ -3179,9 +3320,32 @@ def main() -> None:
         exit(127)
 
     # Run preflight checks always; if --preflight-check is set, exit afterward.
-    ok = preflight_check(args, config_settings)
+    # Generate the invocation ID before preflight so a failed backup attempt can
+    # still be represented in metrics without depending on backup storage.
+    run_id = str(uuid.uuid4())
+    preflight_errors: list[str] = []
+    ok = preflight_check(args, config_settings, errors_out=preflight_errors)
     if not ok:
         logger.error("Aborting run because preflight checks failed.")
+        is_backup_run = args.full_backup or args.differential_backup or args.incremental_backup
+        if is_backup_run:
+            backup_type = (
+                "FULL" if args.full_backup
+                else "DIFF" if args.differential_backup
+                else "INCR"
+            )
+            preflight_error = RuntimeError("; ".join(preflight_errors))
+            _record_prereq_failure(
+                args,
+                config_settings,
+                stats,
+                preflight_error,
+                backup_type,
+                run_id=run_id,
+                failed_phase="PREFLIGHT",
+                reason_code="PREFLIGHT_FAILED",
+                prereq_status=None,
+            )
         ts = datetime.now().astimezone().strftime("%Y-%m-%d_%H:%M")
         send_discord_message(f"{ts} - dar-backup: FAILURE - preflight checks failed\n---- End of report ----", config_settings=config_settings)
         exit_code = 127 if args.backup_definition else 1
@@ -3221,7 +3385,6 @@ def main() -> None:
 
         start_time=int(time())
         run_start = datetime.now().astimezone()
-        run_id = str(uuid.uuid4())
         start_msgs.append((f"{show_scriptname()}:", about.__version__))
         try:
             operation = None

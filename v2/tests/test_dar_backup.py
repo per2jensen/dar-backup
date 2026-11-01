@@ -743,6 +743,7 @@ def test_perform_backup_existing_archive_records_skipped_without_rewriting_phase
     assert row["verify_passed"] is None
     assert row["restore_test_passed"] is None
     assert row["par2_passed"] is None
+    assert row["error_summary"].startswith("ALREADY_CURRENT:")
     assert "already exists" in row["error_summary"]
 
 

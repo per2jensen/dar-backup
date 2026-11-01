@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dar_backup.config_settings import ConfigSettings
 from dar_backup.exceptions import ConfigSettingsError
+from dar_backup.manager import validate_manager_mount
+from dar_backup.mounts import get_mount_identity
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -94,6 +96,191 @@ def test_metrics_db_path_outside_backup_dir_is_accepted(tmp_path: Path) -> None:
     config = ConfigSettings(str(config_path))
 
     assert config.metrics_db_path == str(metrics_db_path)
+
+
+def test_backup_mount_expectations_are_parsed(tmp_path: Path) -> None:
+    """Load optional backup mount source and filesystem identity fields.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    config_path = write_config(
+        tmp_path / "mount.conf",
+        tmp_path,
+        dir_overrides={
+            "BACKUP_DIR_MOUNT_SOURCE": "server:/export/backups",
+            "BACKUP_DIR_MOUNT_FSTYPE": "nfs4",
+        },
+    )
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.backup_dir_mount_source == "server:/export/backups"
+    assert config.backup_dir_mount_fstype == "nfs4"
+
+
+@pytest.mark.parametrize("key", ["BACKUP_DIR_MOUNT_SOURCE", "BACKUP_DIR_MOUNT_FSTYPE"])
+def test_backup_mount_expectation_empty_value_raises_config_error(
+    tmp_path: Path,
+    key: str,
+) -> None:
+    """Reject an explicitly configured but empty mount identity field.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        key: Configuration key to make empty.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the empty value is accepted.
+    """
+    config_path = write_config(
+        tmp_path / "empty-mount.conf",
+        tmp_path,
+        dir_overrides={key: ""},
+    )
+
+    with pytest.raises(ConfigSettingsError, match=f"{key} must not be empty"):
+        ConfigSettings(str(config_path))
+
+
+def test_manager_mount_expectations_are_parsed_without_path_expansion(
+    tmp_path: Path,
+) -> None:
+    """Load manager identity fields without treating the source as a path.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    manager_dir = tmp_path / "manager"
+    config_path = write_config(
+        tmp_path / "manager-mount.conf",
+        tmp_path,
+        dir_overrides={
+            "MANAGER_DB_DIR": str(manager_dir),
+            "MANAGER_DB_DIR_MOUNT_SOURCE": "$LITERAL_SERVER:/catalogs",
+            "MANAGER_DB_DIR_MOUNT_FSTYPE": "nfs4",
+        },
+    )
+
+    config = ConfigSettings(str(config_path))
+
+    assert config.manager_db_dir == str(manager_dir)
+    assert config.manager_db_dir_mount_source == "$LITERAL_SERVER:/catalogs"
+    assert config.manager_db_dir_mount_fstype == "nfs4"
+
+
+def test_manager_mount_validation_accepts_matching_identity(tmp_path: Path) -> None:
+    """Accept standalone manager access to the expected catalog mount.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    manager_dir = tmp_path / "manager"
+    manager_dir.mkdir()
+    identity = get_mount_identity(str(manager_dir))
+    config_path = write_config(
+        tmp_path / "manager-valid.conf",
+        tmp_path,
+        dir_overrides={
+            "MANAGER_DB_DIR": str(manager_dir),
+            "MANAGER_DB_DIR_MOUNT_SOURCE": identity.source,
+            "MANAGER_DB_DIR_MOUNT_FSTYPE": identity.filesystem_type,
+        },
+    )
+
+    error = validate_manager_mount(ConfigSettings(str(config_path)))
+
+    assert error is None
+
+
+def test_manager_mount_validation_rejects_wrong_identity(tmp_path: Path) -> None:
+    """Reject standalone manager access to an unexpected catalog mount.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    manager_dir = tmp_path / "manager"
+    manager_dir.mkdir()
+    config_path = write_config(
+        tmp_path / "manager-invalid.conf",
+        tmp_path,
+        dir_overrides={
+            "MANAGER_DB_DIR": str(manager_dir),
+            "MANAGER_DB_DIR_MOUNT_SOURCE": "source-that-cannot-match",
+        },
+    )
+
+    error = validate_manager_mount(ConfigSettings(str(config_path)))
+
+    assert error is not None
+    assert "MANAGER_DB_DIR mount identity mismatch" in error
+
+
+@pytest.mark.parametrize(
+    ("section", "mount_key", "expected_directory_key"),
+    [
+        ("DIRECTORIES", "MANAGER_DB_DIR_MOUNT_SOURCE", "MANAGER_DB_DIR"),
+        ("PAR2", "PAR2_DIR_MOUNT_SOURCE", "PAR2_DIR"),
+        ("media-files", "PAR2_DIR_MOUNT_SOURCE", "PAR2_DIR"),
+    ],
+)
+def test_mount_expectation_without_associated_directory_raises_config_error(
+    tmp_path: Path,
+    section: str,
+    mount_key: str,
+    expected_directory_key: str,
+) -> None:
+    """Reject mount identity settings detached from their directory setting.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        section: Configuration section receiving the orphan setting.
+        mount_key: Mount identity key to configure.
+        expected_directory_key: Directory key required in the same scope.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the orphan mount identity is accepted.
+    """
+    overrides = {mount_key: "server:/missing"}
+    if section == "DIRECTORIES":
+        config_path = write_config(
+            tmp_path / "orphan-mount.conf",
+            tmp_path,
+            dir_overrides=overrides,
+        )
+    elif section == "PAR2":
+        config_path = write_config(
+            tmp_path / "orphan-mount.conf",
+            tmp_path,
+            par2_overrides=overrides,
+        )
+    else:
+        config_path = write_config(
+            tmp_path / "orphan-mount.conf",
+            tmp_path,
+            extra_sections={section: overrides},
+        )
+
+    with pytest.raises(ConfigSettingsError, match=expected_directory_key):
+        ConfigSettings(str(config_path))
 
 
 def test_metrics_db_path_with_backup_prefix_is_accepted(tmp_path: Path) -> None:

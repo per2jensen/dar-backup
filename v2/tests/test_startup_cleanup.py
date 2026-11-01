@@ -176,7 +176,11 @@ def test_main_cleans_restore_dir_for_default_restore(monkeypatch, tmp_path):
     monkeypatch.setattr(dar_backup, "ConfigSettings", lambda cf: mock_settings)
 
     monkeypatch.setattr(dar_backup, "validate_required_directories", lambda s: None)
-    monkeypatch.setattr(dar_backup, "preflight_check", lambda a, s: True)
+    monkeypatch.setattr(
+        dar_backup,
+        "preflight_check",
+        lambda a, s, errors_out=None: True,
+    )
     monkeypatch.setattr(dar_backup, "init_logging", lambda *args, **kwargs: (MagicMock(), "/dev/null"))
     monkeypatch.setattr(dar_backup, "get_logger", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(dar_backup, "CommandRunner", MagicMock())
@@ -221,7 +225,11 @@ def test_main_skips_clean_for_list_contents(monkeypatch, tmp_path):
     monkeypatch.setattr(dar_backup, "ConfigSettings", lambda cf: mock_settings)
 
     monkeypatch.setattr(dar_backup, "validate_required_directories", lambda s: None)
-    monkeypatch.setattr(dar_backup, "preflight_check", lambda a, s: True)
+    monkeypatch.setattr(
+        dar_backup,
+        "preflight_check",
+        lambda a, s, errors_out=None: True,
+    )
     monkeypatch.setattr(dar_backup, "init_logging", lambda *args, **kwargs: (MagicMock(), "/dev/null"))
     monkeypatch.setattr(dar_backup, "get_logger", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(dar_backup, "CommandRunner", MagicMock())

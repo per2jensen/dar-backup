@@ -17,6 +17,7 @@ import sys
 from contextlib import closing, redirect_stdout, redirect_stderr
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -625,6 +626,54 @@ def test_record_prereq_failure_all_definitions(setup_environment, env):
     finally:
         if os.path.exists(second_def):
             os.remove(second_def)
+
+
+def test_record_preflight_failure_uses_explicit_phase_and_reason(
+    setup_environment: Any,
+    env: Any,
+) -> None:
+    """Store mount preflight failures as FAILURE rather than SKIPPED.
+
+    Args:
+        setup_environment: Fixture that prepares the isolated test installation.
+        env: Isolated backup test environment fixture.
+
+    Returns:
+        None.
+    """
+    metrics_db = _inject_metrics_db(env.config_file, env.test_dir)
+    config_settings = ConfigSettings(env.config_file)
+    definition = os.path.join(env.backup_d_dir, "mountcheck")
+    with open(definition, "w", encoding="utf-8") as definition_file:
+        definition_file.write("-R /tmp\n")
+
+    args = SimpleNamespace(backup_definition="mountcheck", dar_version=None)
+    stats: list[dict[str, Any]] = []
+    error = RuntimeError("BACKUP_DIR mount identity mismatch")
+    try:
+        dar_backup_mod._record_prereq_failure(
+            args,
+            config_settings,
+            stats,
+            error,
+            "FULL",
+            failed_phase="PREFLIGHT",
+            reason_code="PREFLIGHT_FAILED",
+            prereq_status=None,
+        )
+
+        with closing(sqlite3.connect(metrics_db)) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute("SELECT * FROM backup_runs").fetchone()
+
+        assert row["status"] == "FAILURE"
+        assert row["failed_phase"] == "PREFLIGHT"
+        assert row["error_summary"].startswith("PREFLIGHT_FAILED:")
+        assert row["prereq_status"] is None
+        assert stats[0]["status"] == "FAILURE"
+    finally:
+        if os.path.exists(definition):
+            os.remove(definition)
 
 
 # ---------------------------------------------------------------------------

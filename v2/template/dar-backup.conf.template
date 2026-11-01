@@ -39,12 +39,19 @@ RESTORE_OWNERSHIP = no
 
 [DIRECTORIES]
 BACKUP_DIR = /tmp/unit-test/@@test-case-name@@/backups/
+# Optional fail-closed mount identity checks. Configure at least the source for
+# mounted backup storage so an unmounted but writable local directory is rejected.
+# Inspect values with: findmnt -T /path/to/backups -no SOURCE,FSTYPE,TARGET
+# BACKUP_DIR_MOUNT_SOURCE = server:/export/backups
+# BACKUP_DIR_MOUNT_FSTYPE = nfs4
 BACKUP.D_DIR = /tmp/unit-test/@@test-case-name@@/backup.d/
 DATA_DIR = /tmp/unit-test/@@test-case-name@@/data/
 TEST_RESTORE_DIR = /tmp/unit-test/@@test-case-name@@/restore/
 # Optional parameter
 # If you want to store the catalog database away from the BACKUP_DIR,  use the MANAGER_DB_DIR variable.
 #MANAGER_DB_DIR = /some/where/else/
+# MANAGER_DB_DIR_MOUNT_SOURCE = server:/export/catalogs
+# MANAGER_DB_DIR_MOUNT_FSTYPE = nfs4
 
 
 
@@ -57,6 +64,8 @@ ERROR_CORRECTION_PERCENT = 5
 ENABLED = True
 # Optional PAR2 configuration
 # PAR2_DIR = /tmp/unit-test/par2
+# PAR2_DIR_MOUNT_SOURCE = server:/export/par2
+# PAR2_DIR_MOUNT_FSTYPE = nfs4
 # PAR2_RATIO_FULL = 10
 # PAR2_RATIO_DIFF = 5
 # PAR2_RATIO_INCR = 5

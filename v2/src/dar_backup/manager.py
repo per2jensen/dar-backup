@@ -55,6 +55,7 @@ from dar_backup.util import get_backup_definition_root
 
 from dar_backup.command_runner import CommandRunner
 from dar_backup.command_runner import CommandResult
+from dar_backup.mounts import validate_expected_mount
 from dar_backup.restore_target_safety import ExistingDataPolicy
 from dar_backup.restore_target_safety import RestoreTargetError
 from dar_backup.restore_target_safety import RestoreTargetHandle
@@ -132,6 +133,47 @@ def get_db_dir(config_settings: ConfigSettings) -> str:
     Uses manager_db_dir if set, otherwise falls back to backup_dir.
     """
     return config_settings.manager_db_dir or config_settings.backup_dir
+
+
+def validate_manager_mount(config_settings: ConfigSettings) -> Optional[str]:
+    """Validate the effective catalog directory mount when expectations exist.
+
+    Args:
+        config_settings: Loaded configuration containing catalog-directory and
+            mount identity settings.
+
+    Returns:
+        ``None`` when no expectation is configured or the mount matches;
+        otherwise a diagnostic error string.
+    """
+    manager_db_dir = getattr(config_settings, "manager_db_dir", None)
+    if isinstance(manager_db_dir, str) and manager_db_dir.strip():
+        name = "MANAGER_DB_DIR"
+        path = manager_db_dir
+        expected_source = getattr(
+            config_settings, "manager_db_dir_mount_source", None
+        )
+        expected_fstype = getattr(
+            config_settings, "manager_db_dir_mount_fstype", None
+        )
+    else:
+        name = "BACKUP_DIR"
+        path = config_settings.backup_dir
+        expected_source = getattr(config_settings, "backup_dir_mount_source", None)
+        expected_fstype = getattr(config_settings, "backup_dir_mount_fstype", None)
+
+    if not isinstance(expected_source, str):
+        expected_source = None
+    if not isinstance(expected_fstype, str):
+        expected_fstype = None
+    if expected_source is None and expected_fstype is None:
+        return None
+    return validate_expected_mount(
+        name,
+        path,
+        expected_source,
+        expected_fstype,
+    )
 
 
 def show_more_help() -> None:
@@ -2579,6 +2621,12 @@ def main() -> None:
     start_msgs.append(("dar_manager v.:", dar_manager_properties['version']))
 
     print_aligned_settings(start_msgs, quiet=not args.verbose)
+
+    mount_error = validate_manager_mount(config_settings)
+    if mount_error is not None:
+        logger.error("Catalog mount preflight failed: %s", mount_error)
+        sys.exit(1)
+        return
 
     # --- Sanity checks ---
     if args.add_dir and not args.add_dir.strip():

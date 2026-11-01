@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dar_backup.util import (
+    _METRICS_DDL,
     _METRICS_MIGRATIONS,
     ensure_metrics_db,
     mark_archive_metrics_deleted,
@@ -308,6 +309,47 @@ def test_ensure_metrics_db_status_migration_does_not_rewrite_warning_history(
     assert statuses["legacy-skip-shaped-warning"] == "WARNING"
     assert statuses["new-skip"] == "SKIPPED"
     assert "idx_runs_status" in indexes
+
+
+def test_ensure_metrics_db_adds_preflight_phase_without_losing_rows(
+    tmp_path: Path,
+) -> None:
+    """Migrate the previous phase constraint and preserve historical data.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    db = str(tmp_path / "metrics.db")
+    previous_ddl = _METRICS_DDL.replace("'PREFLIGHT', ", "", 1)
+    with closing(sqlite3.connect(db)) as connection:
+        connection.executescript(previous_ddl)
+        connection.execute(
+            """
+            INSERT INTO backup_runs (
+                backup_definition, backup_type, run_started_at, status
+            ) VALUES ('historical-def', 'FULL', '2026-10-31T00:00:00Z', 'SUCCESS')
+            """
+        )
+        connection.commit()
+
+    ensure_metrics_db(db)
+    write_metrics_row(
+        {
+            **_SPARSE_METRICS,
+            "failed_phase": "PREFLIGHT",
+            "error_summary": "PREFLIGHT_FAILED: wrong mount",
+        },
+        _cfg(db),
+    )
+
+    with closing(sqlite3.connect(db)) as connection:
+        rows = connection.execute(
+            "SELECT backup_definition, failed_phase FROM backup_runs ORDER BY id"
+        ).fetchall()
+    assert rows == [("historical-def", None), ("sparse-def", "PREFLIGHT")]
 
 
 def test_ensure_metrics_db_migration_new_columns_are_null_for_old_rows(tmp_path):
@@ -675,7 +717,10 @@ def test_write_metrics_row_skipped_status_round_trip(tmp_path: Path) -> None:
 # Gap 3 — valid non-NULL failed_phase values round-trip
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("phase", ["DAR", "CATALOG", "VERIFY", "PAR2"])
+@pytest.mark.parametrize(
+    "phase",
+    ["PREFLIGHT", "PREREQ", "DAR", "CATALOG", "VERIFY", "PAR2"],
+)
 def test_write_metrics_row_failed_phase_round_trip(tmp_path, phase):
     """Each valid failed_phase value must insert and read back correctly."""
     db = str(tmp_path / "metrics.db")

@@ -39,6 +39,8 @@ class ConfigSettings:
     command_timeout_secs: int = field(init=False)
     command_capture_max_bytes: Optional[int] = field(init=False, default=102400)  # 100 KiB; matches OPTIONAL_CONFIG_FIELDS default
     backup_dir: str = field(init=False)
+    backup_dir_mount_source: Optional[str] = field(init=False, default=None)
+    backup_dir_mount_fstype: Optional[str] = field(init=False, default=None)
     test_restore_dir: str = field(init=False)
     backup_d_dir: str = field(init=False)
     diff_age: int = field(init=False)
@@ -46,6 +48,8 @@ class ConfigSettings:
     error_correction_percent: int = field(init=False)
     par2_enabled: bool = field(init=False)
     par2_dir: Optional[str] = field(init=False, default=None)
+    par2_dir_mount_source: Optional[str] = field(init=False, default=None)
+    par2_dir_mount_fstype: Optional[str] = field(init=False, default=None)
     par2_ratio_full: Optional[int] = field(init=False, default=None)
     par2_ratio_diff: Optional[int] = field(init=False, default=None)
     par2_ratio_incr: Optional[int] = field(init=False, default=None)
@@ -58,6 +62,8 @@ class ConfigSettings:
     metrics_db_path: Optional[str] = field(init=False, default=None)
     lock_dir: Optional[str] = field(init=False, default=None)
     manager_db_dir: Optional[str] = field(init=False, default=None)
+    manager_db_dir_mount_source: Optional[str] = field(init=False, default=None)
+    manager_db_dir_mount_fstype: Optional[str] = field(init=False, default=None)
     restoretest_exclude_prefixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_suffixes: list[str] = field(init=False, default_factory=list)
     restoretest_exclude_regex: Optional[Pattern[str]] = field(init=False, default=None)
@@ -70,8 +76,36 @@ class ConfigSettings:
     OPTIONAL_CONFIG_FIELDS = [
         {
             "section": "DIRECTORIES",
+            "key": "BACKUP_DIR_MOUNT_SOURCE",
+            "attr": "backup_dir_mount_source",
+            "type": str,
+            "default": None,
+        },
+        {
+            "section": "DIRECTORIES",
+            "key": "BACKUP_DIR_MOUNT_FSTYPE",
+            "attr": "backup_dir_mount_fstype",
+            "type": str,
+            "default": None,
+        },
+        {
+            "section": "DIRECTORIES",
             "key": "MANAGER_DB_DIR",
             "attr": "manager_db_dir",
+            "type": str,
+            "default": None,
+        },
+        {
+            "section": "DIRECTORIES",
+            "key": "MANAGER_DB_DIR_MOUNT_SOURCE",
+            "attr": "manager_db_dir_mount_source",
+            "type": str,
+            "default": None,
+        },
+        {
+            "section": "DIRECTORIES",
+            "key": "MANAGER_DB_DIR_MOUNT_FSTYPE",
+            "attr": "manager_db_dir_mount_fstype",
             "type": str,
             "default": None,
         },
@@ -204,6 +238,12 @@ class ConfigSettings:
                 raise ConfigSettingsError(f"Invalid boolean value for 'ENABLED' in [PAR2]: '{val}'")
 
             self.par2_dir = self._get_optional_str("PAR2", "PAR2_DIR", default=None)
+            self.par2_dir_mount_source = self._get_optional_str(
+                "PAR2", "PAR2_DIR_MOUNT_SOURCE", default=None
+            )
+            self.par2_dir_mount_fstype = self._get_optional_str(
+                "PAR2", "PAR2_DIR_MOUNT_FSTYPE", default=None
+            )
             self.par2_ratio_full = self._get_optional_int("PAR2", "PAR2_RATIO_FULL", default=None)
             self.par2_ratio_diff = self._get_optional_int("PAR2", "PAR2_RATIO_DIFF", default=None)
             self.par2_ratio_incr = self._get_optional_int("PAR2", "PAR2_RATIO_INCR", default=None)
@@ -276,7 +316,7 @@ class ConfigSettings:
             for f in fields(self):
                 if hasattr(self, f.name):
                     value = getattr(self, f.name)
-                    if isinstance(value, str):
+                    if isinstance(value, str) and not f.name.endswith(("_mount_source", "_mount_fstype")):
                         setattr(self, f.name, expanduser(expandvars(value)))
 
             env_lock_dir = os.getenv("DAR_BACKUP_LOCK_DIR")
@@ -284,6 +324,7 @@ class ConfigSettings:
                 self.lock_dir = expanduser(expandvars(env_lock_dir.strip()))
 
             self._validate_lock_dir_setting()
+            self._validate_mount_expectations()
             self._validate_metrics_db_location()
 
         except ConfigSettingsError:
@@ -312,6 +353,68 @@ class ConfigSettings:
             if hasattr(self, field.name) and getattr(self, field.name) is not None
         ]
         return f"<ConfigSettings({', '.join(safe_fields)})>"
+
+    def _validate_mount_expectations(self) -> None:
+        """Reject configured mount identity fields with empty values.
+
+        Returns:
+            None.
+
+        Raises:
+            ConfigSettingsError: If an expected source or filesystem type is empty.
+        """
+        configured_values = (
+            ("BACKUP_DIR_MOUNT_SOURCE", self.backup_dir_mount_source),
+            ("BACKUP_DIR_MOUNT_FSTYPE", self.backup_dir_mount_fstype),
+            ("MANAGER_DB_DIR_MOUNT_SOURCE", self.manager_db_dir_mount_source),
+            ("MANAGER_DB_DIR_MOUNT_FSTYPE", self.manager_db_dir_mount_fstype),
+            ("PAR2_DIR_MOUNT_SOURCE", self.par2_dir_mount_source),
+            ("PAR2_DIR_MOUNT_FSTYPE", self.par2_dir_mount_fstype),
+        )
+        for key, value in configured_values:
+            if value is not None and not value.strip():
+                raise ConfigSettingsError(f"{key} must not be empty when configured")
+
+        manager_expectation_configured = (
+            self.manager_db_dir_mount_source is not None
+            or self.manager_db_dir_mount_fstype is not None
+        )
+        if manager_expectation_configured and not self.manager_db_dir:
+            raise ConfigSettingsError(
+                "MANAGER_DB_DIR_MOUNT_SOURCE and MANAGER_DB_DIR_MOUNT_FSTYPE "
+                "require MANAGER_DB_DIR"
+            )
+
+        par2_expectation_configured = (
+            self.par2_dir_mount_source is not None
+            or self.par2_dir_mount_fstype is not None
+        )
+        if par2_expectation_configured and not self.par2_dir:
+            raise ConfigSettingsError(
+                "PAR2_DIR_MOUNT_SOURCE and PAR2_DIR_MOUNT_FSTYPE require PAR2_DIR"
+            )
+
+        standard_sections = {"MISC", "DIRECTORIES", "AGE", "PAR2", "PREREQ", "POSTREQ"}
+        for section in self.config.sections():
+            if section.upper() in standard_sections:
+                continue
+            mount_keys = ("PAR2_DIR_MOUNT_SOURCE", "PAR2_DIR_MOUNT_FSTYPE")
+            configured_keys = [
+                key for key in mount_keys if self.config.has_option(section, key)
+            ]
+            if not configured_keys:
+                continue
+            for key in configured_keys:
+                if not self.config.get(section, key).strip():
+                    raise ConfigSettingsError(
+                        f"{key} must not be empty in [{section}]"
+                    )
+            if not self.config.has_option(section, "PAR2_DIR") or not self.config.get(
+                section, "PAR2_DIR"
+            ).strip():
+                raise ConfigSettingsError(
+                    f"PAR2_DIR mount settings in [{section}] require PAR2_DIR in the same section"
+                )
 
     def _validate_metrics_db_location(self) -> None:
         """Reject a metrics database stored inside the backup destination.
@@ -517,6 +620,8 @@ class ConfigSettings:
         """
         par2_config = {
             "par2_dir": self.par2_dir,
+            "par2_dir_mount_source": self.par2_dir_mount_source,
+            "par2_dir_mount_fstype": self.par2_dir_mount_fstype,
             "par2_ratio_full": self.par2_ratio_full,
             "par2_ratio_diff": self.par2_ratio_diff,
             "par2_ratio_incr": self.par2_ratio_incr,
@@ -528,7 +633,16 @@ class ConfigSettings:
             return par2_config
 
         s = backup_definition
-        par2_config["par2_dir"] = self._get_config_value(s, "par2_dir", str, par2_config["par2_dir"])
+        if self.config.has_option(s, "par2_dir"):
+            par2_config["par2_dir"] = self._get_config_value(s, "par2_dir", str, None)
+            # Mount expectations describe a specific path. A definition that
+            # replaces PAR2_DIR must opt into expectations for that new path.
+            par2_config["par2_dir_mount_source"] = self._get_config_value(
+                s, "par2_dir_mount_source", str, None
+            )
+            par2_config["par2_dir_mount_fstype"] = self._get_config_value(
+                s, "par2_dir_mount_fstype", str, None
+            )
         par2_config["par2_ratio_full"] = self._get_config_value(s, "par2_ratio_full", int, par2_config["par2_ratio_full"])
         par2_config["par2_ratio_diff"] = self._get_config_value(s, "par2_ratio_diff", int, par2_config["par2_ratio_diff"])
         par2_config["par2_ratio_incr"] = self._get_config_value(s, "par2_ratio_incr", int, par2_config["par2_ratio_incr"])

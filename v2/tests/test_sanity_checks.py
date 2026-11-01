@@ -1,9 +1,11 @@
 # modified: 2021-07-25 to be a pytest test
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
+from contextlib import closing
 from configparser import ConfigParser
 from time import time
 from typing import Generator
@@ -16,6 +18,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.smoke]
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from dar_backup.command_runner import CommandRunner
+from dar_backup.mounts import get_mount_identity
 from dar_backup.util import setup_logging
 from pathlib import Path
 from tests.envdata import EnvData
@@ -370,6 +373,183 @@ def test_duplicate_full_backup_is_skipped_with_exit_code_2(
     assert "already exists" in second.stderr or "already exists" in second.stdout
     assert "Skipped: no backup performed" in second.stdout
     assert "Errors encountered" not in second.stdout
+
+
+def test_wrong_backup_mount_is_failure_even_when_archive_exists(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """Record a mount mismatch as PREFLIGHT failure before duplicate detection.
+
+    Args:
+        setup_environment: Fixture that prepares the real backup environment.
+        env: Paths and configuration for the isolated test environment.
+
+    Returns:
+        None.
+    """
+    definition_name = "mountcheck"
+    definition_path = Path(env.backup_d_dir) / definition_name
+    definition_path.write_text("-R /tmp\n", encoding="utf-8")
+    archive_path = Path(env.backup_dir) / f"{definition_name}_FULL_{env.datestamp}.1.dar"
+    archive_path.write_text("existing archive placeholder", encoding="utf-8")
+    metrics_db = Path(env.test_dir) / "mountcheck-metrics.db"
+
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["DIRECTORIES"]["BACKUP_DIR_MOUNT_SOURCE"] = "source-that-cannot-match"
+    config["MISC"]["METRICS_DB_PATH"] = str(metrics_db)
+    with open(env.config_file, "w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    process = runner.run([
+        "dar-backup", "--full-backup", "-d", definition_name,
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout", "--verbose",
+    ])
+
+    assert process.returncode == 127
+    assert "mount identity mismatch" in process.stdout
+    assert "Skipped: no backup performed" not in process.stdout
+    with closing(sqlite3.connect(metrics_db)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM backup_runs").fetchone()
+    assert row["status"] == "FAILURE"
+    assert row["failed_phase"] == "PREFLIGHT"
+    assert row["error_summary"].startswith("PREFLIGHT_FAILED:")
+    assert row["prereq_status"] is None
+
+
+def test_missing_par2_mount_keeps_verified_backup_as_warning(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """Keep a verified archive when protected PAR2 storage is unavailable.
+
+    Args:
+        setup_environment: Fixture that prepares the real backup environment.
+        env: Paths and configuration for the isolated test environment.
+
+    Returns:
+        None.
+    """
+    definition_name = "par2mount"
+    source_definition = Path(env.backup_d_dir) / "example"
+    definition_path = Path(env.backup_d_dir) / definition_name
+    definition_path.write_text(
+        source_definition.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    par2_dir = Path(env.test_dir) / "separate-par2"
+    par2_dir.mkdir()
+    metrics_db = Path(env.test_dir) / "par2-mount-metrics.db"
+    lock_dir = Path(env.test_dir) / "locks"
+    lock_dir.mkdir()
+
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["PAR2"]["PAR2_DIR"] = str(par2_dir)
+    config["PAR2"]["PAR2_DIR_MOUNT_SOURCE"] = "source-that-cannot-match"
+    config["MISC"]["METRICS_DB_PATH"] = str(metrics_db)
+    config["MISC"]["LOCK_DIR"] = str(lock_dir)
+    with open(env.config_file, "w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    create_db = runner.run([
+        "manager", "--create-db", "--config-file", env.config_file,
+    ])
+    assert create_db.returncode == 0
+
+    process = runner.run([
+        "dar-backup", "--full-backup", "-d", definition_name,
+        "--config-file", env.config_file,
+        "--log-level", "debug", "--log-stdout", "--verbose",
+    ])
+
+    archive = Path(env.backup_dir) / f"{definition_name}_FULL_{env.datestamp}.1.dar"
+    assert process.returncode == 2
+    assert archive.is_file()
+    assert "PAR2_PREFLIGHT_FAILED" in process.stdout
+    assert "Warnings encountered" in process.stdout
+    assert list(par2_dir.iterdir()) == []
+    with closing(sqlite3.connect(metrics_db)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM backup_runs").fetchone()
+    assert row["status"] == "WARNING"
+    assert row["verify_passed"] == 1
+    assert row["catalog_updated"] == 1
+    assert row["par2_passed"] == 0
+    assert row["failed_phase"] == "PAR2"
+    assert row["error_summary"].startswith("PAR2_PREFLIGHT_FAILED:")
+
+
+def test_manager_cli_refuses_mismatched_catalog_mount(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """Prevent standalone manager from writing below an unexpected mount.
+
+    Args:
+        setup_environment: Fixture that prepares the real backup environment.
+        env: Paths and configuration for the isolated test environment.
+
+    Returns:
+        None.
+    """
+    manager_dir = Path(env.test_dir) / "protected-manager"
+    manager_dir.mkdir()
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["DIRECTORIES"]["MANAGER_DB_DIR"] = str(manager_dir)
+    config["DIRECTORIES"]["MANAGER_DB_DIR_MOUNT_SOURCE"] = (
+        "source-that-cannot-match"
+    )
+    with open(env.config_file, "w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    process = runner.run([
+        "manager", "--create-db", "--config-file", env.config_file,
+        "--log-stdout",
+    ])
+
+    assert process.returncode == 1
+    assert "Catalog mount preflight failed" in process.stdout
+    assert list(manager_dir.iterdir()) == []
+
+
+def test_manager_cli_accepts_matching_catalog_mount(
+    setup_environment: None,
+    env: EnvData,
+) -> None:
+    """Allow standalone manager writes on the expected catalog mount.
+
+    Args:
+        setup_environment: Fixture that prepares the real backup environment.
+        env: Paths and configuration for the isolated test environment.
+
+    Returns:
+        None.
+    """
+    manager_dir = Path(env.test_dir) / "protected-manager"
+    manager_dir.mkdir()
+    identity = get_mount_identity(str(manager_dir))
+    config = ConfigParser()
+    config.read(env.config_file)
+    config["DIRECTORIES"]["MANAGER_DB_DIR"] = str(manager_dir)
+    config["DIRECTORIES"]["MANAGER_DB_DIR_MOUNT_SOURCE"] = identity.source
+    config["DIRECTORIES"]["MANAGER_DB_DIR_MOUNT_FSTYPE"] = (
+        identity.filesystem_type
+    )
+    with open(env.config_file, "w", encoding="utf-8") as config_file:
+        config.write(config_file)
+
+    process = runner.run([
+        "manager", "--create-db", "--config-file", env.config_file,
+        "--log-stdout",
+    ])
+
+    assert process.returncode == 0
+    assert (manager_dir / "example.db").is_file()
 
 
 

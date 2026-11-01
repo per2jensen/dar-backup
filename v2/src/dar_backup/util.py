@@ -1655,7 +1655,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     par2_duration_secs            REAL,
     status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'SKIPPED', 'FAILURE')),
     dar_exit_code                 INTEGER,
-    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREREQ', 'DAR', 'CATALOG', 'VERIFY', 'PAR2')),
+    failed_phase                  TEXT    CHECK (failed_phase IS NULL OR failed_phase IN ('PREFLIGHT', 'PREREQ', 'DAR', 'CATALOG', 'VERIFY', 'PAR2')),
     error_summary                 TEXT,
     catalog_updated               INTEGER,
     verify_passed                 INTEGER,
@@ -1839,6 +1839,7 @@ def ensure_metrics_db(db_path: str) -> None:
             and (
                 "'CATALOG'" not in schema_row[0]
                 or "'SKIPPED'" not in schema_row[0]
+                or "'PREFLIGHT'" not in schema_row[0]
             )
         )
         if requires_structural_migration:

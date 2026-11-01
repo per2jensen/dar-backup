@@ -58,8 +58,8 @@ out at a glance without needing to read every cell.
 | Outcome | Meaning | Included in non-failure rate? |
 | --- | --- | --- |
 | `SUCCESS` | The backup completed and passed verification. | Yes, as a non-failure |
-| `WARNING` | The backup completed and passed verification, but DAR reported recoverable filesystem problems such as files it could not save. | Yes, as a non-failure |
-| `SKIPPED` | No backup was attempted because the target archive already existed. This is neither a successful nor a failed backup. | No |
+| `WARNING` | The backup completed and passed verification, but DAR reported recoverable filesystem problems or configured PAR2 storage was unavailable and redundancy could not be created. | Yes, as a non-failure |
+| `SKIPPED` | No backup was attempted because the target archive already existed (`ALREADY_CURRENT`). This is neither a successful nor a failed backup. | No |
 | `FAILURE` | The backup pipeline failed and did not complete successfully. | Yes, as a failure |
 
 `SKIPPED` retains the PREREQ and POSTREQ phase results because those phases still
@@ -283,9 +283,9 @@ later cleanup timestamps only rows that are active at that time.
 
 | Column | Type | Description |
 | --- | --- | --- |
-| `status` | TEXT | `SUCCESS`, `WARNING`, `SKIPPED`, or `FAILURE`. `SKIPPED` means no archive was created because the target archive already existed. |
+| `status` | TEXT | `SUCCESS`, `WARNING`, `SKIPPED`, or `FAILURE`. `SKIPPED` means no archive was created because the target archive already existed (`ALREADY_CURRENT`). |
 | `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.), or NULL when DAR did not run. |
-| `failed_phase` | TEXT | `PREREQ`, `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL when no phase failed, including a skipped invocation. |
+| `failed_phase` | TEXT | `PREFLIGHT`, `PREREQ`, `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL when no phase failed, including a skipped invocation. |
 | `error_summary` | TEXT | Short human-readable description of the first error or skip reason encountered, or NULL. |
 | `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or the attempted backup could not be published, and NULL when the catalog phase did not run. |
 | `verify_passed` | INTEGER | `1` if the archive integrity test passed, `0` for an explicitly recorded failed result, and NULL when no result was recorded or verification did not run. |
