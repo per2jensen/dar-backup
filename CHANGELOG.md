@@ -5,6 +5,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 
 ## v2-1.1.12 - not released
 
+- Optional mount identity checks protect backup and separate manager/PAR2 destinations from writes to exposed underlying directories. Required backup/catalog mismatches record `PREFLIGHT_FAILED`; unavailable PAR2 storage preserves the verified backup as `WARNING` with `PAR2_PREFLIGHT_FAILED`; genuine current-archive skips carry `ALREADY_CURRENT`
 - Optional disk-backed percentage sampling and strictly reconciled data-slice coverage strengthen restore verification for large backups, including SELinux-EA-aware DAR slicing parsing, without changing existing configurations
 - Duplicate-archive invocations are now recorded and displayed as distinct `SKIPPED` outcomes without rewriting historical rows; skips remain visible, retain PRE/POST phase results, and are excluded from backup success statistics
 - CLI completion and Discord reporting now distinguish skipped backups from warnings and failures while retaining exit code 2 for an already-existing archive
