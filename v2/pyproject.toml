@@ -141,7 +141,7 @@ packaging = [
  "hatchling>=1.32.4",
  "hatch>=1.18.0",
  "packaging>=26.0",
- "twine>=6.2.0",
+ "twine>=7.0.0",
 ]
 
 [tool.coverage.run]
