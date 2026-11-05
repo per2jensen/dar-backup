@@ -75,6 +75,48 @@ def _create_archive(
         raise RuntimeError(f"DAR archive creation failed: {completed.stderr}")
 
 
+def _write_file_with_raw_name(
+    directory: Path,
+    filename: bytes,
+    content: bytes,
+) -> None:
+    """Create a file whose POSIX name contains caller-supplied raw bytes.
+
+    Args:
+        directory: Existing parent directory.
+        filename: Non-empty basename bytes without a path separator.
+        content: File payload to write.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If an input is invalid.
+        OSError: If the file cannot be created or written completely.
+    """
+    if not isinstance(directory, Path) or not directory.is_dir():
+        raise ValueError("directory must be an existing Path")
+    if not isinstance(filename, bytes) or not filename or b"/" in filename:
+        raise ValueError("filename must be a non-empty basename in bytes")
+    if not isinstance(content, bytes):
+        raise ValueError("content must be bytes")  # noqa: TRY004 -- project input-validation convention
+    raw_path = os.path.join(os.fsencode(directory), filename)
+    file_descriptor = os.open(
+        raw_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        bytes_written = os.write(file_descriptor, content)
+        if bytes_written != len(content):
+            raise OSError(
+                f"Short write while creating raw-name fixture: "
+                f"{bytes_written} of {len(content)} bytes"
+            )
+    finally:
+        os.close(file_descriptor)
+
+
 def _create_isolated_catalogue(
     reference_archive: Path,
     archive_path: Path,
@@ -1127,6 +1169,7 @@ def test_catalog_index_reconciles_real_dar_xml_and_slicing(tmp_path: Path) -> No
                 "dar_version": index.dar_version,
                 "expected_saved_files": report.expected_saved_files,
                 "mapped_saved_files": report.mapped_saved_files,
+                "unselectable_saved_files": report.unselectable_saved_files,
                 "data_slices": sorted(report.data_slices),
                 "non_data_slices": sorted(report.non_data_slices),
                 "saved_paths": sorted(path for path, _size in saved_files),
@@ -1197,6 +1240,141 @@ def test_catalog_index_reconciles_spanning_zero_length_and_hardlink_files(
     assert report.mapped_saved_files == len(expected_paths)
     assert {path for path, _size in saved_files} == expected_paths
     assert len(slice_map["spanning.bin"]) > 1
+
+
+def test_verify_malformed_saved_name_uses_valid_same_slice_alternative(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cover a malformed-name payload slice through another valid file.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        caplog: Pytest log capture fixture.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "valid-alternative.bin").write_bytes(os.urandom(8 * 1024))
+    _write_file_with_raw_name(
+        source_dir,
+        b"bad-\x1c\xaa.bin",
+        os.urandom(4 * 1024),
+    )
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path, slice_size="1M")
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=1,
+        percentage=100.0,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+        )
+
+    assert result.passed is True
+    assert result.restore_test_passed is True
+    assert result.files_verified == 1
+    assert "malformed or unrepresentable names" in caplog.text
+    assert r"bad-\ufffd\ufffd.bin" in caplog.text
+
+
+def test_verify_malformed_only_payload_slice_fails_closed(tmp_path: Path) -> None:
+    """Reject coverage when a payload slice has no selectable pathname.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    _write_file_with_raw_name(
+        source_dir,
+        b"bad-\x1c\xaa.bin",
+        os.urandom(4 * 1024),
+    )
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path, slice_size="1M")
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=1,
+        percentage=100.0,
+    )
+
+    with pytest.raises(
+        BackupError,
+        match="malformed or unrepresentable saved filenames",
+    ):
+        _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+        )
+
+
+def test_catalog_ignores_malformed_referenced_name_in_incremental(
+    tmp_path: Path,
+) -> None:
+    """Exclude an unchanged malformed name from saved-payload reconciliation.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    changed_file = source_dir / "changed.bin"
+    changed_file.write_bytes(b"original")
+    _write_file_with_raw_name(
+        source_dir,
+        b"bad-\x1c\xaa.bin",
+        os.urandom(4 * 1024),
+    )
+    full_archive = tmp_path / "full"
+    _create_archive(source_dir, full_archive, slice_size="1M")
+    changed_file.write_bytes(b"changed payload")
+    incremental_archive = tmp_path / "incremental"
+    _create_archive(
+        source_dir,
+        incremental_archive,
+        slice_size="1M",
+        reference_archive=full_archive,
+    )
+    inventory = inspect_archive_slices(str(incremental_archive))
+    test_logger = logging.getLogger("restoretest_sampling_real")
+    command_runner = CommandRunner(logger=test_logger, command_logger=test_logger)
+
+    with RestoreTestCatalogIndex(test_logger) as index:
+        report = index.load_archive(
+            str(incremental_archive),
+            command_runner,
+            frozenset(inventory.slice_numbers),
+            timeout=30,
+        )
+        saved_files = list(index.iter_saved_files())
+        unselectable = index.get_unselectable_saved_files()
+
+    assert report.expected_saved_files == 1
+    assert report.mapped_saved_files == 1
+    assert report.unselectable_saved_files == 0
+    assert [path for path, _size in saved_files] == ["changed.bin"]
+    assert unselectable == {}
 
 
 def test_catalog_index_classifies_isolated_catalogue_slice_as_non_data(

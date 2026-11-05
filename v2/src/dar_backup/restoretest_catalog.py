@@ -24,6 +24,8 @@ _SLICING_PERMISSION_RE = re.compile(
 _SLICING_RANGE_RE = re.compile(r"^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
 _SLICING_DATA_STATES = frozenset({"-----", "InRef", "Saved"})
 _RAW_EXCERPT_LINE_LIMIT = 20
+_REPLACEMENT_CHARACTER = "\ufffd"
+_DAR_INVALID_ENCODING_SUFFIX = " (invalid encoding)"
 
 
 class DarCatalogueError(RuntimeError):
@@ -96,12 +98,15 @@ class CatalogReconciliation:
     Args:
         expected_saved_files: Saved regular files found in XML.
         mapped_saved_files: Saved regular files found in slicing output.
+        unselectable_saved_files: Saved files whose malformed names cannot be
+            passed safely back to DAR for extraction.
         data_slices: Physical slices containing mapped regular-file payload.
         non_data_slices: Physical slices with no mapped regular-file payload.
     """
 
     expected_saved_files: int
     mapped_saved_files: int
+    unselectable_saved_files: int
     data_slices: frozenset[int]
     non_data_slices: frozenset[int]
 
@@ -224,6 +229,7 @@ class RestoreTestCatalogIndex:
                     entry_type TEXT NOT NULL,
                     data_state TEXT NOT NULL,
                     metadata_state TEXT NOT NULL,
+                    selectable INTEGER NOT NULL CHECK (selectable IN (0, 1)),
                     size_text TEXT
                 );
                 CREATE TABLE slicing_paths (
@@ -339,14 +345,15 @@ class RestoreTestCatalogIndex:
             self._database().execute(
                 """
                 INSERT INTO catalog_entries (
-                    path, entry_type, data_state, metadata_state, size_text
-                ) VALUES (?, ?, ?, ?, ?)
+                    path, entry_type, data_state, metadata_state, selectable, size_text
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.path,
                     record.entry_type,
                     record.data_state,
                     record.metadata_state,
+                    1 if _is_selectable_dar_path(record.path) else 0,
                     record.size_text,
                 ),
             )
@@ -423,7 +430,7 @@ class RestoreTestCatalogIndex:
                 for line in xml_file:
                     if "<!DOCTYPE" in line:
                         continue
-                    parser.feed(line)
+                    parser.feed(_canonicalize_dar_listing_text(line))
                     inserted += self._consume_xml_events(parser, directory_stack)
             parser.close()
             inserted += self._consume_xml_events(parser, directory_stack)
@@ -615,7 +622,7 @@ class RestoreTestCatalogIndex:
         command_runner: CommandRunner,
         timeout: Optional[int] = None,
     ) -> int:
-        """Capture and index DAR's unfiltered XML catalogue representation.
+        """Capture and index DAR's saved-payload XML representation.
 
         Args:
             archive_path: Archive path without a DAR slice suffix.
@@ -648,7 +655,16 @@ class RestoreTestCatalogIndex:
         xml_path = self._new_capture_path(".xml")
         try:
             self._capture_listing(
-                ["dar", "-l", archive_path, "--noconf", "-am", "-Txml", "-Q"],
+                [
+                    "dar",
+                    "-l",
+                    archive_path,
+                    "--noconf",
+                    "-am",
+                    "-as",
+                    "-Txml",
+                    "-Q",
+                ],
                 xml_path,
                 command_runner,
                 timeout,
@@ -769,12 +785,41 @@ class RestoreTestCatalogIndex:
             """
             SELECT path, size_text
             FROM catalog_entries
-            WHERE entry_type = 'file' AND data_state = 'saved'
+            WHERE entry_type = 'file' AND data_state = 'saved' AND selectable = 1
             ORDER BY path
             """
         )
         for path, size_text in rows:
             yield cast(str, path), cast(Optional[str], size_text)
+
+    def get_unselectable_saved_files(self) -> dict[str, frozenset[int]]:
+        """Return malformed saved paths and their payload slices.
+
+        Returns:
+            Mapping from safely canonicalized diagnostic paths to payload
+            slices. The paths must never be passed back to DAR for extraction.
+        """
+        rows = self._database().execute(
+            """
+            SELECT catalog_entries.path, slicing_entries.slice_number
+            FROM catalog_entries
+            LEFT JOIN slicing_entries USING (path)
+            WHERE catalog_entries.entry_type = 'file'
+              AND catalog_entries.data_state = 'saved'
+              AND catalog_entries.selectable = 0
+            ORDER BY catalog_entries.path, slicing_entries.slice_number
+            """
+        )
+        mutable_map: dict[str, set[int]] = {}
+        for path, slice_number in rows:
+            canonical_path = cast(str, path)
+            mutable_map.setdefault(canonical_path, set())
+            if slice_number is not None:
+                mutable_map[canonical_path].add(cast(int, slice_number))
+        return {
+            path: frozenset(slice_numbers)
+            for path, slice_numbers in mutable_map.items()
+        }
 
     def get_slice_map(self) -> dict[str, frozenset[int]]:
         """Return indexed saved-file mappings for coverage selection.
@@ -1112,9 +1157,19 @@ class RestoreTestCatalogIndex:
             int,
             database.execute("SELECT COUNT(*) FROM slicing_paths").fetchone()[0],
         )
+        unselectable_count = cast(
+            int,
+            database.execute(
+                """
+                SELECT COUNT(*) FROM catalog_entries
+                WHERE entry_type = 'file' AND data_state = 'saved' AND selectable = 0
+                """
+            ).fetchone()[0],
+        )
         return CatalogReconciliation(
             expected_saved_files=expected_count,
             mapped_saved_files=mapped_count,
+            unselectable_saved_files=unselectable_count,
             data_slices=mapped_slices,
             non_data_slices=physical_slices - mapped_slices,
         )
@@ -1163,6 +1218,75 @@ def _optional_slicing_state(raw_field: str) -> Optional[str]:
     return stripped
 
 
+def _is_xml_10_character(character: str) -> bool:
+    """Return whether one character is legal in an XML 1.0 document.
+
+    Args:
+        character: Exactly one Unicode character.
+
+    Returns:
+        True when XML 1.0 permits the character, otherwise False.
+
+    Raises:
+        ValueError: If ``character`` is not exactly one character.
+    """
+    if not isinstance(character, str) or len(character) != 1:
+        raise ValueError("character must contain exactly one Unicode character")
+    codepoint = ord(character)
+    return (
+        codepoint in {0x09, 0x0A, 0x0D}
+        or 0x20 <= codepoint <= 0xD7FF
+        or 0xE000 <= codepoint <= 0xFFFD
+        or 0x10000 <= codepoint <= 0x10FFFF
+    )
+
+
+def _canonicalize_dar_listing_text(text: str) -> str:
+    """Replace XML-forbidden listing characters with a safe marker.
+
+    DAR can emit raw POSIX filename bytes that are not legal XML. CommandRunner
+    already converts invalid UTF-8 byte sequences to U+FFFD; this function does
+    the same for decoded control characters so XML and slicing paths share one
+    conservative diagnostic representation.
+
+    Args:
+        text: Text decoded from one DAR listing line or path.
+
+    Returns:
+        XML-safe text. Any replacement marker makes a path unselectable.
+
+    Raises:
+        ValueError: If ``text`` is not a string.
+    """
+    if not isinstance(text, str):
+        raise ValueError("DAR listing text must be a string")  # noqa: TRY004 -- project input-validation convention
+    return "".join(
+        character if _is_xml_10_character(character) else _REPLACEMENT_CHARACTER
+        for character in text
+    )
+
+
+def _is_selectable_dar_path(path: str) -> bool:
+    """Return whether a canonical DAR path is safe to select for extraction.
+
+    Args:
+        path: Canonical archive-relative pathname.
+
+    Returns:
+        True when neither a replacement marker nor DAR's invalid-encoding
+        annotation is present.
+
+    Raises:
+        ValueError: If ``path`` is empty or not text.
+    """
+    if not isinstance(path, str) or not path:
+        raise ValueError("DAR path must be non-empty text")
+    return (
+        _REPLACEMENT_CHARACTER not in path
+        and not path.endswith(_DAR_INVALID_ENCODING_SUFFIX)
+    )
+
+
 def parse_slicing_listing_evidence(line: str) -> Optional[DarSlicingRowEvidence]:
     """Parse positional states from one file-shaped DAR slicing row.
 
@@ -1202,7 +1326,9 @@ def parse_slicing_listing_evidence(line: str) -> Optional[DarSlicingRowEvidence]
             f"Unknown DAR slicing data state {data_state!r}: {line!r}"
         )
     prefix = line[:data_open].strip()
-    path = permission_match.group("path").strip().lstrip("/")
+    path = _canonicalize_dar_listing_text(
+        permission_match.group("path").strip().lstrip("/")
+    )
     if not path:
         raise ValueError(f"Missing file path in DAR slicing row: {line!r}")
     state_tail = line[data_close + 1:permission_match.start()]

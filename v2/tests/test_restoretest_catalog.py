@@ -451,6 +451,155 @@ def test_catalog_index_slice_coverage_reports_ineligible_slice_unavailable() -> 
     assert selection.unavailable_slices == frozenset({2})
 
 
+def test_malformed_saved_path_uses_valid_alternative_on_same_slice(
+    tmp_path: Path,
+) -> None:
+    """Keep malformed payload slices while selecting only a valid pathname.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    malformed_path = "data/bad-\x1c\ufffd.bin (invalid encoding)"
+    canonical_path = "data/bad-\ufffd\ufffd.bin (invalid encoding)"
+    xml_path = tmp_path / "catalog.xml"
+    slicing_path = tmp_path / "slicing.txt"
+    xml_path.write_text(
+        """<?xml version="1.0" ?>
+<Catalog format="1.2">
+  <Directory name="data">
+    <Attributes data="saved" metadata="saved" />
+    <File name="good.bin" size="2 kio">
+      <Attributes data="saved" metadata="absent" />
+    </File>
+    <File name="bad-\x1c\ufffd.bin (invalid encoding)" size="1 kio">
+      <Attributes data="saved" metadata="absent" />
+    </File>
+  </Directory>
+</Catalog>
+""",
+        encoding="utf-8",
+    )
+    slicing_path.write_text(
+        "1 [Saved][ ] [-L-][     ][ ] -rw-r--r-- data/good.bin\n"
+        f"1 [Saved][ ] [-L-][     ][ ] -rw-r--r-- {malformed_path}\n",
+        encoding="utf-8",
+    )
+
+    def eligible(_path: str, _size_text: str | None) -> int:
+        """Make every selectable path eligible for this focused test.
+
+        Args:
+            _path: Unused selectable archive path.
+            _size_text: Unused DAR size text.
+
+        Returns:
+            Fixed positive byte size.
+        """
+        return 1
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        index.load_xml_file(xml_path)
+        index.load_slicing_file(slicing_path)
+        report = index.reconcile(frozenset({1}))
+        assert index.index_eligible_files(eligible) == 1
+        selection = index.select_slice_coverage_files([])
+        unselectable = index.get_unselectable_saved_files()
+
+    assert report.expected_saved_files == 2
+    assert report.mapped_saved_files == 2
+    assert report.unselectable_saved_files == 1
+    assert unselectable == {canonical_path: frozenset({1})}
+    assert selection.additional_files == ("data/good.bin",)
+    assert selection.covered_slices == frozenset({1})
+    assert selection.unavailable_slices == frozenset()
+
+
+def test_malformed_only_payload_slice_is_reported_unavailable(tmp_path: Path) -> None:
+    """Do not claim coverage when a slice has only malformed pathnames.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    xml_path = tmp_path / "catalog.xml"
+    slicing_path = tmp_path / "slicing.txt"
+    xml_path.write_text(
+        """<?xml version="1.0" ?>
+<Catalog format="1.2">
+  <File name="bad-\x1c\ufffd.bin (invalid encoding)" size="1 kio">
+    <Attributes data="saved" metadata="absent" />
+  </File>
+</Catalog>
+""",
+        encoding="utf-8",
+    )
+    slicing_path.write_text(
+        "2 [Saved][ ] [-L-][     ][ ] -rw-r--r-- "
+        "bad-\x1c\ufffd.bin (invalid encoding)\n",
+        encoding="utf-8",
+    )
+
+    def eligible(_path: str, _size_text: str | None) -> int:
+        """Make any selectable path eligible for this focused test.
+
+        Args:
+            _path: Unused selectable archive path.
+            _size_text: Unused DAR size text.
+
+        Returns:
+            Fixed positive byte size.
+        """
+        return 1
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        index.load_xml_file(xml_path)
+        index.load_slicing_file(slicing_path)
+        index.reconcile(frozenset({1, 2}))
+        assert index.index_eligible_files(eligible) == 0
+        selection = index.select_slice_coverage_files([])
+
+    assert selection.data_slices == frozenset({2})
+    assert selection.covered_slices == frozenset()
+    assert selection.unavailable_slices == frozenset({2})
+
+
+def test_malformed_paths_with_ambiguous_canonical_names_raise(tmp_path: Path) -> None:
+    """Reject distinct raw names that collapse to one diagnostic pathname.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+
+    Returns:
+        None.
+    """
+    xml_path = tmp_path / "catalog.xml"
+    xml_path.write_text(
+        """<?xml version="1.0" ?>
+<Catalog format="1.2">
+  <File name="bad-\x1c.bin" size="1 kio">
+    <Attributes data="saved" metadata="absent" />
+  </File>
+  <File name="bad-\ufffd.bin" size="1 kio">
+    <Attributes data="saved" metadata="absent" />
+  </File>
+</Catalog>
+""",
+        encoding="utf-8",
+    )
+
+    with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:
+        with pytest.raises(
+            DarCatalogueError,
+            match="Duplicate path in DAR XML catalogue",
+        ):
+            index.load_xml_file(xml_path)
+
+
 def test_catalog_index_removes_temporary_database_after_context() -> None:
     """Remove the per-operation database even after normal completion."""
     with RestoreTestCatalogIndex(logging.getLogger(__name__)) as index:

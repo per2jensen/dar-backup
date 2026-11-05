@@ -993,9 +993,11 @@ def verify(
                     )
                     logger.info(
                         "Restore-test catalogue reconciliation: saved-files=%d "
-                        "mapped-files=%d data-slices=%d non-data-slices=%d",
+                        "mapped-files=%d unselectable-files=%d data-slices=%d "
+                        "non-data-slices=%d",
                         reconciliation.expected_saved_files,
                         reconciliation.mapped_saved_files,
+                        reconciliation.unselectable_saved_files,
                         len(reconciliation.data_slices),
                         len(reconciliation.non_data_slices),
                     )
@@ -1004,6 +1006,26 @@ def verify(
                         backup_file,
                         _runner(),
                         timeout=config_settings.command_timeout_secs,
+                    )
+                unselectable_files = catalog_index.get_unselectable_saved_files()
+                if unselectable_files:
+                    escaped_paths = ", ".join(
+                        ascii(path) for path in list(unselectable_files)[:10]
+                    )
+                    omitted_count = max(0, len(unselectable_files) - 10)
+                    omitted_suffix = (
+                        f"; {omitted_count} additional path(s) omitted"
+                        if omitted_count
+                        else ""
+                    )
+                    logger.warning(
+                        "Restore-test catalogue found %d saved file(s) with "
+                        "malformed or unrepresentable names. These paths will "
+                        "not be selected, but their data slices must be covered "
+                        "by other eligible files when slice coverage is enabled: %s%s",
+                        len(unselectable_files),
+                        escaped_paths,
+                        omitted_suffix,
                     )
 
                 def eligible_size_bytes(
@@ -1067,6 +1089,18 @@ def verify(
                             "files outside that range, and files matching configured "
                             "RESTORETEST_EXCLUDE_* filters, are not selected"
                         )
+                        malformed_slices = frozenset().union(
+                            *(unselectable_files.values() if unselectable_files else [])
+                        )
+                        affected_slices = coverage.unavailable_slices & malformed_slices
+                        if affected_slices:
+                            affected = ", ".join(
+                                str(number) for number in sorted(affected_slices)
+                            )
+                            message += (
+                                "; malformed or unrepresentable saved filenames also "
+                                f"affect unavailable slice(s) {affected}"
+                            )
                         logger.error(message)
                         raise BackupError(message)
                     files.extend(coverage.additional_files)
