@@ -69,9 +69,9 @@
       "label": "Daily max: 373"
     }
   ],
-  "total_clones": 17226,
-  "total_clones_raw": 19445,
-  "unique_clones": 8124,
+  "total_clones": 17260,
+  "total_clones_raw": 19479,
+  "unique_clones": 8154,
   "discard": [
     {
       "date": "2026-06-24",
@@ -2826,6 +2826,11 @@
       "timestamp": "2026-11-03T00:00:00Z",
       "count": 20,
       "uniques": 10
+    },
+    {
+      "timestamp": "2026-11-04T00:00:00Z",
+      "count": 34,
+      "uniques": 30
     }
   ]
 }
