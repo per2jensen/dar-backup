@@ -133,6 +133,8 @@ class VerifyResult:
         extracted_slice_numbers: Exact predicted slice numbers with extracted files.
         verified_slice_numbers: Exact predicted slice numbers with verified files.
         file_evidence: Per-selected-file extraction and comparison evidence.
+        warning_message: Operator-facing warning when archive integrity passed
+            but restore testing was not applicable.
     """
 
     passed: bool                         # overall result; False if restore-compare failed
@@ -145,6 +147,7 @@ class VerifyResult:
     extracted_slice_numbers: tuple[int, ...] = ()
     verified_slice_numbers: tuple[int, ...] = ()
     file_evidence: tuple["RestoreTestFileEvidence", ...] = ()
+    warning_message: Optional[str] = None
 
     def __bool__(self) -> bool:
         """Return the overall verification result.
@@ -963,6 +966,7 @@ def verify(
     advanced_restoretest = restoretest_percent is not None or cover_slices
     slice_map: dict[str, frozenset[int]] = {}
     coverage: Optional[RestoreTestSliceCoverage] = None
+    coverage_required_slices: frozenset[int] = frozenset()
     size_lookup: dict[str, str] = {}
     slice_inventory = None
     if cover_slices:
@@ -1001,6 +1005,7 @@ def verify(
                         len(reconciliation.data_slices),
                         len(reconciliation.non_data_slices),
                     )
+                    coverage_required_slices = reconciliation.data_slices
                 else:
                     catalog_index.load_xml_archive(
                         backup_file,
@@ -1064,6 +1069,30 @@ def verify(
                         restoretest_percent,
                         sampling_plan.percentage_target,
                         sampling_plan.capped_target,
+                    )
+                if (
+                    cover_slices
+                    and coverage_required_slices
+                    and eligible_count == 0
+                    and not unselectable_files
+                ):
+                    message = (
+                        "RESTORETEST_COVER_SLICES was not attempted because no saved "
+                        "files are eligible after restore-test filtering. Archive "
+                        "integrity passed; catalogue registration and PAR2 generation "
+                        "will continue. The configured inclusive size range is "
+                        f"MIN_SIZE_VERIFICATION_MB={config_settings.min_size_verification_mb} "
+                        "through "
+                        f"MAX_SIZE_VERIFICATION_MB={config_settings.max_size_verification_mb}; "
+                        "files outside that range, and files matching configured "
+                        "RESTORETEST_EXCLUDE_* filters, are not selected"
+                    )
+                    logger.warning(message)
+                    return VerifyResult(
+                        passed=True,
+                        restore_test_passed=None,
+                        files_verified=0,
+                        warning_message=message,
                     )
                 files = catalog_index.sample_eligible_files(sample_size)
 
@@ -2285,7 +2314,11 @@ def perform_backup(
             )
             metrics["files_verified"] = verify_result.files_verified if verify_result.files_verified > 0 else None
             if verify_result:
-                logger.info("Verification completed successfully.")
+                if verify_result.warning_message is not None:
+                    results.append((verify_result.warning_message, 2))
+                    logger.info("Verification completed with a warning.")
+                else:
+                    logger.info("Verification completed successfully.")
 
                 # --- CATALOG phase ---
                 # Registration is deliberately after verification. Publishing

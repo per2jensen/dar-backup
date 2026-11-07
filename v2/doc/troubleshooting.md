@@ -324,11 +324,11 @@ filters have been applied. Both the random percentage sample and files added by
 cover data-bearing slices may take the final selection above that cap, but they
 do not bypass the size or exclusion filters.
 
-When `RESTORETEST_COVER_SLICES = true`, dar-backup does not silently accept an
-untested data-bearing slice. If every file capable of exercising a slice is
-ineligible, verification fails and the error log shows the slice number(s), the
-configured inclusive minimum and maximum sizes, and that exclusion filters may
-also be responsible. For example:
+When `RESTORETEST_COVER_SLICES = true`, dar-backup does not silently accept
+partial coverage. If the archive has eligible files but every file capable of
+exercising a particular slice is ineligible, verification fails and the error
+log shows the slice number(s), the configured inclusive minimum and maximum
+sizes, and that exclusion filters may also be responsible. For example:
 
 ```text
 RESTORETEST_COVER_SLICES could not cover data-bearing slice(s) 4: no eligible file remained after restore-test filtering. The configured inclusive size range is MIN_SIZE_VERIFICATION_MB=1 through MAX_SIZE_VERIFICATION_MB=20; files outside that range, and files matching configured RESTORETEST_EXCLUDE_* filters, are not selected
@@ -337,6 +337,13 @@ RESTORETEST_COVER_SLICES could not cover data-bearing slice(s) 4: no eligible fi
 Review the named settings in the active configuration. Expanding the size range
 or narrowing an exclusion can make a file eligible, but may increase restore-test
 runtime and temporary disk usage.
+
+If no valid saved file in the entire archive is eligible, there is no restore
+candidate to test. This is recorded as `WARNING` rather than a failed archive:
+`dar -t` integrity has passed, restore testing is marked not attempted, and
+catalogue registration and PAR2 generation continue. A slice containing only a
+malformed or unrepresentable saved pathname remains an error because silently
+accepting it would hide an untestable payload.
 
 Without `RESTORETEST_COVER_SLICES`, percentage sampling does not inspect DAR's
 slicing catalogue and therefore makes no per-slice coverage guarantee. If no

@@ -476,6 +476,104 @@ def test_perform_backup_handles_failed_verification(env):
     mock_catalog.assert_not_called()
 
 
+def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
+    """Publish and protect an integrity-verified archive with no candidates.
+
+    Args:
+        env: Isolated backup test environment fixture.
+
+    Returns:
+        None.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as definition:
+        definition.write("-R /\n")
+
+    warning_message = (
+        "RESTORETEST_COVER_SLICES was not attempted because no saved files "
+        "are eligible after restore-test filtering"
+    )
+    completion_statuses: list[str] = []
+    captured_metrics: list[dict] = []
+
+    def capture_metrics(metrics: dict, _config: SimpleNamespace) -> None:
+        """Capture the finalized metrics row for assertions.
+
+        Args:
+            metrics: Finalized per-definition metrics.
+            _config: Unused configuration object.
+
+        Returns:
+            None.
+        """
+        captured_metrics.append(dict(metrics))
+
+    with patch(
+        "dar_backup.dar_backup.verify",
+        return_value=VerifyResult(
+            passed=True,
+            restore_test_passed=None,
+            files_verified=0,
+            warning_message=warning_message,
+        ),
+    ), patch(
+        "dar_backup.dar_backup.generic_backup",
+        return_value=BackupResult(dar_exit_code=0, dar_stats={}),
+    ), patch(
+        "dar_backup.dar_backup._register_backup_catalog",
+        return_value=(True, None),
+    ) as mock_catalog, patch(
+        "dar_backup.dar_backup.create_backup_command",
+        return_value=["dar", "-c"],
+    ), patch(
+        "dar_backup.dar_backup.generate_par2_files",
+    ) as mock_par2, patch(
+        "dar_backup.dar_backup._list_dar_slices",
+        return_value=["test_FULL_2026-11-07.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.os.path.getsize",
+        return_value=1024,
+    ), patch(
+        "dar_backup.dar_backup.glob.glob",
+        return_value=["test_FULL_2026-11-07.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.write_metrics_row",
+        side_effect=capture_metrics,
+    ), patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(
+            args,
+            config,
+            "FULL",
+            [],
+            completion_statuses=completion_statuses,
+        )
+
+    assert (warning_message, 2) in results
+    assert not any(code == 1 for _message, code in results)
+    mock_catalog.assert_called_once()
+    mock_par2.assert_called_once()
+    assert completion_statuses == ["WARNING"]
+    assert len(captured_metrics) == 1
+    assert captured_metrics[0]["status"] == "WARNING"
+    assert captured_metrics[0]["failed_phase"] is None
+    assert captured_metrics[0]["verify_passed"] == 1
+    assert captured_metrics[0]["restore_test_passed"] is None
+    assert captured_metrics[0]["files_verified"] is None
+    assert captured_metrics[0]["catalog_updated"] == 1
+    assert captured_metrics[0]["par2_passed"] == 1
+
+
 def test_perform_backup_succeeds_when_write_metrics_row_raises(env):
     """Backup must complete normally even if write_metrics_row raises an exception."""
     args = SimpleNamespace(

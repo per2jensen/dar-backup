@@ -833,6 +833,51 @@ def test_verify_slice_coverage_rejects_slice_with_only_oversized_file(
     )
 
 
+def test_verify_slice_coverage_warns_when_no_files_are_eligible(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Skip restore coverage with a warning when every valid file is filtered.
+
+    Args:
+        tmp_path: Isolated filesystem directory provided by pytest.
+        caplog: Pytest log capture fixture.
+
+    Returns:
+        None.
+    """
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "small.bin").write_bytes(os.urandom(1024))
+    archive_path = tmp_path / "archive"
+    _create_archive(source_dir, archive_path, slice_size="1M")
+    args, config, backup_definition = _verification_inputs(
+        tmp_path,
+        source_dir,
+        archive_path,
+        max_size_mb=40,
+        percentage=3.0,
+    )
+    config.min_size_verification_mb = 1
+
+    with caplog.at_level(logging.WARNING):
+        result = _run_verify_with_real_runner(
+            args,
+            config,
+            archive_path,
+            backup_definition,
+        )
+
+    assert result.passed is True
+    assert result.restore_test_passed is None
+    assert result.files_verified == 0
+    assert result.warning_message is not None
+    assert "no saved files are eligible" in result.warning_message
+    assert "Archive integrity passed" in result.warning_message
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
 def test_verify_slice_coverage_rejects_prefix_excluded_data_slices(
     tmp_path: Path,
 ) -> None:

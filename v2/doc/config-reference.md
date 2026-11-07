@@ -114,15 +114,18 @@ for slice coverage may exceed that cap.
 eligible files whose stored data collectively covers every slice containing
 regular-file data. Archive-only metadata and catalogue slices remain covered by
 the normal `dar -t` integrity test. If a data-bearing slice can only be reached
-through files rejected by the configured size or exclusion filters, verification
-fails instead of silently claiming full coverage. The error log identifies the
-uncovered slice numbers, prints the configured inclusive
+through files rejected by the configured size or exclusion filters while other
+eligible files exist, verification fails instead of silently claiming full
+coverage. The error log identifies the uncovered slice numbers, prints the configured inclusive
 `MIN_SIZE_VERIFICATION_MB` through `MAX_SIZE_VERIFICATION_MB` range, and notes
-that `RESTORETEST_EXCLUDE_*` filters also apply.
+that `RESTORETEST_EXCLUDE_*` filters also apply. If no valid saved file in the
+entire archive is eligible, restore testing is not applicable: the run records a
+warning, leaves `restore_test_passed` unset, and continues catalogue registration
+and PAR2 generation after the successful archive integrity test.
 
-This feature uses only the standard DAR command-line interfaces. It treats an
-unfiltered `dar -Txml` catalogue as the authoritative inventory and reconciles
-every regular file whose data state is `saved` with `dar -Tslicing`. Referenced
+This feature uses only the standard DAR command-line interfaces. It treats a
+saved-payload `dar -Txml` catalogue as the authoritative inventory and reconciles
+every regular file with `dar -Tslicing`. Referenced
 and deleted DIFF/INCR entries have no payload in the current archive and therefore
 do not require a slice mapping. Missing, unexpected, conflicting, malformed, or
 out-of-range mappings fail verification and report the detected DAR version plus
