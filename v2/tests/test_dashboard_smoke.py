@@ -215,5 +215,20 @@ def test_dashboard_starts_and_serves_metrics_db(
         count = data["rows"][0][0]
         assert count >= 1, f"Expected ≥1 row in backup_runs via Datasette, got {count}"
 
+        dashboard_response = urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/dashboard/dashboard.html",
+            timeout=5,
+        )
+        dashboard_html = dashboard_response.read().decode("utf-8")
+        assert 'src="vendor/chart.umd.min.js"' in dashboard_html
+
+        chart_response = urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/dashboard/vendor/chart.umd.min.js",
+            timeout=5,
+        )
+        assert chart_response.status == 200
+        chart_prefix = chart_response.read(256).decode("utf-8")
+        assert "Chart.js v4.6.1" in chart_prefix
+
     finally:
         _kill_group(dash_proc)

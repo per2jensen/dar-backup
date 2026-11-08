@@ -6,11 +6,13 @@ import socket
 import subprocess
 import sys
 import textwrap
+import urllib.parse
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
+from dar_backup import __about__ as about
 from dar_backup.dashboard import (
     DEFAULT_CONFIG,
     DEFAULT_PORT,
@@ -272,6 +274,22 @@ class TestGetDatasettePath:
 class TestMain:
     """Tests for the main() entry point."""
 
+    def test_main_version_reports_package_version_without_startup_checks(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--version exits successfully before inspecting runtime dependencies."""
+        with patch("dar_backup.dashboard.check_datasette_installed") as mock_check, \
+             patch("sys.argv", ["dar-backup-dashboard", "--version"]), \
+             pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 0
+        assert capsys.readouterr().out.strip() == (
+            f"dar-backup-dashboard version {about.__version__}, GPL-3.0-or-later"
+        )
+        mock_check.assert_not_called()
+
     def test_main_exits_when_datasette_not_installed(self) -> None:
         """Exits with code 1 and error message when datasette is not installed."""
         with patch("dar_backup.dashboard.check_datasette_installed", return_value=False), \
@@ -354,6 +372,10 @@ class TestMain:
 
         assert exc_info.value.code == 0
         mock_browser.assert_called_once()
+        dashboard_url = mock_browser.call_args.args[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(dashboard_url).query)
+        assert query["datasette"] == ["http://127.0.0.1:8001"]
+        assert query["database"] == ["metrics"]
         mock_proc.terminate.assert_called_once()
 
     def test_main_no_browser_flag_skips_browser(self, tmp_path: pytest.TempPathFactory) -> None:
@@ -462,6 +484,10 @@ class TestMain:
 
         canonical_path = str(db_file.resolve())
         assert exc_info.value.code == 0
+        assert (
+            f"dar-backup-dashboard version {about.__version__}, GPL-3.0-or-later"
+            in printed
+        )
         assert f"Metrics database: {canonical_path}" in printed
         popen_command = mock_popen.call_args.args[0]
         assert canonical_path in popen_command

@@ -494,6 +494,7 @@ def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
         backup_d_dir=env.test_dir,
         backup_dir=env.backup_dir,
         metrics_db_path=None,
+        par2_enabled=True,
     )
     os.makedirs(config.backup_d_dir, exist_ok=True)
     os.makedirs(config.backup_dir, exist_ok=True)
@@ -651,7 +652,8 @@ def test_perform_backup_runs_par2_after_verify(env):
 
     config = SimpleNamespace(
         backup_d_dir=env.test_dir,
-        backup_dir=env.backup_dir
+        backup_dir=env.backup_dir,
+        par2_enabled=True,
     )
 
     os.makedirs(config.backup_d_dir, exist_ok=True)
@@ -687,6 +689,175 @@ def test_perform_backup_runs_par2_after_verify(env):
     assert "catalog" in call_order
     assert "par2" in call_order
     assert call_order == ["verify", "catalog", "par2"]
+
+
+def test_perform_backup_leaves_par2_metrics_null_when_disabled(env: Any) -> None:
+    """A successful run with PAR2 disabled must record an unattempted phase.
+
+    Args:
+        env: Isolated backup test environment fixture.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+        par2_enabled=False,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as definition:
+        definition.write("-R /\n")
+
+    captured_metrics: list[dict[str, Any]] = []
+
+    def capture_metrics(metrics: dict[str, Any], _config: Any) -> None:
+        """Capture the finalized metrics row.
+
+        Args:
+            metrics: Finalized metrics values.
+            _config: Unused configuration object.
+        """
+        captured_metrics.append(dict(metrics))
+
+    with patch(
+        "dar_backup.dar_backup.verify",
+        return_value=VerifyResult(
+            passed=True,
+            restore_test_passed=True,
+            files_verified=1,
+        ),
+    ), patch(
+        "dar_backup.dar_backup.generic_backup",
+        return_value=BackupResult(dar_exit_code=0, dar_stats={}),
+    ), patch(
+        "dar_backup.dar_backup._register_backup_catalog",
+        return_value=(True, None),
+    ), patch(
+        "dar_backup.dar_backup.create_backup_command",
+        return_value=["dar", "-c"],
+    ), patch(
+        "dar_backup.dar_backup.generate_par2_files",
+    ) as mock_par2, patch(
+        "dar_backup.dar_backup._list_dar_slices",
+        return_value=["test_FULL_2026-11-08.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.os.path.getsize",
+        return_value=1024,
+    ), patch(
+        "dar_backup.dar_backup.glob.glob",
+        return_value=["test_FULL_2026-11-08.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.write_metrics_row",
+        side_effect=capture_metrics,
+    ), patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    assert all(code == 0 for _message, code in results)
+    mock_par2.assert_not_called()
+    assert len(captured_metrics) == 1
+    assert captured_metrics[0]["par2_passed"] is None
+    assert captured_metrics[0]["par2_duration_secs"] is None
+    assert captured_metrics[0]["par2_size_bytes"] is None
+
+
+def test_perform_backup_measures_free_space_after_backup_completes(env: Any) -> None:
+    """The free-space metric must describe capacity at completion, not startup.
+
+    Args:
+        env: Isolated backup test environment fixture.
+    """
+    args = SimpleNamespace(
+        backup_definition="test.dcf",
+        alternate_reference_archive=None,
+        darrc=env.dar_rc,
+    )
+    config = SimpleNamespace(
+        backup_d_dir=env.test_dir,
+        backup_dir=env.backup_dir,
+        metrics_db_path=None,
+        par2_enabled=False,
+    )
+    os.makedirs(config.backup_d_dir, exist_ok=True)
+    os.makedirs(config.backup_dir, exist_ok=True)
+    with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as definition:
+        definition.write("-R /\n")
+
+    events: list[str] = []
+    captured_metrics: list[dict[str, Any]] = []
+
+    def complete_backup(*_args: Any, **_kwargs: Any) -> BackupResult:
+        """Record the simulated DAR completion.
+
+        Returns:
+            A successful backup result.
+        """
+        events.append("backup")
+        return BackupResult(dar_exit_code=0, dar_stats={})
+
+    def measure_disk_usage(_path: str) -> SimpleNamespace:
+        """Return deterministic free space and record when it was measured.
+
+        Args:
+            _path: Backup directory passed by the implementation.
+
+        Returns:
+            Disk usage result exposing the free-byte field.
+        """
+        events.append("disk_usage")
+        return SimpleNamespace(free=987654321)
+
+    def capture_metrics(metrics: dict[str, Any], _config: Any) -> None:
+        """Capture the finalized metrics row.
+
+        Args:
+            metrics: Finalized metrics values.
+            _config: Unused configuration object.
+        """
+        captured_metrics.append(dict(metrics))
+
+    with patch(
+        "dar_backup.dar_backup.verify",
+        return_value=VerifyResult(
+            passed=True,
+            restore_test_passed=True,
+            files_verified=1,
+        ),
+    ), patch(
+        "dar_backup.dar_backup.generic_backup",
+        side_effect=complete_backup,
+    ), patch(
+        "dar_backup.dar_backup._register_backup_catalog",
+        return_value=(True, None),
+    ), patch(
+        "dar_backup.dar_backup.create_backup_command",
+        return_value=["dar", "-c"],
+    ), patch(
+        "dar_backup.dar_backup._list_dar_slices",
+        return_value=["test_FULL_2026-11-08.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.os.path.getsize",
+        return_value=1024,
+    ), patch(
+        "dar_backup.dar_backup.glob.glob",
+        return_value=["test_FULL_2026-11-08.1.dar"],
+    ), patch(
+        "dar_backup.dar_backup.shutil.disk_usage",
+        side_effect=measure_disk_usage,
+    ) as mock_disk_usage, patch(
+        "dar_backup.dar_backup.write_metrics_row",
+        side_effect=capture_metrics,
+    ), patch("dar_backup.dar_backup.logger"):
+        results = perform_backup(args, config, "FULL", [])
+
+    assert all(code == 0 for _message, code in results)
+    mock_disk_usage.assert_called_once_with(config.backup_dir)
+    assert events == ["backup", "disk_usage"]
+    assert captured_metrics[0]["backup_dir_free_bytes"] == 987654321
 
 
 def test_perform_backup_sends_warning_for_existing_backup(env):
@@ -2499,6 +2670,7 @@ def test_perform_backup_succeeds_when_par2_file_disappears_after_generation(env)
         backup_d_dir=env.test_dir,
         backup_dir=env.backup_dir,
         metrics_db_path=None,
+        par2_enabled=True,
     )
     os.makedirs(config.backup_d_dir, exist_ok=True)
     os.makedirs(config.backup_dir, exist_ok=True)
@@ -2563,6 +2735,7 @@ def test_perform_backup_par2_size_partial_when_one_file_missing(env):
         backup_d_dir=env.test_dir,
         backup_dir=env.backup_dir,
         metrics_db_path=None,
+        par2_enabled=True,
     )
     os.makedirs(config.backup_d_dir, exist_ok=True)
     os.makedirs(config.backup_dir, exist_ok=True)

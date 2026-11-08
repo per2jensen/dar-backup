@@ -647,6 +647,7 @@ Start Datasette and open the metrics dashboard in the browser.
 
 ```text
 -h, --help         Show command-line help and exit.
+-v, --version      Print the installed dar-backup version and exit.
 --db PATH          Path to the metrics database.
                    Overrides METRICS_DB_PATH from the config file.
 -c / --config-file PATH
@@ -664,6 +665,10 @@ Start Datasette and open the metrics dashboard in the browser.
 #### `-h`, `--help`
 
 Prints command-line usage and exits without starting Datasette or opening a browser.
+
+#### `-v`, `--version`
+
+Prints the installed dar-backup version and exits without starting Datasette.
 
 #### `--db <path>`
 

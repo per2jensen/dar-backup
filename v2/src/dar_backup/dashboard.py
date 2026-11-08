@@ -27,7 +27,10 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import webbrowser
+
+from dar_backup import __about__ as about
 
 
 DEFAULT_PORT    = 8001
@@ -163,6 +166,12 @@ def main() -> None:
         action="store_true",
         help="Start Datasette but do not open a browser window.",
     )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s version {about.__version__}, GPL-3.0-or-later",
+    )
     args = parser.parse_args()
 
     # Check datasette is available
@@ -205,6 +214,7 @@ def main() -> None:
         print(f"Error: could not prepare metrics database '{db_path}': {e}", file=sys.stderr)
         sys.exit(1)
 
+    print(f"dar-backup-dashboard version {about.__version__}, GPL-3.0-or-later")
     print(f"Metrics database: {db_path}")
 
     # Resolve the bundled HTML file
@@ -257,8 +267,12 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    ds_base       = f"http://127.0.0.1:{port}"
-    dashboard_url = f"{ds_base}/dashboard/dashboard.html?datasette={ds_base}"
+    ds_base = f"http://127.0.0.1:{port}"
+    database_name = os.path.splitext(os.path.basename(db_path))[0]
+    dashboard_query = urllib.parse.urlencode(
+        {"datasette": ds_base, "database": database_name}
+    )
+    dashboard_url = f"{ds_base}/dashboard/dashboard.html?{dashboard_query}"
 
     if not args.no_browser:
         print("Opening dashboard …")

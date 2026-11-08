@@ -1,14 +1,13 @@
 <!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>dar-backup metrics</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
+<script src="vendor/chart.umd.min.js"
   onerror="window._chartjsFailed=true"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
   :root {
     --bg:        #0f1117;
     --bg2:       #181c27;
@@ -23,8 +22,8 @@
     --skipped:   #38bdf8;
     --info:      #38bdf8;
     --accent:    #6366f1;
-    --font:      'IBM Plex Sans', sans-serif;
-    --mono:      'IBM Plex Mono', monospace;
+    --font:      system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono:      ui-monospace, 'Cascadia Mono', 'DejaVu Sans Mono', monospace;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -298,6 +297,7 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     overflow: hidden;
+    max-width: 100%;
   }
 
   .def-header {
@@ -337,6 +337,15 @@
   .type-INCR { background: #451a03; color: #fcd34d; }
 
   /* Run table */
+  .run-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .run-table {
+    min-width: 1180px;
+  }
+
   table {
     width: 100%;
     border-collapse: collapse;
@@ -497,7 +506,7 @@
   [title] { cursor: help; }
 
   /* Failed inode highlight row */
-  tr.has-failures td { border-left: 2px solid var(--warning); }
+  tr.has-failures td:first-child { border-left: 2px solid var(--warning); }
   tr.has-failures td:first-child { padding-left: 10px; }
 
   /* Archive name */
@@ -654,6 +663,17 @@ function localTzAbbr() {
     .find(p => p.type === 'timeZoneName')?.value || 'local';
 }
 
+function escapeHtml(value) {
+  const chars = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  };
+  return String(value ?? '').replace(/[&<>"']/g, char => chars[char]);
+}
+
 function chk(val, naVal) {
   if (val == null) return `<span class="chk skip" title="n/a">${naVal || '—'}</span>`;
   return val
@@ -676,11 +696,13 @@ function inodeCell(saved, failed) {
 }
 
 function statusPill(status) {
-  return `<span class="status-pill ${status}"><span class="dot ${status}"></span>${status}</span>`;
+  const safeStatus = escapeHtml(status);
+  return `<span class="status-pill ${safeStatus}"><span class="dot ${safeStatus}"></span>${safeStatus}</span>`;
 }
 
 function typeBadge(type) {
-  return `<span class="type-badge type-${type}">${type}</span>`;
+  const safeType = escapeHtml(type);
+  return `<span class="type-badge type-${safeType}">${safeType}</span>`;
 }
 
 /* ── summary cards ──────────────────────────────────────────────── */
@@ -711,8 +733,8 @@ function summaryStatusClass(status) {
 }
 
 function summaryRunDetail(run, emptyText) {
-  if (run == null) return emptyText;
-  return `${run.backup_definition} · ${run.backup_type} · ${fmtTs(run.run_started_at)}`;
+  if (run == null) return escapeHtml(emptyText);
+  return `${escapeHtml(run.backup_definition)} · ${escapeHtml(run.backup_type)} · ${escapeHtml(fmtTs(run.run_started_at))}`;
 }
 
 function buildSummaryCards(recentRows, historyRows) {
@@ -762,12 +784,12 @@ function buildSummaryCards(recentRows, historyRows) {
     </div>
     <div class="summary-card">
       <div class="label">Last invocation</div>
-      <div class="value ${summaryStatusClass(lastInvocationStatus)}">${lastInvocationStatus}</div>
+      <div class="value ${summaryStatusClass(lastInvocationStatus)}">${escapeHtml(lastInvocationStatus)}</div>
       <div class="sub">${summaryRunDetail(lastInvocation, 'No matching runs')}</div>
     </div>
     <div class="summary-card">
       <div class="label">Last successful backup</div>
-      <div class="value ${summaryStatusClass(lastSuccessStatus)}">${lastSuccessStatus}</div>
+      <div class="value ${summaryStatusClass(lastSuccessStatus)}">${escapeHtml(lastSuccessStatus)}</div>
       <div class="sub">${summaryRunDetail(lastSuccess, 'No matching successful backup')}</div>
     </div>
   `;
@@ -830,7 +852,7 @@ function buildTrendPanels(gran) {
     container.innerHTML =
       '<p style="color:var(--warning);font-family:var(--mono);font-size:12px;' +
       'padding:0 0 1.5rem;border-left:2px solid var(--warning);padding-left:10px">' +
-      'Trend charts unavailable — Chart.js could not be loaded (no internet access or CDN unreachable).' +
+      'Trend charts unavailable — the packaged Chart.js asset could not be loaded.' +
       '</p>';
     return;
   }
@@ -936,7 +958,7 @@ function buildTrendPanels(gran) {
     panel.className = 'trend-panel';
     panel.innerHTML = `
       <div class="trend-panel-header">
-        <span class="def-name">${defName}</span>
+        <span class="def-name">${escapeHtml(defName)}</span>
         ${failureBadge}
         <span class="trend-meta">${labels.length} ${gran}${labels.length !== 1 ? 's' : ''}</span>
       </div>
@@ -1001,8 +1023,8 @@ function buildTrendPanels(gran) {
             borderWidth: 1,
             titleColor: '#e2e8f0',
             bodyColor: '#94a3b8',
-            titleFont: { family: 'IBM Plex Mono', size: 11 },
-            bodyFont:  { family: 'IBM Plex Mono', size: 11 },
+            titleFont: { family: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', size: 11 },
+            bodyFont:  { family: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', size: 11 },
             // Show all datasets for the hovered period in one tooltip
             mode: 'index',
             intersect: false,
@@ -1047,7 +1069,7 @@ function buildTrendPanels(gran) {
             grid: { color: '#2a3045' },
             ticks: {
               color: '#64748b',
-              font: { family: 'IBM Plex Mono', size: 10 },
+              font: { family: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', size: 10 },
               maxRotation: 45,
             }
           },
@@ -1055,7 +1077,7 @@ function buildTrendPanels(gran) {
             grid: { color: '#2a3045' },
             ticks: {
               color: '#64748b',
-              font: { family: 'IBM Plex Mono', size: 10 },
+              font: { family: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', size: 10 },
               callback: v => fmtBytes(v),
             },
             beginAtZero: false,
@@ -1073,12 +1095,14 @@ function buildTrendPanels(gran) {
 function buildRunRow(r) {
   const hasFail = r.inodes_failed > 0;
   const rowClass = hasFail ? 'has-failures' : '';
+  const safeStatus = escapeHtml(r.status);
+  const safeErrorSummary = escapeHtml(r.error_summary);
   const detailCell = r.error_summary
-    ? `<div class="detail-summary ${r.status}" title="${r.error_summary}">${r.error_summary}</div>`
+    ? `<div class="detail-summary ${safeStatus}" title="${safeErrorSummary}">${safeErrorSummary}</div>`
     : `<span style="color:var(--faint);font-size:11px;font-family:var(--mono)">—</span>`;
 
   return `<tr class="${rowClass}">
-    <td class="ts">${fmtTs(r.run_started_at)}</td>
+    <td class="ts">${escapeHtml(fmtTs(r.run_started_at))}</td>
     <td>${typeBadge(r.backup_type)}</td>
     <td>${statusPill(r.status)}</td>
     <td class="duration" title="dar: ${fmtDuration(r.dar_duration_secs)} · verify: ${fmtDuration(r.verify_duration_secs)} · par2: ${fmtDuration(r.par2_duration_secs)}">${fmtDuration(r.duration_secs)}</td>
@@ -1088,13 +1112,13 @@ function buildRunRow(r) {
     <td title="inodes excluded by filters" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.inodes_excluded != null ? r.inodes_excluded.toLocaleString() : '—'}</td>
     <td class="phases">
       <div class="phase">${chk(r.prereq_status == null ? null : r.prereq_status === 'SUCCESS' ? 1 : 0)}<span>pre</span></div>
-      <div class="phase">${chk(r.catalog_updated)}<span>catalog</span></div>
       <div class="phase">${chk(r.verify_passed)}<span>verify</span></div>
       <div class="phase">${chk(r.restore_test_passed)}<span>restore</span></div>
+      <div class="phase">${chk(r.catalog_updated)}<span>catalog</span></div>
       <div class="phase">${chk(r.par2_passed)}<span>par2</span></div>
       <div class="phase">${chk(r.postreq_status == null ? null : r.postreq_status === 'SUCCESS' ? 1 : 0)}<span>post</span></div>
     </td>
-    <td>${detailCell}</td>
+    <td class="detail-cell">${detailCell}</td>
   </tr>`;
 }
 
@@ -1112,12 +1136,13 @@ function buildDefSection(defName, runs) {
   return `
     <div class="def-section">
       <div class="def-header">
-        <span class="def-name">${defName}</span>
+        <span class="def-name">${escapeHtml(defName)}</span>
         ${lastRun ? typeBadge(lastRun.backup_type) : ''}
         ${failedBadge}
         <span class="def-meta">last ${runs.length} run${runs.length !== 1 ? 's' : ''}</span>
       </div>
-      <table>
+      <div class="run-table-scroll">
+      <table class="run-table">
         <thead><tr>
           <th>Started (${localTzAbbr()})</th>
           <th>Type</th>
@@ -1132,6 +1157,7 @@ function buildDefSection(defName, runs) {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
     </div>`;
 }
 
@@ -1162,6 +1188,10 @@ function filterPhaseExclusions() {
     noAlias: [
       !prereq  ? `(prereq_status IS NULL OR prereq_status = 'SUCCESS')`  : '',
       !postreq ? `(postreq_status IS NULL OR postreq_status = 'SUCCESS')` : '',
+    ].filter(Boolean),
+    limitAlias: [
+      !prereq  ? `(b2.prereq_status IS NULL OR b2.prereq_status = 'SUCCESS')`  : '',
+      !postreq ? `(b2.postreq_status IS NULL OR b2.postreq_status = 'SUCCESS')` : '',
     ].filter(Boolean),
   };
 }
@@ -1222,12 +1252,23 @@ async function loadAll() {
     const limitTypeClause = backupType
       ? `AND b2.backup_type = '${backupType.replace(/'/g, "''")}'`
       : '';
+    const limitFromClause = timeRange.from
+      ? `AND datetime(b2.run_started_at) >= datetime('${timeRange.from}')`
+      : '';
+    const limitToClause = timeRange.to
+      ? `AND datetime(b2.run_started_at) <= datetime('${timeRange.to}')`
+      : '';
+    const limitPhaseClauses = phase.limitAlias.map(c => `AND ${c}`).join('\n               ');
     const limitClause = limit != null
       ? `AND (SELECT COUNT(*) FROM backup_runs b2
              WHERE b2.backup_definition = b.backup_definition
                AND b2.archive_deleted_at IS NULL
                ${limitTypeClause}
-               AND b2.run_started_at > b.run_started_at) < ${limit}`
+               ${limitFromClause}
+               ${limitToClause}
+               ${limitPhaseClauses}
+               AND (b2.run_started_at > b.run_started_at
+                    OR (b2.run_started_at = b.run_started_at AND b2.id > b.id))) < ${limit}`
       : '';
     const fromClause  = timeRange.from ? `AND datetime(b.run_started_at) >= datetime('${timeRange.from}')` : '';
     const toClause    = timeRange.to   ? `AND datetime(b.run_started_at) <= datetime('${timeRange.to}')`   : '';
@@ -1244,7 +1285,7 @@ async function loadAll() {
         ${fromClause}
         ${toClause}
         ${phaseClauses}
-      ORDER BY b.backup_definition, b.run_started_at DESC
+      ORDER BY b.backup_definition, b.run_started_at DESC, b.id DESC
     `;
 
     const trendWhere = [
@@ -1306,7 +1347,7 @@ async function loadAll() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error-msg').style.display = 'block';
     document.getElementById('error-msg').innerHTML =
-      `<strong>Could not load data</strong><br>${err.message}<br><br>` +
+      `<strong>Could not load data</strong><br>${escapeHtml(err.message)}<br><br>` +
       `Make sure Datasette is running and CORS is enabled:<br>` +
       `<code>datasette dar-backup-metrics.db --cors</code>`;
   }
@@ -1336,6 +1377,8 @@ document.getElementById('filter-postreq').addEventListener('change', loadAll);
   const params = new URLSearchParams(window.location.search);
   const ds = params.get('datasette');
   if (ds) document.getElementById('ds-url').value = ds;
+  const database = params.get('database');
+  if (database) document.getElementById('ds-db').value = database;
 })();
 
 loadAll();

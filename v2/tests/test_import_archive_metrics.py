@@ -65,6 +65,7 @@ def _open_minimal_db(db_path: str) -> sqlite3.Connection:
                 archive_name                  TEXT,
                 run_started_at                TEXT    NOT NULL,
                 status                        TEXT    NOT NULL,
+                error_summary                 TEXT,
                 archive_size_bytes            INTEGER,
                 num_slices                    INTEGER,
                 inodes_saved                  INTEGER,
@@ -100,7 +101,11 @@ def _full_row(archive_name: str = "homedir_FULL_2025-01-15") -> dict:
         "backup_type":                   "FULL",
         "archive_name":                  archive_name,
         "run_started_at":                "2025-01-15T00:00:00",
-        "status":                        "SUCCESS",
+        "status":                        "WARNING",
+        "error_summary":                 (
+            "HISTORICAL_IMPORT: archive discovered on disk; integrity "
+            "and original run outcome were not verified"
+        ),
         "archive_size_bytes":            1_000_000,
         "num_slices":                    1,
         "inodes_saved":                  42,
@@ -403,7 +408,7 @@ class TestInsertRow:
             row = conn.execute(
                 "SELECT backup_definition, backup_type, status FROM backup_runs"
             ).fetchone()
-            assert row == ("homedir", "FULL", "SUCCESS")
+            assert row == ("homedir", "FULL", "WARNING")
 
     def test_null_inode_stats_accepted(self, tmp_path: Path) -> None:
         """Rows where dar -l produced no stats (all NULLs) insert without error."""
@@ -533,7 +538,7 @@ class TestMain:
             row = conn.execute(
                 "SELECT backup_definition, backup_type, status FROM backup_runs"
             ).fetchone()
-        assert row == ("homedir", "FULL", "SUCCESS")
+        assert row == ("homedir", "FULL", "WARNING")
 
     def test_imports_legacy_filename_correctly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -568,9 +573,10 @@ class TestMain:
             ts = conn.execute("SELECT run_started_at FROM backup_runs").fetchone()[0]
         assert ts == "2025-01-15T14:30:00"
 
-    def test_status_always_success(
+    def test_import_is_warning_because_integrity_is_unverified(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Archive presence alone must not be presented as verified success."""
         _make_dar_file(tmp_path, "homedir_FULL_2025-01-15.1.dar")
         db_path = str(tmp_path / "metrics.db")
         with self._null_dar():
@@ -578,8 +584,12 @@ class TestMain:
                 "--archive-dir", str(tmp_path), "--metrics-db", db_path,
             ])
         with closing(sqlite3.connect(db_path)) as conn:
-            status = conn.execute("SELECT status FROM backup_runs").fetchone()[0]
-        assert status == "SUCCESS"
+            status, summary = conn.execute(
+                "SELECT status, error_summary FROM backup_runs"
+            ).fetchone()
+        assert status == "WARNING"
+        assert summary.startswith("HISTORICAL_IMPORT:")
+        assert "not verified" in summary
 
     # --- idempotency --------------------------------------------------------
 

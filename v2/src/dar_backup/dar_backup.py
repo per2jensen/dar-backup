@@ -2152,11 +2152,6 @@ def perform_backup(
         logger.info(_banner_bar)
         logger.info(f"##{_banner_text}##")
         logger.info(_banner_bar)
-        try:
-            _free_bytes = shutil.disk_usage(config_settings.backup_dir).free
-        except OSError as e:
-            logger.warning("Could not determine free space for '%s': %s", config_settings.backup_dir, e)
-            _free_bytes = None
         metrics = {
             "backup_definition":             backup_definition,
             "backup_type":                   backup_type,
@@ -2164,7 +2159,7 @@ def perform_backup(
             "dar_backup_version":            about.__version__,
             "dar_version":                   getattr(args, "dar_version", None),
             "run_started_at":                def_start.isoformat(),
-            "backup_dir_free_bytes":         _free_bytes,
+            "backup_dir_free_bytes":         None,
             "run_finished_at":               None,
             "duration_secs":                 None,
             "dar_duration_secs":             None,
@@ -2348,61 +2343,68 @@ def perform_backup(
 
             # --- PAR2 phase ---
             _current_phase = "PAR2"
-            logger.info("Generate par2 redundancy files.")
-            _t2 = datetime.now(UTC)
-            par2_mount_error = _validate_par2_mount(
-                config_settings,
-                backup_definition,
+            par2_cfg = (
+                config_settings.get_par2_config(backup_definition)
+                if hasattr(config_settings, "get_par2_config")
+                else _default_par2_config(config_settings)
             )
-            if par2_mount_error is not None:
-                msg = (
-                    f"PAR2_PREFLIGHT_FAILED: {par2_mount_error}. "
-                    "The backup archive was created and verified successfully, but "
-                    "PAR2 redundancy was not created."
-                )
-                logger.error(msg)
-                results.append((msg, 2))
-                metrics["par2_passed"] = 0
-                metrics["failed_phase"] = metrics["failed_phase"] or "PAR2"
-                metrics["error_summary"] = metrics["error_summary"] or msg[:500]
+            if not par2_cfg.get("par2_enabled", False):
+                logger.info("PAR2 disabled for this backup definition; skipping redundancy generation.")
             else:
-                generate_par2_files(
-                    backup_file,
+                logger.info("Generate par2 redundancy files.")
+                _t2 = datetime.now(UTC)
+                par2_mount_error = _validate_par2_mount(
                     config_settings,
-                    args,
-                    backup_definition=backup_definition,
+                    backup_definition,
                 )
-                metrics["par2_passed"] = 1
-                logger.info("par2 files completed successfully.")
-            metrics["par2_duration_secs"] = (datetime.now(UTC) - _t2).total_seconds()
-
-            # par2 total size
-            par2_cfg = config_settings.get_par2_config(backup_definition) if hasattr(config_settings, "get_par2_config") else {}
-            par2_dir = par2_cfg.get("par2_dir") or config_settings.backup_dir
-            par2_files = (
-                glob.glob(
-                    os.path.join(
-                        par2_dir,
-                        f"{os.path.basename(backup_file)}*.par2",
+                if par2_mount_error is not None:
+                    msg = (
+                        f"PAR2_PREFLIGHT_FAILED: {par2_mount_error}. "
+                        "The backup archive was created and verified successfully, but "
+                        "PAR2 redundancy was not created."
                     )
-                )
-                if metrics["par2_passed"] == 1
-                else []
-            )
-            if par2_files:
-                # Measure per-file so a single missing file does not zero out the metric.
-                # par2 files are redundancy protection, not the archive itself; a missing
-                # file after successful generation is degraded but not a data-loss failure.
-                par2_total = 0
-                for p in par2_files:
-                    try:
-                        par2_total += os.path.getsize(p)
-                    except OSError as exc:
-                        logger.warning(
-                            "Could not measure par2 file '%s': %s — excluded from size metric",
-                            p, exc,
+                    logger.error(msg)
+                    results.append((msg, 2))
+                    metrics["par2_passed"] = 0
+                    metrics["failed_phase"] = metrics["failed_phase"] or "PAR2"
+                    metrics["error_summary"] = metrics["error_summary"] or msg[:500]
+                else:
+                    generate_par2_files(
+                        backup_file,
+                        config_settings,
+                        args,
+                        backup_definition=backup_definition,
+                    )
+                    metrics["par2_passed"] = 1
+                    logger.info("par2 files completed successfully.")
+                metrics["par2_duration_secs"] = (datetime.now(UTC) - _t2).total_seconds()
+
+                # par2 total size
+                par2_dir = par2_cfg.get("par2_dir") or config_settings.backup_dir
+                par2_files = (
+                    glob.glob(
+                        os.path.join(
+                            par2_dir,
+                            f"{os.path.basename(backup_file)}*.par2",
                         )
-                metrics["par2_size_bytes"] = par2_total if par2_total > 0 else None
+                    )
+                    if metrics["par2_passed"] == 1
+                    else []
+                )
+                if par2_files:
+                    # Measure per-file so a single missing file does not zero out the metric.
+                    # par2 files are redundancy protection, not the archive itself; a missing
+                    # file after successful generation is degraded but not a data-loss failure.
+                    par2_total = 0
+                    for p in par2_files:
+                        try:
+                            par2_total += os.path.getsize(p)
+                        except OSError as exc:
+                            logger.warning(
+                                "Could not measure par2 file '%s': %s — excluded from size metric",
+                                p, exc,
+                            )
+                    metrics["par2_size_bytes"] = par2_total if par2_total > 0 else None
 
         except KeyboardInterrupt:
             msg = (
@@ -2473,6 +2475,16 @@ def perform_backup(
                 metrics["run_finished_at"] = run_finished_at.isoformat()
                 metrics["duration_secs"]   = (run_finished_at - def_start).total_seconds()
                 metrics["status"]          = status
+                try:
+                    metrics["backup_dir_free_bytes"] = shutil.disk_usage(
+                        config_settings.backup_dir
+                    ).free
+                except OSError as exc:
+                    logger.warning(
+                        "Could not determine free space for '%s' at backup completion: %s",
+                        config_settings.backup_dir,
+                        exc,
+                    )
                 if metrics["error_summary"] is None:
                     first_error = next(((msg, code) for msg, code in new_results if code != 0), None)
                     if first_error:

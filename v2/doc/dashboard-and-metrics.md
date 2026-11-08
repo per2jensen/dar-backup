@@ -4,10 +4,10 @@ Back to [README](../../README.md)
 
 ## Dashboard
 
-`dar-backup` ships a purpose-built metrics dashboard — a single HTML file that
-queries the metrics database through Datasette and renders a summary of your
-most recent backup runs directly in the browser.  No extra services, no
-framework, no build step.
+`dar-backup` ships a purpose-built static metrics dashboard that
+queries the metrics database through a local Datasette process and renders a
+summary of your backup history directly in the browser. It needs no external
+web service, front-end build step, or internet connection at runtime.
 
 [![dar-backup dashboard](dar-backup-dashboard.png)](dar-backup-dashboard-full.png)
 
@@ -34,8 +34,8 @@ the displayed recent-run window:
 - Status, definition, type, and timestamp of the latest invocation
 - Definition, type, and timestamp of the latest strictly successful backup
 
-Below the summary, each backup definition gets its own section showing the last
-three runs in a table with the following columns:
+Below the summary, each backup definition gets its own section showing the
+configured number of recent runs in a table with the following columns:
 
 | Column | Description |
 | --- | --- |
@@ -47,18 +47,33 @@ three runs in a table with the following columns:
 | Inodes saved / failed | Files saved and files that could not be saved — failed inodes are highlighted in amber or red |
 | Not saved | Files unchanged since the last backup (expected for DIFF/INCR) |
 | Excluded | Files skipped by filters |
-| Phases | ✓ / ✗ for verify, restore test, and par2 |
-| Details | First error or skip reason from the run, if any |
+| Phases | Results in execution order: PRE, VERIFY, RESTORE, CATALOG, PAR2, POST |
+| Details | First warning, error, or skip reason from the run, if any |
 
 Rows with failed inodes are highlighted with a left amber border so they stand
 out at a glance without needing to read every cell.
+
+Each phase uses ✓ for a recorded success, ✗ for a recorded failure, and — when
+the phase did not run or no historical result exists. PRE and POST report the
+configured invocation-level prerequisite and post-requisite scripts. RESTORE is
+the sampled restore comparison within verification; it can be — when archive
+integrity passed but no saved file was eligible under the configured size and
+exclusion filters. PAR2 is — when PAR2 is disabled. DAR itself has no separate
+phase icon: its outcome is represented by the row status, DAR exit code, inode
+statistics, and Details text.
+
+PRE and POST are shared by all definition rows produced by one command
+invocation. POST runs after each per-definition metrics row is initially
+written and is then back-filled into every row with the invocation's `run_id`.
+Consequently a backup can have `SUCCESS` status while POST shows ✗: the archive
+pipeline succeeded, but the independent post-requisite script failed.
 
 #### Run outcomes
 
 | Outcome | Meaning | Included in non-failure rate? |
 | --- | --- | --- |
 | `SUCCESS` | The backup completed and passed verification. | Yes, as a non-failure |
-| `WARNING` | The backup completed and passed verification, but DAR reported recoverable filesystem problems or configured PAR2 storage was unavailable and redundancy could not be created. | Yes, as a non-failure |
+| `WARNING` | The archive remained usable, but a recoverable condition occurred—for example DAR exit code 5, PAR2 storage unavailable, no file eligible for restore sampling, or a historical import whose original outcome cannot be proven. | Yes, as a non-failure |
 | `SKIPPED` | No backup was attempted because the target archive already existed (`ALREADY_CURRENT`). This is neither a successful nor a failed backup. | No |
 | `FAILURE` | The backup pipeline failed and did not complete successfully. | Yes, as a failure |
 
@@ -77,8 +92,10 @@ recent-run tables, and trend charts.
 The **Runs** value controls how many of the most recent matching runs are shown
 per backup definition. For example, selecting `FULL` with **Runs** set to `3`
 shows the three most recent FULL backups for each definition; intervening DIFF
-and INCR runs do not consume those three positions. Select **All** to remove the
-recent-run limit. It therefore also defines the rows counted by **Total runs**,
+and INCR runs do not consume those three positions. Date and PRE/POST filters
+are also applied before the per-definition limit. Equal timestamps are ordered
+deterministically by the database row ID. Select **All** to remove the recent-run
+limit. It therefore also defines the rows counted by **Total runs**,
 **Non-failure rate**, **Backup definitions**, and **Total failed inodes**. The
 **Last invocation** card, **Last successful backup** card, and trend charts
 always use the full history matching the other filters and ignore the **Runs**
@@ -105,8 +122,8 @@ forward into subsequent periods until the next FULL replaces it.
 
 - A dot is drawn **only** at periods where a FULL backup actually ran.
 - Carry-forward periods have the same Y value but no visible dot.
-- This gives a stable capacity baseline — the true size of the entire
-  source data set at the last full snapshot.
+- This gives a stable archive-capacity baseline: the compressed size of the
+  most recent FULL archive. It is not the logical size of the source files.
 
 #### Dataset 2 — DIFF/INCR combined size (cyan scatter dots)
 
@@ -175,7 +192,8 @@ pip install dar-backup[dashboard]
 ```
 
 This installs `datasette` as an optional dependency alongside `dar-backup`.
-The dashboard HTML is bundled inside the package — no separate download needed.
+The dashboard HTML, pinned Chart.js runtime, and third-party license texts are
+bundled inside the package—no browser download is needed.
 
 ### Starting the dashboard
 
@@ -210,17 +228,22 @@ dar-backup-dashboard --port 8010
 
 # Headless — print URL only, useful in scripts
 dar-backup-dashboard --no-browser
+
+# Print the dashboard command version
+dar-backup-dashboard --version
 ```
 
 ### How it works
 
-The dashboard is a single self-contained HTML file bundled in
-`dar_backup/data/dashboard.html`.  When `dar-backup-dashboard` starts, it
-launches Datasette with `--static dashboard:<html_dir>` so the file is served
-at `http://127.0.0.1:<port>/dashboard/dashboard.html`.  The Datasette base URL
-is appended as a `?datasette=` query parameter, so the dashboard connects to
-the right instance automatically — no manual configuration in the browser UI
-is needed.
+The dashboard is a self-contained static asset directory bundled below
+`dar_backup/data/`. It contains `dashboard.html`, a pinned local Chart.js file,
+and license notices. System UI and monospace fonts are used, so no web font is
+requested. When `dar-backup-dashboard` starts, it launches Datasette with
+`--static dashboard:<html_dir>` and serves the entry point at
+`http://127.0.0.1:<port>/dashboard/dashboard.html`. The Datasette base URL and
+the actual SQLite database name are appended as encoded query parameters, so
+both the standard database filename and custom `--db` filenames select the
+correct data source automatically.
 
 The dashboard queries the metrics database directly via Datasette's JSON API
 (`/<db>.json?sql=...`).  The Datasette URL field at the top of the page can be
@@ -228,6 +251,43 @@ edited and the Refresh button clicked if you want to point the dashboard at a
 different Datasette instance.
 
 Press `Ctrl+C` in the terminal to shut down Datasette when you are done.
+
+#### Vendored JavaScript and licenses
+
+Chart.js is pinned to version 4.6.1. The minified runtime and readable UMD
+bundle are shipped under `dar_backup/data/vendor/`; Chart.js embeds
+`@kurkle/color` 0.3.2. Both projects use the MIT license. Exact source URLs,
+source-tarball hashes, packaged-file hashes, versions, and license paths are
+recorded in `vendor/vendor-manifest.json`. Tests reject unlisted JavaScript,
+missing notices, version drift, and checksum drift.
+
+Maintainers update the pinned files with:
+
+```bash
+python scripts/update-dashboard-vendor.py
+```
+
+The updater downloads only the exact versions declared in the script,
+validates package identity, version, license, dependency metadata, and embedded
+component markers, then regenerates the manifest. Review and test the resulting
+asset, license, and checksum changes before committing them.
+
+**Font review is a required part of every Chart.js update.** The dashboard must
+not depend on upstream examples, named web fonts, or fonts that are absent on a
+fresh installation. Inspect the Chart.js configuration in
+`data/dashboard.html` after updating and replace any such font family with the
+local system stack already used there:
+
+```text
+ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+```
+
+At minimum, review `tooltip.titleFont`, `tooltip.bodyFont`, `scales.x.ticks.font`,
+and `scales.y.ticks.font`; a new Chart.js release may add or rename font-bearing
+options. Keep these substitutions in `dashboard.html`—do not edit the vendored
+Chart.js bundles, because doing so invalidates their audited upstream checksums.
+Run `pytest tests/test_dashboard_vendor_assets.py` after the review; it rejects
+remote font loading and known non-system dashboard font names.
 
 ---
 
@@ -260,6 +320,7 @@ later cleanup timestamps only rows that are active at that time.
 | Column | Type | Description |
 | --- | --- | --- |
 | `id` | INTEGER | Auto-incrementing primary key. |
+| `run_id` | TEXT | UUID shared by every definition row created by one `dar-backup` invocation; also links restore samples and the later POST result. Historical imports may leave it NULL. |
 | `backup_definition` | TEXT | Name of the backup definition file. |
 | `backup_type` | TEXT | `FULL`, `DIFF`, or `INCR`. |
 | `archive_name` | TEXT | Base name of the dar archive, e.g. `homedir_FULL_2025-11-22`. |
@@ -272,9 +333,9 @@ later cleanup timestamps only rows that are active at that time.
 
 | Column | Type | Description |
 | --- | --- | --- |
-| `run_started_at` | TEXT | ISO-8601 timestamp when the backup started. |
-| `run_finished_at` | TEXT | ISO-8601 timestamp when the invocation finished. For an attempted backup this includes verify and par2; a skipped invocation finishes without running backup-only phases. |
-| `duration_secs` | REAL | Total wall-clock seconds for the entire run. |
+| `run_started_at` | TEXT | ISO-8601 timestamp when processing this backup definition started, after the shared PRE phase. |
+| `run_finished_at` | TEXT | ISO-8601 timestamp when processing this definition finished, before the shared POST phase. For an attempted backup this includes DAR, verify, catalog, and enabled PAR2 work; a skipped invocation finishes without backup-only phases. |
+| `duration_secs` | REAL | Wall-clock seconds for this definition, excluding shared PRE and POST phases. |
 | `dar_duration_secs` | REAL | Seconds spent in the dar backup phase only, or NULL when DAR did not run. |
 | `verify_duration_secs` | REAL | Seconds spent in the verify phase, or NULL when verification did not run. |
 | `par2_duration_secs` | REAL | Seconds spent generating par2 redundancy files, or NULL when par2 did not run. |
@@ -287,10 +348,12 @@ later cleanup timestamps only rows that are active at that time.
 | `dar_exit_code` | INTEGER | Raw exit code returned by dar (0 = success, 5 = some files skipped due to filesystem errors, etc.), or NULL when DAR did not run. |
 | `failed_phase` | TEXT | `PREFLIGHT`, `PREREQ`, `DAR`, `VERIFY`, `CATALOG`, or `PAR2` — set when a phase fails; NULL when no phase failed, including a skipped invocation. |
 | `error_summary` | TEXT | Short human-readable description of the first error or skip reason encountered, or NULL. |
+| `prereq_status` | TEXT | `SUCCESS`, `FAILURE`, or NULL when PRE was not configured or its outcome is unavailable. |
+| `postreq_status` | TEXT | `SUCCESS`, `FAILURE`, or NULL when POST was not configured, has not yet been back-filled, or its outcome is unavailable. |
 | `catalog_updated` | INTEGER | `1` if the verified archive was added to the dar manager catalog, `0` if registration failed or the attempted backup could not be published, and NULL when the catalog phase did not run. |
 | `verify_passed` | INTEGER | `1` if the archive integrity test passed, `0` for an explicitly recorded failed result, and NULL when no result was recorded or verification did not run. |
 | `restore_test_passed` | INTEGER | `1` if the restore comparison passed, `0` if it failed, and NULL when no restore comparison ran. |
-| `par2_passed` | INTEGER | `1` if par2 generation succeeded, `0` for an explicitly recorded failed result, and NULL when no result was recorded or the phase did not run. |
+| `par2_passed` | INTEGER | `1` if par2 generation succeeded, `0` for an explicitly recorded failed result, and NULL when PAR2 is disabled or the phase otherwise did not run. |
 
 #### Archive size
 
@@ -300,7 +363,7 @@ later cleanup timestamps only rows that are active at that time.
 | `num_slices` | INTEGER | Number of dar archive slices, or NULL when no archive was measured, including skipped invocations. |
 | `par2_size_bytes` | INTEGER | Total size of all `.par2` files in bytes, or NULL when no par2 output was measured. |
 | `files_verified` | INTEGER | Number of files verified during the restore-comparison phase, or NULL when no files were compared. |
-| `backup_dir_free_bytes` | INTEGER | Free space on the backup destination at run end. |
+| `backup_dir_free_bytes` | INTEGER | Free space on the backup destination when this definition finishes, after archive and enabled PAR2 work. NULL if the filesystem query fails. |
 
 #### dar inode statistics
 
@@ -342,6 +405,32 @@ backup is never affected.
 | `ea_saved` | INTEGER | `EA saved for N inode(s)` |
 | `fsa_saved` | INTEGER | `FSA saved for N inode(s)` |
 
+### Restore-test sample rows
+
+When advanced restore comparison selects files, `restore_test_samples` records
+one row per selected path. `run_id` links a sample to its `backup_runs` row;
+`backup_definition` and `archive_name` retain useful context even when querying
+the sample table directly.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `id` | INTEGER | Auto-incrementing primary key. |
+| `run_id` | TEXT | Invocation UUID shared with `backup_runs.run_id`. |
+| `backup_definition` | TEXT | Definition tested. |
+| `archive_name` | TEXT | Archive from which the path was restored. |
+| `file_path` | TEXT | Selected path. |
+| `file_size_bytes` | INTEGER | File size when known. |
+| `result` | TEXT | `PASS`, `FAIL`, or `SKIP`. |
+| `fail_reason_id` | INTEGER | Optional reference to `restore_test_fail_reasons.id`. |
+| `fail_detail` | TEXT | Optional diagnostic detail. |
+| `tested_at` | TEXT | ISO-8601 sample timestamp. |
+
+`restore_test_fail_reasons` normalizes failure categories:
+`CONTENT_MISMATCH`, `METADATA_MISMATCH`, `SOURCE_MISSING`,
+`RESTORED_MISSING`, `PERMISSION_ERROR`, and `UNKNOWN_ERROR`. A run with no
+eligible candidates has no sample rows and records `restore_test_passed` as
+NULL; its warning is retained in `error_summary`.
+
 ---
 
 ## Seeding historical archives into the metrics database
@@ -361,12 +450,15 @@ without re-running any backups.
 | `backup_definition`, `backup_type` | Parsed from the archive filename |
 | `archive_name`, `run_started_at` | Parsed from the archive filename |
 | `archive_size_bytes`, `num_slices` | Summed from the `.N.dar` slice files on disk |
-| `status` | Always `SUCCESS` — the archive exists, so the backup completed |
+| `status` | Always `WARNING` — the archive exists, but its original run outcome and integrity cannot be proven from filenames alone |
+| `error_summary` | `HISTORICAL_IMPORT` explanation of that limitation |
 | Inode stats (`inodes_saved` etc.) | Attempted via `dar -l`; left `NULL` if not available |
 
 Timing fields (`duration_secs`, phase durations), verification results
-(`verify_passed`, `restore_test_passed`, `par2_passed`), and error details are
-always `NULL` for historical imports — they were never recorded by dar.
+(`verify_passed`, `restore_test_passed`, `par2_passed`), and original run error
+details are unavailable for historical imports. The phase fields therefore
+display as dashes; the importer-generated `error_summary` remains present by
+design.
 
 ### Idempotency
 
@@ -415,8 +507,9 @@ works correctly.
 
 [Datasette](https://datasette.io) is a lightweight, zero-configuration tool for
 exploring SQLite databases through a web browser.  It requires no server setup —
-just point it at the metrics database and it renders tables, runs SQL queries,
-and produces charts instantly.
+just point it at the metrics database and it renders tables and runs SQL
+queries. The purpose-built dar-backup page—not Datasette itself—renders the
+trend charts documented above.
 
 ### Installing Datasette
 
@@ -442,6 +535,7 @@ SELECT archive_name, backup_type, status, dar_exit_code,
        duration_secs, inodes_saved, inodes_failed, inodes_total
 FROM   backup_runs
 WHERE  backup_definition = 'homedir'
+  AND  archive_deleted_at IS NULL
 ORDER  BY run_started_at DESC;
 ```
 
@@ -452,6 +546,7 @@ SELECT run_started_at, backup_definition, backup_type,
        inodes_failed, inodes_total, error_summary
 FROM   backup_runs
 WHERE  inodes_failed > 0
+  AND  archive_deleted_at IS NULL
 ORDER  BY run_started_at DESC;
 ```
 
@@ -462,6 +557,7 @@ SELECT run_started_at, backup_type, archive_size_bytes,
        backup_dir_free_bytes
 FROM   backup_runs
 WHERE  backup_definition = 'homedir'
+  AND  archive_deleted_at IS NULL
 ORDER  BY run_started_at;
 ```
 
@@ -473,6 +569,7 @@ SELECT backup_definition, backup_type,
        ROUND(AVG(verify_duration_secs), 1) AS avg_verify_secs,
        COUNT(*)                            AS runs
 FROM   backup_runs
+WHERE  archive_deleted_at IS NULL
 GROUP  BY backup_definition, backup_type
 ORDER  BY backup_definition, backup_type;
 ```
@@ -498,6 +595,7 @@ databases:
                  inodes_failed, inodes_total, dar_exit_code
           FROM   backup_runs
           WHERE  inodes_failed > 0
+            AND  archive_deleted_at IS NULL
           ORDER  BY run_started_at DESC
       recent_runs:
         title: Last 20 runs
@@ -505,6 +603,7 @@ databases:
           SELECT run_started_at, backup_definition, backup_type,
                  status, duration_secs, inodes_saved, inodes_total
           FROM   backup_runs
+          WHERE  archive_deleted_at IS NULL
           ORDER  BY run_started_at DESC
           LIMIT  20
 ```

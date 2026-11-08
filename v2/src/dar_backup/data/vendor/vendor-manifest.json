@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "path": "vendor/chart.umd.js",
+      "sha256": "338399fb5bafe598d21cfc471b0590b61ceb321a985fade4f68499b151f67fbf",
+      "source_package": "chart.js",
+      "version": "4.6.1",
+      "source_url": "https://registry.npmjs.org/chart.js/-/chart.js-4.6.1.tgz",
+      "source_tarball_sha256": "9345dacdf4bb4c5d40321f4b9aafab6fe676d37a534fc0bc2d17c4c4e29c4f00",
+      "license": "MIT",
+      "license_files": [
+        "third_party_licenses/Chart.js-LICENSE.md",
+        "third_party_licenses/kurkle-color-LICENSE.md"
+      ],
+      "embedded_components": [
+        {
+          "name": "@kurkle/color",
+          "version": "0.3.2",
+          "license": "MIT",
+          "source_url": "https://registry.npmjs.org/@kurkle/color/-/color-0.3.2.tgz",
+          "source_tarball_sha256": "af9eaac0ecbb472fe2093d2a4525629f96541f4e6422c031d9c86d4dc8fc7511"
+        }
+      ]
+    },
+    {
+      "path": "vendor/chart.umd.min.js",
+      "sha256": "87364cc2b2a76a6684929e7d6b80b18a897794db38400caff1fcf1791c6925d2",
+      "source_package": "chart.js",
+      "version": "4.6.1",
+      "source_url": "https://registry.npmjs.org/chart.js/-/chart.js-4.6.1.tgz",
+      "source_tarball_sha256": "9345dacdf4bb4c5d40321f4b9aafab6fe676d37a534fc0bc2d17c4c4e29c4f00",
+      "license": "MIT",
+      "license_files": [
+        "third_party_licenses/Chart.js-LICENSE.md",
+        "third_party_licenses/kurkle-color-LICENSE.md"
+      ],
+      "embedded_components": [
+        {
+          "name": "@kurkle/color",
+          "version": "0.3.2",
+          "license": "MIT",
+          "source_url": "https://registry.npmjs.org/@kurkle/color/-/color-0.3.2.tgz",
+          "source_tarball_sha256": "af9eaac0ecbb472fe2093d2a4525629f96541f4e6422c031d9c86d4dc8fc7511"
+        }
+      ]
+    }
+  ]
+}

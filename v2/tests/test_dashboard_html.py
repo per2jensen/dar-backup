@@ -7,11 +7,11 @@ required for correct behaviour and graceful degradation — without executing
 any JavaScript (no browser dependency).
 
 Covered:
-  - Chart.js CDN script tag has the onerror handler that sets _chartjsFailed
+  - Local Chart.js script tag has the onerror handler that sets _chartjsFailed
   - Required DOM element IDs exist for the degradation path
   - buildTrendPanels() contains the Chart.js failure guard
   - The guard hides the trends section label and shows a plain-text warning
-  - The warning message is user-readable and mentions CDN / internet
+  - The warning message identifies the packaged Chart.js asset
   - The three granularity buttons exist with correct data-gran attributes
   - Monthly granularity is the default active button
   - Key JavaScript functions are defined: buildTrendPanels, periodKey,
@@ -85,11 +85,11 @@ def dom() -> _AttrCollector:
 
 
 # ---------------------------------------------------------------------------
-# Chart.js CDN script tag
+# Chart.js local script tag
 # ---------------------------------------------------------------------------
 
 class TestChartJsScriptTag:
-    """The Chart.js <script> tag must be structured for safe CDN failure."""
+    """The Chart.js script must be local and retain graceful failure handling."""
 
     def _chartjs_script(self, dom: _AttrCollector) -> dict[str, str]:
         scripts = [
@@ -100,7 +100,7 @@ class TestChartJsScriptTag:
         return scripts[0]
 
     def test_chartjs_script_tag_exists(self, dom: _AttrCollector) -> None:
-        """A <script> tag loading Chart.js from a CDN must be present."""
+        """A script tag loading the packaged Chart.js runtime must be present."""
         self._chartjs_script(dom)  # raises if not found
 
     def test_chartjs_onerror_sets_flag(self, dom: _AttrCollector) -> None:
@@ -119,13 +119,11 @@ class TestChartJsScriptTag:
             f"onerror should assign true; got: {onerror!r}"
         )
 
-    def test_chartjs_loaded_from_cdn(self, dom: _AttrCollector) -> None:
-        """Chart.js must be loaded from an external CDN (not bundled)."""
+    def test_chartjs_loaded_from_local_vendor_directory(self, dom: _AttrCollector) -> None:
+        """Chart.js must load from the packaged vendor directory without a CDN."""
         attrs = self._chartjs_script(dom)
         src = attrs.get("src", "")
-        assert src.startswith("https://"), (
-            f"Chart.js src should be an https:// CDN URL; got: {src!r}"
-        )
+        assert src == "vendor/chart.umd.min.js"
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +191,13 @@ class TestGranularityButtons:
 # ---------------------------------------------------------------------------
 
 class TestChartJsFailureGuard:
-    """buildTrendPanels() must check for CDN failure before using Chart."""
+    """buildTrendPanels() must check for local asset failure before using Chart."""
 
     def test_guard_checks_chartjs_failed_flag(self, dom: _AttrCollector) -> None:
         """The _chartjsFailed flag set by onerror must be checked in JS."""
         assert "_chartjsFailed" in dom.inline_js, (
             "JS does not reference _chartjsFailed — "
-            "CDN failure will not be detected at runtime"
+            "Chart.js load failure will not be detected at runtime"
         )
 
     def test_guard_checks_typeof_chart(self, dom: _AttrCollector) -> None:
@@ -227,12 +225,12 @@ class TestChartJsFailureGuard:
             "users will see an empty panel with no explanation"
         )
 
-    def test_warning_mentions_cdn_or_internet(self, dom: _AttrCollector) -> None:
-        """The warning must tell users *why* — CDN or internet access."""
+    def test_warning_identifies_packaged_asset(self, dom: _AttrCollector) -> None:
+        """The warning must identify the local packaged asset as the cause."""
         js = dom.inline_js
-        assert "CDN" in js or "internet" in js, (
-            "Degradation warning should mention CDN or internet so the user "
-            "understands the cause"
+        assert "packaged Chart.js asset" in js, (
+            "Degradation warning should identify the packaged Chart.js asset so "
+            "the user understands the cause"
         )
 
 
@@ -254,6 +252,86 @@ class TestJsFunctionsPresent:
 
     def test_fmt_bytes_defined(self, dom: _AttrCollector) -> None:
         assert "function fmtBytes" in dom.inline_js
+
+    def test_database_query_parameter_populates_datasette_database(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """A custom SQLite filename must select its Datasette database automatically."""
+        js = dom.inline_js
+        assert "const database = params.get('database')" in js
+        assert "getElementById('ds-db').value = database" in js
+
+
+class TestHtmlEscaping:
+    """Database diagnostics must remain text when rendered through innerHTML."""
+
+    def test_escape_html_encodes_xml_and_attribute_delimiters(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """The renderer encodes XML brackets, ampersands, and both quote types."""
+        js = dom.inline_js
+        assert "function escapeHtml(value)" in js
+        for entity in ("&amp;", "&lt;", "&gt;", "&quot;", "&#39;"):
+            assert entity in js
+
+    def test_error_summary_is_escaped_for_text_and_title_attribute(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """A DAR XML excerpt cannot become markup or escape its tooltip attribute."""
+        js = dom.inline_js
+        assert "const safeErrorSummary = escapeHtml(r.error_summary)" in js
+        assert 'title="${safeErrorSummary}">${safeErrorSummary}</div>' in js
+
+    def test_error_summary_is_never_interpolated_directly(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Ordinary and hostile diagnostics share the escaped rendering path."""
+        assert 'title="${r.error_summary}"' not in dom.inline_js
+        assert '>${r.error_summary}</div>' not in dom.inline_js
+
+    def test_definition_names_are_escaped_in_cards_and_trends(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Definition names from SQLite cannot inject markup in either view."""
+        assert dom.inline_js.count("${escapeHtml(defName)}") >= 2
+
+
+class TestRunTableContainment:
+    """Wide run tables must remain contained by their definition cards."""
+
+    def test_run_table_has_local_scroll_wrapper(self) -> None:
+        """Definition cards provide a dedicated horizontal scrolling region."""
+        assert '<div class="run-table-scroll">' in _HTML
+        assert '<table class="run-table">' in _HTML
+        assert ".run-table-scroll" in _HTML
+        assert "overflow-x: auto" in _HTML
+
+
+class TestPhasePresentation:
+    """Phase indicators must follow actual pipeline order and null semantics."""
+
+    def test_phase_labels_follow_execution_order(self, dom: _AttrCollector) -> None:
+        """Verification and restore must appear before catalogue registration."""
+        js = dom.inline_js
+        positions = [
+            js.index("<span>pre</span>"),
+            js.index("<span>verify</span>"),
+            js.index("<span>restore</span>"),
+            js.index("<span>catalog</span>"),
+            js.index("<span>par2</span>"),
+            js.index("<span>post</span>"),
+        ]
+        assert positions == sorted(positions)
+
+    def test_failed_inode_border_applies_only_to_first_cell(self) -> None:
+        """A failed-inode row has one left edge, not a border on every cell."""
+        assert "tr.has-failures td:first-child { border-left:" in _HTML
+        assert "tr.has-failures td { border-left:" not in _HTML
 
 
 class TestSkippedOutcome:
@@ -411,6 +489,33 @@ class TestBackupTypeFiltering:
         js = dom.inline_js
         assert "const typeClause = backupType ?" in js
         assert "const limitTypeClause = backupType" in js
+
+
+class TestRecentRunLimitFiltering:
+    """The per-definition limit must count only rows matching every filter."""
+
+    def test_limit_applies_date_range_to_counted_rows(self, dom: _AttrCollector) -> None:
+        """Rows outside the selected date range cannot consume recent positions."""
+        js = dom.inline_js
+        assert "datetime(b2.run_started_at) >= datetime('${timeRange.from}')" in js
+        assert "datetime(b2.run_started_at) <= datetime('${timeRange.to}')" in js
+        assert "${limitFromClause}" in js
+        assert "${limitToClause}" in js
+
+    def test_limit_applies_prereq_and_postreq_filters(self, dom: _AttrCollector) -> None:
+        """Excluded hook failures cannot consume recent positions."""
+        js = dom.inline_js
+        assert "b2.prereq_status IS NULL" in js
+        assert "b2.postreq_status IS NULL" in js
+        assert "${limitPhaseClauses}" in js
+
+    def test_limit_uses_row_id_to_break_equal_timestamp_ties(
+        self,
+        dom: _AttrCollector,
+    ) -> None:
+        """Equal timestamps still produce an exact deterministic limit."""
+        assert "b2.run_started_at = b.run_started_at AND b2.id > b.id" in dom.inline_js
+        assert "b.run_started_at DESC, b.id DESC" in dom.inline_js
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,8 @@ What is extracted per archive
     run_started_at      — date/time embedded in the filename
     archive_size_bytes  — sum of all .N.dar slice sizes
     num_slices          — number of .N.dar slices found
-    status              — always SUCCESS (archive exists → backup completed)
+    status              — WARNING (archive exists, but integrity was not verified)
+    error_summary       — HISTORICAL_IMPORT diagnostic explaining that limitation
 
   Attempted via `dar -l` (left NULL if dar cannot parse them):
     inodes_saved, inodes_not_saved, inodes_failed, inodes_excluded,
@@ -26,7 +27,7 @@ What is extracted per archive
   Always NULL for historical imports (not recorded by dar):
     duration_secs, dar_duration_secs, verify_duration_secs, par2_duration_secs,
     verify_passed, restore_test_passed, par2_passed, par2_size_bytes,
-    failed_phase, error_summary, dar_exit_code, dar_backup_version, dar_version
+    failed_phase, dar_exit_code, dar_backup_version, dar_version
 
 Idempotency
 -----------
@@ -196,6 +197,7 @@ def _ensure_db(db_path: str) -> None:
         archive_name                  TEXT,
         run_started_at                TEXT    NOT NULL,
         status                        TEXT    NOT NULL CHECK (status IN ('SUCCESS', 'WARNING', 'SKIPPED', 'FAILURE')),
+        error_summary                 TEXT,
         archive_size_bytes            INTEGER,
         num_slices                    INTEGER,
         inodes_saved                  INTEGER,
@@ -392,7 +394,7 @@ def _insert_row(conn: sqlite3.Connection, row: dict) -> None:
         """
         INSERT OR IGNORE INTO backup_runs (
             backup_definition, backup_type, archive_name,
-            run_started_at, status,
+            run_started_at, status, error_summary,
             archive_size_bytes, num_slices,
             inodes_saved, hard_links_treated, inodes_changed_during_backup,
             bytes_wasted, inodes_metadata_only, inodes_not_saved,
@@ -400,7 +402,7 @@ def _insert_row(conn: sqlite3.Connection, row: dict) -> None:
             inodes_total, ea_saved, fsa_saved
         ) VALUES (
             :backup_definition, :backup_type, :archive_name,
-            :run_started_at, :status,
+            :run_started_at, :status, :error_summary,
             :archive_size_bytes, :num_slices,
             :inodes_saved, :hard_links_treated, :inodes_changed_during_backup,
             :bytes_wasted, :inodes_metadata_only, :inodes_not_saved,
@@ -504,7 +506,11 @@ def main() -> int:
                 "backup_type":                   backup_type,
                 "archive_name":                  archive_name,
                 "run_started_at":                run_started_at,
-                "status":                        "SUCCESS",
+                "status":                        "WARNING",
+                "error_summary":                 (
+                    "HISTORICAL_IMPORT: archive discovered on disk; integrity "
+                    "and original run outcome were not verified"
+                ),
                 "archive_size_bytes":            total_bytes if total_bytes > 0 else None,
                 "num_slices":                    num_slices,
                 **inode_stats,
