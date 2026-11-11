@@ -5,6 +5,14 @@
 
 set -euo pipefail
 
+# Resolve the project directory from this tracked script instead of relying on
+# the caller's working directory. Personal wrappers may be invoked from
+# anywhere, but every relative project path below is intentionally v2-relative.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
+cd "${PROJECT_DIR}"
+
 # ── defaults ────────────────────────────────────────────────────────────────
 # All of these are dumped by print_run_variables() near the start of MAIN
 # ORCHESTRATION, into the tee'd $SUMMARY file — so a run's exact configuration
@@ -22,8 +30,9 @@ PAR2_RATIO=5                                        # --par2-ratio: PAR2 ERROR_C
 DO_BITROT=0                                         # --bitrot: when 1, runs do_bitrot_test (corrupt + par2 repair) on FULL, DIFF, and INCR
 KEEP=0                                              # --keep: when 1, RUN_DIR is left on disk after the run instead of being deleted by cleanup()
 SMOKETEST=0                                         # --smoketest: when 1, skips mirroring this run's JSONL record into the tracked repo history file
+PREFLIGHT_ONLY=0                                    # --preflight-only: validate prerequisites and exit before creating run data
 TIMEOUT=86400                                       # --timeout: COMMAND_TIMEOUT_SECS written into the generated config (dar/par2/manager command timeout, seconds)
-SCRIPT_VERSION="8"                                  # Bumped whenever this script's behavior changes in a way worth tracking alongside JSONL history
+SCRIPT_VERSION="10"                                 # Bumped whenever this script's behavior changes in a way worth tracking alongside JSONL history
 MIN_FREE_MULTIPLIER=2                               # --min-free-multiplier: required free space under BASE_DIR, as a multiple of the estimated source data size
 BACKUP_ROOT="/data"                                 # --backup-root: the -R this run's --definition must use; DIFF_PRIMER_DIR is rebased under it instead of assuming -R is "/"
 DIFF_PRIMER_DIR=""                                  # Set below to "${BASE_DIR}/diff-primer"; synthetic data mutated at each phase to exercise DIFF/INCR/restore logic
@@ -51,7 +60,7 @@ banner() { echo -e "\n${BOLD}${CYAN}══════════════�
 FAILURES=0
 
 usage() {
-    grep '^#' "$0" | grep -v '#!/' | sed 's/^# \{0,2\}//'
+    grep '^#' "$SCRIPT_PATH" | grep -v '#!/' | sed 's/^# \{0,2\}//'
     exit 0
 }
 
@@ -64,6 +73,7 @@ while [[ $# -gt 0 ]]; do
         --bitrot)     DO_BITROT=1;             shift   ;;
         --keep)       KEEP=1;                  shift   ;;
         --smoketest)  SMOKETEST=1;             shift   ;;
+        --preflight-only) PREFLIGHT_ONLY=1;     shift   ;;
         --timeout)    TIMEOUT="$2";            shift 2 ;;
         --min-free-multiplier) MIN_FREE_MULTIPLIER="$2"; shift 2 ;;
         --backup-root) BACKUP_ROOT="$2";       shift 2 ;;
@@ -85,7 +95,10 @@ preflight() {
         echo "ERROR: project venv not active — run: source ./venv/bin/activate"
         errors=$((errors+1))
     fi
-    local editable_loc; editable_loc=$(pip show dar-backup 2>/dev/null | grep "Editable project location" | awk '{print $NF}')
+    local package_metadata
+    package_metadata=$(pip show dar-backup 2>/dev/null || true)
+    local editable_loc
+    editable_loc=$(awk -F ': ' '$1 == "Editable project location" { print $2; exit }' <<< "$package_metadata")
     if [[ -z "$editable_loc" ]]; then
         echo "ERROR: dar-backup is not installed in editable mode"; errors=$((errors+1))
     else
@@ -102,6 +115,11 @@ preflight() {
     KERNEL=$(uname -r)
 }
 preflight
+
+if [[ "$PREFLIGHT_ONLY" -eq 1 ]]; then
+    info "Preflight checks passed."
+    exit 0
+fi
 
 # ── disk-space preflight ──────────────────────────────────────────────────────
 # Estimates the real source data size from the backup definition's -R/-g paths and
@@ -203,9 +221,9 @@ mkdir -p "$BACKUP_DIR" "$PAR2_DIR" "$RESTORE_DIR" "$BACKUP_D_DIR" "$RESULTS_DIR"
 # summary of *this script's* configuration and derived paths, not shell noise.
 # Add new top-level variables here when you add them above.
 RUN_VARIABLES=(
-    DATESTAMP DATE_OF_RUN SCRIPT_VERSION
+    SCRIPT_DIR PROJECT_DIR SCRIPT_PATH DATESTAMP DATE_OF_RUN SCRIPT_VERSION
     BASE_DIR DEFINITION_NAME DEFINITION_CONTENT SLICE_SIZE PAR2_RATIO
-    DO_BITROT KEEP SMOKETEST TIMEOUT MIN_FREE_MULTIPLIER BACKUP_ROOT
+    DO_BITROT KEEP SMOKETEST PREFLIGHT_ONLY TIMEOUT MIN_FREE_MULTIPLIER BACKUP_ROOT
     DAR_BACKUP_VERSION GIT_COMMIT REPO_DIR DAR_VERSION PAR2_VERSION
     PYTHON_VERSION OS_DESC KERNEL
     RUN_DIR BACKUP_DIR PAR2_DIR RESTORE_DIR BACKUP_D_DIR
@@ -261,6 +279,9 @@ LOGFILE_LOCATION = ${LOGFILE}
 MAX_SIZE_VERIFICATION_MB = 200
 MIN_SIZE_VERIFICATION_MB = 1
 NO_FILES_VERIFICATION = 5
+RESTORETEST_PERCENT = 3
+RESTORETEST_MAX_FILES = 1000
+RESTORETEST_COVER_SLICES = true
 COMMAND_TIMEOUT_SECS = ${TIMEOUT}
 COMMAND_CAPTURE_MAX_BYTES = 102400
 METRICS_DB_PATH = ${METRICS_DB}

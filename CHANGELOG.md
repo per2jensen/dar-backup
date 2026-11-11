@@ -18,6 +18,7 @@ High-level release summary. For detailed per-release notes see [v2/Changelog.md]
 - VM pytest reports retain compact structured evidence without duplicating verbose logs, and verified archived copies replace multi-megabyte extracted JSON files after evidence persistence
 - Command output now preserves UTF-8 characters split across read boundaries; interrupted VM matrix runs clean up according to retention policy and no longer attempt status publication
 - Successful PyPI publications now update the GitHub Pages version from an isolated `gh-pages` checkout
+- The large-scale torture test now samples 3% of eligible files (capped at 1,000), covers every data-bearing slice, works from any caller directory, and clearly reports a non-editable installation
 
 ## v2-1.1.11 - 2026-08-16
 
