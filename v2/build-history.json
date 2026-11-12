@@ -130,5 +130,27 @@
       "signed": true,
       "key_fingerprint": "B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"
     }
+  },
+  {
+    "release_number": 6,
+    "version": "1.1.12",
+    "git_tag": "v2-1.1.12",
+    "git_revision": "5635d1b",
+    "created": "2026-11-12T14:44:51Z",
+    "pypi_url": "https://pypi.org/project/dar-backup/1.1.12/",
+    "artifacts": {
+      "wheel": {
+        "file": "dar_backup-1.1.12-py3-none-any.whl",
+        "sha256": "1b2d9f877a647592caa0598606d2ff4203aeffd49b9fb7e11ff2208aa032ce49"
+      },
+      "sdist": {
+        "file": "dar_backup-1.1.12.tar.gz",
+        "sha256": "e4eb398349a9f95d418c50bc76ffadd03c44299ef896a234472943f4fc8c5176"
+      }
+    },
+    "gpg": {
+      "signed": true,
+      "key_fingerprint": "B54F5682F28DBA3622D78E0458DBFADBBBAC1BB1"
+    }
   }
 ]
