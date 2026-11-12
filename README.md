@@ -72,7 +72,7 @@ Not if you want:
    per definition (one FULL, one DIFF, one INCR)
 
 ## Quick start (TL;DR)
-Version **1.1.11** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
+Version **1.1.12** · reached **1.0.0** on October 9, 2025 · [Changelog](CHANGELOG.md)
 
 Try `dar-backup` in minutes using the built-in demo:
 

@@ -1,0 +1,104 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 19%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 35%]
+........................................................................ [ 39%]
+........................................................................ [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 62%]
+........................................................................ [ 66%]
+........................................................................ [ 70%]
+........................................................................ [ 74%]
+........................................................................ [ 78%]
+..............................................................s......... [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 97%]
+......s....................s.s.s....../home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmp1azsajd9.py': No source for code: '/tmp/tmp1azsajd9.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmp9xxxr0xc.py': No source for code: '/tmp/tmp9xxxr0xc.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmp_j_dra4x.py': No source for code: '/tmp/tmp_j_dra4x.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmp_vgoahdh.py': No source for code: '/tmp/tmp_vgoahdh.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmp_yrxrv4j.py': No source for code: '/tmp/tmp_yrxrv4j.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpermwlzed.py': No source for code: '/tmp/tmpermwlzed.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpivazj1tr.py': No source for code: '/tmp/tmpivazj1tr.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpjgs98nus.py': No source for code: '/tmp/tmpjgs98nus.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmplfem5j5x.py': No source for code: '/tmp/tmplfem5j5x.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmppplqf2dj.py': No source for code: '/tmp/tmppplqf2dj.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpr3w30eui.py': No source for code: '/tmp/tmpr3w30eui.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpvetlw6m9.py': No source for code: '/tmp/tmpvetlw6m9.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/pj/git/dar-backup/v2/venv/lib/python3.14/site-packages/coverage/report_core.py:120: CoverageWarning: Couldn't parse '/tmp/tmpwyt0pd8j.py': No source for code: '/tmp/tmpwyt0pd8j.py'. (couldnt-parse); see https://coverage.readthedocs.io/en/7.16.2/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+                                   [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.14.4-final-0 ________________
+
+Name                                                                                 Stmts   Miss  Cover
+--------------------------------------------------------------------------------------------------------
+/etc/python3.14/sitecustomize.py                                                         5      1    80%
+/tmp/pytest-of-pj/pytest-50/test_changelog_missing_exits_n0/stub.py                      5      1    80%
+/tmp/pytest-of-pj/pytest-50/test_changelog_missing_exits_n1/stub.py                      5      1    80%
+/tmp/pytest-of-pj/pytest-50/test_command_executor_failed_s0/fake-bin/multipass          94     72    23%
+/tmp/pytest-of-pj/pytest-50/test_command_runner_invalid_ut0/invalid_utf8.py              2      0   100%
+/tmp/pytest-of-pj/pytest-50/test_command_runner_utf8_split0/split_utf8.py                3      0   100%
+/tmp/pytest-of-pj/pytest-50/test_readme_missing_exits_nonz0/stub.py                      5      1    80%
+/tmp/pytest-of-pj/pytest-50/test_readme_missing_exits_nonz1/stub.py                      5      1    80%
+/tmp/pytest-of-pj/pytest-50/test_run_image_catalog_release0/fake-bin/multipass          94     77    18%
+/tmp/pytest-of-pj/pytest-50/test_run_image_failing_guest_r0/fake-bin/multipass          94     14    85%
+/tmp/pytest-of-pj/pytest-50/test_run_image_guest_release_m0/fake-bin/multipass          94     47    50%
+/tmp/pytest-of-pj/pytest-50/test_run_image_invalid_image_d0/fake-bin/multipass          94     56    40%
+/tmp/pytest-of-pj/pytest-50/test_run_image_launch_progress0/fake-bin/multipass          94     15    84%
+/tmp/pytest-of-pj/pytest-50/test_run_image_passing_guest_r0/fake-bin/multipass          94     15    84%
+/tmp/pytest-of-pj/pytest-50/test_run_image_setup_failure_r0/fake-bin/multipass          94     14    85%
+/tmp/pytest-of-pj/pytest-50/test_run_pytest_with_reports_o0/test_sample_failure.py       7      0   100%
+/tmp/pytest-of-pj/pytest-50/test_stream_command_delivers_l0/emit.py                      3      0   100%
+/tmp/pytest-of-pj/pytest-50/test_stream_command_stderr_utf0/stream_split_utf8.py         2      0   100%
+/tmp/pytest-of-pj/pytest-50/test_verify_coverage_added_fil0/wrapper-bin/dar             12      1    92%
+/tmp/pytest-of-pj/pytest-50/test_verify_failed_batch_falls0/wrapper-bin/dar             12      1    92%
+/tmp/tmpkpfc03yo.py                                                                      3      0   100%
+scripts/publish_pages_version.py                                                       141     28    80%
+scripts/rewrite_readme_links.py                                                         62     12    81%
+scripts/run_mypy_report.py                                                             134     29    78%
+src/dar_backup/__about__.py                                                              3      0   100%
+src/dar_backup/__init__.py                                                               0      0   100%
+src/dar_backup/clean_log.py                                                            125     10    92%
+src/dar_backup/cleanup.py                                                              349     32    91%
+src/dar_backup/command_runner.py                                                       391     44    89%
+src/dar_backup/config_settings.py                                                      259      8    97%
+src/dar_backup/dar_backup.py                                                          1763    163    91%
+src/dar_backup/dar_backup_systemd.py                                                    82      1    99%
+src/dar_backup/dashboard.py                                                            147      6    96%
+src/dar_backup/data/__init__.py                                                          0      0   100%
+src/dar_backup/demo.py                                                                 165     12    93%
+src/dar_backup/exceptions.py                                                             2      0   100%
+src/dar_backup/installer.py                                                            123      4    97%
+src/dar_backup/instance_lock.py                                                        143     27    81%
+src/dar_backup/manager.py                                                             1276    120    91%
+src/dar_backup/mounts.py                                                                56     11    80%
+src/dar_backup/restore_target_safety.py                                                467     89    81%
+src/dar_backup/restoretest_catalog.py                                                  563    126    78%
+src/dar_backup/util.py                                                                 836     67    92%
+--------------------------------------------------------------------------------------------------------
+TOTAL                                                                                 7908   1106    86%
+Coverage XML written to file doc/test-report/coverage.xml
+1833 passed, 5 skipped, 2 deselected in 1031.14s (0:17:11)
