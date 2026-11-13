@@ -65,12 +65,35 @@
       "label": "Rel. 1.1.11"
     },
     {
-      "date": "2026-10-18",
-      "label": "Daily max: 373"
-    },
-    {
       "date": "2026-11-12",
       "label": "Rel. 1.1.12"
+    },
+    {
+      "date": "2026-10-18",
+      "label": "Daily max: 373"
+    }
+  ],
+  "total_clones": 17473,
+  "total_clones_raw": 19692,
+  "unique_clones": 8282,
+  "discard": [
+    {
+      "date": "2026-06-24",
+      "count": 2005,
+      "uniques": 21,
+      "ratio": 95.5,
+      "imputed_count": 50,
+      "imputed_from_days": 7,
+      "discard_reason": "Clone/unique ratio 95.5x exceeds threshold 25x"
+    },
+    {
+      "date": "2026-09-03",
+      "count": 214,
+      "uniques": 8,
+      "ratio": 26.8,
+      "imputed_count": 14,
+      "imputed_from_days": 7,
+      "discard_reason": "Clone/unique ratio 26.8x exceeds threshold 25x"
     }
   ],
   "daily": [
@@ -2779,92 +2802,74 @@
       "uniques": 16
     },
     {
-      "count": 18,
       "timestamp": "2026-10-29T00:00:00Z",
+      "count": 18,
       "uniques": 13
     },
     {
-      "count": 25,
       "timestamp": "2026-10-30T00:00:00Z",
+      "count": 25,
       "uniques": 12
     },
     {
-      "count": 26,
       "timestamp": "2026-10-31T00:00:00Z",
+      "count": 26,
       "uniques": 18
     },
     {
-      "count": 52,
       "timestamp": "2026-11-01T00:00:00Z",
+      "count": 52,
       "uniques": 25
     },
     {
-      "count": 13,
       "timestamp": "2026-11-02T00:00:00Z",
+      "count": 13,
       "uniques": 10
     },
     {
-      "count": 20,
       "timestamp": "2026-11-03T00:00:00Z",
+      "count": 20,
       "uniques": 10
     },
     {
-      "count": 34,
       "timestamp": "2026-11-04T00:00:00Z",
+      "count": 34,
       "uniques": 30
     },
     {
-      "count": 39,
       "timestamp": "2026-11-05T00:00:00Z",
+      "count": 39,
       "uniques": 24
     },
     {
-      "count": 40,
       "timestamp": "2026-11-06T00:00:00Z",
+      "count": 40,
       "uniques": 23
     },
     {
-      "count": 26,
       "timestamp": "2026-11-07T00:00:00Z",
+      "count": 26,
       "uniques": 16
     },
     {
-      "count": 45,
       "timestamp": "2026-11-08T00:00:00Z",
+      "count": 45,
       "uniques": 29
     },
     {
-      "count": 25,
       "timestamp": "2026-11-09T00:00:00Z",
+      "count": 25,
       "uniques": 16
     },
     {
-      "count": 29,
       "timestamp": "2026-11-10T00:00:00Z",
+      "count": 29,
       "uniques": 14
-    }
-  ],
-  "discard": [
-    {
-      "count": 2005,
-      "date": "2026-06-24",
-      "discard_reason": "Clone/unique ratio 95.5x exceeds threshold 25x",
-      "imputed_count": 50,
-      "imputed_from_days": 7,
-      "ratio": 95.5,
-      "uniques": 21
     },
     {
-      "count": 214,
-      "date": "2026-09-03",
-      "discard_reason": "Clone/unique ratio 26.8x exceeds threshold 25x",
-      "imputed_count": 14,
-      "imputed_from_days": 7,
-      "ratio": 26.8,
-      "uniques": 8
+      "timestamp": "2026-11-11T00:00:00Z",
+      "count": 9,
+      "uniques": 6
     }
-  ],
-  "total_clones": 17464,
-  "total_clones_raw": 19683,
-  "unique_clones": 8276
+  ]
 }
