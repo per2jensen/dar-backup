@@ -120,8 +120,9 @@ coverage. The error log identifies the uncovered slice numbers, prints the confi
 `MIN_SIZE_VERIFICATION_MB` through `MAX_SIZE_VERIFICATION_MB` range, and notes
 that `RESTORETEST_EXCLUDE_*` filters also apply. If no valid saved file in the
 entire archive is eligible, restore testing is not applicable: the run records a
-warning, leaves `restore_test_passed` unset, and continues catalogue registration
-and PAR2 generation after the successful archive integrity test.
+successful backup, leaves `restore_test_passed` unset, logs the reason at `INFO`,
+and continues catalogue registration and PAR2 generation after the successful
+archive integrity test.
 
 This feature uses only the standard DAR command-line interfaces. It treats a
 saved-payload `dar -Txml` catalogue as the authoritative inventory and reconciles

@@ -339,9 +339,9 @@ or narrowing an exclusion can make a file eligible, but may increase restore-tes
 runtime and temporary disk usage.
 
 If no valid saved file in the entire archive is eligible, there is no restore
-candidate to test. This is recorded as `WARNING` rather than a failed archive:
-`dar -t` integrity has passed, restore testing is marked not attempted, and
-catalogue registration and PAR2 generation continue. A slice containing only a
+candidate to test. This is recorded as `SUCCESS`: `dar -t` integrity has passed,
+restore testing is marked not attempted, and catalogue registration and PAR2
+generation continue. The reason is logged at `INFO`. A slice containing only a
 malformed or unrepresentable saved pathname remains an error because silently
 accepting it would hide an untestable payload.
 

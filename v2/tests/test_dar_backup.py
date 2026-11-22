@@ -476,7 +476,7 @@ def test_perform_backup_handles_failed_verification(env):
     mock_catalog.assert_not_called()
 
 
-def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
+def test_perform_backup_records_restoretest_skip_success_and_continues(env):
     """Publish and protect an integrity-verified archive with no candidates.
 
     Args:
@@ -501,10 +501,6 @@ def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
     with open(os.path.join(config.backup_d_dir, "test.dcf"), "w") as definition:
         definition.write("-R /\n")
 
-    warning_message = (
-        "RESTORETEST_COVER_SLICES was not attempted because no saved files "
-        "are eligible after restore-test filtering"
-    )
     completion_statuses: list[str] = []
     captured_metrics: list[dict] = []
 
@@ -526,7 +522,6 @@ def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
             passed=True,
             restore_test_passed=None,
             files_verified=0,
-            warning_message=warning_message,
         ),
     ), patch(
         "dar_backup.dar_backup.generic_backup",
@@ -560,13 +555,13 @@ def test_perform_backup_records_restoretest_skip_warning_and_continues(env):
             completion_statuses=completion_statuses,
         )
 
-    assert (warning_message, 2) in results
+    assert not any(code == 2 for _message, code in results)
     assert not any(code == 1 for _message, code in results)
     mock_catalog.assert_called_once()
     mock_par2.assert_called_once()
-    assert completion_statuses == ["WARNING"]
+    assert completion_statuses == ["SUCCESS"]
     assert len(captured_metrics) == 1
-    assert captured_metrics[0]["status"] == "WARNING"
+    assert captured_metrics[0]["status"] == "SUCCESS"
     assert captured_metrics[0]["failed_phase"] is None
     assert captured_metrics[0]["verify_passed"] == 1
     assert captured_metrics[0]["restore_test_passed"] is None

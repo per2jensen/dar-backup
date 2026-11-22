@@ -1087,12 +1087,11 @@ def verify(
                         "files outside that range, and files matching configured "
                         "RESTORETEST_EXCLUDE_* filters, are not selected"
                     )
-                    logger.warning(message)
+                    logger.info(message)
                     return VerifyResult(
                         passed=True,
                         restore_test_passed=None,
                         files_verified=0,
-                        warning_message=message,
                     )
                 files = catalog_index.sample_eligible_files(sample_size)
 
