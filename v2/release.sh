@@ -309,7 +309,12 @@ else
 
     _quickguide="doc/quick-guide.md"
     if [[ -f "${_quickguide}" ]]; then
-        sed -i -E "s/(dar-backup-)[0-9]+\.[0-9]+\.[0-9]+/\1${VERSION}/g; s/((manager|dar-backup)\.py:[[:space:]]+)[0-9]+\.[0-9]+\.[0-9]+/\1${VERSION}/g" "${_quickguide}"
+        python3 scripts/update_quick_guide_versions.py \
+            --path "${_quickguide}" \
+            --version "${VERSION}" || {
+                red "❌ Error: Failed to update version references in ${_quickguide}"
+                exit 1
+            }
         green "Updated dar-backup version references in ${_quickguide}"
     fi
 fi

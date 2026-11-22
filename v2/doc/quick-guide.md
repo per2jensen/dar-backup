@@ -101,7 +101,7 @@ manager --create-db  --verbose
 ```bash
 (venv) $ manager --create-db  --verbose
 ========== Startup Settings ==========
-manager:                   1.1.10
+manager:                   1.1.12
 Operation:                 create-db
 Config file:               /tmp/dar-backup-conf/dar-backup.conf
 Backup dir:                /tmp/dar-backup/backups
@@ -134,7 +134,7 @@ dar-backup --full-backup  --verbose
 ```bash
 (venv) $ dar-backup --full-backup  --verbose
 ========== Startup Settings ==========
-dar-backup:               1.1.10
+dar-backup:               1.1.12
 Operation:                FULL backup
 dar path:                 /home/pj/.local/dar/bin/dar
 dar version:              2.7.21
@@ -206,7 +206,7 @@ find /tmp/dar-backup-data-dirs/restore
 ```bash
 (venv) $ dar-backup --restore demo_FULL_$(date '+%F') --verbose
 ========== Startup Settings ==========
-dar-backup:               1.1.10
+dar-backup:               1.1.12
 Operation:                restore
 dar path:                 /home/user/.local/dar/bin/dar
 dar version:              2.7.21
