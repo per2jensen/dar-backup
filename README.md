@@ -94,7 +94,7 @@ dar-backup --full-backup --demo
 ```
 
 **What just happened?**
-- `demo --install` sets up a demo environment with test files
+- `demo --install` sets up a demo environment with test files under `/tmp`
 - `manager --create-db` initializes the archive catalog database
 - `dar-backup --full-backup --demo` creates a full backup of the demo data
 
@@ -102,7 +102,6 @@ After each backup, `dar-backup` automatically:
 1. **Verifies** archives with `dar -t`
 2. **Restore-tests** random files byte-for-byte against source
 3. **Creates PAR2 redundancy files** for bitrot repair
-4. **Notifies** Discord on success/failure
 
 Schedules are managed via systemd timers (auto-generated). Point-in-Time Recovery works through `dar_manager` catalogs — no database server needed.
 
